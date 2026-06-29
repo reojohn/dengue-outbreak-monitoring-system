@@ -37,6 +37,8 @@ const emptyWorkspace = {
   weatherRecords: [],
   populationRecords: [],
   boundaryRecords: [],
+  backendDengueSummary: null,
+  backendForecastResult: null,
   sourceStatus: emptySourceStatus,
   activityLogs: [],
 }
@@ -127,6 +129,14 @@ function normalizeSourceStatus(sourceStatus = {}) {
   }
 }
 
+function normalizeObjectOrNull(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  return value
+}
+
 function normalizeWorkspace(workspace = {}) {
   return {
     ...emptyWorkspace,
@@ -145,6 +155,8 @@ function normalizeWorkspace(workspace = {}) {
       : workspace.boundaryRecords
         ? [workspace.boundaryRecords]
         : [],
+    backendDengueSummary: normalizeObjectOrNull(workspace.backendDengueSummary),
+    backendForecastResult: normalizeObjectOrNull(workspace.backendForecastResult),
     sourceStatus: normalizeSourceStatus(workspace.sourceStatus),
     activityLogs: Array.isArray(workspace.activityLogs)
       ? workspace.activityLogs
@@ -825,6 +837,8 @@ export function DataProvider({ children }) {
     updateWorkspace((current) => ({
       ...current,
       dengueRecords: mockDengueRecords,
+      backendDengueSummary: null,
+      backendForecastResult: null,
       sourceStatus: {
         ...(current.sourceStatus || {}),
         dengue: {
@@ -841,7 +855,7 @@ export function DataProvider({ children }) {
             `${Date.now()}-${Math.random()}`,
           action: 'Mock dengue dataset loaded',
           details:
-            'Temporary mock dengue records were loaded for hotspot, forecast, and risk map testing.',
+            'Temporary mock dengue records were loaded for hotspot, forecast, and risk map testing. Backend forecast results were cleared.',
           timestamp: new Date().toISOString(),
         },
         ...(current.activityLogs || []),
@@ -861,6 +875,8 @@ export function DataProvider({ children }) {
       return {
         ...current,
         dengueRecords: [],
+        backendDengueSummary: null,
+        backendForecastResult: null,
         sourceStatus: {
           ...(current.sourceStatus || {}),
           dengue: {
@@ -874,7 +890,7 @@ export function DataProvider({ children }) {
               `${Date.now()}-${Math.random()}`,
             action: 'Mock dengue dataset cleared',
             details:
-              'Temporary mock dengue records were removed. Boundary and population data were kept.',
+              'Temporary mock dengue records were removed. Backend forecast results were cleared. Boundary and population data were kept.',
             timestamp: new Date().toISOString(),
           },
           ...(current.activityLogs || []),
