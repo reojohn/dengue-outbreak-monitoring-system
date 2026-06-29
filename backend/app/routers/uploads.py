@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, UploadFile
 
-from app.services.file_inspector import inspect_tabular_file
+from app.services.file_inspector import clean_dengue_file, inspect_tabular_file
 
 router = APIRouter(
     prefix="/uploads",
@@ -23,3 +23,8 @@ async def test_upload(file: UploadFile = File(...)):
 @router.post("/inspect")
 async def inspect_upload(file: UploadFile = File(...)):
     return await inspect_tabular_file(file)
+
+
+@router.post("/clean-dengue")
+async def clean_dengue_upload(file: UploadFile = File(...)):
+    return await clean_dengue_file(file)
