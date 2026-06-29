@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import uploads
+
 app = FastAPI(
     title="Dengue Predictive Analytics API",
     description="Backend API for dengue data ingestion, forecasting, risk scoring, and reporting.",
@@ -14,6 +16,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(uploads.router)
 
 
 @app.get("/")
