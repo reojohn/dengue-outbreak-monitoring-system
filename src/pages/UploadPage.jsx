@@ -4,6 +4,12 @@ import { FileText, CloudRain, Users, Map as MapIcon } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import SectionTitle from '../components/SectionTitle'
 import { useData } from '../context/DataContext'
+import {
+  cleanDengueFile,
+  forecastDengueFile,
+  inspectUploadedFile,
+  summarizeDengueFile,
+} from '../services/api'
 
 const sources = [
   {
@@ -1180,6 +1186,106 @@ function getPreviewHeaders(sourceId) {
   return []
 }
 
+
+function formatBackendMappingSummary(detection = {}) {
+  const matchedFields = detection.matched_fields || {}
+
+  const labels = {
+    barangay: 'barangay',
+    date: 'date',
+    year: 'year',
+    month: 'month',
+    week: 'week',
+    cases: 'cases',
+    deaths: 'deaths',
+  }
+
+  return Object.entries(matchedFields)
+    .map(([field, sourceColumn]) => `${labels[field] || field} → ${sourceColumn}`)
+    .join(', ')
+}
+
+function getBackendValidationCounts(cleanResult = {}) {
+  const summary = cleanResult.validation_summary || {}
+
+  const missingCount =
+    Number(summary.invalid_barangay_rows || 0) +
+    Number(summary.invalid_time_rows || 0)
+
+  const invalidCount =
+    Number(summary.invalid_cases_rows || 0) +
+    Number(summary.invalid_deaths_rows || 0)
+
+  return {
+    missingCount,
+    invalidCount,
+    duplicateCount: 0,
+  }
+}
+
+function mapBackendCleanedRows(cleanedRows = []) {
+  return cleanedRows.map((row, index) => ({
+    id: Date.now() + index,
+    barangay: row.barangay || '',
+    reportingDate: row.date || row.period || '',
+    period: row.period || row.date || '',
+    date: row.date || '',
+    year: row.year ?? '',
+    month: row.month ?? '',
+    week: row.week ?? '',
+    cases: Number(row.cases || 0),
+    deaths: Number(row.deaths || 0),
+    status: 'Valid',
+  }))
+}
+
+function mapBackendInvalidRows(invalidRows = []) {
+  return invalidRows.map((row, index) => ({
+    id: Date.now() + 10000 + index,
+    barangay: row.barangay || '',
+    reportingDate: row.date || row.period || '',
+    period: row.period || row.date || '',
+    date: row.date || '',
+    year: row.year ?? '',
+    month: row.month ?? '',
+    week: row.week ?? '',
+    cases: Number(row.cases || 0),
+    deaths: Number(row.deaths || 0),
+    status: 'Needs Review',
+  }))
+}
+
+function buildBackendDengueValidationResult({
+  fileName,
+  inspectResult,
+  cleanResult,
+  summaryResult,
+  forecastResult,
+}) {
+  const counts = getBackendValidationCounts(cleanResult)
+  const validRecords = mapBackendCleanedRows(cleanResult.cleaned_preview || [])
+  const invalidPreview = mapBackendInvalidRows(cleanResult.invalid_preview || [])
+  const mappingSummary = formatBackendMappingSummary(cleanResult.dengue_detection)
+
+  return {
+    sourceId: 'historical',
+    fileName,
+    backendPowered: true,
+    previewRows: [...validRecords, ...invalidPreview],
+    validRecords,
+    recordCount: Number(cleanResult.original_row_count || 0),
+    validCount: Number(cleanResult.valid_row_count || 0),
+    missingCount: counts.missingCount,
+    duplicateCount: counts.duplicateCount,
+    invalidCount: counts.invalidCount,
+    mappingSummary,
+    inspectResult,
+    cleanResult,
+    summaryResult,
+    forecastResult,
+  }
+}
+
 export default function UploadPage() {
   const navigate = useNavigate()
   const data = useData()
@@ -1255,6 +1361,63 @@ export default function UploadPage() {
     try {
       const fileName = file.name.toLowerCase()
       const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
+      const isCsv = fileName.endsWith('.csv')
+
+      if (selected === 'historical' && (isCsv || isExcel)) {
+        const inspectResult = await inspectUploadedFile(file)
+        const cleanResult = await cleanDengueFile(file)
+        const summaryResult = await summarizeDengueFile(file)
+        const forecastResult = await forecastDengueFile(file)
+
+        const backendResult = buildBackendDengueValidationResult({
+          fileName: file.name,
+          inspectResult,
+          cleanResult,
+          summaryResult,
+          forecastResult,
+        })
+
+        updateWorkspace((current) => ({
+          ...current,
+          [selectedSource.recordKey]: backendResult.validRecords,
+          backendDengueSummary: summaryResult,
+          backendForecastResult: forecastResult,
+          sourceStatus: {
+            ...(current.sourceStatus || {}),
+            [selectedSource.contextKey]: {
+              uploadedName: file.name,
+              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              recordCount: backendResult.recordCount,
+              validCount: backendResult.validCount,
+              missingCount: backendResult.missingCount,
+              duplicateCount: backendResult.duplicateCount,
+              invalidCount: backendResult.invalidCount,
+              mappingSummary: backendResult.mappingSummary,
+              backendPowered: true,
+            },
+          },
+        }))
+
+        setValidationResult(backendResult)
+
+        const riskCounts = forecastResult.risk_counts || {}
+        const riskNote = ` Forecast generated: ${riskCounts.High || 0} high, ${riskCounts.Moderate || 0} moderate, and ${riskCounts.Low || 0} low-risk barangays.`
+        const invalidNote = backendResult.recordCount > backendResult.validCount
+          ? ` ${backendResult.recordCount - backendResult.validCount} row(s) need review.`
+          : ''
+
+        setUploadMessage(
+          `${file.name} was inspected, cleaned, summarized, and forecasted by the backend. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.${invalidNote}${riskNote}`
+        )
+
+        addActivityLog(
+          'Backend dengue dataset uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+        )
+
+        return
+      }
+
       let parsed
       let result
       let usedSheetName = ''
