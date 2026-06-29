@@ -895,12 +895,20 @@ function getPriorityDistribution(rows) {
 
 function getComputationStatus(records, sourceStatus, backendForecastResult = null) {
   if (hasBackendForecastData(backendForecastResult)) {
-    return {
-      title: 'Backend forecast loaded',
-      message: `${formatNumber(backendForecastResult.valid_row_count || records.length)} dengue record${Number(backendForecastResult.valid_row_count || records.length) === 1 ? '' : 's'} were processed by the FastAPI backend from ${backendForecastResult.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dataset'}. Forecast, risk level, trend, and recommendations came from the backend baseline forecast endpoint.`,
-      style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-      icon: CheckCircle2,
-    }
+    const processedRecordCount = Number(
+  backendForecastResult.valid_row_count || records.length || 0
+)
+
+const highRiskCount = Number(backendForecastResult?.risk_counts?.High || 0)
+const moderateRiskCount = Number(backendForecastResult?.risk_counts?.Moderate || 0)
+const lowRiskCount = Number(backendForecastResult?.risk_counts?.Low || 0)
+
+return {
+  title: 'Forecast ready',
+  message: `${formatNumber(processedRecordCount)} dengue record${processedRecordCount === 1 ? '' : 's'} were analyzed. The system identified ${formatNumber(highRiskCount)} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${formatNumber(moderateRiskCount)} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${formatNumber(lowRiskCount)} low-risk barangay${lowRiskCount === 1 ? '' : 's'}. Review the priority barangays and recommended actions below.`,
+  style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+  icon: CheckCircle2,
+}
   }
 
   if (!records.length) {
