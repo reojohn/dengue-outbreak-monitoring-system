@@ -1,7 +1,25 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Database,
+  FileText,
+  Layers3,
+  MapPinned,
+  Navigation,
+  RefreshCcw,
+  ShieldAlert,
+  Sparkles,
+  Target,
+  TrendingUp,
+  UploadCloud,
+} from 'lucide-react'
 import SectionTitle from '../components/SectionTitle'
-import StatCard from '../components/StatCard'
 import SparkChart from '../components/SparkChart'
 import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
@@ -14,26 +32,34 @@ const actionRoutes = {
 }
 
 const actions = [
-  [
-    'Upload data',
-    'Import case, weather, demographic, and boundary records',
-    'border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 text-brand-blue dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-900 dark:text-blue-300',
-  ],
-  [
-    'Run forecast',
-    'Generate dengue risk projections from current records',
-    'border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 text-brand-orange dark:border-amber-500/20 dark:from-amber-500/10 dark:to-slate-900 dark:text-amber-300',
-  ],
-  [
-    'Open map',
-    'View hotspot barangays and risk distribution',
-    'border-teal-100 bg-gradient-to-r from-teal-50 to-cyan-50 text-brand-teal dark:border-teal-500/20 dark:from-teal-500/10 dark:to-slate-900 dark:text-teal-300',
-  ],
-  [
-    'Generate report',
-    'Prepare monitoring summary for review and planning',
-    'border-emerald-100 bg-gradient-to-r from-emerald-50 to-green-50 text-brand-green dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-slate-900 dark:text-emerald-300',
-  ],
+  {
+    label: 'Upload data',
+    description: 'Import dengue records and supporting datasets',
+    icon: UploadCloud,
+    style:
+      'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+  },
+  {
+    label: 'Run forecast',
+    description: 'Review projected cases and risk level changes',
+    icon: TrendingUp,
+    style:
+      'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+  },
+  {
+    label: 'Open map',
+    description: 'View hotspot barangays on the GIS map',
+    icon: MapPinned,
+    style:
+      'border-teal-100 bg-teal-50 text-brand-teal dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300',
+  },
+  {
+    label: 'Generate report',
+    description: 'Create reports for review and coordination',
+    icon: FileText,
+    style:
+      'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+  },
 ]
 
 function formatNumber(value) {
@@ -43,18 +69,20 @@ function formatNumber(value) {
 function getTrendStatus(values = []) {
   if (!values.length) {
     return {
-      label: 'No data',
+      label: 'No trend data',
+      description: 'Upload dengue records to show trend movement.',
       style:
         'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
     }
   }
 
-  const latest = values[values.length - 1] || 0
-  const previous = values[values.length - 2] || 0
+  const latest = Number(values[values.length - 1] || 0)
+  const previous = Number(values[values.length - 2] || 0)
 
   if (latest > previous) {
     return {
       label: 'Rising',
+      description: 'Latest projected value is higher than the previous value.',
       style:
         'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
     }
@@ -63,6 +91,7 @@ function getTrendStatus(values = []) {
   if (latest < previous) {
     return {
       label: 'Decreasing',
+      description: 'Latest projected value is lower than the previous value.',
       style:
         'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
     }
@@ -70,6 +99,7 @@ function getTrendStatus(values = []) {
 
   return {
     label: 'Stable',
+    description: 'Latest projected value is unchanged from the previous value.',
     style:
       'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
   }
@@ -189,6 +219,14 @@ function buildBackendDashboardStats(backendForecastResult = null, backendDengueS
     Number(riskCounts.High || 0) ||
     backendRows.filter((row) => row.risk_level === 'High').length
 
+  const moderateRiskCount =
+    Number(riskCounts.Moderate || 0) ||
+    backendRows.filter((row) => row.risk_level === 'Moderate').length
+
+  const lowRiskCount =
+    Number(riskCounts.Low || 0) ||
+    backendRows.filter((row) => row.risk_level === 'Low').length
+
   const dataQuality =
     originalRowCount > 0
       ? Math.round((validRowCount / originalRowCount) * 100)
@@ -197,9 +235,110 @@ function buildBackendDashboardStats(backendForecastResult = null, backendDengueS
   return {
     totalCases,
     highRiskCount,
+    moderateRiskCount,
+    lowRiskCount,
     fourWeekForecast,
     dataQuality,
   }
+}
+
+function PremiumStatCard({
+  title,
+  value,
+  helper,
+  icon: Icon,
+  tone = 'blue',
+}) {
+  const toneMap = {
+    blue: {
+      icon: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      badge: 'bg-blue-500',
+      glow: 'from-blue-50/90 via-white to-white dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-900',
+    },
+    red: {
+      icon: 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+      badge: 'bg-rose-500',
+      glow: 'from-rose-50/90 via-white to-white dark:from-rose-500/10 dark:via-slate-900 dark:to-slate-900',
+    },
+    orange: {
+      icon: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+      badge: 'bg-amber-500',
+      glow: 'from-amber-50/90 via-white to-white dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-900',
+    },
+    green: {
+      icon: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      badge: 'bg-emerald-500',
+      glow: 'from-emerald-50/90 via-white to-white dark:from-emerald-500/10 dark:via-slate-900 dark:to-slate-900',
+    },
+  }
+
+  const style = toneMap[tone] || toneMap.blue
+
+  return (
+    <div
+      className={`group relative min-h-[172px] overflow-hidden rounded-[32px] border border-brand-line/70 bg-gradient-to-br ${style.glow} p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:shadow-none`}
+    >
+      <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/70 blur-2xl dark:bg-white/5" />
+      <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent dark:via-slate-700" />
+
+      <div className="relative flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand-muted dark:text-slate-400">
+            {title}
+          </p>
+
+          <h3 className="mt-4 text-4xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            {value}
+          </h3>
+
+          <p className="mt-2 max-w-[210px] text-sm leading-6 text-brand-muted dark:text-slate-400">
+            {helper}
+          </p>
+        </div>
+
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border shadow-sm ${style.icon}`}
+        >
+          <Icon className="h-6 w-6" strokeWidth={2.4} />
+        </div>
+      </div>
+
+      <div className={`absolute bottom-5 right-5 h-2.5 w-2.5 rounded-full ${style.badge}`} />
+    </div>
+  )
+}
+
+function Panel({ children, className = '' }) {
+  return (
+    <div
+      className={`rounded-[34px] border border-brand-line/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SectionBadge({ children, tone = 'slate' }) {
+  const toneMap = {
+    slate:
+      'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    blue:
+      'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+    amber:
+      'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+    emerald:
+      'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+    rose:
+      'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+  }
+
+  return (
+    <div
+      className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] ${toneMap[tone] || toneMap.slate}`}
+    >
+      {children}
+    </div>
+  )
 }
 
 export default function DashboardPage() {
@@ -233,6 +372,8 @@ export default function DashboardPage() {
     : {
         totalCases: dashboardStats.totalCases || 0,
         highRiskCount: dashboardStats.highRiskCount || 0,
+        moderateRiskCount: dashboardStats.moderateRiskCount || 0,
+        lowRiskCount: dashboardStats.lowRiskCount || 0,
         fourWeekForecast: dashboardStats.fourWeekForecast || 0,
         dataQuality: dashboardStats.dataQuality || 0,
       }
@@ -248,352 +389,568 @@ export default function DashboardPage() {
   const latestLogs = activityLogs.slice(0, 3)
   const trendStatus = getTrendStatus(weeklyTotals)
 
+  const highRiskCount = Number(displayStats.highRiskCount || 0)
+  const moderateRiskCount = Number(displayStats.moderateRiskCount || 0)
+  const lowRiskCount = Number(displayStats.lowRiskCount || 0)
+
+  const topPriority = priority[0] || null
+  const acceptedRecords = Number(
+    backendForecastResult?.valid_row_count ||
+      sourceStatus?.dengue?.validCount ||
+      0
+  )
+
+  const dataHealth =
+    Number(displayStats.dataQuality || 0) >= 95
+      ? 'Ready for review'
+      : Number(displayStats.dataQuality || 0) > 0
+        ? 'Needs checking'
+        : 'Waiting for data'
+
+  const riskDistribution = [
+    {
+      label: 'High',
+      value: highRiskCount,
+      helper: 'Needs immediate attention',
+      style:
+        'border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+    },
+    {
+      label: 'Moderate',
+      value: moderateRiskCount,
+      helper: 'Needs close monitoring',
+      style:
+        'border-amber-100 bg-amber-50 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+    },
+    {
+      label: 'Low',
+      value: lowRiskCount,
+      helper: 'Routine watch',
+      style:
+        'border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+    },
+  ]
+
   const alertCards = useMemo(() => {
     const highestRisk = priority[0]
-    const highRiskCount = priority.filter((row) => row.risk === 'High').length
+    const priorityHighCount = priority.filter((row) => row.risk === 'High').length
 
     return [
       {
-        title: highestRisk ? `${highestRisk.risk} risk` : 'No risk data',
+        title: highestRisk ? `${highestRisk.risk} risk priority` : 'No risk data yet',
         message: highestRisk
           ? `${highestRisk.barangay} has the highest projected value with ${formatNumber(highestRisk.forecast)} projected cases.`
           : 'Upload dengue records to generate priority alerts.',
+        icon: ShieldAlert,
         style: highestRisk?.risk === 'High'
-          ? 'border-rose-100 bg-rose-50/70 dark:border-rose-500/20 dark:bg-rose-500/10'
-          : 'border-blue-100 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10',
+          ? 'border-rose-100 bg-rose-50/75 dark:border-rose-500/20 dark:bg-rose-500/10'
+          : 'border-blue-100 bg-blue-50/75 dark:border-blue-500/20 dark:bg-blue-500/10',
       },
       {
-        title: usingBackendForecast ? 'Backend forecast active' : 'Data readiness',
+        title: usingBackendForecast ? 'Analysis ready' : 'Data readiness',
         message: usingBackendForecast
-          ? `Dashboard values are using the FastAPI backend forecast from ${backendForecastResult?.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dataset'}.`
+          ? `The uploaded dengue records are now being used for dashboard totals, priority ranking, trend view, and monitoring alerts.`
           : `${Object.keys(sourceStatus || {}).length} data sources are available in the prototype workspace.`,
+        icon: CheckCircle2,
         style:
-          'border-blue-100 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10',
+          'border-blue-100 bg-blue-50/75 dark:border-blue-500/20 dark:bg-blue-500/10',
       },
       {
         title: 'Monitoring priority',
-        message: `${highRiskCount} barangay${highRiskCount === 1 ? '' : 's'} currently require closer monitoring.`,
-        style: highRiskCount > 0
-          ? 'border-amber-100 bg-amber-50/70 dark:border-amber-500/20 dark:bg-amber-500/10'
-          : 'border-emerald-100 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-500/10',
+        message: `${priorityHighCount} barangay${priorityHighCount === 1 ? '' : 's'} currently require closer monitoring.`,
+        icon: AlertTriangle,
+        style: priorityHighCount > 0
+          ? 'border-amber-100 bg-amber-50/75 dark:border-amber-500/20 dark:bg-amber-500/10'
+          : 'border-emerald-100 bg-emerald-50/75 dark:border-emerald-500/20 dark:bg-emerald-500/10',
       },
     ]
   }, [
     priority,
     sourceStatus,
     usingBackendForecast,
-    backendForecastResult,
   ])
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <SectionTitle
         title="Dashboard Overview"
         subtitle={
           usingBackendForecast
-            ? 'Quick status, backend forecast totals, priority barangays, and data readiness from the uploaded dengue dataset.'
+            ? 'Decision-ready overview from the latest uploaded dengue dataset.'
             : 'Quick status, dengue trends, priority barangays, and data readiness from the current working dataset.'
         }
       />
+
+      <div className="relative overflow-hidden rounded-[38px] border border-brand-line/70 bg-gradient-to-br from-slate-950 via-[#1e4e75] to-slate-900 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.22)] dark:border-slate-800 sm:p-7">
+        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-emerald-300/10 blur-3xl" />
+
+        <div className="relative grid gap-6 xl:grid-cols-[1.35fr_0.65fr] xl:items-end">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-100 backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5" />
+              Dengue decision center
+            </div>
+
+            <h2 className="mt-5 max-w-3xl text-3xl font-black tracking-tight text-white sm:text-4xl">
+              Barangay-level risk monitoring for faster dengue response planning.
+            </h2>
+
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-blue-100/90">
+              The dashboard turns uploaded dengue records into a clear view of total cases, forecast pressure, hotspot barangays, and response priorities.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur">
+                <CheckCircle2 className="h-4 w-4 text-emerald-200" />
+                {dataHealth}
+              </span>
+
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur">
+                <Database className="h-4 w-4 text-blue-200" />
+                {formatNumber(acceptedRecords)} accepted record{acceptedRecords === 1 ? '' : 's'}
+              </span>
+
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur">
+                <Target className="h-4 w-4 text-amber-200" />
+                {formatNumber(highRiskCount)} high-risk barangay{highRiskCount === 1 ? '' : 's'}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-[30px] border border-white/15 bg-white/10 p-5 text-white shadow-2xl backdrop-blur">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-100">
+              Current top priority
+            </p>
+
+            <h3 className="mt-3 text-2xl font-black tracking-tight">
+              {topPriority?.barangay || 'No barangay yet'}
+            </h3>
+
+            <p className="mt-2 text-sm leading-6 text-blue-100/90">
+              {topPriority
+                ? `${formatNumber(topPriority.forecast)} projected cases. Risk level: ${topPriority.risk}.`
+                : 'Upload dengue records to generate the top priority barangay.'}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => navigate('/forecast')}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#1e4e75] shadow-lg transition hover:-translate-y-0.5 hover:bg-blue-50"
+            >
+              Review forecast
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div
         id="dashboard-summary"
         className="scroll-mt-28 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
       >
-        <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
-          <StatCard
-            title="Total cases"
-            value={formatNumber(displayStats.totalCases)}
-            color="blue"
-          />
-        </div>
+        <PremiumStatCard
+          title="Total cases"
+          value={formatNumber(displayStats.totalCases)}
+          helper="Recorded dengue cases in the current workspace"
+          icon={Activity}
+          tone="blue"
+        />
 
-        <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
-          <StatCard
-            title="High-risk barangays"
-            value={formatNumber(displayStats.highRiskCount)}
-            color="red"
-          />
-        </div>
+        <PremiumStatCard
+          title="High-risk barangays"
+          value={formatNumber(displayStats.highRiskCount)}
+          helper="Barangays that need immediate attention"
+          icon={ShieldAlert}
+          tone="red"
+        />
 
-        <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
-          <StatCard
-            title="Forecast total"
-            value={formatNumber(displayStats.fourWeekForecast)}
-            color="orange"
-          />
-        </div>
+        <PremiumStatCard
+          title="Forecast total"
+          value={formatNumber(displayStats.fourWeekForecast)}
+          helper="Projected dengue cases for the forecast window"
+          icon={BarChart3}
+          tone="orange"
+        />
 
-        <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
-          <StatCard
-            title="Data quality"
-            value={`${displayStats.dataQuality}%`}
-            color="green"
-          />
-        </div>
+        <PremiumStatCard
+          title="Data quality"
+          value={`${displayStats.dataQuality}%`}
+          helper="Accepted records compared with uploaded records"
+          icon={CheckCircle2}
+          tone="green"
+        />
       </div>
 
       {usingBackendForecast && (
-        <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-          <span className="font-bold">Backend forecast loaded:</span>{' '}
-          Dashboard totals, risk ranking, trend chart, and priority alerts are now using the FastAPI forecast output from{' '}
-          {backendForecastResult?.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dengue dataset'}.
+        <div className="rounded-[28px] border border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-slate-900 dark:text-emerald-300">
+          <span className="font-black">Analysis ready:</span>{' '}
+          The uploaded dengue records are now being used for dashboard totals, trend view, priority ranking, and monitoring alerts. The system identified{' '}
+          {formatNumber(highRiskCount)} high-risk barangay{highRiskCount === 1 ? '' : 's'},{' '}
+          {formatNumber(moderateRiskCount)} moderate-risk barangay{moderateRiskCount === 1 ? '' : 's'}, and{' '}
+          {formatNumber(lowRiskCount)} low-risk barangay{lowRiskCount === 1 ? '' : 's'}.
         </div>
       )}
 
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
-          <div className="flex items-start justify-between gap-4">
+        <Panel className="p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="mb-2 inline-flex rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+              <SectionBadge tone="rose">
+                <TrendingUp className="h-3.5 w-3.5" />
                 Trend analysis
-              </div>
+              </SectionBadge>
 
-              <h3 className="text-xl font-bold tracking-tight text-brand-text dark:text-slate-100">
+              <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
                 Dengue trend
               </h3>
 
-              <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
+              <p className="mt-1 max-w-xl text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {usingBackendForecast
-                  ? 'Projected case values generated from the backend baseline forecast.'
-                  : 'Weekly case values recalculated from uploaded or sample dengue records.'}
+                  ? 'Values show previous average, recent average, and projected forecast periods from the latest analysis.'
+                  : 'Weekly case values are recalculated from uploaded or sample dengue records.'}
               </p>
             </div>
 
-            <span className={`rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${trendStatus.style}`}>
+            <span className={`inline-flex w-fit rounded-full border px-4 py-1.5 text-xs font-black shadow-sm ${trendStatus.style}`}>
               {trendStatus.label}
             </span>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 text-sm text-brand-text shadow-sm dark:border-slate-700 dark:from-slate-950 dark:to-slate-900 dark:text-slate-300 dark:shadow-none">
-            <span className="font-semibold text-brand-text dark:text-slate-100">
-              Chart guide:
-            </span>{' '}
-            {usingBackendForecast
-              ? 'Values represent previous average, recent average, and projected forecast periods from the backend output.'
-              : 'Each point represents a reporting period. Values update after historical dengue data is uploaded and validated.'}
-          </div>
+          <div className="mt-5 space-y-4">
+  <div className="rounded-[30px] border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none sm:p-5">
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
+          Dengue case values
+        </p>
 
-          <div className="mt-5 rounded-[28px] border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
-                Weekly dengue case values
-              </div>
+        <p className="mt-1 text-xs text-brand-muted dark:text-slate-500">
+          {trendStatus.description}
+        </p>
+      </div>
 
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-brand-muted dark:bg-slate-800 dark:text-slate-300">
-                {usingBackendForecast ? 'Backend forecast' : 'Last 6 periods'}
-              </div>
-            </div>
+      <div className="w-fit rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-brand-muted dark:bg-slate-800 dark:text-slate-300">
+        {usingBackendForecast ? 'Latest analysis' : 'Last 6 periods'}
+      </div>
+    </div>
 
-            <div className="h-[250px]">
-              {weeklyTotals.length > 0 ? (
-                <SparkChart values={weeklyTotals} />
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-                  No chart available until dengue records are loaded.
-                </div>
-              )}
-            </div>
-          </div>
+    <div className="h-[360px] lg:h-[420px]">
+      {weeklyTotals.length > 0 ? (
+        <SparkChart values={weeklyTotals} />
+      ) : (
+        <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+          No chart available until dengue records are loaded.
+        </div>
+      )}
+    </div>
+  </div>
+
+  <div className="grid gap-3 sm:grid-cols-3">
+    {riskDistribution.map((item) => (
+      <div
+        key={item.label}
+        className={`rounded-[24px] border p-4 shadow-sm ${item.style}`}
+      >
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em]">
+          {item.label} risk
+        </p>
+
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <p className="text-4xl font-black">
+            {formatNumber(item.value)}
+          </p>
+
+          <span className="rounded-full bg-white/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] shadow-sm dark:bg-white/10">
+            Barangays
+          </span>
         </div>
 
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
-          <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            Risk ranking
+        <p className="mt-2 text-xs font-semibold opacity-80">
+          {item.helper}
+        </p>
+      </div>
+    ))}
+  </div>
+</div>
+        </Panel>
+
+        <Panel className="p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SectionBadge tone="amber">
+                <Navigation className="h-3.5 w-3.5" />
+                Risk ranking
+              </SectionBadge>
+
+              <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                Priority barangays
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                Ranked by risk level, projected cases, and response priority.
+              </p>
+            </div>
           </div>
-
-          <h3 className="text-xl font-bold tracking-tight text-brand-text dark:text-slate-100">
-            Priority barangays
-          </h3>
-
-          <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
-            {usingBackendForecast
-              ? 'Ranked from the backend baseline forecast priority output.'
-              : 'Ranked from the current computed dengue risk score.'}
-          </p>
 
           <div className="mt-5 space-y-3">
             {priority.length > 0 ? (
               priority.map((row, index) => (
                 <div
                   key={`${row.barangay}-${index}`}
-                  className="group flex items-center justify-between rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none dark:hover:shadow-none"
+                  className="group rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-bold text-brand-text shadow-sm dark:bg-slate-800 dark:text-slate-100 dark:shadow-none">
-                      {index + 1}
-                    </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-black text-brand-text shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700">
+                        {index + 1}
+                      </div>
 
-                    <div>
-                      <span className="font-semibold text-brand-text dark:text-slate-100">
-                        {row.barangay}
-                      </span>
-
-                      <p className="text-xs text-brand-muted dark:text-slate-400">
-                        Forecast: {formatNumber(row.forecast)} cases
-                      </p>
-
-                      {usingBackendForecast && row.trendDirection && (
-                        <p className="mt-0.5 text-[11px] text-brand-muted dark:text-slate-500">
-                          Trend: {row.trendDirection}
+                      <div className="min-w-0">
+                        <p className="break-words font-black text-brand-text dark:text-slate-100">
+                          {row.barangay}
                         </p>
-                      )}
+
+                        <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                          Forecast: {formatNumber(row.forecast)} cases
+                        </p>
+
+                        {usingBackendForecast && row.trendDirection && (
+                          <p className="text-[11px] font-semibold text-brand-muted dark:text-slate-500">
+                            Trend: {row.trendDirection}
+                          </p>
+                        )}
+                      </div>
                     </div>
+
+                    <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(row.risk)}`}>
+                      {row.risk}
+                    </span>
                   </div>
 
-                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getRiskBadgeStyle(row.risk)}`}>
-                    {row.risk}
-                  </span>
+                  {usingBackendForecast && row.recommendation && (
+                    <p className="mt-3 rounded-[18px] border border-slate-100 bg-white/80 px-3 py-2 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
+                      {row.recommendation}
+                    </p>
+                  )}
                 </div>
               ))
             ) : (
-              <div className="rounded-[22px] border border-slate-100 bg-slate-50 p-4 text-sm text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+              <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                 No barangay risk ranking available yet.
               </div>
             )}
           </div>
-        </div>
+        </Panel>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_0.85fr_1fr]">
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
-          <div className="mb-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+        <Panel className="p-6">
+          <SectionBadge tone="blue">
+            <Layers3 className="h-3.5 w-3.5" />
             Navigation
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-bold tracking-tight text-brand-text dark:text-slate-100">
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Quick actions
           </h3>
 
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            Continue the dengue monitoring workflow.
+          </p>
+
           <div className="mt-5 space-y-3">
-            {actions.map(([label, desc, style]) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => navigate(actionRoutes[label])}
-                className={`w-full rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:shadow-none dark:hover:shadow-none ${style}`}
-              >
-                <div className="text-sm font-semibold">{label}</div>
-                <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {desc}
-                </div>
-              </button>
-            ))}
+            {actions.map((action) => {
+              const Icon = action.icon
+
+              return (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() => navigate(actionRoutes[action.label])}
+                  className="group flex w-full items-center justify-between gap-3 rounded-[24px] border border-brand-line bg-gradient-to-r from-white to-slate-50 px-4 py-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${action.style}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                        {action.label}
+                      </p>
+
+                      <p className="mt-0.5 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                        {action.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <ArrowRight className="h-4 w-4 text-brand-muted transition group-hover:translate-x-1 group-hover:text-brand-blue dark:text-slate-500 dark:group-hover:text-blue-300" />
+                </button>
+              )
+            })}
 
             <button
               type="button"
               onClick={resetSampleData}
-              className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-4 text-left text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:shadow-none dark:hover:bg-slate-900 dark:hover:shadow-none"
+              className="group flex w-full items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-left text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-200 hover:text-rose-600 hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:shadow-none dark:hover:border-rose-500/30 dark:hover:text-rose-300"
             >
-              <div className="text-sm font-semibold">Reset sample data</div>
-              <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                Restore the prototype workspace to default demo records.
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+                  <RefreshCcw className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <p className="text-sm font-black">Reset workspace</p>
+
+                  <p className="mt-0.5 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                    Clear uploaded results and return to an empty workspace.
+                  </p>
+                </div>
               </div>
+
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
             </button>
           </div>
-        </div>
+        </Panel>
 
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
-          <div className="mb-2 inline-flex rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+        <Panel className="p-6">
+          <SectionBadge tone="amber">
+            <AlertTriangle className="h-3.5 w-3.5" />
             Live updates
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-bold tracking-tight text-brand-text dark:text-slate-100">
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Recent alerts
           </h3>
 
           <div className="mt-5 space-y-4">
-            {alertCards.map((alert) => (
-              <div
-                key={alert.title}
-                className={`rounded-[22px] border p-4 ${alert.style}`}
-              >
-                <p className="text-sm font-semibold text-brand-text dark:text-slate-100">
-                  {alert.title}
-                </p>
+            {alertCards.map((alert) => {
+              const Icon = alert.icon
 
-                <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
-                  {alert.message}
-                </p>
-              </div>
-            ))}
+              return (
+                <div
+                  key={alert.title}
+                  className={`rounded-[24px] border p-4 shadow-sm ${alert.style}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/70 shadow-sm dark:bg-white/10">
+                      <Icon className="h-5 w-5 text-brand-text dark:text-slate-100" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                        {alert.title}
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                        {alert.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </div>
+        </Panel>
 
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
-          <div className="mb-2 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+        <Panel className="p-6">
+          <SectionBadge tone="emerald">
+            <Database className="h-3.5 w-3.5" />
             Data readiness
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-bold tracking-tight text-brand-text dark:text-slate-100">
-            System summary
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            Source summary
           </h3>
 
           <div className="mt-5 space-y-3">
-            {Object.entries(sourceStatus || {}).map(([key, item]) => (
+            {Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
               <div
                 key={key}
-                className="flex items-start justify-between gap-3 rounded-[20px] border border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                className="rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
               >
-                <div>
-                  <p className="text-sm font-semibold capitalize text-brand-text dark:text-slate-100">
-                    {key}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black capitalize text-brand-text dark:text-slate-100">
+                      {key}
+                    </p>
 
-                  <p className="text-xs text-brand-muted dark:text-slate-400">
-                    {item.uploadedName || 'No file uploaded'}
-                  </p>
+                    <p className="mt-1 max-w-full break-all text-xs leading-5 text-brand-muted dark:text-slate-400">
+                      {item.uploadedName || 'No file uploaded'}
+                    </p>
+                  </div>
 
-                  <p className="mt-1 text-[11px] text-brand-muted dark:text-slate-500">
-                    {item.validCount || 0} valid of {item.recordCount || 0} records
-                  </p>
+                  <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(item.badge)}`}>
+                    {item.badge || 'No status'}
+                  </span>
                 </div>
 
-                <span className={`chip border ${getStatusStyle(item.badge)}`}>
-                  {item.badge}
-                </span>
+                <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-2 text-xs font-bold text-brand-muted dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                  <span>Accepted records</span>
+                  <span>
+                    {formatNumber(item.validCount || 0)} / {formatNumber(item.recordCount || 0)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
       </div>
 
-      <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
-        <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          Activity trail
-        </div>
+      <Panel className="p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <SectionBadge>
+              <Clock3 className="h-3.5 w-3.5" />
+              Activity trail
+            </SectionBadge>
 
-        <h3 className="text-xl font-bold tracking-tight text-brand-text dark:text-slate-100">
-          Recent system actions
-        </h3>
+            <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              Recent system actions
+            </h3>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/reports')}
+            className="inline-flex w-fit items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-black text-brand-blue transition hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
+          >
+            Open reports
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
 
         <div className="mt-5 grid gap-3 lg:grid-cols-3">
           {latestLogs.length > 0 ? (
             latestLogs.map((log) => (
               <div
                 key={log.id}
-                className="rounded-[22px] border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-500/20 dark:bg-blue-500/10"
+                className="rounded-[24px] border border-blue-100 bg-blue-50/60 p-4 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10"
               >
-                <p className="text-sm font-semibold text-brand-text dark:text-slate-100">
+                <p className="text-sm font-black text-brand-text dark:text-slate-100">
                   {log.action}
                 </p>
 
-                <p className="mt-1 text-xs text-brand-muted dark:text-slate-500">
+                <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
                   {new Date(log.timestamp).toLocaleString()}
                 </p>
 
-                <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
+                <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
                   {log.details}
                 </p>
               </div>
             ))
           ) : (
-            <div className="rounded-[22px] border border-slate-100 bg-slate-50 p-4 text-sm text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 lg:col-span-3">
               No activity recorded yet.
             </div>
           )}
         </div>
-      </div>
+      </Panel>
     </div>
   )
 }
