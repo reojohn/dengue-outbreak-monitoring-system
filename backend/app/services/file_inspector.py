@@ -228,8 +228,11 @@ def make_json_safe_value(value):
     if value is None:
         return None
 
-    if pd.isna(value):
-        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
 
     if hasattr(value, "item"):
         try:
@@ -256,9 +259,17 @@ def make_json_safe_records(df: pd.DataFrame):
     ]
 
 
-async def clean_dengue_file(file: UploadFile):
-    df, file_type, filename = await read_tabular_file(file)
+def classify_historical_risk(total_cases: int):
+    if total_cases >= 60:
+        return "High"
 
+    if total_cases >= 25:
+        return "Moderate"
+
+    return "Low"
+
+
+def prepare_clean_dengue_dataframe(df: pd.DataFrame):
     dengue_detection = detect_dengue_columns(df.columns)
 
     if dengue_detection["readiness"] != "ready_for_cleaning":
@@ -352,7 +363,6 @@ async def clean_dengue_file(file: UploadFile):
     invalid_rows = invalid_barangay | invalid_time | invalid_cases | invalid_deaths
 
     valid_df = clean_df[~invalid_rows].copy()
-
     valid_df["period"] = valid_df.apply(build_period, axis=1)
 
     for column in ["year", "month", "week", "cases", "deaths"]:
@@ -371,8 +381,6 @@ async def clean_dengue_file(file: UploadFile):
         ]
     ]
 
-    cleaned_preview = make_json_safe_records(valid_df.head(10))
-
     invalid_preview_df = clean_df[invalid_rows].copy()
     invalid_preview_df["period"] = ""
 
@@ -389,6 +397,34 @@ async def clean_dengue_file(file: UploadFile):
         ]
     ]
 
+    validation_summary = {
+        "invalid_barangay_rows": int(invalid_barangay.sum()),
+        "invalid_time_rows": int(invalid_time.sum()),
+        "invalid_cases_rows": int(invalid_cases.sum()),
+        "invalid_deaths_rows": int(invalid_deaths.sum()),
+    }
+
+    return {
+        "dengue_detection": dengue_detection,
+        "valid_df": valid_df,
+        "invalid_preview_df": invalid_preview_df,
+        "invalid_rows": invalid_rows,
+        "validation_summary": validation_summary,
+    }
+
+
+async def clean_dengue_file(file: UploadFile):
+    df, file_type, filename = await read_tabular_file(file)
+
+    prepared = prepare_clean_dengue_dataframe(df)
+
+    dengue_detection = prepared["dengue_detection"]
+    valid_df = prepared["valid_df"]
+    invalid_preview_df = prepared["invalid_preview_df"]
+    invalid_rows = prepared["invalid_rows"]
+    validation_summary = prepared["validation_summary"]
+
+    cleaned_preview = make_json_safe_records(valid_df.head(10))
     invalid_preview = make_json_safe_records(invalid_preview_df.head(10))
 
     return {
@@ -399,13 +435,100 @@ async def clean_dengue_file(file: UploadFile):
         "valid_row_count": int(len(valid_df)),
         "invalid_row_count": int(invalid_rows.sum()),
         "standard_columns": list(valid_df.columns),
-        "validation_summary": {
-            "invalid_barangay_rows": int(invalid_barangay.sum()),
-            "invalid_time_rows": int(invalid_time.sum()),
-            "invalid_cases_rows": int(invalid_cases.sum()),
-            "invalid_deaths_rows": int(invalid_deaths.sum()),
-        },
+        "validation_summary": validation_summary,
         "dengue_detection": dengue_detection,
         "cleaned_preview": cleaned_preview,
         "invalid_preview": invalid_preview,
+    }
+
+
+async def summarize_dengue_file(file: UploadFile):
+    df, file_type, filename = await read_tabular_file(file)
+
+    prepared = prepare_clean_dengue_dataframe(df)
+
+    dengue_detection = prepared["dengue_detection"]
+    valid_df = prepared["valid_df"]
+    invalid_preview_df = prepared["invalid_preview_df"]
+    invalid_rows = prepared["invalid_rows"]
+    validation_summary = prepared["validation_summary"]
+
+    if valid_df.empty:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "No valid dengue records found after cleaning.",
+                "validation_summary": validation_summary,
+                "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
+            },
+        )
+
+    summary_df = (
+        valid_df
+        .groupby("barangay", as_index=False)
+        .agg(
+            total_cases=("cases", "sum"),
+            total_deaths=("deaths", "sum"),
+            record_count=("barangay", "count"),
+            first_period=("period", "min"),
+            latest_period=("period", "max"),
+            average_cases=("cases", "mean"),
+            max_cases_in_period=("cases", "max"),
+        )
+    )
+
+    summary_df["average_cases"] = summary_df["average_cases"].round(2)
+    summary_df["historical_risk_level"] = summary_df["total_cases"].apply(
+        classify_historical_risk
+    )
+
+    summary_df = summary_df.sort_values(
+        by=["total_cases", "barangay"],
+        ascending=[False, True],
+    )
+
+    summary_df["rank"] = range(1, len(summary_df) + 1)
+
+    summary_df = summary_df[
+        [
+            "rank",
+            "barangay",
+            "total_cases",
+            "total_deaths",
+            "record_count",
+            "first_period",
+            "latest_period",
+            "average_cases",
+            "max_cases_in_period",
+            "historical_risk_level",
+        ]
+    ]
+
+    barangay_summary = make_json_safe_records(summary_df)
+
+    total_cases = int(valid_df["cases"].sum())
+    total_deaths = int(valid_df["deaths"].sum())
+    barangay_count = int(valid_df["barangay"].nunique())
+
+    risk_counts = {
+        "High": int((summary_df["historical_risk_level"] == "High").sum()),
+        "Moderate": int((summary_df["historical_risk_level"] == "Moderate").sum()),
+        "Low": int((summary_df["historical_risk_level"] == "Low").sum()),
+    }
+
+    return {
+        "message": "Dengue barangay summary generated successfully.",
+        "filename": filename,
+        "file_type": file_type,
+        "original_row_count": int(len(df)),
+        "valid_row_count": int(len(valid_df)),
+        "invalid_row_count": int(invalid_rows.sum()),
+        "barangay_count": barangay_count,
+        "total_cases": total_cases,
+        "total_deaths": total_deaths,
+        "risk_counts": risk_counts,
+        "validation_summary": validation_summary,
+        "dengue_detection": dengue_detection,
+        "barangay_summary": barangay_summary,
+        "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
     }
