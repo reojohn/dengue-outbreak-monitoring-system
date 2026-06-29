@@ -183,28 +183,77 @@ async def inspect_tabular_file(file: UploadFile):
     }
 
 
+def has_usable_value(value):
+    if value is None:
+        return False
+
+    if pd.isna(value):
+        return False
+
+    text_value = str(value).strip().lower()
+
+    return text_value not in ["", "nan", "none", "nat"]
+
+
 def build_period(row):
-    if row.get("date"):
-        return row.get("date")
+    date = row.get("date")
+
+    if has_usable_value(date):
+        return str(date)
 
     year = row.get("year")
     month = row.get("month")
     week = row.get("week")
 
-    if year is not None and month is not None:
-        return f"{int(year)}-{int(month):02d}"
+    if has_usable_value(year) and has_usable_value(month):
+        return f"{int(float(year))}-{int(float(month)):02d}"
 
-    if year is not None and week is not None:
-        return f"{int(year)}-W{int(week):02d}"
+    if has_usable_value(year) and has_usable_value(week):
+        return f"{int(float(year))}-W{int(float(week)):02d}"
 
     return ""
 
 
 def convert_number(value):
+    if value is None:
+        return None
+
     if pd.isna(value):
         return None
 
-    return int(value)
+    return int(float(value))
+
+
+def make_json_safe_value(value):
+    if value is None:
+        return None
+
+    if pd.isna(value):
+        return None
+
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+
+    return value
+
+
+def make_json_safe_records(df: pd.DataFrame):
+    safe_df = df.copy()
+    safe_df = safe_df.astype(object)
+    safe_df = safe_df.where(pd.notnull(safe_df), None)
+
+    records = safe_df.to_dict(orient="records")
+
+    return [
+        {
+            key: make_json_safe_value(value)
+            for key, value in record.items()
+        }
+        for record in records
+    ]
 
 
 async def clean_dengue_file(file: UploadFile):
@@ -236,11 +285,14 @@ async def clean_dengue_file(file: UploadFile):
 
     clean_df = pd.DataFrame()
 
-    clean_df["barangay"] = (
+    barangay_text = (
         df[matched_fields["barangay"]]
+        .fillna("")
         .astype(str)
         .str.strip()
     )
+
+    clean_df["barangay"] = barangay_text
 
     if has_date:
         parsed_dates = pd.to_datetime(df[matched_fields["date"]], errors="coerce")
@@ -255,34 +307,53 @@ async def clean_dengue_file(file: UploadFile):
         clean_df["year"] = pd.to_numeric(df[matched_fields["year"]], errors="coerce")
 
         if has_month:
-            clean_df["month"] = pd.to_numeric(df[matched_fields["month"]], errors="coerce")
+            clean_df["month"] = pd.to_numeric(
+                df[matched_fields["month"]],
+                errors="coerce",
+            )
         else:
             clean_df["month"] = pd.NA
 
         if has_week:
-            clean_df["week"] = pd.to_numeric(df[matched_fields["week"]], errors="coerce")
+            clean_df["week"] = pd.to_numeric(
+                df[matched_fields["week"]],
+                errors="coerce",
+            )
         else:
             clean_df["week"] = pd.NA
 
     clean_df["cases"] = pd.to_numeric(df[matched_fields["cases"]], errors="coerce")
 
     if "deaths" in matched_fields:
-        clean_df["deaths"] = pd.to_numeric(df[matched_fields["deaths"]], errors="coerce")
+        clean_df["deaths"] = pd.to_numeric(
+            df[matched_fields["deaths"]],
+            errors="coerce",
+        )
     else:
         clean_df["deaths"] = 0
 
-    invalid_barangay = clean_df["barangay"].str.lower().isin(["", "nan", "none"])
+    invalid_barangay = (
+        clean_df["barangay"].isna()
+        | clean_df["barangay"].astype(str).str.strip().eq("")
+        | clean_df["barangay"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin(["nan", "none", "nat"])
+    )
+
     invalid_time = clean_df["year"].isna() | (
         clean_df["month"].isna() & clean_df["week"].isna()
     )
+
     invalid_cases = clean_df["cases"].isna() | (clean_df["cases"] < 0)
     invalid_deaths = clean_df["deaths"].isna() | (clean_df["deaths"] < 0)
 
     invalid_rows = invalid_barangay | invalid_time | invalid_cases | invalid_deaths
 
-    clean_df["period"] = clean_df.apply(build_period, axis=1)
-
     valid_df = clean_df[~invalid_rows].copy()
+
+    valid_df["period"] = valid_df.apply(build_period, axis=1)
 
     for column in ["year", "month", "week", "cases", "deaths"]:
         valid_df[column] = valid_df[column].apply(convert_number)
@@ -300,9 +371,25 @@ async def clean_dengue_file(file: UploadFile):
         ]
     ]
 
-    valid_df = valid_df.where(pd.notnull(valid_df), None)
+    cleaned_preview = make_json_safe_records(valid_df.head(10))
 
-    cleaned_preview = valid_df.head(10).to_dict(orient="records")
+    invalid_preview_df = clean_df[invalid_rows].copy()
+    invalid_preview_df["period"] = ""
+
+    invalid_preview_df = invalid_preview_df[
+        [
+            "barangay",
+            "period",
+            "date",
+            "year",
+            "month",
+            "week",
+            "cases",
+            "deaths",
+        ]
+    ]
+
+    invalid_preview = make_json_safe_records(invalid_preview_df.head(10))
 
     return {
         "message": "Dengue file cleaned successfully.",
@@ -320,4 +407,5 @@ async def clean_dengue_file(file: UploadFile):
         },
         "dengue_detection": dengue_detection,
         "cleaned_preview": cleaned_preview,
+        "invalid_preview": invalid_preview,
     }
