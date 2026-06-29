@@ -476,6 +476,123 @@ function getClientPoint(event) {
   }
 }
 
+function hasBackendForecastData(backendForecastResult) {
+  return (
+    Array.isArray(backendForecastResult?.forecast_results) &&
+    backendForecastResult.forecast_results.length > 0
+  )
+}
+
+function getBackendResponsePriority(risk) {
+  if (risk === 'High') return 'Immediate Response'
+  if (risk === 'Moderate') return 'Preventive Monitoring'
+  if (risk === 'Low') return 'Routine Monitoring'
+  return 'Pending Dataset'
+}
+
+function getBackendDecisionScore(row) {
+  const risk = row.risk_level || 'Low'
+  const riskScore = risk === 'High' ? 70 : risk === 'Moderate' ? 45 : 20
+  const forecastScore = Math.min(Number(row.forecast_next_4_periods || 0), 100)
+  const rankPenalty = Number(row.priority_rank || 0) > 0 ? Number(row.priority_rank || 0) : 0
+
+  return Math.max(0, Math.round(riskScore + forecastScore - rankPenalty))
+}
+
+function buildBackendRiskRows(backendForecastResult = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+
+  return backendRows
+    .map((row) => {
+      const barangay = row.barangay || 'Unspecified barangay'
+      const risk = row.risk_level || 'Low'
+      const forecast = Number(row.forecast_next_4_periods || 0)
+      const forecastNextPeriod = Number(row.forecast_next_period || 0)
+      const recentAverage = Number(row.recent_average_cases || 0)
+      const previousAverage = Number(row.previous_average_cases || 0)
+      const historicalTotalCases = Number(row.historical_total_cases || 0)
+      const trendLabel = row.trend_direction || 'Stable'
+      const responsePriority = getBackendResponsePriority(risk)
+      const recommendation = row.recommendation || getGenericRecommendedAction(risk)
+      const decisionScore = getBackendDecisionScore(row)
+
+      const series = [
+        {
+          period: 'Previous average',
+          cases: previousAverage,
+        },
+        {
+          period: 'Recent average',
+          cases: recentAverage,
+        },
+        {
+          period: 'Forecast next period',
+          cases: forecastNextPeriod,
+        },
+      ]
+
+      const history = series.map((item) => item.cases)
+
+      const decisionSupport = {
+        summary: recommendation,
+        priority: responsePriority,
+        actions: [recommendation],
+        rationale: [
+          `Backend baseline forecast classified ${barangay} as ${risk} risk.`,
+          `Projected four-period cases: ${formatNumber(forecast)}.`,
+          `Recent trend direction: ${trendLabel}.`,
+        ],
+        score: decisionScore,
+      }
+
+      return {
+        barangay,
+        risk,
+        forecast,
+        forecastedCases: forecast,
+        predictedCases: forecast,
+        totalCases: historicalTotalCases,
+        cases: historicalTotalCases,
+        currentCases: forecastNextPeriod,
+        previousCases: previousAverage,
+        recentAverage,
+        previousAverage,
+        trend: trendLabel,
+        trendLabel,
+        trendDirection: trendLabel,
+        history,
+        weeklyCases: history,
+        caseHistory: series,
+        series,
+        periods: [row.latest_period || 'Latest period'],
+        recommendedAction: recommendation,
+        recommendedActions: [recommendation],
+        responsePriority,
+        recommendationRationale: decisionSupport.rationale,
+        decisionScore,
+        decisionSupport,
+        backendPriorityRank: Number(row.priority_rank || 0),
+        latestPeriod: row.latest_period || '',
+        recordCount: Number(row.record_count || 0),
+      }
+    })
+    .sort((a, b) => {
+      if (a.backendPriorityRank && b.backendPriorityRank) {
+        return a.backendPriorityRank - b.backendPriorityRank
+      }
+
+      return b.forecast - a.forecast
+    })
+}
+
+function buildBackendPeriodCount(backendForecastResult = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+
+  if (!backendRows.length) return 0
+
+  return 4
+}
+
 export default function MapPage() {
   const data = useData()
 
@@ -483,6 +600,7 @@ export default function MapPage() {
     riskRows = [],
     dashboardStats,
     sourceStatus,
+    backendForecastResult = null,
     addActivityLog,
     boundaryRecords = [],
     loadMockDengueData,
@@ -505,6 +623,17 @@ export default function MapPage() {
     data.populationDataset,
   ])
 
+  const usingBackendForecast = hasBackendForecastData(backendForecastResult)
+
+  const backendRiskRows = useMemo(() => {
+    return buildBackendRiskRows(backendForecastResult)
+  }, [backendForecastResult])
+
+  const displayRiskRows = usingBackendForecast ? backendRiskRows : riskRows
+  const displayPeriodCount = usingBackendForecast
+    ? buildBackendPeriodCount(backendForecastResult)
+    : dashboardStats?.weeklyTotals?.length || 0
+
   const [selected, setSelected] = useState('')
   const [selectedPanelOpen, setSelectedPanelOpen] = useState(false)
   const [selectedPanelPosition, setSelectedPanelPosition] = useState(() => getDefaultPanelPosition())
@@ -523,7 +652,7 @@ export default function MapPage() {
 
   const boundaryFeatureCount = countBoundaryFeatures(boundaryRecords)
 
-  const hasRiskData = riskRows.length > 0
+  const hasRiskData = displayRiskRows.length > 0
   const hasBoundaryData =
     Number(sourceStatus?.boundary?.validCount || 0) > 0 ||
     boundaryFeatureCount > 0
@@ -580,8 +709,8 @@ export default function MapPage() {
   }, [])
 
   useEffect(() => {
-    if (riskRows.length) {
-      const riskExists = riskRows.some((row) => namesMatch(row.barangay, selected))
+    if (displayRiskRows.length) {
+      const riskExists = displayRiskRows.some((row) => namesMatch(row.barangay, selected))
       const boundaryExists = boundaryFeatures.some((feature) => {
         return (
           namesMatch(selected, getFeatureName(feature)) ||
@@ -590,7 +719,7 @@ export default function MapPage() {
       })
 
       if (!selected || (!riskExists && !boundaryExists)) {
-        setSelected(riskRows[0].barangay)
+        setSelected(displayRiskRows[0].barangay)
       }
 
       return
@@ -615,13 +744,13 @@ export default function MapPage() {
       setSelected('')
       setSelectedPanelOpen(false)
     }
-  }, [riskRows, selected, boundaryFeatures])
+  }, [displayRiskRows, selected, boundaryFeatures])
 
   const details = useMemo(() => {
     if (!hasRiskData || !selected) return null
 
-    return riskRows.find((row) => namesMatch(row.barangay, selected)) || null
-  }, [riskRows, selected, hasRiskData])
+    return displayRiskRows.find((row) => namesMatch(row.barangay, selected)) || null
+  }, [displayRiskRows, selected, hasRiskData])
 
   const selectedBoundaryFeature = useMemo(() => {
     if (!selected || !boundaryFeatures.length) return null
@@ -698,7 +827,7 @@ export default function MapPage() {
       ? details.recommendationRationale
       : []
 
-  const summary = hasRiskData ? riskRows.slice(0, 5) : []
+  const summary = hasRiskData ? displayRiskRows.slice(0, 5) : []
 
   function openSelectedPanel() {
     setSelectedPanelPosition((current) => {
@@ -731,7 +860,7 @@ export default function MapPage() {
     setSelected(name)
     openSelectedPanel()
 
-    const selectedRow = riskRows.find((row) => namesMatch(row.barangay, name))
+    const selectedRow = displayRiskRows.find((row) => namesMatch(row.barangay, name))
 
     addActivityLog?.(
       'Map barangay selected',
@@ -739,9 +868,9 @@ export default function MapPage() {
     )
   }
 
-  const highRiskCount = riskRows.filter((row) => row.risk === 'High').length
-  const moderateRiskCount = riskRows.filter((row) => row.risk === 'Moderate').length
-  const lowRiskCount = riskRows.filter((row) => row.risk === 'Low').length
+  const highRiskCount = displayRiskRows.filter((row) => row.risk === 'High').length
+  const moderateRiskCount = displayRiskRows.filter((row) => row.risk === 'Moderate').length
+  const lowRiskCount = displayRiskRows.filter((row) => row.risk === 'Low').length
 
   const legendItems = [
     {
@@ -904,7 +1033,7 @@ export default function MapPage() {
             key={`${mapStyle}-${isMapExpanded ? 'expanded' : 'normal'}`}
             selected={selected}
             onSelect={handleSelectBarangay}
-            rows={riskRows}
+            rows={displayRiskRows}
             mapStyle={mapStyle}
             layoutKey={isMapExpanded ? 'expanded' : 'normal'}
             showDetailsPanel={false}
@@ -1111,17 +1240,17 @@ export default function MapPage() {
 
       <SectionTitle
         title="Geospatial Hotspot Map"
-        subtitle="Barangay-level hotspot monitoring generated from validated dengue and boundary data."
+        subtitle={usingBackendForecast ? 'Barangay-level hotspot monitoring generated from backend forecast output and boundary data.' : 'Barangay-level hotspot monitoring generated from validated dengue and boundary data.'}
         right={
           <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
             <span className="inline-flex items-center justify-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
               <Radar className="h-3.5 w-3.5" />
-              {formatNumber(dashboardStats?.weeklyTotals?.length || 0)} periods
+              {formatNumber(displayPeriodCount)} periods
             </span>
 
             <span className="inline-flex items-center justify-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-teal dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300">
               <MapPin className="h-3.5 w-3.5" />
-              {formatNumber(hasRiskData ? riskRows.length : boundaryFeatureCount)} barangays
+              {formatNumber(hasRiskData ? displayRiskRows.length : boundaryFeatureCount)} barangays
             </span>
           </div>
         }
@@ -1154,7 +1283,7 @@ export default function MapPage() {
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.
+                {usingBackendForecast ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.' : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
               </p>
             </div>
 
@@ -1314,7 +1443,7 @@ export default function MapPage() {
             </h3>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Top barangays will appear after risk scores are computed.
+              {usingBackendForecast ? 'Top barangays are ranked using the backend forecast priority output.' : 'Top barangays will appear after risk scores are computed.'}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1374,7 +1503,9 @@ export default function MapPage() {
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {hasRiskData
-                  ? 'The hotspot map is using computed dengue risk rows, decision support outputs, and the uploaded barangay boundary polygons.'
+                  ? usingBackendForecast
+                    ? 'The hotspot map is using backend forecast rows, backend recommendations, and the uploaded barangay boundary polygons.'
+                    : 'The hotspot map is using computed dengue risk rows, decision support outputs, and the uploaded barangay boundary polygons.'
                   : hasBoundaryData
                     ? 'The map is currently showing barangay boundary polygons only. Risk coloring and decision support will activate after dengue records are processed.'
                     : 'The hotspot map will become interactive after the system receives boundary data and computes barangay-level risk rows.'}
