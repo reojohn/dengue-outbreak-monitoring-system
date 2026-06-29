@@ -680,6 +680,159 @@ function buildDynamicForecastRows(
   }
 }
 
+function hasBackendForecastData(backendForecastResult) {
+  return Array.isArray(backendForecastResult?.forecast_results) &&
+    backendForecastResult.forecast_results.length > 0
+}
+
+function getTrendRateFromLabel(label = '') {
+  if (label === 'Increasing') return 0.25
+  if (label === 'Decreasing') return -0.15
+  return 0
+}
+
+function buildBackendForecastRows(
+  backendForecastResult = null,
+  multiplier = 1
+) {
+  const backendRows = backendForecastResult?.forecast_results || []
+
+  if (!backendRows.length) {
+    return {
+      forecastRows: [],
+      weeklyTotals: [],
+      projectedWeeklyValues: [],
+      computedPeriods: [],
+    }
+  }
+
+  const forecastRows = backendRows.map((backendRow) => {
+    const baseForecast = readNumber(backendRow, ['forecast_next_4_periods'], 0)
+    const adjustedForecast = Math.max(0, Math.round(baseForecast * multiplier))
+    const risk = computeRiskLevel(adjustedForecast)
+    const trendLabel = readText(backendRow, ['trend_direction'], 'Stable')
+    const trendRate = getTrendRateFromLabel(trendLabel)
+    const forecastNextPeriod = Math.max(
+      0,
+      Math.round(readNumber(backendRow, ['forecast_next_period'], 0) * multiplier)
+    )
+    const recentAverage = readNumber(backendRow, ['recent_average_cases'], 0)
+    const previousAverage = readNumber(backendRow, ['previous_average_cases'], 0)
+    const historicalTotalCases = readNumber(backendRow, ['historical_total_cases'], 0)
+    const latestPeriod = readText(backendRow, ['latest_period'], 'Latest period')
+
+    const caseSeries = [
+      previousAverage,
+      recentAverage,
+      forecastNextPeriod,
+    ].filter((value) => Number.isFinite(Number(value)))
+
+    const series = [
+      {
+        period: 'Previous average',
+        cases: previousAverage,
+      },
+      {
+        period: 'Recent average',
+        cases: recentAverage,
+      },
+      {
+        period: 'Forecast next period',
+        cases: forecastNextPeriod,
+      },
+    ]
+
+    const rowData = {
+      barangay: readText(backendRow, ['barangay'], 'Unspecified barangay'),
+      totalCases: historicalTotalCases,
+      cases: historicalTotalCases,
+      currentCases: forecastNextPeriod,
+      previousCases: previousAverage,
+      recentAverage: Number(recentAverage.toFixed(2)),
+      previousAverage: Number(previousAverage.toFixed(2)),
+      trendRate,
+      trendPercent: Math.round(trendRate * 100),
+      trend: trendLabel,
+      trendLabel,
+      firstValue: caseSeries[0] || 0,
+      lastValue: caseSeries[caseSeries.length - 1] || 0,
+      forecast: adjustedForecast,
+      forecastedCases: adjustedForecast,
+      predictedCases: adjustedForecast,
+      risk,
+      history: caseSeries,
+      weeklyCases: caseSeries,
+      caseHistory: series,
+      series,
+      periods: [latestPeriod],
+      population: 0,
+      area_sqkm: 0,
+      areaSqKm: 0,
+      density: 0,
+      backendPriorityRank: readNumber(backendRow, ['priority_rank'], 0),
+      backendRecommendation: readText(backendRow, ['recommendation'], ''),
+      backendRiskLevel: readText(backendRow, ['risk_level'], risk),
+    }
+
+    const decisionSupportBase = computeDecisionSupport(rowData)
+    const backendRecommendation = rowData.backendRecommendation || decisionSupportBase.summary
+
+    const decisionSupport = {
+      ...decisionSupportBase,
+      summary: backendRecommendation,
+    }
+
+    return {
+      ...rowData,
+      decisionSupport,
+      recommendedAction: backendRecommendation,
+      primaryAction: decisionSupport.primaryAction,
+      recommendedActions: decisionSupport.actions,
+      recommendationRationale: decisionSupport.rationale,
+      responsePriority: decisionSupport.priority,
+      decisionScore: decisionSupport.score,
+      trendDirection: decisionSupport.trendDirection,
+      densityLevel: decisionSupport.densityLevel,
+      populationExposure: decisionSupport.populationExposure,
+      forecastPressure: decisionSupport.forecastPressure,
+    }
+  })
+
+  const sortedForecastRows = forecastRows.sort((a, b) => {
+    if (a.backendPriorityRank && b.backendPriorityRank) {
+      return a.backendPriorityRank - b.backendPriorityRank
+    }
+
+    if (b.decisionScore !== a.decisionScore) {
+      return b.decisionScore - a.decisionScore
+    }
+
+    return b.forecast - a.forecast
+  })
+
+  const totalNextPeriod = sortedForecastRows.reduce((sum, row) => {
+    return sum + Number(row.currentCases || 0)
+  }, 0)
+
+  const projectedWeeklyValues = Array.from({ length: 4 }).map(() => {
+    return Math.max(0, Math.round(totalNextPeriod))
+  })
+
+  const computedPeriods = Array.from({ length: 4 }).map((_, index) => ({
+    period: `Forecast period ${index + 1}`,
+    index,
+    sortValue: index,
+    totalCases: projectedWeeklyValues[index] || 0,
+  }))
+
+  return {
+    forecastRows: sortedForecastRows,
+    weeklyTotals: projectedWeeklyValues,
+    projectedWeeklyValues,
+    computedPeriods,
+  }
+}
+
 function getRiskDistribution(rows) {
   const total = rows.length || 1
 
@@ -740,7 +893,16 @@ function getPriorityDistribution(rows) {
     .sort((a, b) => b.count - a.count)
 }
 
-function getComputationStatus(records, sourceStatus) {
+function getComputationStatus(records, sourceStatus, backendForecastResult = null) {
+  if (hasBackendForecastData(backendForecastResult)) {
+    return {
+      title: 'Backend forecast loaded',
+      message: `${formatNumber(backendForecastResult.valid_row_count || records.length)} dengue record${Number(backendForecastResult.valid_row_count || records.length) === 1 ? '' : 's'} were processed by the FastAPI backend from ${backendForecastResult.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dataset'}. Forecast, risk level, trend, and recommendations came from the backend baseline forecast endpoint.`,
+      style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      icon: CheckCircle2,
+    }
+  }
+
   if (!records.length) {
     return {
       title: 'No dengue records available',
@@ -751,8 +913,8 @@ function getComputationStatus(records, sourceStatus) {
   }
 
   return {
-    title: 'Forecast and decision support computed',
-    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. Forecast, risk level, trend, and DSS priority were generated.`,
+    title: 'Frontend forecast and decision support computed',
+    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. Forecast, risk level, trend, and DSS priority were generated in the frontend fallback workflow.`,
     style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
     icon: CheckCircle2,
   }
@@ -817,10 +979,12 @@ export default function ForecastPage() {
     populationRecords = [],
     boundaryRecords = [],
     sourceStatus,
+    backendForecastResult = null,
     addActivityLog,
   } = useData()
 
   const selectedMode = modeMeta[mode]
+  const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
   const {
     forecastRows,
@@ -828,6 +992,13 @@ export default function ForecastPage() {
     projectedWeeklyValues,
     computedPeriods,
   } = useMemo(() => {
+    if (hasBackendForecastData(backendForecastResult)) {
+      return buildBackendForecastRows(
+        backendForecastResult,
+        selectedMode.multiplier
+      )
+    }
+
     return buildDynamicForecastRows(
       dengueRecords,
       selectedMode.multiplier,
@@ -835,6 +1006,7 @@ export default function ForecastPage() {
       boundaryRecords
     )
   }, [
+    backendForecastResult,
     dengueRecords,
     selectedMode,
     populationRecords,
@@ -853,13 +1025,25 @@ export default function ForecastPage() {
     return sum + Number(row.forecast || 0)
   }, 0)
 
-  const actualTotal = dengueRecords.reduce((sum, record) => {
-    return sum + getRecordCases(record)
-  }, 0)
+  const actualTotal = usingBackendForecast
+    ? Number(backendForecastResult?.forecast_results?.reduce((sum, row) => {
+        return sum + Number(row.historical_total_cases || 0)
+      }, 0) || 0)
+    : dengueRecords.reduce((sum, record) => {
+        return sum + getRecordCases(record)
+      }, 0)
+
+  const loadedRecordCount = usingBackendForecast
+    ? Number(backendForecastResult?.valid_row_count || 0)
+    : dengueRecords.length
 
   const highestRiskBarangay = forecastRows[0]
   const topDecisionSupport = highestRiskBarangay?.decisionSupport || null
-  const computationStatus = getComputationStatus(dengueRecords, sourceStatus)
+  const computationStatus = getComputationStatus(
+    dengueRecords,
+    sourceStatus,
+    backendForecastResult
+  )
   const StatusIcon = computationStatus.icon
 
   const immediatePriorityCount = forecastRows.filter((row) => {
@@ -938,8 +1122,8 @@ export default function ForecastPage() {
 
   function handleRunForecast() {
     addActivityLog(
-      'Forecast generated',
-      `${selectedMode.label} forecast and decision support computed from ${formatNumber(dengueRecords.length)} dengue records with ${formatNumber(projectedTotal)} projected cases.`
+      usingBackendForecast ? 'Backend forecast saved' : 'Forecast generated',
+      `${selectedMode.label} forecast and decision support computed from ${formatNumber(loadedRecordCount)} dengue records with ${formatNumber(projectedTotal)} projected cases.`
     )
   }
 
@@ -947,7 +1131,7 @@ export default function ForecastPage() {
     <div className="space-y-5">
       <SectionTitle
         title="Forecast and Risk Scoring"
-        subtitle="Dynamic barangay-level forecast with decision support priority ranking."
+        subtitle={usingBackendForecast ? "FastAPI backend baseline forecast with decision support priority ranking." : "Dynamic barangay-level forecast with decision support priority ranking."}
         right={
           <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
             {[
@@ -999,8 +1183,8 @@ export default function ForecastPage() {
 
         <StatCard
           label="Loaded records"
-          value={formatNumber(dengueRecords.length)}
-          helper="Dengue records used"
+          value={formatNumber(loadedRecordCount)}
+          helper={usingBackendForecast ? 'Backend valid records used' : 'Dengue records used'}
           icon={Database}
           tone="emerald"
         />
@@ -1039,7 +1223,7 @@ export default function ForecastPage() {
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Computed from recent dengue case movement in the loaded records.
+                {usingBackendForecast ? 'Loaded from the backend baseline forecast endpoint after upload validation.' : 'Computed from recent dengue case movement in the loaded records.'}
               </p>
             </div>
 
@@ -1054,7 +1238,9 @@ export default function ForecastPage() {
             <span className="font-bold text-brand-text dark:text-slate-100">
               Computation method:
             </span>{' '}
-            Recent case averages, trend movement, scenario multiplier, population exposure, density, and barangay boundary context are used to compute forecast risk and DSS priority.
+            {usingBackendForecast
+              ? 'Backend forecast output, trend direction, risk level, scenario multiplier, and DSS scoring are used to display priority recommendations.'
+              : 'Recent case averages, trend movement, scenario multiplier, population exposure, density, and barangay boundary context are used to compute forecast risk and DSS priority.'}
           </div>
 
           <div className="mt-5 overflow-hidden rounded-[28px] border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
