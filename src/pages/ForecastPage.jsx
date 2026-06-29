@@ -1,0 +1,1459 @@
+import { useMemo, useState } from 'react'
+import {
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  BarChart3,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Database,
+  LineChart,
+  MapPin,
+  ShieldAlert,
+  Sparkles,
+  Target,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
+import SectionTitle from '../components/SectionTitle'
+import SparkChart from '../components/SparkChart'
+import { useData } from '../context/DataContext'
+import {
+  computeDecisionSupport,
+  computeRiskLevel,
+  riskStyles,
+} from '../utils/analytics'
+
+const modeMeta = {
+  caution: {
+    label: 'Low growth',
+    multiplier: 0.9,
+    chip: 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+  },
+  baseline: {
+    label: 'Baseline',
+    multiplier: 1,
+    chip: 'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+  },
+  elevated: {
+    label: 'Moderate increase',
+    multiplier: 1.15,
+    chip: 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+  },
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('en-PH').format(Number(value || 0))
+}
+
+function formatDecimal(value, decimals = 2) {
+  const number = Number(value || 0)
+
+  return new Intl.NumberFormat('en-PH', {
+    maximumFractionDigits: decimals,
+  }).format(number)
+}
+
+function formatOptionalNumber(value, suffix = '') {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Not available'
+  }
+
+  return `${formatDecimal(number)}${suffix}`
+}
+
+function normalizeFieldKey(key = '') {
+  return String(key)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function readValue(record, keys = []) {
+  if (!record) return undefined
+
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null && record[key] !== '') {
+      return record[key]
+    }
+  }
+
+  const normalizedLookup = Object.keys(record).reduce((acc, key) => {
+    acc[normalizeFieldKey(key)] = record[key]
+    return acc
+  }, {})
+
+  for (const key of keys) {
+    const normalizedKey = normalizeFieldKey(key)
+
+    if (
+      normalizedLookup[normalizedKey] !== undefined &&
+      normalizedLookup[normalizedKey] !== null &&
+      normalizedLookup[normalizedKey] !== ''
+    ) {
+      return normalizedLookup[normalizedKey]
+    }
+  }
+
+  return undefined
+}
+
+function toNumber(value) {
+  if (value === undefined || value === null || value === '') return 0
+
+  const cleaned =
+    typeof value === 'string'
+      ? value.replace(/,/g, '').trim()
+      : value
+
+  const number = Number(cleaned)
+
+  return Number.isFinite(number) ? number : 0
+}
+
+function readNumber(record, keys = [], fallback = 0) {
+  const value = readValue(record, keys)
+  const number = toNumber(value)
+
+  return Number.isFinite(number) ? number : fallback
+}
+
+function readPositiveNumber(record, keys = []) {
+  const number = readNumber(record, keys, 0)
+
+  return number > 0 ? number : 0
+}
+
+function readText(record, keys = [], fallback = '') {
+  const value = readValue(record, keys)
+
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+
+  return String(value).trim()
+}
+
+function normalizeBarangayName(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ñ/g, 'n')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\bpob\.?\b/gi, ' ')
+    .replace(/\bbgy\.?\b/gi, ' ')
+    .replace(/\bbarangay\b/gi, ' ')
+    .replace(/\./g, ' ')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function compactBarangayName(value = '') {
+  return normalizeBarangayName(value).replace(/\s+/g, '')
+}
+
+function namesMatch(first, second) {
+  const a = normalizeBarangayName(first)
+  const b = normalizeBarangayName(second)
+  const compactA = compactBarangayName(first)
+  const compactB = compactBarangayName(second)
+
+  if (!a || !b) return false
+  if (a === b) return true
+  if (compactA === compactB) return true
+
+  if (a.length >= 4 && b.includes(a)) return true
+  if (b.length >= 4 && a.includes(b)) return true
+
+  return false
+}
+
+function getRecordPeriod(record, index) {
+  const year = readText(record, ['year', 'reportingYear'])
+  const week = readText(record, ['week', 'epi_week', 'epidemiologicalWeek'])
+
+  if (year && week) {
+    return `${year}-W${week}`
+  }
+
+  return (
+    readText(record, [
+      'reportingDate',
+      'reporting_date',
+      'date',
+      'week',
+      'epi_week',
+      'period',
+      'month',
+      'quarter',
+    ]) || `Period ${index + 1}`
+  )
+}
+
+function getPeriodSortValue(period, fallbackIndex) {
+  const parsedDate = Date.parse(period)
+
+  if (Number.isFinite(parsedDate)) {
+    return parsedDate
+  }
+
+  const numbers = String(period).match(/\d+/g)
+
+  if (numbers?.length) {
+    return Number(numbers.join('').slice(0, 12))
+  }
+
+  return fallbackIndex
+}
+
+function getRecordBarangay(record) {
+  return (
+    readText(record, [
+      'barangay',
+      'barangayName',
+      'barangay_name',
+      'brgy',
+      'brgy_name',
+      'location',
+      'area',
+      'adm4_name',
+      'adm4_ref_name',
+      'name',
+    ]) || 'Unspecified barangay'
+  )
+}
+
+function getRecordCases(record) {
+  return readNumber(record, [
+    'cases',
+    'case_count',
+    'caseCount',
+    'dengue_cases',
+    'dengueCases',
+    'total_cases',
+    'totalCases',
+    'count',
+    'confirmed_cases',
+    'confirmedCases',
+  ])
+}
+
+function average(values) {
+  if (!values.length) return 0
+
+  const total = values.reduce((sum, value) => {
+    return sum + Number(value || 0)
+  }, 0)
+
+  return total / values.length
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getTrendLabel(rate) {
+  if (rate >= 0.25) return 'Increasing'
+  if (rate <= -0.15) return 'Decreasing'
+  return 'Stable'
+}
+
+function getTrendStyle(label) {
+  if (label === 'Increasing') {
+    return 'bg-rose-50 text-brand-red border-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+  }
+
+  if (label === 'Decreasing') {
+    return 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+  }
+
+  return 'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300'
+}
+
+function getTrendIcon(label) {
+  if (label === 'Increasing') return TrendingUp
+  if (label === 'Decreasing') return TrendingDown
+  return Activity
+}
+
+function getRiskBadgeStyle(risk) {
+  if (risk === 'High') {
+    return `${riskStyles[risk]} dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300`
+  }
+
+  if (risk === 'Moderate') {
+    return `${riskStyles[risk]} dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300`
+  }
+
+  if (risk === 'Low') {
+    return `${riskStyles[risk]} dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300`
+  }
+
+  return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
+function getPriorityBadgeStyle(priority) {
+  const value = String(priority || '').toLowerCase()
+
+  if (value.includes('immediate') || value.includes('high priority')) {
+    return 'border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+  }
+
+  if (value.includes('escalated') || value.includes('preventive')) {
+    return 'border-amber-100 bg-amber-50 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+  }
+
+  if (value.includes('monitoring') || value.includes('early')) {
+    return 'border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300'
+  }
+
+  if (value.includes('routine')) {
+    return 'border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+  }
+
+  return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
+function getBoundaryGeoJson(boundaryRecords = []) {
+  if (!boundaryRecords) return null
+
+  if (
+    boundaryRecords.type === 'FeatureCollection' &&
+    Array.isArray(boundaryRecords.features)
+  ) {
+    return boundaryRecords
+  }
+
+  if (Array.isArray(boundaryRecords)) {
+    const featureCollection = boundaryRecords.find((item) => {
+      return item?.type === 'FeatureCollection' && Array.isArray(item.features)
+    })
+
+    if (featureCollection) {
+      return featureCollection
+    }
+
+    const features = boundaryRecords.filter((item) => {
+      return item?.type === 'Feature' && item.geometry
+    })
+
+    if (features.length > 0) {
+      return {
+        type: 'FeatureCollection',
+        features,
+      }
+    }
+  }
+
+  return null
+}
+
+function getFeatureName(feature) {
+  const props = feature?.properties || {}
+
+  return (
+    props.adm4_name ||
+    props.adm4_ref_name ||
+    props.name ||
+    props.barangay ||
+    props.barangay_name ||
+    props.BARANGAY ||
+    props.ADM4_EN ||
+    ''
+  )
+}
+
+function getFeatureReferenceName(feature) {
+  const props = feature?.properties || {}
+
+  return (
+    props.adm4_ref_name ||
+    props.adm4_name ||
+    props.name ||
+    props.barangay ||
+    props.barangay_name ||
+    ''
+  )
+}
+
+function getBoundaryFeatureForBarangay(barangay, boundaryRecords = []) {
+  const boundaryGeoJson = getBoundaryGeoJson(boundaryRecords)
+
+  if (!boundaryGeoJson?.features?.length) return null
+
+  return (
+    boundaryGeoJson.features.find((feature) => {
+      return (
+        namesMatch(barangay, getFeatureName(feature)) ||
+        namesMatch(barangay, getFeatureReferenceName(feature))
+      )
+    }) || null
+  )
+}
+
+function getRecordName(record) {
+  return (
+    readText(record, [
+      'barangay',
+      'barangayName',
+      'barangay_name',
+      'brgy',
+      'brgy_name',
+      'name',
+      'adm4_name',
+      'adm4_ref_name',
+      'location',
+    ]) || ''
+  )
+}
+
+function getPopulationRecordForBarangay(barangay, populationRecords = []) {
+  if (!Array.isArray(populationRecords) || !populationRecords.length) {
+    return null
+  }
+
+  return (
+    populationRecords.find((record) => {
+      return namesMatch(getRecordName(record), barangay)
+    }) || null
+  )
+}
+
+function getPopulationValue(barangay, populationRecords = [], boundaryFeature = null) {
+  const populationRecord = getPopulationRecordForBarangay(
+    barangay,
+    populationRecords
+  )
+
+  const props = boundaryFeature?.properties || {}
+
+  return (
+    readPositiveNumber(populationRecord, [
+      'population',
+      'totalPopulation',
+      'populationCount',
+      'population_count',
+      'pop',
+      'total_pop',
+      'totalPop',
+      'residents',
+      'householdPopulation',
+    ]) ||
+    readPositiveNumber(props, [
+      'population',
+      'totalPopulation',
+      'populationCount',
+      'population_count',
+      'pop',
+      'total_pop',
+      'totalPop',
+      'POPULATION',
+    ])
+  )
+}
+
+function getAreaValue(boundaryFeature = null) {
+  const props = boundaryFeature?.properties || {}
+
+  return readPositiveNumber(props, [
+    'area_sqkm',
+    'areaSqKm',
+    'area',
+    'areaKm2',
+    'area_km2',
+    'sqkm',
+  ])
+}
+
+function groupDengueRecords(records = []) {
+  const periodMap = new Map()
+  const barangayMap = new Map()
+
+  records.forEach((record, index) => {
+    const barangay = getRecordBarangay(record)
+    const period = getRecordPeriod(record, index)
+    const periodSortValue = getPeriodSortValue(period, index)
+    const cases = getRecordCases(record)
+
+    if (!periodMap.has(period)) {
+      periodMap.set(period, {
+        period,
+        index,
+        sortValue: periodSortValue,
+        totalCases: 0,
+      })
+    }
+
+    const periodItem = periodMap.get(period)
+    periodItem.totalCases += cases
+
+    const barangayKey = normalizeBarangayName(barangay)
+
+    if (!barangayMap.has(barangayKey)) {
+      barangayMap.set(barangayKey, {
+        barangay,
+        totalCases: 0,
+        periodCases: new Map(),
+      })
+    }
+
+    const barangayItem = barangayMap.get(barangayKey)
+    barangayItem.totalCases += cases
+    barangayItem.periodCases.set(
+      period,
+      toNumber(barangayItem.periodCases.get(period)) + cases
+    )
+  })
+
+  const periods = Array.from(periodMap.values()).sort((a, b) => {
+    if (a.sortValue !== b.sortValue) return a.sortValue - b.sortValue
+    return a.index - b.index
+  })
+
+  const barangays = Array.from(barangayMap.values())
+
+  return {
+    periods,
+    barangays,
+  }
+}
+
+function buildDynamicForecastRows(
+  records = [],
+  multiplier = 1,
+  populationRecords = [],
+  boundaryRecords = []
+) {
+  const { periods, barangays } = groupDengueRecords(records)
+
+  if (!records.length || !periods.length || !barangays.length) {
+    return {
+      forecastRows: [],
+      weeklyTotals: [],
+      projectedWeeklyValues: [],
+      computedPeriods: [],
+    }
+  }
+
+  const weeklyTotals = periods.map((period) => period.totalCases)
+
+  const forecastRows = barangays.map((barangayItem) => {
+    const boundaryFeature = getBoundaryFeatureForBarangay(
+      barangayItem.barangay,
+      boundaryRecords
+    )
+
+    const caseSeries = periods.map((period) => {
+      return toNumber(barangayItem.periodCases.get(period.period))
+    })
+
+    const series = periods.map((period) => {
+      return {
+        period: period.period,
+        cases: toNumber(barangayItem.periodCases.get(period.period)),
+      }
+    })
+
+    const recentValues = caseSeries.slice(-3)
+    const previousValues = caseSeries.slice(-6, -3)
+
+    const recentAverage = average(recentValues)
+    const previousAverage = average(previousValues)
+
+    let trendRate = 0
+
+    if (previousAverage > 0) {
+      trendRate = (recentAverage - previousAverage) / previousAverage
+    } else if (recentAverage > 0) {
+      trendRate = 0.15
+    }
+
+    const cappedTrendRate = clamp(trendRate, -0.5, 0.75)
+
+    const projectedFourWeekCases = Math.max(
+      0,
+      Math.round(recentAverage * 4 * multiplier * (1 + cappedTrendRate))
+    )
+
+    const risk = computeRiskLevel(projectedFourWeekCases)
+    const trendLabel = getTrendLabel(cappedTrendRate)
+
+    const firstValue = caseSeries[0] || 0
+    const lastValue = caseSeries[caseSeries.length - 1] || 0
+
+    const population = getPopulationValue(
+      barangayItem.barangay,
+      populationRecords,
+      boundaryFeature
+    )
+
+    const area = getAreaValue(boundaryFeature)
+    const density = population > 0 && area > 0 ? population / area : 0
+
+    const previousCases =
+      caseSeries.length >= 2 ? caseSeries[caseSeries.length - 2] : 0
+
+    const currentCases =
+      caseSeries.length >= 1 ? caseSeries[caseSeries.length - 1] : 0
+
+    const rowData = {
+      barangay: barangayItem.barangay,
+      totalCases: barangayItem.totalCases,
+      cases: barangayItem.totalCases,
+      currentCases,
+      previousCases,
+      recentAverage: Number(recentAverage.toFixed(2)),
+      previousAverage: Number(previousAverage.toFixed(2)),
+      trendRate: cappedTrendRate,
+      trendPercent: Math.round(cappedTrendRate * 100),
+      trend: trendLabel,
+      trendLabel,
+      firstValue,
+      lastValue,
+      forecast: projectedFourWeekCases,
+      forecastedCases: projectedFourWeekCases,
+      predictedCases: projectedFourWeekCases,
+      risk,
+      history: caseSeries,
+      weeklyCases: caseSeries,
+      caseHistory: series,
+      series,
+      periods: periods.map((period) => period.period),
+      population,
+      area_sqkm: area,
+      areaSqKm: area,
+      density,
+    }
+
+    const decisionSupport = computeDecisionSupport(rowData)
+
+    return {
+      ...rowData,
+      decisionSupport,
+      recommendedAction: decisionSupport.summary,
+      primaryAction: decisionSupport.primaryAction,
+      recommendedActions: decisionSupport.actions,
+      recommendationRationale: decisionSupport.rationale,
+      responsePriority: decisionSupport.priority,
+      decisionScore: decisionSupport.score,
+      trendDirection: decisionSupport.trendDirection,
+      densityLevel: decisionSupport.densityLevel,
+      populationExposure: decisionSupport.populationExposure,
+      forecastPressure: decisionSupport.forecastPressure,
+    }
+  })
+
+  const totalRecentAverage = average(weeklyTotals.slice(-3))
+  const totalPreviousAverage = average(weeklyTotals.slice(-6, -3))
+
+  let totalTrendRate = 0
+
+  if (totalPreviousAverage > 0) {
+    totalTrendRate = (totalRecentAverage - totalPreviousAverage) / totalPreviousAverage
+  } else if (totalRecentAverage > 0) {
+    totalTrendRate = 0.15
+  }
+
+  const cappedTotalTrendRate = clamp(totalTrendRate, -0.5, 0.75)
+
+  const projectedWeeklyValues = Array.from({ length: 6 }).map((_, index) => {
+    const growthFactor = 1 + cappedTotalTrendRate * ((index + 1) / 6)
+    return Math.max(0, Math.round(totalRecentAverage * multiplier * growthFactor))
+  })
+
+  return {
+    forecastRows: forecastRows.sort((a, b) => {
+      if (b.decisionScore !== a.decisionScore) {
+        return b.decisionScore - a.decisionScore
+      }
+
+      return b.forecast - a.forecast
+    }),
+    weeklyTotals,
+    projectedWeeklyValues,
+    computedPeriods: periods,
+  }
+}
+
+function getRiskDistribution(rows) {
+  const total = rows.length || 1
+
+  const counts = {
+    High: rows.filter((row) => row.risk === 'High').length,
+    Moderate: rows.filter((row) => row.risk === 'Moderate').length,
+    Low: rows.filter((row) => row.risk === 'Low').length,
+  }
+
+  return [
+    {
+      label: 'High risk',
+      level: 'High',
+      count: counts.High,
+      width: `${Math.round((counts.High / total) * 100)}%`,
+      bar: 'bg-rose-500',
+      badge: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',
+      icon: ShieldAlert,
+    },
+    {
+      label: 'Moderate risk',
+      level: 'Moderate',
+      count: counts.Moderate,
+      width: `${Math.round((counts.Moderate / total) * 100)}%`,
+      bar: 'bg-amber-500',
+      badge: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300',
+      icon: AlertTriangle,
+    },
+    {
+      label: 'Low risk',
+      level: 'Low',
+      count: counts.Low,
+      width: `${Math.round((counts.Low / total) * 100)}%`,
+      bar: 'bg-emerald-500',
+      badge: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
+      icon: CheckCircle2,
+    },
+  ]
+}
+
+function getPriorityDistribution(rows) {
+  const priorityMap = new Map()
+
+  rows.forEach((row) => {
+    const priority =
+      row.responsePriority ||
+      row.decisionSupport?.priority ||
+      'Pending Dataset'
+
+    priorityMap.set(priority, toNumber(priorityMap.get(priority)) + 1)
+  })
+
+  return Array.from(priorityMap.entries())
+    .map(([priority, count]) => ({
+      priority,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count)
+}
+
+function getComputationStatus(records, sourceStatus) {
+  if (!records.length) {
+    return {
+      title: 'No dengue records available',
+      message: 'Upload historical dengue records before running the forecast workflow.',
+      style: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+      icon: AlertTriangle,
+    }
+  }
+
+  return {
+    title: 'Forecast and decision support computed',
+    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. Forecast, risk level, trend, and DSS priority were generated.`,
+    style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+    icon: CheckCircle2,
+  }
+}
+
+function StatCard({ label, value, helper, icon: Icon, tone = 'blue' }) {
+  const toneMap = {
+    blue: {
+      iconWrap: 'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      glow: 'from-blue-50/80 to-white dark:from-blue-500/10 dark:to-slate-900',
+    },
+    rose: {
+      iconWrap: 'bg-rose-50 text-brand-red border-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+      glow: 'from-rose-50/80 to-white dark:from-rose-500/10 dark:to-slate-900',
+    },
+    emerald: {
+      iconWrap: 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      glow: 'from-emerald-50/80 to-white dark:from-emerald-500/10 dark:to-slate-900',
+    },
+    amber: {
+      iconWrap: 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+      glow: 'from-amber-50/80 to-white dark:from-amber-500/10 dark:to-slate-900',
+    },
+  }
+
+  const style = toneMap[tone] || toneMap.blue
+
+  return (
+    <div className={`group relative overflow-hidden rounded-[26px] border border-brand-line/70 bg-gradient-to-br ${style.glow} p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(15,23,42,0.11)] dark:border-slate-800 dark:bg-slate-900`}>
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/60 blur-2xl dark:bg-white/5" />
+
+      <div className="relative flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
+            {label}
+          </p>
+
+          <h3 className="mt-3 break-words text-3xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            {value}
+          </h3>
+
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            {helper}
+          </p>
+        </div>
+
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-sm ${style.iconWrap}`}>
+          <Icon className="h-6 w-6" strokeWidth={2.2} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function ForecastPage() {
+  const [mode, setMode] = useState('baseline')
+  const [showAllTopBarangays, setShowAllTopBarangays] = useState(false)
+  const [expandedBarangay, setExpandedBarangay] = useState(null)
+
+  const {
+    dengueRecords = [],
+    populationRecords = [],
+    boundaryRecords = [],
+    sourceStatus,
+    addActivityLog,
+  } = useData()
+
+  const selectedMode = modeMeta[mode]
+
+  const {
+    forecastRows,
+    weeklyTotals,
+    projectedWeeklyValues,
+    computedPeriods,
+  } = useMemo(() => {
+    return buildDynamicForecastRows(
+      dengueRecords,
+      selectedMode.multiplier,
+      populationRecords,
+      boundaryRecords
+    )
+  }, [
+    dengueRecords,
+    selectedMode,
+    populationRecords,
+    boundaryRecords,
+  ])
+
+  const topBarangays = forecastRows.slice(0, 5)
+  const visibleTopBarangays = showAllTopBarangays
+    ? topBarangays
+    : topBarangays.slice(0, 3)
+
+  const riskDistribution = getRiskDistribution(forecastRows)
+  const priorityDistribution = getPriorityDistribution(forecastRows)
+
+  const projectedTotal = forecastRows.reduce((sum, row) => {
+    return sum + Number(row.forecast || 0)
+  }, 0)
+
+  const actualTotal = dengueRecords.reduce((sum, record) => {
+    return sum + getRecordCases(record)
+  }, 0)
+
+  const highestRiskBarangay = forecastRows[0]
+  const topDecisionSupport = highestRiskBarangay?.decisionSupport || null
+  const computationStatus = getComputationStatus(dengueRecords, sourceStatus)
+  const StatusIcon = computationStatus.icon
+
+  const immediatePriorityCount = forecastRows.filter((row) => {
+    const priority = String(row.responsePriority || '').toLowerCase()
+    return (
+      priority.includes('immediate') ||
+      priority.includes('high priority') ||
+      priority.includes('escalated')
+    )
+  }).length
+
+  const increasingBarangays = forecastRows.filter((row) => {
+    return row.trendLabel === 'Increasing'
+  }).length
+
+  const decisionHighlights = useMemo(() => {
+    if (!forecastRows.length) {
+      return [
+        {
+          title: 'Dataset required',
+          body: 'Upload historical dengue records before generating decision support recommendations.',
+          icon: Database,
+          style: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+        },
+        {
+          title: 'Validation required',
+          body: 'Validate dengue records in the upload module so the system can compute barangay-level forecast, risk, and response priority.',
+          icon: ClipboardList,
+          style: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+        },
+        {
+          title: 'Automatic DSS ready',
+          body: 'Once records are available, this page will rank barangays by decision score, not by risk color alone.',
+          icon: Target,
+          style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+        },
+      ]
+    }
+
+    return [
+      {
+        title: 'Priority barangays',
+        body: immediatePriorityCount > 0
+          ? `${immediatePriorityCount} barangay${immediatePriorityCount === 1 ? '' : 's'} require immediate, high-priority, or escalated attention under the selected scenario.`
+          : 'No barangay currently requires immediate or escalated response under the selected scenario.',
+        icon: ShieldAlert,
+        style: immediatePriorityCount > 0
+          ? 'border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+          : 'border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      },
+      {
+        title: 'Increasing trend watch',
+        body: increasingBarangays > 0
+          ? `${increasingBarangays} barangay${increasingBarangays === 1 ? ' has' : 's have'} increasing recent case movement and should be checked before risk escalates.`
+          : 'Current dengue trends are stable or decreasing across the computed barangays.',
+        icon: TrendingUp,
+        style: increasingBarangays > 0
+          ? 'border-amber-100 bg-amber-50 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+          : 'border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      },
+      {
+        title: 'Top DSS focus',
+        body: highestRiskBarangay
+          ? `${highestRiskBarangay.barangay} is currently ranked highest by DSS score because of its forecast, risk level, trend, and exposure context.`
+          : 'No top barangay has been computed yet.',
+        icon: Target,
+        style: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      },
+    ]
+  }, [
+    forecastRows,
+    immediatePriorityCount,
+    increasingBarangays,
+    highestRiskBarangay,
+  ])
+
+  function handleRunForecast() {
+    addActivityLog(
+      'Forecast generated',
+      `${selectedMode.label} forecast and decision support computed from ${formatNumber(dengueRecords.length)} dengue records with ${formatNumber(projectedTotal)} projected cases.`
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <SectionTitle
+        title="Forecast and Risk Scoring"
+        subtitle="Dynamic barangay-level forecast with decision support priority ranking."
+        right={
+          <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
+            {[
+              ['caution', 'Low growth'],
+              ['baseline', 'Baseline'],
+              ['elevated', 'Moderate increase'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMode(key)}
+                className={`rounded-full border px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition ${
+                  mode === key
+                    ? 'border-brand-blue bg-brand-blue text-white shadow-[0_10px_22px_rgba(37,95,143,0.28)]'
+                    : 'border-brand-line bg-white text-brand-muted hover:border-brand-blue/30 hover:text-brand-text dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Projected total"
+          value={formatNumber(projectedTotal)}
+          helper="Four-week projected cases"
+          icon={LineChart}
+          tone="blue"
+        />
+
+        <StatCard
+          label="Top DSS priority"
+          value={highestRiskBarangay?.barangay || 'No data'}
+          helper={highestRiskBarangay?.responsePriority || 'Top ranked barangay'}
+          icon={Target}
+          tone="rose"
+        />
+
+        <StatCard
+          label="DSS alerts"
+          value={formatNumber(immediatePriorityCount)}
+          helper="Immediate, high, or escalated priorities"
+          icon={ShieldAlert}
+          tone="amber"
+        />
+
+        <StatCard
+          label="Loaded records"
+          value={formatNumber(dengueRecords.length)}
+          helper="Dengue records used"
+          icon={Database}
+          tone="emerald"
+        />
+      </div>
+
+      <div className={`flex items-start gap-3 rounded-[24px] border px-5 py-4 shadow-sm ${computationStatus.style}`}>
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/70 shadow-sm dark:bg-white/10">
+          <StatusIcon className="h-5 w-5" />
+        </div>
+
+        <div>
+          <p className="text-sm font-bold">
+            {computationStatus.title}
+          </p>
+
+          <p className="mt-1 text-sm leading-6 opacity-80">
+            {computationStatus.message}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+  <div
+    id="forecast-model"
+    className="scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6"
+  >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                <Sparkles className="h-3.5 w-3.5" />
+                Forecast model
+              </div>
+
+              <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                Projected weekly cases
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                Computed from recent dengue case movement in the loaded records.
+              </p>
+            </div>
+
+            <span
+              className={`w-fit rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${selectedMode.chip}`}
+            >
+              {selectedMode.label}
+            </span>
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 text-sm leading-6 text-brand-text shadow-sm dark:border-slate-700 dark:from-slate-950 dark:to-slate-900 dark:text-slate-300">
+            <span className="font-bold text-brand-text dark:text-slate-100">
+              Computation method:
+            </span>{' '}
+            Recent case averages, trend movement, scenario multiplier, population exposure, density, and barangay boundary context are used to compute forecast risk and DSS priority.
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-[28px] border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
+                Projected weekly case values
+              </div>
+
+              <div className="w-fit rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-brand-muted dark:bg-slate-800 dark:text-slate-300">
+                {computedPeriods.length} source periods
+              </div>
+            </div>
+
+            <div className="h-[240px] sm:h-[260px]">
+              {projectedWeeklyValues.length > 0 ? (
+                <SparkChart values={projectedWeeklyValues} />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                  No chart available until dengue records are loaded.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[22px] border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 px-4 py-3 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-900">
+              <p className="text-sm font-bold text-brand-blue dark:text-blue-300">
+                Scenario mode
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                {selectedMode.label} uses a {selectedMode.multiplier}x adjustment on computed projections.
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
+              <p className="text-sm font-bold text-brand-text dark:text-slate-100">
+                DSS ranking basis
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                Barangays are ranked by decision score first, then forecasted cases.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleRunForecast}
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand-blue px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,95,143,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(37,95,143,0.34)] sm:w-auto"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Save forecast run
+          </button>
+        </div>
+
+<div
+  id="risk-summary"
+  className="scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6"
+>
+  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Risk distribution
+          </div>
+
+          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            Risk summary
+          </h3>
+
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            Barangays grouped by computed forecast risk level.
+          </p>
+
+          <div className="mt-5 space-y-4">
+            {riskDistribution.map((item) => {
+              const Icon = item.icon
+
+              return (
+                <div
+                  key={item.label}
+                  className="rounded-[24px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${item.badge}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+
+                      <div>
+                        <p className="font-bold text-brand-text dark:text-slate-100">
+                          {item.label}
+                        </p>
+
+                        <p className="text-sm text-brand-muted dark:text-slate-400">
+                          {item.count} barangay{item.count === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${item.badge}`}>
+                      {item.width}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 h-3.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className={`h-3.5 rounded-full ${item.bar}`}
+                      style={{ width: item.width }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <p className="text-sm font-bold text-brand-text dark:text-slate-100">
+              DSS priority distribution
+            </p>
+
+            <div className="mt-3 space-y-2">
+              {priorityDistribution.length > 0 ? (
+                priorityDistribution.map((item) => (
+                  <div
+                    key={item.priority}
+                    className="flex flex-col gap-2 rounded-[18px] border border-slate-100 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-bold ${getPriorityBadgeStyle(item.priority)}`}
+                      >
+                        {item.priority}
+                      </span>
+
+                      <span className="text-xs font-black text-brand-text dark:text-slate-100">
+                        {formatNumber(item.count)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-brand-muted dark:text-slate-400">
+                  DSS priorities will appear after dengue records are loaded.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+     <div className="grid gap-5 xl:grid-cols-[0.82fr_1fr]">
+  <div
+    id="top-barangays"
+    className="scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6"
+  >
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <MapPin className="h-3.5 w-3.5" />
+            DSS priority list
+          </div>
+
+          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            Top barangays
+          </h3>
+
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            Showing the most important risk indicators first. Open details only when needed.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            {visibleTopBarangays.length > 0 ? (
+              <>
+                {visibleTopBarangays.map((row, index) => {
+                  const TrendIcon = getTrendIcon(row.trendLabel)
+                  const isExpanded = expandedBarangay === row.barangay
+
+                  return (
+                    <div
+                      key={row.barangay}
+                      className="group rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-black text-brand-text shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700">
+                            #{index + 1}
+                          </div>
+
+                          <div className="min-w-0">
+                            <span className="break-words font-bold text-brand-text dark:text-slate-100">
+                              {row.barangay}
+                            </span>
+
+                            <p className="text-xs text-brand-muted dark:text-slate-400">
+                              Forecast: {formatNumber(row.forecast)} cases
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getRiskBadgeStyle(row.risk)}`}>
+                            {row.risk}
+                          </span>
+
+                          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getPriorityBadgeStyle(row.responsePriority)}`}>
+                            {row.responsePriority}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs font-semibold text-brand-muted dark:text-slate-500">
+                          DSS score: {formatNumber(row.decisionScore)} points
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExpandedBarangay(isExpanded ? null : row.barangay)
+                          }}
+                          className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
+                        >
+                          {isExpanded ? 'Hide details' : 'View details'}
+                          {isExpanded ? (
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-4 rounded-[20px] border border-slate-100 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold ${getTrendStyle(row.trendLabel)}`}>
+                              <TrendIcon className="h-3.5 w-3.5" />
+                              {row.trendLabel}
+                            </span>
+
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                              Density: {formatOptionalNumber(row.density, ' people/sq km')}
+                            </span>
+
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                              Total: {formatNumber(row.totalCases)} cases
+                            </span>
+                          </div>
+
+                          <div className="mt-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+                            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
+                              Recommended action
+                            </p>
+
+                            <p className="mt-1 text-sm leading-6 text-brand-text dark:text-slate-300">
+                              {row.recommendedAction}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {topBarangays.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAllTopBarangays((current) => !current)
+                      setExpandedBarangay(null)
+                    }}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-brand-line bg-white px-4 py-3 text-sm font-bold text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
+                  >
+                    {showAllTopBarangays ? 'Show less barangays' : `Show all ${topBarangays.length} barangays`}
+                    {showAllTopBarangays ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                No forecast ranking available yet. Upload historical dengue records first.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <Target className="h-3.5 w-3.5" />
+            Decision support
+          </div>
+
+          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            Recommended response
+          </h3>
+
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            The DSS reads the forecast output, trend, risk level, population exposure, and density before suggesting action.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            {decisionHighlights.map((item) => {
+              const Icon = item.icon
+
+              return (
+                <div
+                  key={item.title}
+                  className={`flex items-start gap-3 rounded-[22px] border px-4 py-3.5 shadow-sm ${item.style}`}
+                >
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 shadow-sm dark:bg-white/10">
+                    <Icon className="h-4 w-4" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-bold">
+                      {item.title}
+                    </p>
+
+                    <p className="mt-1 text-sm leading-6 opacity-85">
+                      {item.body}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:to-slate-900">
+            <p className="flex items-center gap-2 text-sm font-bold text-brand-orange dark:text-amber-300">
+              <ArrowUpRight className="h-4 w-4" />
+              Top response plan
+            </p>
+
+            {topDecisionSupport ? (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-bold ${getPriorityBadgeStyle(topDecisionSupport.priority)}`}
+                  >
+                    {topDecisionSupport.priority}
+                  </span>
+
+                  <p className="mt-3 text-sm font-semibold leading-6 text-brand-text dark:text-slate-200">
+                    {topDecisionSupport.summary}
+                  </p>
+                </div>
+
+                {Array.isArray(topDecisionSupport.actions) && topDecisionSupport.actions.length > 0 && (
+                  <div className="rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                      Action plan
+                    </p>
+
+                    <div className="mt-3 space-y-2">
+                      {topDecisionSupport.actions.slice(0, 5).map((action, index) => (
+                        <div
+                          key={`${action}-${index}`}
+                          className="flex gap-2 text-sm leading-6 text-brand-text dark:text-slate-300"
+                        >
+                          <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                            {index + 1}
+                          </span>
+
+                          <span>{action}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(topDecisionSupport.rationale) && topDecisionSupport.rationale.length > 0 && (
+                  <div className="rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                      Why this recommendation
+                    </p>
+
+                    <div className="mt-3 space-y-2">
+                      {topDecisionSupport.rationale.slice(0, 4).map((reason, index) => (
+                        <div
+                          key={`${reason}-${index}`}
+                          className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400"
+                        >
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-green dark:text-emerald-300" />
+                          <span>{reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                The forecast ranking updates automatically when new valid dengue records are uploaded.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

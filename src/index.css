@@ -1,0 +1,304 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #223548;
+  background: #f7f9fc;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-3xl border border-brand-line bg-white shadow-panel;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold shadow-sm;
+  }
+
+  .label-chip {
+    @apply inline-flex items-center rounded-xl px-3 py-1 text-sm font-semibold shadow-sm;
+  }
+
+  .input-demo {
+    @apply w-full rounded-2xl border border-brand-line bg-slate-50 px-4 py-3 text-sm text-brand-text outline-none transition focus:border-brand-blue focus:bg-white;
+  }
+}
+
+.leaflet-tooltip {
+  border-radius: 10px;
+  border: 1px solid #dbe4ee;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  font-weight: 600;
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+.leaflet-tooltip {
+  border-radius: 12px;
+  border: 1px solid #dbe4ee;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  color: #172033;
+  font-weight: 700;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 18px;
+}
+
+.leaflet-control-zoom {
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12) !important;
+}
+
+.leaflet-control-zoom a {
+  border: none !important;
+  color: #172033 !important;
+  font-weight: 700;
+}
+
+.leaflet-hotspot-pulse {
+  animation: denguePulse 1.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.75));
+}
+
+@keyframes denguePulse {
+  0% {
+    stroke-opacity: 1;
+    stroke-width: 3;
+    fill-opacity: 0.95;
+  }
+
+  50% {
+    stroke-opacity: 0.55;
+    stroke-width: 7;
+    fill-opacity: 0.65;
+  }
+
+  100% {
+    stroke-opacity: 1;
+    stroke-width: 3;
+    fill-opacity: 0.95;
+  }
+}
+
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background: #020617;
+}
+
+.dark .panel {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(30, 41, 59, 0.9);
+}
+
+.dark .text-brand-text {
+  color: #f8fafc;
+}
+
+.dark .text-brand-muted {
+  color: #94a3b8;
+}
+
+.dark .border-brand-line,
+.dark .border-brand-line\/70 {
+  border-color: rgba(51, 65, 85, 0.85);
+}
+
+.dark .bg-white,
+.dark .bg-white\/90 {
+  background-color: rgba(15, 23, 42, 0.92);
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-50\/80 {
+  background-color: rgba(15, 23, 42, 0.76);
+}
+
+.dark .from-slate-50 {
+  --tw-gradient-from: rgba(15, 23, 42, 0.9) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgba(15, 23, 42, 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.dark .to-white {
+  --tw-gradient-to: rgba(2, 6, 23, 0.95) var(--tw-gradient-to-position);
+}
+
+.dark .shadow-soft {
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+}
+
+.dark .leaflet-container {
+  filter: brightness(0.85) contrast(1.05) saturate(0.85);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: #f7f9fc;
+}
+
+html.dark,
+html.dark body,
+html.dark #root {
+  background: #020617 !important;
+}
+
+html.dark .bg-brand-bg {
+  background-color: #020617 !important;
+}
+
+html.dark .panel {
+  background: rgba(15, 23, 42, 0.9) !important;
+  border-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+html.dark .bg-white,
+html.dark .bg-white\/90 {
+  background-color: rgba(15, 23, 42, 0.92) !important;
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/80 {
+  background-color: rgba(15, 23, 42, 0.78) !important;
+}
+
+html.dark .text-brand-text {
+  color: #f8fafc !important;
+}
+
+html.dark .text-brand-muted {
+  color: #94a3b8 !important;
+}
+
+html.dark .border-brand-line,
+html.dark .border-brand-line\/70 {
+  border-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+button,
+a[href],
+label:has(input[type='file']) {
+  transition:
+    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.16s ease,
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    opacity 0.16s ease;
+  transform-origin: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:hover,
+a[href]:hover,
+label:has(input[type='file']):hover {
+  transform: translateY(-1px);
+}
+
+button:active,
+a[href]:active,
+label:has(input[type='file']):active {
+  transform: translateY(1px) scale(0.97);
+}
+
+button:focus-visible,
+a[href]:focus-visible,
+label:has(input[type='file']):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(45, 110, 163, 0.22),
+    0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+button:disabled,
+button[disabled] {
+  transform: none !important;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+button svg,
+a[href] svg,
+label:has(input[type='file']) svg {
+  transition:
+    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.16s ease;
+}
+
+button:hover svg,
+a[href]:hover svg,
+label:has(input[type='file']):hover svg {
+  transform: scale(1.08);
+}
+
+button:active svg,
+a[href]:active svg,
+label:has(input[type='file']):active svg {
+  transform: scale(0.92);
+}
+
+.dark button:focus-visible,
+.dark a[href]:focus-visible,
+.dark label:has(input[type='file']):focus-visible {
+  box-shadow:
+    0 0 0 3px rgba(96, 165, 250, 0.24),
+    0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a[href],
+  label:has(input[type='file']),
+  button svg,
+  a[href] svg,
+  label:has(input[type='file']) svg {
+    transition: none !important;
+  }
+
+  button:hover,
+  a[href]:hover,
+  label:has(input[type='file']):hover,
+  button:active,
+  a[href]:active,
+  label:has(input[type='file']):active {
+    transform: none !important;
+  }
+}
+
+html.dark,
+html.dark body,
+html.dark #root {
+  background: #020617;
+}
