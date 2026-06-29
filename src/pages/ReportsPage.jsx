@@ -2192,10 +2192,15 @@ export default function ReportsPage() {
 
       {usingBackendForecast && (
         <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-          <span className="font-bold">Backend report data loaded:</span>{' '}
-          Reports, exports, DSS ranking, and response recommendations are now using the FastAPI backend forecast output from{' '}
-          {backendForecastResult?.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dengue dataset'}.
-        </div>
+  <span className="font-bold">Reports ready:</span>{' '}
+  The latest dengue analysis is ready for review. Reports, exports, priority ranking, and response recommendations now use the uploaded dengue records. The system identified{' '}
+  {formatNumber(Number(backendForecastResult?.risk_counts?.High || 0))} high-risk barangay
+  {Number(backendForecastResult?.risk_counts?.High || 0) === 1 ? '' : 's'},{' '}
+  {formatNumber(Number(backendForecastResult?.risk_counts?.Moderate || 0))} moderate-risk barangay
+  {Number(backendForecastResult?.risk_counts?.Moderate || 0) === 1 ? '' : 's'}, and{' '}
+  {formatNumber(Number(backendForecastResult?.risk_counts?.Low || 0))} low-risk barangay
+  {Number(backendForecastResult?.risk_counts?.Low || 0) === 1 ? '' : 's'}.
+</div>
       )}
 
       <div className="grid gap-5 xl:grid-cols-[1fr_0.85fr]">
