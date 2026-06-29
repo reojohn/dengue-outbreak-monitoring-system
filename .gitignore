@@ -14,3 +14,8 @@ __pycache__/
 venv/
 .venv/
 EOF
+# Python backend
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
