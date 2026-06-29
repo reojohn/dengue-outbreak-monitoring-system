@@ -76,7 +76,7 @@ function getTrendStatus(values = []) {
 }
 
 function getStatusStyle(badge = '') {
-  const value = badge.toLowerCase()
+  const value = String(badge).toLowerCase()
 
   if (value.includes('review')) {
     return 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
@@ -109,38 +109,164 @@ function getRiskBadgeStyle(risk) {
   return 'border-slate-200 bg-slate-100 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
+function hasBackendForecastData(backendForecastResult) {
+  return (
+    Array.isArray(backendForecastResult?.forecast_results) &&
+    backendForecastResult.forecast_results.length > 0
+  )
+}
+
+function buildBackendPriorityRows(backendForecastResult = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+
+  return backendRows
+    .map((row) => ({
+      barangay: row.barangay || 'Unspecified barangay',
+      forecast: Number(row.forecast_next_4_periods || 0),
+      risk: row.risk_level || 'Low',
+      priorityRank: Number(row.priority_rank || 0),
+      recommendation: row.recommendation || '',
+      historicalTotalCases: Number(row.historical_total_cases || 0),
+      latestPeriod: row.latest_period || '',
+      trendDirection: row.trend_direction || 'Stable',
+    }))
+    .sort((a, b) => {
+      if (a.priorityRank && b.priorityRank) {
+        return a.priorityRank - b.priorityRank
+      }
+
+      return b.forecast - a.forecast
+    })
+}
+
+function buildBackendWeeklyTotals(backendForecastResult = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+
+  if (!backendRows.length) return []
+
+  const previousAverageTotal = backendRows.reduce((sum, row) => {
+    return sum + Number(row.previous_average_cases || 0)
+  }, 0)
+
+  const recentAverageTotal = backendRows.reduce((sum, row) => {
+    return sum + Number(row.recent_average_cases || 0)
+  }, 0)
+
+  const nextPeriodTotal = backendRows.reduce((sum, row) => {
+    return sum + Number(row.forecast_next_period || 0)
+  }, 0)
+
+  return [
+    Math.round(previousAverageTotal),
+    Math.round(recentAverageTotal),
+    Math.round(nextPeriodTotal),
+    Math.round(nextPeriodTotal),
+    Math.round(nextPeriodTotal),
+    Math.round(nextPeriodTotal),
+  ]
+}
+
+function buildBackendDashboardStats(backendForecastResult = null, backendDengueSummary = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+  const riskCounts = backendForecastResult?.risk_counts || {}
+
+  const originalRowCount = Number(backendForecastResult?.original_row_count || 0)
+  const validRowCount = Number(backendForecastResult?.valid_row_count || 0)
+
+  const totalCases =
+    Number(backendDengueSummary?.total_cases || 0) ||
+    backendRows.reduce((sum, row) => {
+      return sum + Number(row.historical_total_cases || 0)
+    }, 0)
+
+  const fourWeekForecast =
+    Number(backendForecastResult?.total_forecast_next_4_periods || 0) ||
+    backendRows.reduce((sum, row) => {
+      return sum + Number(row.forecast_next_4_periods || 0)
+    }, 0)
+
+  const highRiskCount =
+    Number(riskCounts.High || 0) ||
+    backendRows.filter((row) => row.risk_level === 'High').length
+
+  const dataQuality =
+    originalRowCount > 0
+      ? Math.round((validRowCount / originalRowCount) * 100)
+      : 0
+
+  return {
+    totalCases,
+    highRiskCount,
+    fourWeekForecast,
+    dataQuality,
+  }
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const {
-    dashboardStats,
-    riskRows,
-    sourceStatus,
-    activityLogs,
+    dashboardStats = {},
+    riskRows = [],
+    sourceStatus = {},
+    activityLogs = [],
+    backendForecastResult = null,
+    backendDengueSummary = null,
     resetSampleData,
   } = useData()
 
-  const weeklyTotals = dashboardStats?.weeklyTotals || []
-  const priority = riskRows.slice(0, 5)
+  const usingBackendForecast = hasBackendForecastData(backendForecastResult)
+
+  const backendPriorityRows = useMemo(() => {
+    return buildBackendPriorityRows(backendForecastResult)
+  }, [backendForecastResult])
+
+  const backendWeeklyTotals = useMemo(() => {
+    return buildBackendWeeklyTotals(backendForecastResult)
+  }, [backendForecastResult])
+
+  const backendDashboardStats = useMemo(() => {
+    return buildBackendDashboardStats(backendForecastResult, backendDengueSummary)
+  }, [backendForecastResult, backendDengueSummary])
+
+  const displayStats = usingBackendForecast
+    ? backendDashboardStats
+    : {
+        totalCases: dashboardStats.totalCases || 0,
+        highRiskCount: dashboardStats.highRiskCount || 0,
+        fourWeekForecast: dashboardStats.fourWeekForecast || 0,
+        dataQuality: dashboardStats.dataQuality || 0,
+      }
+
+  const weeklyTotals = usingBackendForecast
+    ? backendWeeklyTotals
+    : dashboardStats?.weeklyTotals || []
+
+  const priority = usingBackendForecast
+    ? backendPriorityRows.slice(0, 5)
+    : riskRows.slice(0, 5)
+
   const latestLogs = activityLogs.slice(0, 3)
   const trendStatus = getTrendStatus(weeklyTotals)
 
   const alertCards = useMemo(() => {
-    const highestRisk = riskRows[0]
-    const highRiskCount = riskRows.filter((row) => row.risk === 'High').length
+    const highestRisk = priority[0]
+    const highRiskCount = priority.filter((row) => row.risk === 'High').length
 
     return [
       {
         title: highestRisk ? `${highestRisk.risk} risk` : 'No risk data',
         message: highestRisk
-          ? `${highestRisk.barangay} has the highest projected value with ${highestRisk.forecast} projected cases.`
+          ? `${highestRisk.barangay} has the highest projected value with ${formatNumber(highestRisk.forecast)} projected cases.`
           : 'Upload dengue records to generate priority alerts.',
         style: highestRisk?.risk === 'High'
           ? 'border-rose-100 bg-rose-50/70 dark:border-rose-500/20 dark:bg-rose-500/10'
           : 'border-blue-100 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10',
       },
       {
-        title: 'Data readiness',
-        message: `${Object.keys(sourceStatus || {}).length} data sources are available in the prototype workspace.`,
+        title: usingBackendForecast ? 'Backend forecast active' : 'Data readiness',
+        message: usingBackendForecast
+          ? `Dashboard values are using the FastAPI backend forecast from ${backendForecastResult?.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dataset'}.`
+          : `${Object.keys(sourceStatus || {}).length} data sources are available in the prototype workspace.`,
         style:
           'border-blue-100 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10',
       },
@@ -152,23 +278,32 @@ export default function DashboardPage() {
           : 'border-emerald-100 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-500/10',
       },
     ]
-  }, [riskRows, sourceStatus])
+  }, [
+    priority,
+    sourceStatus,
+    usingBackendForecast,
+    backendForecastResult,
+  ])
 
   return (
     <div className="space-y-5">
       <SectionTitle
         title="Dashboard Overview"
-        subtitle="Quick status, dengue trends, priority barangays, and data readiness from the current working dataset."
+        subtitle={
+          usingBackendForecast
+            ? 'Quick status, backend forecast totals, priority barangays, and data readiness from the uploaded dengue dataset.'
+            : 'Quick status, dengue trends, priority barangays, and data readiness from the current working dataset.'
+        }
       />
 
-     <div
-  id="dashboard-summary"
-  className="scroll-mt-28 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
->
-  <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
+      <div
+        id="dashboard-summary"
+        className="scroll-mt-28 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      >
+        <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
           <StatCard
             title="Total cases"
-            value={formatNumber(dashboardStats.totalCases)}
+            value={formatNumber(displayStats.totalCases)}
             color="blue"
           />
         </div>
@@ -176,7 +311,7 @@ export default function DashboardPage() {
         <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
           <StatCard
             title="High-risk barangays"
-            value={formatNumber(dashboardStats.highRiskCount)}
+            value={formatNumber(displayStats.highRiskCount)}
             color="red"
           />
         </div>
@@ -184,7 +319,7 @@ export default function DashboardPage() {
         <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
           <StatCard
             title="Forecast total"
-            value={formatNumber(dashboardStats.fourWeekForecast)}
+            value={formatNumber(displayStats.fourWeekForecast)}
             color="orange"
           />
         </div>
@@ -192,11 +327,19 @@ export default function DashboardPage() {
         <div className="rounded-[28px] border border-brand-line/70 bg-white/80 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-none">
           <StatCard
             title="Data quality"
-            value={`${dashboardStats.dataQuality}%`}
+            value={`${displayStats.dataQuality}%`}
             color="green"
           />
         </div>
       </div>
+
+      {usingBackendForecast && (
+        <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span className="font-bold">Backend forecast loaded:</span>{' '}
+          Dashboard totals, risk ranking, trend chart, and priority alerts are now using the FastAPI forecast output from{' '}
+          {backendForecastResult?.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dengue dataset'}.
+        </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
         <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-6 shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
@@ -211,7 +354,9 @@ export default function DashboardPage() {
               </h3>
 
               <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
-                Weekly case values recalculated from uploaded or sample dengue records.
+                {usingBackendForecast
+                  ? 'Projected case values generated from the backend baseline forecast.'
+                  : 'Weekly case values recalculated from uploaded or sample dengue records.'}
               </p>
             </div>
 
@@ -224,7 +369,9 @@ export default function DashboardPage() {
             <span className="font-semibold text-brand-text dark:text-slate-100">
               Chart guide:
             </span>{' '}
-            Each point represents a reporting period. Values update after historical dengue data is uploaded and validated.
+            {usingBackendForecast
+              ? 'Values represent previous average, recent average, and projected forecast periods from the backend output.'
+              : 'Each point represents a reporting period. Values update after historical dengue data is uploaded and validated.'}
           </div>
 
           <div className="mt-5 rounded-[28px] border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none">
@@ -234,12 +381,18 @@ export default function DashboardPage() {
               </div>
 
               <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-brand-muted dark:bg-slate-800 dark:text-slate-300">
-                Last 6 periods
+                {usingBackendForecast ? 'Backend forecast' : 'Last 6 periods'}
               </div>
             </div>
 
             <div className="h-[250px]">
-              <SparkChart values={weeklyTotals} />
+              {weeklyTotals.length > 0 ? (
+                <SparkChart values={weeklyTotals} />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                  No chart available until dengue records are loaded.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -254,14 +407,16 @@ export default function DashboardPage() {
           </h3>
 
           <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
-            Ranked from the current computed dengue risk score.
+            {usingBackendForecast
+              ? 'Ranked from the backend baseline forecast priority output.'
+              : 'Ranked from the current computed dengue risk score.'}
           </p>
 
           <div className="mt-5 space-y-3">
             {priority.length > 0 ? (
               priority.map((row, index) => (
                 <div
-                  key={row.barangay}
+                  key={`${row.barangay}-${index}`}
                   className="group flex items-center justify-between rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none dark:hover:shadow-none"
                 >
                   <div className="flex items-center gap-3">
@@ -275,8 +430,14 @@ export default function DashboardPage() {
                       </span>
 
                       <p className="text-xs text-brand-muted dark:text-slate-400">
-                        Forecast: {row.forecast} cases
+                        Forecast: {formatNumber(row.forecast)} cases
                       </p>
+
+                      {usingBackendForecast && row.trendDirection && (
+                        <p className="mt-0.5 text-[11px] text-brand-muted dark:text-slate-500">
+                          Trend: {row.trendDirection}
+                        </p>
+                      )}
                     </div>
                   </div>
 
