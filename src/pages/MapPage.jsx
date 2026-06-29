@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Activity,
   AlertTriangle,
@@ -12,6 +13,7 @@ import {
   Map as MapIcon,
   MapPin,
   MapPinned,
+  ArrowUpRight,
   Maximize2,
   Minimize2,
   Moon,
@@ -23,10 +25,9 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react'
-import SectionTitle from '../components/SectionTitle'
 import LeafletRiskMap from '../components/LeafletRiskMap'
 import { useData } from '../context/DataContext'
-import { riskStyles } from '../utils/analytics'
+import { computeDecisionSupport, riskStyles } from '../utils/analytics'
 
 const mapStyleOptions = [
   {
@@ -164,6 +165,48 @@ function getFeatureReferenceName(feature) {
     props.name ||
     props.barangay ||
     props.barangay_name ||
+    ''
+  )
+}
+
+
+function getSelectedBarangayName(value) {
+  if (!value) return ''
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (value?.type === 'Feature') {
+    return getFeatureName(value)
+  }
+
+  if (value?.feature) {
+    return getSelectedBarangayName(value.feature)
+  }
+
+  if (value?.target?.feature) {
+    return getSelectedBarangayName(value.target.feature)
+  }
+
+  if (value?.layer?.feature) {
+    return getSelectedBarangayName(value.layer.feature)
+  }
+
+  if (value?.properties) {
+    return getFeatureName(value)
+  }
+
+  return (
+    value.barangay ||
+    value.name ||
+    value.adm4_name ||
+    value.adm4_ref_name ||
+    value.barangay_name ||
+    value.BARANGAY ||
+    value.ADM4_EN ||
+    value.label ||
+    value.value ||
     ''
   )
 }
@@ -499,6 +542,127 @@ function getBackendDecisionScore(row) {
   return Math.max(0, Math.round(riskScore + forecastScore - rankPenalty))
 }
 
+function buildBackendActionPlan({
+  risk,
+  forecast,
+  forecastNextPeriod,
+  recentAverage,
+  previousAverage,
+  trendLabel,
+  recommendation,
+}) {
+  const actions = []
+  const trendText = String(trendLabel || '').toLowerCase()
+  const isIncreasing = trendText.includes('increasing')
+  const isDecreasing = trendText.includes('decreasing')
+
+  if (recommendation) {
+    actions.push(recommendation)
+  }
+
+  if (risk === 'High') {
+    actions.push(
+      'Activate barangay-level dengue alert and coordinate response within 24 to 48 hours.',
+      'Prioritize source reduction in households, drainage areas, water storage containers, and other mosquito breeding sites.',
+      'Deploy BHWs for focused fever case checking, household advisories, and immediate reporting of new suspected dengue cases.',
+      'Coordinate cleanup activities with barangay officials, sanitation personnel, and community volunteers.',
+      'Review updated case reports after 7 days to determine if the response reduced case movement.'
+    )
+  } else if (risk === 'Moderate') {
+    actions.push(
+      'Place the barangay under intensified weekly monitoring to prevent escalation into high-risk status.',
+      'Inspect common breeding areas such as stagnant water sites, canals, schools, and dense residential zones.',
+      'Strengthen dengue prevention messaging through BHWs, purok leaders, barangay pages, and community announcements.',
+      'Prepare targeted cleanup and IEC activities if the next reporting period continues to increase.',
+      'Compare new dengue reports against the forecast output during the next weekly review.'
+    )
+  } else if (risk === 'Low') {
+    actions.push(
+      'Maintain routine dengue surveillance and regular environmental sanitation activities.',
+      'Continue household reminders on removing stagnant water and seeking early consultation for fever symptoms.',
+      'Check if new cases are clustered in a specific purok or household group before escalating the response.',
+      'Keep barangay advisories active during rainy periods or when nearby barangays show higher risk.',
+      'Reassess the barangay after the next reporting period.'
+    )
+  } else {
+    actions.push(
+      'Upload and validate dengue records before generating a full response action plan.',
+      'Use boundary and population context as supporting information once case records are available.'
+    )
+  }
+
+  if (isIncreasing) {
+    actions.push(
+      'Escalate surveillance because the recent trend indicates increasing case movement.'
+    )
+  }
+
+  if (isDecreasing && risk !== 'Low') {
+    actions.push(
+      'Continue monitoring despite the decreasing trend because the barangay still has non-low risk classification.'
+    )
+  }
+
+  if (forecast >= 100 || forecastNextPeriod >= 25) {
+    actions.push(
+      'Prioritize this barangay in the next CHO coordination meeting because projected case pressure is high.'
+    )
+  }
+
+  if (recentAverage > previousAverage && previousAverage > 0) {
+    actions.push(
+      'Validate recent case reports because the recent average is higher than the previous baseline period.'
+    )
+  }
+
+  return Array.from(new Set(actions.filter(Boolean))).slice(0, 8)
+}
+
+function buildBackendRationale({
+  barangay,
+  risk,
+  forecast,
+  forecastNextPeriod,
+  recentAverage,
+  previousAverage,
+  historicalTotalCases,
+  trendLabel,
+  latestPeriod,
+  recordCount,
+}) {
+  const rationale = [
+    `Backend forecast classified ${barangay} as ${risk} risk.`,
+    `Projected four-period cases: ${formatNumber(forecast)}.`,
+    `Forecast for the next period: ${formatNumber(forecastNextPeriod)} cases.`,
+    `Recent average cases: ${formatNumber(recentAverage)}.`,
+    `Previous average cases: ${formatNumber(previousAverage)}.`,
+    `Historical total cases: ${formatNumber(historicalTotalCases)}.`,
+    `Recent trend direction: ${trendLabel || 'Not available'}.`,
+  ]
+
+  if (latestPeriod) {
+    rationale.push(`Latest source period used by the backend: ${latestPeriod}.`)
+  }
+
+  if (recordCount > 0) {
+    rationale.push(`${formatNumber(recordCount)} historical record${recordCount === 1 ? '' : 's'} were used for this barangay.`)
+  }
+
+  if (forecast >= 100) {
+    rationale.push('The forecast is above the high-pressure threshold, so immediate operational planning is recommended.')
+  }
+
+  if (recentAverage > previousAverage && previousAverage > 0) {
+    rationale.push('Recent average is higher than the previous average, indicating possible worsening case movement.')
+  }
+
+  if (recentAverage <= previousAverage && previousAverage > 0) {
+    rationale.push('Recent average is not higher than the previous average, but risk classification and forecast output still require monitoring.')
+  }
+
+  return Array.from(new Set(rationale.filter(Boolean))).slice(0, 9)
+}
+
 function buildBackendRiskRows(backendForecastResult = null) {
   const backendRows = backendForecastResult?.forecast_results || []
 
@@ -513,8 +677,10 @@ function buildBackendRiskRows(backendForecastResult = null) {
       const historicalTotalCases = Number(row.historical_total_cases || 0)
       const trendLabel = row.trend_direction || 'Stable'
       const responsePriority = getBackendResponsePriority(risk)
-      const recommendation = row.recommendation || getGenericRecommendedAction(risk)
-      const decisionScore = getBackendDecisionScore(row)
+      const backendRecommendation = row.recommendation || getGenericRecommendedAction(risk)
+      const backendDecisionScore = getBackendDecisionScore(row)
+      const latestPeriod = row.latest_period || ''
+      const recordCount = Number(row.record_count || 0)
 
       const series = [
         {
@@ -533,52 +699,102 @@ function buildBackendRiskRows(backendForecastResult = null) {
 
       const history = series.map((item) => item.cases)
 
-      const decisionSupport = {
-        summary: recommendation,
-        priority: responsePriority,
-        actions: [recommendation],
-        rationale: [
-          `Backend baseline forecast classified ${barangay} as ${risk} risk.`,
-          `Projected four-period cases: ${formatNumber(forecast)}.`,
-          `Recent trend direction: ${trendLabel}.`,
-        ],
-        score: decisionScore,
-      }
-
-      return {
+      const rowData = {
         barangay,
         risk,
         forecast,
         forecastedCases: forecast,
         predictedCases: forecast,
+
         totalCases: historicalTotalCases,
         cases: historicalTotalCases,
         currentCases: forecastNextPeriod,
         previousCases: previousAverage,
+
         recentAverage,
         previousAverage,
         trend: trendLabel,
         trendLabel,
         trendDirection: trendLabel,
+
         history,
         weeklyCases: history,
         caseHistory: series,
         series,
-        periods: [row.latest_period || 'Latest period'],
-        recommendedAction: recommendation,
-        recommendedActions: [recommendation],
-        responsePriority,
+        periods: [latestPeriod || 'Latest period'],
+
+        latestPeriod,
+        recordCount,
+      }
+
+      const computedDecisionSupport = computeDecisionSupport(rowData)
+
+      const actionPlan = buildBackendActionPlan({
+        risk,
+        forecast,
+        forecastNextPeriod,
+        recentAverage,
+        previousAverage,
+        trendLabel,
+        recommendation: backendRecommendation || computedDecisionSupport.primaryAction,
+      })
+
+      const rationale = buildBackendRationale({
+        barangay,
+        risk,
+        forecast,
+        forecastNextPeriod,
+        recentAverage,
+        previousAverage,
+        historicalTotalCases,
+        trendLabel,
+        latestPeriod,
+        recordCount,
+      })
+
+      const decisionSupport = {
+        ...computedDecisionSupport,
+        summary:
+          backendRecommendation ||
+          computedDecisionSupport.summary ||
+          getGenericRecommendedAction(risk),
+        priority:
+          computedDecisionSupport.priority ||
+          responsePriority,
+        actions: actionPlan,
+        rationale,
+        score: Math.max(
+          Number(computedDecisionSupport.score || 0),
+          Number(backendDecisionScore || 0)
+        ),
+        primaryAction: actionPlan[0] || backendRecommendation,
+        trendDirection: trendLabel,
+        forecastPressure:
+          computedDecisionSupport.forecastPressure ||
+          'Backend forecast pressure available',
+      }
+
+      return {
+        ...rowData,
+
+        recommendedAction: decisionSupport.summary,
+        primaryAction: decisionSupport.primaryAction,
+        recommendedActions: decisionSupport.actions,
+        responsePriority: decisionSupport.priority,
         recommendationRationale: decisionSupport.rationale,
-        decisionScore,
+        decisionScore: decisionSupport.score,
         decisionSupport,
+
         backendPriorityRank: Number(row.priority_rank || 0),
-        latestPeriod: row.latest_period || '',
-        recordCount: Number(row.record_count || 0),
       }
     })
     .sort((a, b) => {
       if (a.backendPriorityRank && b.backendPriorityRank) {
         return a.backendPriorityRank - b.backendPriorityRank
+      }
+
+      if (Number(b.decisionScore || 0) !== Number(a.decisionScore || 0)) {
+        return Number(b.decisionScore || 0) - Number(a.decisionScore || 0)
       }
 
       return b.forecast - a.forecast
@@ -813,19 +1029,62 @@ export default function MapPage() {
     selectedDecisionSupport?.score ??
     0
 
-  const selectedActionPlan = Array.isArray(selectedDecisionSupport?.actions)
-    ? selectedDecisionSupport.actions
-    : Array.isArray(details?.recommendedActions)
-      ? details.recommendedActions
-      : selectedRecommendation
-        ? [selectedRecommendation]
+  const selectedActionPlan = useMemo(() => {
+    const actions = Array.isArray(selectedDecisionSupport?.actions)
+      ? selectedDecisionSupport.actions
+      : Array.isArray(details?.recommendedActions)
+        ? details.recommendedActions
+        : selectedRecommendation
+          ? [selectedRecommendation]
+          : []
+
+    if (actions.length >= 3) {
+      return actions
+    }
+
+    if (!details) {
+      return actions
+    }
+
+    return buildBackendActionPlan({
+      risk: details.risk,
+      forecast: Number(details.forecast || details.forecastedCases || details.predictedCases || 0),
+      forecastNextPeriod: Number(details.currentCases || 0),
+      recentAverage: Number(details.recentAverage || 0),
+      previousAverage: Number(details.previousAverage || 0),
+      trendLabel: details.trend || details.trendLabel || details.trendDirection,
+      recommendation: selectedRecommendation,
+    })
+  }, [details, selectedDecisionSupport, selectedRecommendation])
+
+  const selectedRationale = useMemo(() => {
+    const rationale = Array.isArray(selectedDecisionSupport?.rationale)
+      ? selectedDecisionSupport.rationale
+      : Array.isArray(details?.recommendationRationale)
+        ? details.recommendationRationale
         : []
 
-  const selectedRationale = Array.isArray(selectedDecisionSupport?.rationale)
-    ? selectedDecisionSupport.rationale
-    : Array.isArray(details?.recommendationRationale)
-      ? details.recommendationRationale
-      : []
+    if (rationale.length >= 4) {
+      return rationale
+    }
+
+    if (!details) {
+      return rationale
+    }
+
+    return buildBackendRationale({
+      barangay: details.barangay || selectedLabel,
+      risk: details.risk,
+      forecast: Number(details.forecast || details.forecastedCases || details.predictedCases || 0),
+      forecastNextPeriod: Number(details.currentCases || 0),
+      recentAverage: Number(details.recentAverage || 0),
+      previousAverage: Number(details.previousAverage || 0),
+      historicalTotalCases: Number(details.totalCases || details.cases || 0),
+      trendLabel: details.trend || details.trendLabel || details.trendDirection,
+      latestPeriod: details.latestPeriod,
+      recordCount: Number(details.recordCount || 0),
+    })
+  }, [details, selectedDecisionSupport, selectedLabel])
 
   const summary = hasRiskData ? displayRiskRows.slice(0, 5) : []
 
@@ -854,17 +1113,25 @@ export default function MapPage() {
     })
   }
 
-  function handleSelectBarangay(name) {
+  function handleSelectBarangay(value) {
+    const name = getSelectedBarangayName(value)
+
     if (!name) return
 
     setSelected(name)
     openSelectedPanel()
 
     const selectedRow = displayRiskRows.find((row) => namesMatch(row.barangay, name))
+    const selectedFeature = boundaryFeatures.find((feature) => {
+      return (
+        namesMatch(name, getFeatureName(feature)) ||
+        namesMatch(name, getFeatureReferenceName(feature))
+      )
+    })
 
     addActivityLog?.(
       'Map barangay selected',
-      `${name} was selected on the geospatial hotspot map. Current risk: ${selectedRow?.risk || 'No risk data'}.`
+      `${name} was selected on the geospatial hotspot map. Current risk: ${selectedRow?.risk || (selectedFeature ? 'Boundary only' : 'No risk data')}.`
     )
   }
 
@@ -987,18 +1254,33 @@ export default function MapPage() {
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsMapExpanded((current) => !current)}
-          className="inline-flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brand-blue transition hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20"
-        >
-          {isMapExpanded ? (
-            <Minimize2 className="h-3.5 w-3.5" />
-          ) : (
-            <Maximize2 className="h-3.5 w-3.5" />
-          )}
-          {isMapExpanded ? 'Compact map' : 'Expand map'}
-        </button>
+       <button
+  type="button"
+  onClick={() => setIsMapExpanded((current) => !current)}
+  style={{
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
+    borderColor: 'rgba(255,255,255,0.45)',
+  }}
+  className="group inline-flex w-fit max-w-full items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-left shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
+>
+  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-blue text-white shadow-[0_8px_18px_rgba(37,95,143,0.22)]">
+    {isMapExpanded ? (
+      <Minimize2 className="h-4 w-4" />
+    ) : (
+      <Maximize2 className="h-4 w-4" />
+    )}
+  </div>
+
+  <span
+    style={{ color: '#0f172a' }}
+    className="whitespace-nowrap text-xs font-black uppercase tracking-[0.12em]"
+  >
+    {isMapExpanded ? 'Compact map' : 'Expand map'}
+  </span>
+
+  <ArrowUpRight className="h-4 w-4 shrink-0 text-brand-blue transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+</button>
 
         <button
           type="button"
@@ -1023,8 +1305,8 @@ export default function MapPage() {
     <div
       className={
         isMapExpanded
-          ? 'h-[calc(100vh-190px)] min-h-[720px] max-h-[920px] overflow-hidden rounded-[28px] border border-brand-line bg-sky-50/50 p-2 dark:border-slate-800 dark:bg-slate-950'
-          : 'h-[540px] overflow-hidden rounded-[26px] border border-brand-line bg-sky-50/50 p-2 dark:border-slate-800 dark:bg-slate-950 sm:h-[640px] 2xl:h-[760px]'
+          ? 'h-[calc(100vh-190px)] min-h-[720px] max-h-[920px] overflow-hidden rounded-[30px] border border-slate-200 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-2 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20'
+          : 'h-[560px] overflow-hidden rounded-[28px] border border-slate-200 bg-gradient-to-br from-sky-50 via-white to-blue-50 p-2 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 sm:h-[680px] 2xl:h-[780px]'
       }
     >
       <div className="h-full overflow-hidden rounded-[22px] dark:[&_.leaflet-container]:bg-slate-950">
@@ -1033,6 +1315,9 @@ export default function MapPage() {
             key={`${mapStyle}-${isMapExpanded ? 'expanded' : 'normal'}`}
             selected={selected}
             onSelect={handleSelectBarangay}
+            onBarangaySelect={handleSelectBarangay}
+            onFeatureSelect={handleSelectBarangay}
+            onPolygonClick={handleSelectBarangay}
             rows={displayRiskRows}
             mapStyle={mapStyle}
             layoutKey={isMapExpanded ? 'expanded' : 'normal'}
@@ -1060,15 +1345,21 @@ export default function MapPage() {
   )
 
   return (
-    <div className="space-y-5">
-      {selectedPanelOpen && (
+    <div className="relative space-y-6 pb-10">
+      <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
+
+      {selectedPanelOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          (
         <div
-          className={`fixed z-[9999] w-[min(430px,calc(100vw-24px))] overflow-hidden rounded-[30px] border border-brand-line/80 bg-white/95 shadow-[0_24px_70px_rgba(15,23,42,0.28)] backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 ${
+          className={`fixed z-[9999] w-[min(430px,calc(100vw-24px))] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.30)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:ring-white/10 ${
             dragState ? 'select-none ring-2 ring-brand-blue/30' : ''
           }`}
           style={{
             left: `${selectedPanelPosition.x}px`,
             top: `${selectedPanelPosition.y}px`,
+            zIndex: 99999,
           }}
         >
           <div
@@ -1076,11 +1367,11 @@ export default function MapPage() {
             tabIndex={0}
             onMouseDown={handleStartPanelDrag}
             onTouchStart={handleStartPanelDrag}
-            className="flex cursor-move items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4 dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+            className="flex cursor-move items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-blue-50 px-5 py-4 dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900"
             title="Drag this panel"
           >
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
                 <Crosshair className="h-3.5 w-3.5" />
                 Selected area
               </div>
@@ -1093,7 +1384,7 @@ export default function MapPage() {
             <button
               type="button"
               onClick={() => setSelectedPanelOpen(false)}
-              className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-black text-brand-muted transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-base font-black text-brand-muted transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               aria-label="Close selected barangay panel"
             >
               ×
@@ -1101,23 +1392,23 @@ export default function MapPage() {
           </div>
 
           <div className="max-h-[calc(100vh-170px)] overflow-y-auto p-5">
-            <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-500">
               Selected barangay
-            </h3>
-
-            <p className="mt-4 break-words text-3xl font-black tracking-tight text-brand-blue dark:text-blue-300">
-              {selectedLabel}
             </p>
+
+            <h3 className="mt-2 break-words text-3xl font-black tracking-tight text-brand-blue dark:text-blue-300">
+              {selectedLabel}
+            </h3>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <span
-                className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getRiskBadgeStyle(details?.risk)}`}
+                className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(details?.risk)}`}
               >
                 {getRiskLabel(details?.risk)}
               </span>
 
               <span
-                className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getPriorityBadgeStyle(selectedPriority)}`}
+                className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getPriorityBadgeStyle(selectedPriority)}`}
               >
                 {selectedPriority}
               </span>
@@ -1130,7 +1421,7 @@ export default function MapPage() {
                 return (
                   <div
                     key={metric.label}
-                    className="rounded-[22px] border border-slate-100 bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                    className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
                   >
                     <div
                       className={`mb-3 flex h-10 w-10 items-center justify-center rounded-2xl border ${metric.tone}`}
@@ -1138,7 +1429,7 @@ export default function MapPage() {
                       <Icon className="h-5 w-5" />
                     </div>
 
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                       {metric.label}
                     </p>
 
@@ -1150,10 +1441,10 @@ export default function MapPage() {
               })}
             </div>
 
-            <div className="mt-4 rounded-[22px] border border-amber-100 bg-amber-50/80 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
+            <div className="mt-4 rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950 dark:shadow-none">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
                     Decision support recommendation
                   </p>
 
@@ -1163,7 +1454,7 @@ export default function MapPage() {
                 </div>
 
                 <span
-                  className={`w-fit rounded-full border px-3 py-1 text-[11px] font-bold ${getPriorityBadgeStyle(selectedPriority)}`}
+                  className={`w-fit rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(selectedPriority)}`}
                 >
                   {selectedPriority}
                 </span>
@@ -1174,13 +1465,13 @@ export default function MapPage() {
               </p>
 
               {selectedActionPlan.length > 0 && (
-                <div className="mt-4 rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                <div className="mt-4 rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                     Action plan
                   </p>
 
                   <div className="mt-3 space-y-2">
-                    {selectedActionPlan.slice(0, 5).map((action, index) => (
+                    {selectedActionPlan.slice(0, 8).map((action, index) => (
                       <div
                         key={`${action}-${index}`}
                         className="flex gap-2 text-sm leading-6 text-brand-text dark:text-slate-300"
@@ -1197,13 +1488,13 @@ export default function MapPage() {
               )}
 
               {selectedRationale.length > 0 && (
-                <div className="mt-3 rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                <div className="mt-3 rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                     Why this recommendation
                   </p>
 
                   <div className="mt-3 space-y-2">
-                    {selectedRationale.slice(0, 4).map((reason, index) => (
+                    {selectedRationale.slice(0, 8).map((reason, index) => (
                       <div
                         key={`${reason}-${index}`}
                         className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400"
@@ -1218,15 +1509,15 @@ export default function MapPage() {
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                <span className="font-bold text-brand-text dark:text-slate-200">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+                <span className="font-black text-brand-text dark:text-slate-200">
                   Boundary:
                 </span>{' '}
                 {selectedBoundaryFeature ? 'Matched to uploaded polygon' : 'Not matched yet'}
               </div>
 
-              <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                <span className="font-bold text-brand-text dark:text-slate-200">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+                <span className="font-black text-brand-text dark:text-slate-200">
                   Population:
                 </span>{' '}
                 {selectedPopulationRow || selectedPopulation > 0
@@ -1236,59 +1527,204 @@ export default function MapPage() {
             </div>
           </div>
         </div>
+        ),
+        document.body
       )}
 
-      <SectionTitle
-        title="Geospatial Hotspot Map"
-        subtitle={usingBackendForecast ? 'Barangay-level hotspot monitoring generated from backend forecast output and boundary data.' : 'Barangay-level hotspot monitoring generated from validated dengue and boundary data.'}
-        right={
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
-            <span className="inline-flex items-center justify-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-              <Radar className="h-3.5 w-3.5" />
-              {formatNumber(displayPeriodCount)} periods
-            </span>
+      <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.22)] dark:border-slate-800 sm:p-6 lg:p-7">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_34%)]" />
 
-            <span className="inline-flex items-center justify-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-brand-teal dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300">
-              <MapPin className="h-3.5 w-3.5" />
-              {formatNumber(hasRiskData ? displayRiskRows.length : boundaryFeatureCount)} barangays
-            </span>
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-stretch">
+          <div className="flex flex-col justify-between">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
+                <Radar className="h-3.5 w-3.5" />
+                Geospatial intelligence
+              </div>
+
+              <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+                Geospatial Hotspot Map
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
+                {usingBackendForecast
+                  ? 'Barangay-level hotspot monitoring generated from backend forecast output and uploaded boundary data.'
+                  : 'Barangay-level hotspot monitoring generated from validated dengue records and uploaded boundary data.'}
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                  Source periods
+                </p>
+                <p className="mt-2 text-2xl font-black tracking-tight text-white">
+                  {formatNumber(displayPeriodCount)}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Historical or forecast periods
+                </p>
+              </div>
+
+              <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                  Mapped barangays
+                </p>
+                <p className="mt-2 text-2xl font-black tracking-tight text-white">
+                  {formatNumber(hasRiskData ? displayRiskRows.length : boundaryFeatureCount)}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Areas available for mapping
+                </p>
+              </div>
+
+              <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                  High-risk areas
+                </p>
+                <p className="mt-2 text-2xl font-black tracking-tight text-white">
+                  {formatNumber(highRiskCount)}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Barangays requiring attention
+                </p>
+              </div>
+            </div>
           </div>
-        }
-      />
+
+          <div className="rounded-[30px] border border-white/20 bg-white/15 p-5 shadow-[0_20px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border border-white/20 bg-white/20 text-white shadow-inner">
+                <MapPinned className="h-7 w-7" strokeWidth={2.2} />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                  Map status
+                </p>
+                <h2 className="mt-2 text-xl font-black tracking-tight text-white">
+                  {getMapStatusLabel(hasRiskData, hasBoundaryData)}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-white/80">
+                  Current base layer: {activeMapStyle.label}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-[24px] border border-white/20 bg-black/10 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/70">
+                Boundary source
+              </p>
+
+              <p className="mt-2 break-words text-sm font-bold leading-6 text-white">
+                {sourceStatus?.boundary?.uploadedName || 'No boundary file uploaded yet'}
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
+                  {formatNumber(boundaryFeatureCount || sourceStatus?.boundary?.validCount || 0)} features
+                </span>
+
+                <span
+                  className={`rounded-full border px-3 py-1 text-[11px] font-black ${getMapStatusStyle(
+                    hasRiskData,
+                    hasBoundaryData
+                  )}`}
+                >
+                  {getMapStatusLabel(hasRiskData, hasBoundaryData)}
+                </span>
+              </div>
+            </div>
+
+            <button
+  type="button"
+  onClick={() => setIsMapExpanded((current) => !current)}
+  style={{
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
+    borderColor: 'rgba(255,255,255,0.45)',
+  }}
+  className="group mt-5 flex min-h-[82px] w-full items-center justify-between gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(15,23,42,0.22)]"
+>
+  <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.24)]">
+      {isMapExpanded ? (
+        <Minimize2 className="h-5 w-5" />
+      ) : (
+        <Maximize2 className="h-5 w-5" />
+      )}
+    </div>
+
+    <div className="min-w-0">
+      <p
+        style={{ color: '#0f172a' }}
+        className="text-sm font-black leading-5"
+      >
+        {isMapExpanded ? 'Compact map view' : 'Expand map workspace'}
+      </p>
+
+      <p
+        style={{ color: '#64748b' }}
+        className="mt-1 text-xs font-semibold leading-5"
+      >
+        {isMapExpanded
+          ? 'Return to split map and summary layout.'
+          : 'Use more space for barangay polygon analysis.'}
+      </p>
+    </div>
+  </div>
+
+  <div
+    style={{
+      backgroundColor: '#f1f5f9',
+      color: '#255f8f',
+    }}
+    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition group-hover:translate-x-0.5"
+  >
+    <ArrowUpRight className="h-4 w-4" />
+  </div>
+</button>
+          </div>
+        </div>
+      </section>
 
       <div
         className={
           isMapExpanded
-            ? 'grid gap-5'
-            : 'grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.75fr)]'
+            ? 'grid gap-6'
+            : 'grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.75fr)]'
         }
       >
         <div
           id="hotspot-map"
           className={
             isMapExpanded
-              ? 'scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none sm:p-4'
-              : 'scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none sm:p-5'
+              ? 'scroll-mt-28 rounded-[34px] border border-slate-200/80 bg-white/90 p-3 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 sm:p-4'
+              : 'scroll-mt-28 rounded-[34px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 sm:p-5'
           }
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
                 <MapPinned className="h-3.5 w-3.5" />
                 Geospatial view
               </div>
 
-              <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              <h2 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
                 Barangay hotspot map
-              </h3>
+              </h2>
 
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {usingBackendForecast ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.' : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+                {usingBackendForecast
+                  ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.'
+                  : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
               </p>
             </div>
 
             <div
-              className={`w-fit rounded-full border px-3 py-1.5 text-[11px] font-bold ${getMapStatusStyle(
+              className={`w-fit rounded-full border px-3 py-1.5 text-[11px] font-black ${getMapStatusStyle(
                 hasRiskData,
                 hasBoundaryData
               )}`}
@@ -1297,25 +1733,25 @@ export default function MapPage() {
             </div>
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-[28px] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-3 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none">
+          <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-3 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
             <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
                   Hotspot monitoring layer
                 </div>
 
-                <p className="mt-1 text-xs text-brand-muted dark:text-slate-500">
+                <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
                   Current base layer: {activeMapStyle.label}
                 </p>
               </div>
 
               <div className="flex flex-col gap-2 xl:items-end">
                 <div className="flex flex-wrap gap-2">
-                  <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
+                  <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-bold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
                     {hasBoundaryData ? 'Boundary layer available' : 'Boundary pending'}
                   </div>
 
-                  <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
+                  <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-bold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
                     {hasRiskData ? 'Risk layer active' : 'Boundary-only view'}
                   </div>
                 </div>
@@ -1327,14 +1763,14 @@ export default function MapPage() {
             {mapContent}
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-[24px] border border-brand-line bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+          <div className="mt-4 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
             <button
               type="button"
               onClick={() => setLegendOpen((current) => !current)}
               className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
             >
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
                   Dengue Risk Legend
                 </p>
 
@@ -1360,20 +1796,20 @@ export default function MapPage() {
                   return (
                     <div
                       key={item.risk}
-                      className="rounded-[18px] border border-slate-100 bg-gradient-to-r from-slate-50 to-white p-3 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                      className="rounded-[20px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
                     >
                       <div className="flex items-center gap-2">
                         <span className={`h-3 w-3 rounded-full ${item.dot}`} />
 
                         <span
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${item.badge}`}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black ${item.badge}`}
                         >
                           <Icon className="h-3.5 w-3.5" />
                           {item.risk} Risk
                         </span>
                       </div>
 
-                      <p className="mt-2 text-xs font-bold text-brand-text dark:text-slate-100">
+                      <p className="mt-2 text-xs font-black text-brand-text dark:text-slate-100">
                         {getLegendDescription(item.risk)}
                       </p>
 
@@ -1387,7 +1823,7 @@ export default function MapPage() {
             )}
           </div>
 
-          <p className="mt-3 text-xs font-medium leading-5 text-brand-muted dark:text-slate-400">
+          <p className="mt-3 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
             {hasRiskData
               ? 'Click a barangay polygon on the map to open a draggable details panel outside the map.'
               : hasBoundaryData
@@ -1395,8 +1831,8 @@ export default function MapPage() {
                 : 'Map interaction will be enabled once barangay boundary and dengue records are uploaded.'}
           </p>
 
-          <div className="mt-4 rounded-[22px] border border-amber-100 bg-amber-50/70 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
-            <p className="flex items-center gap-2 text-sm font-bold text-brand-orange dark:text-amber-300">
+          <div className="mt-4 rounded-[24px] border border-amber-100 bg-amber-50/80 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
+            <p className="flex items-center gap-2 text-sm font-black text-brand-orange dark:text-amber-300">
               <Layers3 className="h-4 w-4" />
               Boundary data note
             </p>
@@ -1416,14 +1852,18 @@ export default function MapPage() {
         </div>
 
         <div
-  className={
-    isMapExpanded
-      ? 'grid gap-5 lg:grid-cols-[0.75fr_1fr]'
-      : 'space-y-5'
-  }
->
-          <div className="rounded-[30px] border border-dashed border-blue-200 bg-blue-50/60 p-5 text-sm leading-6 text-brand-muted dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-slate-400 sm:p-6">
-            <p className="font-bold text-brand-blue dark:text-blue-300">
+          className={
+            isMapExpanded
+              ? 'grid gap-5 lg:grid-cols-[0.75fr_1fr]'
+              : 'space-y-5'
+          }
+        >
+          <div className="rounded-[30px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-5 text-sm leading-6 text-brand-muted shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-950 dark:text-slate-400 sm:p-6">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-100 bg-white text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+              <Navigation className="h-5 w-5" />
+            </div>
+
+            <p className="mt-4 font-black text-brand-blue dark:text-blue-300">
               Draggable barangay panel
             </p>
 
@@ -1432,18 +1872,20 @@ export default function MapPage() {
             </p>
           </div>
 
-          <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none sm:p-6">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+          <div className="rounded-[34px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 sm:p-6">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
               <Navigation className="h-3.5 w-3.5" />
-              Summary
+              Hotspot priority
             </div>
 
-            <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            <h2 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
               Hotspot summary
-            </h3>
+            </h2>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              {usingBackendForecast ? 'Top barangays are ranked using the backend forecast priority output.' : 'Top barangays will appear after risk scores are computed.'}
+              {usingBackendForecast
+                ? 'Top barangays are ranked using the backend forecast priority output.'
+                : 'Top barangays will appear after risk scores are computed.'}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1453,23 +1895,23 @@ export default function MapPage() {
                     key={row.barangay}
                     type="button"
                     onClick={() => handleSelectBarangay(row.barangay)}
-                    className={`flex w-full flex-col gap-3 rounded-[22px] border px-4 py-3.5 text-left shadow-sm transition-all duration-200 sm:flex-row sm:items-center sm:justify-between ${
+                    className={`group flex w-full flex-col gap-3 rounded-[24px] border px-4 py-3.5 text-left shadow-sm transition-all duration-200 sm:flex-row sm:items-center sm:justify-between ${
                       namesMatch(selected, row.barangay)
-                        ? 'border-brand-blue bg-blue-50/70 ring-2 ring-brand-blue/15 dark:border-blue-500/40 dark:bg-blue-500/10 dark:ring-blue-500/20'
-                        : 'border-brand-line bg-gradient-to-r from-slate-50 to-white hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:hover:shadow-none'
+                        ? 'border-brand-blue bg-blue-50/80 ring-2 ring-brand-blue/15 dark:border-blue-500/40 dark:bg-blue-500/10 dark:ring-blue-500/20'
+                        : 'border-slate-200 bg-gradient-to-r from-slate-50 to-white hover:-translate-y-0.5 hover:border-brand-blue/20 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:hover:shadow-none'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-brand-text shadow-sm dark:bg-slate-800 dark:text-slate-100 dark:shadow-none">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm dark:bg-white dark:text-slate-950">
                         {index + 1}
                       </div>
 
                       <div>
-                        <span className="font-bold text-brand-text dark:text-slate-100">
+                        <span className="font-black text-brand-text dark:text-slate-100">
                           {row.barangay}
                         </span>
 
-                        <p className="text-xs text-brand-muted dark:text-slate-400">
+                        <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
                           Forecast: {formatNumber(row.forecast)} cases
                         </p>
 
@@ -1480,14 +1922,14 @@ export default function MapPage() {
                     </div>
 
                     <span
-                      className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getRiskBadgeStyle(row.risk)}`}
+                      className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(row.risk)}`}
                     >
                       {row.risk}
                     </span>
                   </button>
                 ))
               ) : (
-                <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                   {hasBoundaryData
                     ? 'Boundary layer is available. Upload dengue records to generate the hotspot summary.'
                     : 'No hotspot summary available yet. Upload dengue records and barangay boundaries first.'}
@@ -1496,7 +1938,7 @@ export default function MapPage() {
             </div>
 
             <div className="mt-5 rounded-[24px] border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 p-4 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-900 dark:shadow-none">
-              <p className="flex items-center gap-2 text-sm font-bold text-brand-blue dark:text-blue-300">
+              <p className="flex items-center gap-2 text-sm font-black text-brand-blue dark:text-blue-300">
                 <MapPinned className="h-4 w-4" />
                 Map note
               </p>
@@ -1512,8 +1954,8 @@ export default function MapPage() {
               </p>
             </div>
 
-            <div className="mt-4 rounded-[24px] border border-slate-100 bg-slate-50 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
-              <p className="flex items-center gap-2 text-sm font-bold text-brand-text dark:text-slate-100">
+            <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+              <p className="flex items-center gap-2 text-sm font-black text-brand-text dark:text-slate-100">
                 <Layers3 className="h-4 w-4 text-brand-blue dark:text-blue-300" />
                 Boundary source
               </p>

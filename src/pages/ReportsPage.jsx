@@ -24,7 +24,6 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
-import SectionTitle from '../components/SectionTitle'
 import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
 
@@ -2026,6 +2025,52 @@ function StatCard({ label, value, helper, icon: Icon, tone = 'blue' }) {
   )
 }
 
+function HeroMetric({ label, value, helper }) {
+  return (
+    <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
+      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+        {label}
+      </p>
+
+      <p className="mt-2 text-2xl font-black tracking-tight text-white">
+        {value}
+      </p>
+
+      <p className="mt-1 text-xs leading-5 text-white/70">
+        {helper}
+      </p>
+    </div>
+  )
+}
+
+function SectionBadge({ icon: Icon, children, tone = 'blue' }) {
+  const toneMap = {
+    blue: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+    rose: 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+    emerald: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+    amber: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+    slate: 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  }
+
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] ${toneMap[tone] || toneMap.blue}`}>
+      <Icon className="h-3.5 w-3.5" strokeWidth={2.4} />
+      {children}
+    </div>
+  )
+}
+
+function PremiumPanel({ id, children, className = '' }) {
+  return (
+    <section
+      id={id}
+      className={`scroll-mt-28 overflow-hidden rounded-[34px] border border-slate-200/80 bg-white/90 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 ${className}`}
+    >
+      {children}
+    </section>
+  )
+}
+
 export default function ReportsPage() {
   const [format, setFormat] = useState('pdf')
   const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
@@ -2146,15 +2191,144 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <SectionTitle
-        title="Reports and Export"
-        subtitle={
-          usingBackendForecast
-            ? 'Decision-ready outputs generated from backend forecast, summary, DSS priority, and response recommendations.'
-            : 'Decision-ready outputs for CHO review, barangay coordination, and response planning.'
-        }
-      />
+    <div className="relative space-y-6 pb-10">
+      <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
+
+      <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.22)] dark:border-slate-800 sm:p-6 lg:p-7">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_34%)]" />
+
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-stretch">
+          <div className="flex flex-col justify-between">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" />
+                Decision reporting center
+              </div>
+
+              <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+                Reports and Export
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
+                {usingBackendForecast
+                  ? 'Decision-ready outputs generated from backend forecast, DSS priority ranking, and response recommendations.'
+                  : 'Decision-ready outputs for CHO review, barangay coordination, and weekly dengue response planning.'}
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-4">
+              <HeroMetric
+                label="Total cases"
+                value={formatNumber(displayDashboardStats.totalCases)}
+                helper="Recorded workspace cases"
+              />
+
+              <HeroMetric
+                label="DSS alerts"
+                value={formatNumber(decisionCounts.urgent)}
+                helper="Urgent response priorities"
+              />
+
+              <HeroMetric
+                label="Forecast total"
+                value={formatNumber(displayDashboardStats.fourWeekForecast)}
+                helper="Projected four-week cases"
+              />
+
+              <HeroMetric
+                label="Data quality"
+                value={`${displayDashboardStats.dataQuality || 0}%`}
+                helper="Validated readiness score"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[30px] border border-white/20 bg-white/20 p-5 shadow-[0_20px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border border-white/20 bg-white/20 text-white shadow-inner">
+                <SelectedExportIcon className="h-7 w-7" strokeWidth={2.2} />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                  Selected output
+                </p>
+                <h2 className="mt-2 text-xl font-black tracking-tight text-white">
+                  {selectedExport.label}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-white/80">
+                  {selectedExport.desc}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-[24px] border border-white/20 bg-black/10 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/70">
+                Generated timestamp
+              </p>
+
+              <p className="mt-2 text-sm font-bold leading-6 text-white">
+                {generatedAt}
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
+                  CHO briefing ready
+                </span>
+
+                <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  {sortedRiskRows.length > 0 ? 'DSS data ready' : 'Waiting for DSS data'}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExport}
+              style={{
+                backgroundColor: '#ffffff',
+                color: '#0f172a',
+                borderColor: 'rgba(255,255,255,0.45)',
+              }}
+              className="group mt-5 flex min-h-[78px] w-full items-center justify-between gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(15,23,42,0.22)]"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.24)]">
+                  <Download className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <p
+                    style={{ color: '#0f172a' }}
+                    className="text-sm font-black leading-5"
+                  >
+                    Generate selected output
+                  </p>
+
+                  <p
+                    style={{ color: '#64748b' }}
+                    className="mt-1 text-xs font-semibold leading-5"
+                  >
+                    Export the current DSS report.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: '#f1f5f9',
+                  color: '#255f8f',
+                }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition group-hover:translate-x-0.5"
+              >
+                <Download className="h-4 w-4" />
+              </div>
+            </button>
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -2191,55 +2365,69 @@ export default function ReportsPage() {
       </div>
 
       {usingBackendForecast && (
-        <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-  <span className="font-bold">Reports ready:</span>{' '}
-  The latest dengue analysis is ready for review. Reports, exports, priority ranking, and response recommendations now use the uploaded dengue records. The system identified{' '}
-  {formatNumber(Number(backendForecastResult?.risk_counts?.High || 0))} high-risk barangay
-  {Number(backendForecastResult?.risk_counts?.High || 0) === 1 ? '' : 's'},{' '}
-  {formatNumber(Number(backendForecastResult?.risk_counts?.Moderate || 0))} moderate-risk barangay
-  {Number(backendForecastResult?.risk_counts?.Moderate || 0) === 1 ? '' : 's'}, and{' '}
-  {formatNumber(Number(backendForecastResult?.risk_counts?.Low || 0))} low-risk barangay
-  {Number(backendForecastResult?.risk_counts?.Low || 0) === 1 ? '' : 's'}.
-</div>
+        <div className="relative overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50/80 px-5 py-4 text-sm leading-6 text-brand-green shadow-[0_18px_40px_rgba(15,23,42,0.07)] dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/60 blur-2xl dark:bg-white/5" />
+
+          <div className="relative flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm ring-1 ring-white/70 dark:bg-white/10 dark:ring-white/10">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+
+            <div>
+              <p className="font-black">Reports ready</p>
+
+              <p className="mt-1">
+                The latest dengue analysis is ready for review. Reports, exports, priority ranking, and response recommendations now use the uploaded dengue records. The system identified{' '}
+                {formatNumber(Number(backendForecastResult?.risk_counts?.High || 0))} high-risk barangay
+                {Number(backendForecastResult?.risk_counts?.High || 0) === 1 ? '' : 's'},{' '}
+                {formatNumber(Number(backendForecastResult?.risk_counts?.Moderate || 0))} moderate-risk barangay
+                {Number(backendForecastResult?.risk_counts?.Moderate || 0) === 1 ? '' : 's'}, and{' '}
+                {formatNumber(Number(backendForecastResult?.risk_counts?.Low || 0))} low-risk barangay
+                {Number(backendForecastResult?.risk_counts?.Low || 0) === 1 ? '' : 's'}.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_0.85fr]">
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <PremiumPanel id="decision-brief" className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-                <Sparkles className="h-3.5 w-3.5" />
+              <SectionBadge icon={Sparkles} tone="blue">
                 Decision brief
-              </div>
+              </SectionBadge>
 
-              <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
                 Weekly decision-support brief
-              </h3>
+              </h2>
 
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {usingBackendForecast ? 'Planning-ready report based on backend forecast, risk level, DSS priority, and recommended actions.' : 'Planning-ready report based on forecast, risk level, DSS priority, and recommended actions.'}
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+                {usingBackendForecast
+                  ? 'Planning-ready report based on backend forecast, risk level, DSS priority, and recommended actions.'
+                  : 'Planning-ready report based on forecast, risk level, DSS priority, and recommended actions.'}
               </p>
             </div>
 
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
               <CalendarDays className="h-3.5 w-3.5" />
               {generatedAt}
             </span>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
-            <h4 className="flex items-center gap-2 text-lg font-black text-brand-text dark:text-slate-100">
+          <div className="mt-5 rounded-[26px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-5 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
+            <h3 className="flex items-center gap-2 text-lg font-black text-brand-text dark:text-slate-100">
               <ClipboardList className="h-5 w-5 text-brand-blue" />
-              Decision summary
-            </h4>
+              Executive decision summary
+            </h3>
 
             <div className="mt-4 space-y-3">
               {reportSummary.map((item, index) => (
                 <div
                   key={item}
-                  className="flex items-start gap-3 rounded-[18px] border border-slate-100 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                  className="flex items-start gap-3 rounded-[20px] border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
                 >
-                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-blue text-xs font-bold text-white">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-blue text-xs font-black text-white">
                     {index + 1}
                   </div>
 
@@ -2252,17 +2440,41 @@ export default function ReportsPage() {
           </div>
 
           <div
-  id="priority-barangays"
-  className="scroll-mt-28 mt-5 rounded-[24px] border border-brand-line bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
->
-  <h4 className="flex items-center gap-2 text-lg font-black text-brand-text dark:text-slate-100">
-    <MapPin className="h-5 w-5 text-brand-red" />
-    Priority barangays
-  </h4>
+            id="priority-barangays"
+            className="scroll-mt-28 mt-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div className="min-w-0">
+    <div className="inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+      <MapPin className="h-3.5 w-3.5" />
+      DSS priority list
+    </div>
 
-            <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Showing the most important decision indicators first. Open details only when needed.
-            </p>
+    <h3 className="mt-3 text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+      Priority barangays
+    </h3>
+
+    <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+      Showing the highest-ranked barangays based on DSS score, risk level, forecasted cases, and recommended response priority.
+    </p>
+  </div>
+
+  <div className="flex w-fit shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-blue text-sm font-black text-white shadow-sm">
+      {formatNumber(topBarangays.length)}
+    </div>
+
+    <div className="pr-1">
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+        Showing
+      </p>
+
+      <p className="text-xs font-black text-brand-text dark:text-slate-100">
+        Top barangays
+      </p>
+    </div>
+  </div>
+</div>
 
             <div className="mt-4 space-y-3">
               {visibleTopBarangays.length > 0 ? (
@@ -2274,16 +2486,16 @@ export default function ReportsPage() {
                     return (
                       <div
                         key={`${row.barangay}-${index}`}
-                        className="group rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                        className="group rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/20 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-black text-brand-text shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm dark:bg-white dark:text-slate-950">
                               #{index + 1}
                             </div>
 
                             <div className="min-w-0">
-                              <p className="break-words font-bold text-brand-text dark:text-slate-100">
+                              <p className="break-words font-black text-brand-text dark:text-slate-100">
                                 {row.barangay}
                               </p>
 
@@ -2294,27 +2506,52 @@ export default function ReportsPage() {
                           </div>
 
                           <div className="flex flex-wrap gap-2">
-                            <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getRiskBadgeStyle(row.risk)}`}>
+                            <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(row.risk)}`}>
                               {row.risk || 'Unknown'}
                             </span>
 
-                            <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getPriorityBadgeStyle(decision.priority)}`}>
+                            <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getPriorityBadgeStyle(decision.priority)}`}>
                               {decision.priority}
                             </span>
                           </div>
                         </div>
 
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="text-xs font-semibold text-brand-muted dark:text-slate-500">
-                            DSS score: {formatNumber(decision.score)} points
-                          </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                              DSS score
+                            </p>
+                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                              {formatNumber(decision.score)} pts
+                            </p>
+                          </div>
 
+                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                              Historical
+                            </p>
+                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                              {formatNumber(row.totalCases)} cases
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                              Current
+                            </p>
+                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                              {formatNumber(row.currentCases || 0)} cases
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex justify-end">
                           <button
                             type="button"
                             onClick={() => {
                               setExpandedPriorityBarangay(isExpanded ? null : row.barangay)
                             }}
-                            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
+                            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
                           >
                             {isExpanded ? 'Hide details' : 'View details'}
                             {isExpanded ? (
@@ -2326,19 +2563,9 @@ export default function ReportsPage() {
                         </div>
 
                         {isExpanded && (
-                          <div className="mt-4 rounded-[20px] border border-slate-100 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                                Historical: {formatNumber(row.totalCases)} cases
-                              </span>
-
-                              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                                Current: {formatNumber(row.currentCases || 0)} cases
-                              </span>
-                            </div>
-
-                            <div className="mt-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
-                              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
+                          <div className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
+                            <div className="rounded-[20px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
                                 DSS recommendation
                               </p>
 
@@ -2348,8 +2575,8 @@ export default function ReportsPage() {
                             </div>
 
                             {decision.actions.length > 0 && (
-                              <div className="mt-3 rounded-[18px] border border-amber-100 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/10">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
+                              <div className="mt-3 rounded-[20px] border border-amber-100 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
                                   Action plan
                                 </p>
 
@@ -2371,8 +2598,8 @@ export default function ReportsPage() {
                             )}
 
                             {decision.rationale.length > 0 && (
-                              <div className="mt-3 rounded-[18px] border border-emerald-100 bg-emerald-50 px-4 py-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-green dark:text-emerald-300">
+                              <div className="mt-3 rounded-[20px] border border-emerald-100 bg-emerald-50 px-4 py-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-green dark:text-emerald-300">
                                   Why this priority
                                 </p>
 
@@ -2402,7 +2629,7 @@ export default function ReportsPage() {
                         setShowAllPriorityBarangays((current) => !current)
                         setExpandedPriorityBarangay(null)
                       }}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-brand-line bg-white px-4 py-3 text-sm font-bold text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-black text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
                     >
                       {showAllPriorityBarangays
                         ? 'Show less barangays'
@@ -2417,23 +2644,22 @@ export default function ReportsPage() {
                   )}
                 </>
               ) : (
-                <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                   No priority barangay data available.
                 </div>
               )}
             </div>
           </div>
-        </div>
+        </PremiumPanel>
 
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            <Download className="h-3.5 w-3.5" />
+        <PremiumPanel id="export-center" className="p-5 sm:p-6 xl:sticky xl:top-24 xl:self-start">
+          <SectionBadge icon={Download} tone="emerald">
             Export center
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Export options
-          </h3>
+          </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
             Select the output format, then generate the decision-support report.
@@ -2448,21 +2674,21 @@ export default function ReportsPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setFormat(item.id)}
-                  className={`group rounded-[22px] border p-4 text-left text-sm font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                  className={`group rounded-[24px] border p-4 text-left text-sm font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                     format === item.id
                       ? 'ring-2 ring-brand-blue ring-offset-2 dark:ring-offset-slate-900'
                       : ''
                   } ${item.style}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/70 shadow-sm dark:bg-white/10">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm dark:bg-white/10">
                       <Icon className="h-5 w-5" />
                     </div>
 
                     <div>
-                      <span>{item.label}</span>
+                      <span className="font-black">{item.label}</span>
 
-                      <span className="mt-1 block text-xs font-medium leading-5 opacity-75">
+                      <span className="mt-1 block text-xs font-semibold leading-5 opacity-75">
                         {item.desc}
                       </span>
                     </div>
@@ -2472,20 +2698,20 @@ export default function ReportsPage() {
             })}
           </div>
 
-          <div className="mt-5 rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 text-sm text-brand-muted shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:text-slate-400">
+          <div className="mt-5 rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-4 text-sm text-brand-muted shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:text-slate-400">
             <div className="flex items-center gap-3">
               <div
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${selectedExport.style}`}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${selectedExport.style}`}
               >
                 <SelectedExportIcon className="h-5 w-5" />
               </div>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                   Selected output
                 </p>
 
-                <p className="font-bold text-brand-text dark:text-slate-100">
+                <p className="font-black text-brand-text dark:text-slate-100">
                   {selectedExport.label}
                 </p>
               </div>
@@ -2495,25 +2721,27 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={handleExport}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[22px] bg-brand-blue px-4 py-3.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,95,143,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#255f8f] hover:shadow-[0_16px_34px_rgba(37,95,143,0.34)]"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[22px] bg-brand-blue px-4 py-3.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(37,95,143,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#255f8f] hover:shadow-[0_18px_38px_rgba(37,95,143,0.34)]"
           >
             <Download className="h-4 w-4" />
             Generate selected output
           </button>
 
           <div className="mt-5 rounded-[24px] border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:to-slate-900">
-            <p className="flex items-center gap-2 text-sm font-bold text-brand-orange dark:text-amber-300">
+            <p className="flex items-center gap-2 text-sm font-black text-brand-orange dark:text-amber-300">
               <AlertTriangle className="h-4 w-4" />
               Export note
             </p>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              {usingBackendForecast ? 'PDF, Excel, PowerPoint, and print reports now include backend forecast totals, DSS priority, recommended action plan, and decision rationale.' : 'PDF, Excel, PowerPoint, and print reports now include DSS priority, decision score, recommended action plan, and decision rationale.'}
+              {usingBackendForecast
+                ? 'PDF, Excel, PowerPoint, and print reports now include backend forecast totals, DSS priority, recommended action plan, and decision rationale.'
+                : 'PDF, Excel, PowerPoint, and print reports now include DSS priority, decision score, recommended action plan, and decision rationale.'}
             </p>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-sm font-bold text-brand-text dark:text-slate-100">
+          <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <p className="text-sm font-black text-brand-text dark:text-slate-100">
               DSS priority distribution
             </p>
 
@@ -2522,9 +2750,9 @@ export default function ReportsPage() {
                 priorityDistribution.map((item) => (
                   <div
                     key={item.priority}
-                    className="flex items-center justify-between gap-3 rounded-[18px] border border-slate-100 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900"
+                    className="flex items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900"
                   >
-                    <span className={`rounded-full border px-3 py-1 text-[11px] font-bold ${getPriorityBadgeStyle(item.priority)}`}>
+                    <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(item.priority)}`}>
                       {item.priority}
                     </span>
 
@@ -2534,23 +2762,23 @@ export default function ReportsPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-brand-muted dark:text-slate-400">
+                <p className="text-sm leading-6 text-brand-muted dark:text-slate-400">
                   DSS priority distribution will appear after dengue records are loaded.
                 </p>
               )}
             </div>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/80 p-5 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10">
-            <h4 className="flex items-center gap-2 text-lg font-black text-brand-orange dark:text-amber-300">
+          <div className="mt-5 rounded-[26px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-5 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950">
+            <h3 className="flex items-center gap-2 text-lg font-black text-brand-orange dark:text-amber-300">
               <ShieldAlert className="h-5 w-5" />
               Top response plan
-            </h4>
+            </h3>
 
             {topBarangay ? (
               <div className="mt-4 space-y-3">
                 <div>
-                  <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getPriorityBadgeStyle(topDecision.priority)}`}>
+                  <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getPriorityBadgeStyle(topDecision.priority)}`}>
                     {topDecision.priority}
                   </span>
 
@@ -2560,8 +2788,8 @@ export default function ReportsPage() {
                 </div>
 
                 {topDecision.actions.length > 0 && (
-                  <div className="rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                       Action plan
                     </p>
 
@@ -2583,8 +2811,8 @@ export default function ReportsPage() {
                 )}
 
                 {topDecision.rationale.length > 0 && (
-                  <div className="rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                       Why this recommendation
                     </p>
 
@@ -2608,115 +2836,112 @@ export default function ReportsPage() {
               </p>
             )}
           </div>
-        </div>
+        </PremiumPanel>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[0.7fr_1fr]">
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-            <Send className="h-3.5 w-3.5" />
+      <div className="grid gap-6 xl:grid-cols-[0.7fr_1fr]">
+        <PremiumPanel className="p-5 sm:p-6">
+          <SectionBadge icon={Send} tone="blue">
             Distribution
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Distribution list
-          </h3>
+          </h2>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-5 space-y-3">
             {distributionItems.map((item) => {
               const Icon = item.icon
 
               return (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between gap-3 rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                  className="flex items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-blue shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-blue-300 dark:ring-slate-700">
                       <Icon className="h-5 w-5" />
                     </div>
 
-                    <span className="text-sm font-semibold text-brand-text dark:text-slate-100">
+                    <span className="text-sm font-black text-brand-text dark:text-slate-100">
                       {item.label}
                     </span>
                   </div>
 
-                  <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-bold text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-black text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
                     Included
                   </span>
                 </div>
               )
             })}
           </div>
-        </div>
+        </PremiumPanel>
 
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            <Database className="h-3.5 w-3.5" />
+        <PremiumPanel className="p-5 sm:p-6">
+          <SectionBadge icon={Database} tone="slate">
             Source readiness
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Data source readiness
-          </h3>
+          </h2>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-  {Object.entries(sourceStatus || {}).length > 0 ? (
-    Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
-      <div
-        key={key}
-        className="min-w-0 rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
-      >
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold capitalize text-brand-text dark:text-slate-100">
-              {key}
-            </p>
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {Object.entries(sourceStatus || {}).length > 0 ? (
+              Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
+                <div
+                  key={key}
+                  className="min-w-0 rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+                >
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-black capitalize text-brand-text dark:text-slate-100">
+                        {key}
+                      </p>
 
-            <p className="mt-2 max-w-full break-all text-xs leading-5 text-brand-muted dark:text-slate-400">
-              {item.uploadedName || 'No file uploaded'}
-            </p>
+                      <p className="mt-2 max-w-full break-all text-xs leading-5 text-brand-muted dark:text-slate-400">
+                        {item.uploadedName || 'No file uploaded'}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-black ${getStatusStyle(item.badge)}`}
+                    >
+                      {item.badge || 'No status'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-muted dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                    {formatNumber(item.validCount || 0)} valid of {formatNumber(item.recordCount || 0)} records
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 lg:col-span-2">
+                No source status available yet.
+              </div>
+            )}
           </div>
-
-          <span
-            className={`w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${getStatusStyle(item.badge)}`}
-          >
-            {item.badge || 'No status'}
-          </span>
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-slate-100 bg-white px-3 py-2 text-xs font-semibold text-brand-muted dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          {formatNumber(item.validCount || 0)} valid of {formatNumber(item.recordCount || 0)} records
-        </div>
-      </div>
-    ))
-  ) : (
-    <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 lg:col-span-2">
-      No source status available yet.
-    </div>
-  )}
-</div>
-        </div>
+        </PremiumPanel>
       </div>
 
-      <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          <Activity className="h-3.5 w-3.5" />
+      <PremiumPanel className="p-5 sm:p-6">
+        <SectionBadge icon={Activity} tone="slate">
           Activity
-        </div>
+        </SectionBadge>
 
-        <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+        <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
           Recent report activity
-        </h3>
+        </h2>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
           {(activityLogs || []).slice(0, 3).length > 0 ? (
             (activityLogs || []).slice(0, 3).map((log) => (
               <div
                 key={log.id}
-                className="rounded-[22px] border border-slate-100 bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
               >
-                <p className="text-sm font-bold text-brand-text dark:text-slate-100">
+                <p className="text-sm font-black text-brand-text dark:text-slate-100">
                   {log.action}
                 </p>
 
@@ -2730,12 +2955,12 @@ export default function ReportsPage() {
               </div>
             ))
           ) : (
-            <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 lg:col-span-3">
+            <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 lg:col-span-3">
               No recent report activity yet.
             </div>
           )}
         </div>
-      </div>
+      </PremiumPanel>
     </div>
   )
 }

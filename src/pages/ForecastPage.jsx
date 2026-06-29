@@ -17,7 +17,6 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
-import SectionTitle from '../components/SectionTitle'
 import SparkChart from '../components/SparkChart'
 import { useData } from '../context/DataContext'
 import {
@@ -928,35 +927,68 @@ return {
   }
 }
 
+function PremiumPanel({ id, children, className = '' }) {
+  return (
+    <section
+      id={id}
+      className={`scroll-mt-28 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/90 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 ${className}`}
+    >
+      {children}
+    </section>
+  )
+}
+
+function SectionBadge({ icon: Icon, children, tone = 'blue' }) {
+  const toneMap = {
+    blue: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+    rose: 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+    emerald: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+    amber: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+    slate: 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  }
+
+  return (
+    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${toneMap[tone] || toneMap.blue}`}>
+      <Icon className="h-3.5 w-3.5" strokeWidth={2.4} />
+      {children}
+    </div>
+  )
+}
+
 function StatCard({ label, value, helper, icon: Icon, tone = 'blue' }) {
   const toneMap = {
     blue: {
-      iconWrap: 'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
-      glow: 'from-blue-50/80 to-white dark:from-blue-500/10 dark:to-slate-900',
+      iconWrap: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      glow: 'bg-blue-500/10',
+      accent: 'from-blue-500 to-sky-400',
     },
     rose: {
-      iconWrap: 'bg-rose-50 text-brand-red border-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
-      glow: 'from-rose-50/80 to-white dark:from-rose-500/10 dark:to-slate-900',
+      iconWrap: 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+      glow: 'bg-rose-500/10',
+      accent: 'from-rose-500 to-red-400',
     },
     emerald: {
-      iconWrap: 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-      glow: 'from-emerald-50/80 to-white dark:from-emerald-500/10 dark:to-slate-900',
+      iconWrap: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      glow: 'bg-emerald-500/10',
+      accent: 'from-emerald-500 to-teal-400',
     },
     amber: {
-      iconWrap: 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
-      glow: 'from-amber-50/80 to-white dark:from-amber-500/10 dark:to-slate-900',
+      iconWrap: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+      glow: 'bg-amber-500/10',
+      accent: 'from-amber-500 to-orange-400',
     },
   }
 
   const style = toneMap[tone] || toneMap.blue
 
   return (
-    <div className={`group relative overflow-hidden rounded-[26px] border border-brand-line/70 bg-gradient-to-br ${style.glow} p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(15,23,42,0.11)] dark:border-slate-800 dark:bg-slate-900`}>
-      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/60 blur-2xl dark:bg-white/5" />
+    <div className="group relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.07)] ring-1 ring-white/70 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_26px_58px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5">
+      <div className={`absolute -right-8 -top-8 h-28 w-28 rounded-full ${style.glow} blur-3xl`} />
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${style.accent}`} />
 
       <div className="relative flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-400">
             {label}
           </p>
 
@@ -970,9 +1002,25 @@ function StatCard({ label, value, helper, icon: Icon, tone = 'blue' }) {
         </div>
 
         <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-sm ${style.iconWrap}`}>
-          <Icon className="h-6 w-6" strokeWidth={2.2} />
+          <Icon className="h-6 w-6" strokeWidth={2.3} />
         </div>
       </div>
+    </div>
+  )
+}
+
+function HeroMetric({ label, value, helper }) {
+  return (
+    <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
+      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/80">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-black tracking-tight text-white">
+        {value}
+      </p>
+      <p className="mt-1 text-xs leading-5 text-white/80">
+        {helper}
+      </p>
     </div>
   )
 }
@@ -1028,6 +1076,7 @@ export default function ForecastPage() {
 
   const riskDistribution = getRiskDistribution(forecastRows)
   const priorityDistribution = getPriorityDistribution(forecastRows)
+  const highRiskCount = riskDistribution.find((item) => item.level === 'High')?.count || 0
 
   const projectedTotal = forecastRows.reduce((sum, row) => {
     return sum + Number(row.forecast || 0)
@@ -1044,6 +1093,10 @@ export default function ForecastPage() {
   const loadedRecordCount = usingBackendForecast
     ? Number(backendForecastResult?.valid_row_count || 0)
     : dengueRecords.length
+
+  const latestSourceTotal = weeklyTotals.length
+    ? weeklyTotals[weeklyTotals.length - 1]
+    : 0
 
   const highestRiskBarangay = forecastRows[0]
   const topDecisionSupport = highestRiskBarangay?.decisionSupport || null
@@ -1136,33 +1189,115 @@ export default function ForecastPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <SectionTitle
-        title="Forecast and Risk Scoring"
-        subtitle={usingBackendForecast ? "FastAPI backend baseline forecast with decision support priority ranking." : "Dynamic barangay-level forecast with decision support priority ranking."}
-        right={
-          <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
-            {[
-              ['caution', 'Low growth'],
-              ['baseline', 'Baseline'],
-              ['elevated', 'Moderate increase'],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setMode(key)}
-                className={`rounded-full border px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition ${
-                  mode === key
-                    ? 'border-brand-blue bg-brand-blue text-white shadow-[0_10px_22px_rgba(37,95,143,0.28)]'
-                    : 'border-brand-line bg-white text-brand-muted hover:border-brand-blue/30 hover:text-brand-text dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+    <div className="relative space-y-6 pb-10">
+      <div className="pointer-events-none absolute inset-x-0 -top-10 -z-10 h-72 rounded-full bg-blue-100/60 blur-3xl dark:bg-blue-500/10" />
+
+      <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.22)] sm:p-6 lg:p-7">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.14),transparent_34%)]" />
+
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_410px] xl:items-end">
+          <div>
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5" />
+              Forecast intelligence
+            </div>
+
+            <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+              Forecast and Risk Scoring
+            </h1>
+
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
+              {usingBackendForecast
+                ? 'FastAPI backend forecast output is converted into barangay-level risk, DSS ranking, and response recommendations.'
+                : 'Historical dengue records are analyzed into barangay-level projections, risk levels, DSS priority, and response recommendations.'}
+            </p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <HeroMetric
+                label="Projected total"
+                value={formatNumber(projectedTotal)}
+                helper="Four-week case forecast"
+              />
+
+              <HeroMetric
+                label="Urgent DSS alerts"
+                value={formatNumber(immediatePriorityCount)}
+                helper="Immediate or escalated priorities"
+              />
+
+              <HeroMetric
+                label="High-risk areas"
+                value={formatNumber(highRiskCount)}
+                helper="Barangays above high threshold"
+              />
+            </div>
           </div>
-        }
-      />
+
+          <div className="rounded-[28px] border border-white/25 bg-white/20 p-4 shadow-[0_20px_48px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/80">
+    Scenario control
+  </p>
+
+  <div className="mt-3 grid gap-2">
+    {[
+      ['caution', 'Low growth', '0.90x'],
+      ['baseline', 'Baseline', '1.00x'],
+      ['elevated', 'Moderate increase', '1.15x'],
+    ].map(([key, label, multiplier]) => {
+      const isActive = mode === key
+
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => setMode(key)}
+          style={
+            isActive
+              ? {
+                  backgroundColor: '#ffffff',
+                  color: '#0f172a',
+                  borderColor: '#ffffff',
+                }
+              : undefined
+          }
+          className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-bold transition ${
+            isActive
+              ? 'shadow-[0_14px_30px_rgba(255,255,255,0.24)]'
+              : 'border-white/20 bg-white/10 text-white hover:border-white/40 hover:bg-white/20'
+          }`}
+        >
+          <span>{label}</span>
+
+          <span
+            style={
+              isActive
+                ? {
+                    backgroundColor: '#255f8f',
+                    color: '#ffffff',
+                  }
+                : undefined
+            }
+            className={`rounded-full px-2.5 py-1 text-[11px] font-black ${
+              isActive
+                ? ''
+                : 'bg-white/20 text-white'
+            }`}
+          >
+            {multiplier}
+          </span>
+        </button>
+      )
+    })}
+  </div>
+
+  <div className="mt-4 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs leading-5 text-white/80">
+    Selected mode applies a scenario multiplier before the DSS ranks barangays by decision score.
+  </div>
+</div>
+        </div>
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -1182,10 +1317,10 @@ export default function ForecastPage() {
         />
 
         <StatCard
-          label="DSS alerts"
-          value={formatNumber(immediatePriorityCount)}
-          helper="Immediate, high, or escalated priorities"
-          icon={ShieldAlert}
+          label="Historical cases"
+          value={formatNumber(actualTotal)}
+          helper="Total cases in loaded dataset"
+          icon={Activity}
           tone="amber"
         />
 
@@ -1198,52 +1333,80 @@ export default function ForecastPage() {
         />
       </div>
 
-      <div className={`flex items-start gap-3 rounded-[24px] border px-5 py-4 shadow-sm ${computationStatus.style}`}>
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/70 shadow-sm dark:bg-white/10">
-          <StatusIcon className="h-5 w-5" />
-        </div>
+      <div className={`relative overflow-hidden rounded-[28px] border px-5 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.07)] ${computationStatus.style}`}>
+        <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/50 blur-2xl dark:bg-white/5" />
+        <div className="relative flex items-start gap-3">
+          <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm ring-1 ring-white/70 dark:bg-white/10 dark:ring-white/10">
+            <StatusIcon className="h-5 w-5" />
+          </div>
 
-        <div>
-          <p className="text-sm font-bold">
-            {computationStatus.title}
-          </p>
+          <div>
+            <p className="text-sm font-black">
+              {computationStatus.title}
+            </p>
 
-          <p className="mt-1 text-sm leading-6 opacity-80">
-            {computationStatus.message}
-          </p>
+            <p className="mt-1 text-sm leading-6 opacity-85">
+              {computationStatus.message}
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-  <div
-    id="forecast-model"
-    className="scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6"
-  >
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.24fr)_minmax(360px,0.76fr)]">
+        <PremiumPanel id="forecast-model" className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                <Sparkles className="h-3.5 w-3.5" />
+              <SectionBadge icon={Sparkles} tone="amber">
                 Forecast model
-              </div>
+              </SectionBadge>
 
-              <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
                 Projected weekly cases
-              </h3>
+              </h2>
 
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {usingBackendForecast ? 'Loaded from the backend baseline forecast endpoint after upload validation.' : 'Computed from recent dengue case movement in the loaded records.'}
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+                {usingBackendForecast
+                  ? 'Loaded from the backend baseline forecast endpoint after upload validation.'
+                  : 'Computed from recent dengue case movement in the loaded records.'}
               </p>
             </div>
 
-            <span
-              className={`w-fit rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm ${selectedMode.chip}`}
-            >
-              {selectedMode.label}
+            <span className={`w-fit rounded-full border px-4 py-2 text-xs font-black shadow-sm ${selectedMode.chip}`}>
+              {selectedMode.label} mode
             </span>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 text-sm leading-6 text-brand-text shadow-sm dark:border-slate-700 dark:from-slate-950 dark:to-slate-900 dark:text-slate-300">
-            <span className="font-bold text-brand-text dark:text-slate-100">
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+              <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
+                Latest source total
+              </p>
+              <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                {formatNumber(latestSourceTotal)}
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+              <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
+                Source periods
+              </p>
+              <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                {formatNumber(computedPeriods.length)}
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+              <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
+                Adjustment
+              </p>
+              <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                {formatDecimal(selectedMode.multiplier, 2)}x
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[26px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/50 px-4 py-4 text-sm leading-6 text-brand-text shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:text-slate-300">
+            <span className="font-black text-brand-text dark:text-slate-100">
               Computation method:
             </span>{' '}
             {usingBackendForecast
@@ -1251,72 +1414,91 @@ export default function ForecastPage() {
               : 'Recent case averages, trend movement, scenario multiplier, population exposure, density, and barangay boundary context are used to compute forecast risk and DSS priority.'}
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-[28px] border border-slate-100 bg-gradient-to-b from-white to-slate-50 p-4 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
-                Projected weekly case values
+          <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-950">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-500">
+                  Projected weekly case values
+                </p>
+                <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
+                  Forecast curve for the selected scenario.
+                </p>
               </div>
 
-              <div className="w-fit rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-brand-muted dark:bg-slate-800 dark:text-slate-300">
+              <div className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                 {computedPeriods.length} source periods
               </div>
             </div>
 
-            <div className="h-[240px] sm:h-[260px]">
+            <div className="h-[300px] sm:h-[340px]">
               {projectedWeeklyValues.length > 0 ? (
                 <SparkChart values={projectedWeeklyValues} />
               ) : (
-                <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                <div className="flex h-full items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                   No chart available until dengue records are loaded.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[22px] border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 px-4 py-3 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-900">
-              <p className="text-sm font-bold text-brand-blue dark:text-blue-300">
-                Scenario mode
-              </p>
+          <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-stretch">
+  <div className="grid gap-3 sm:grid-cols-2">
+    <div className="rounded-[22px] border border-blue-100 bg-blue-50/80 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+      <p className="text-sm font-black text-brand-blue dark:text-blue-300">
+        Scenario mode
+      </p>
 
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {selectedMode.label} uses a {selectedMode.multiplier}x adjustment on computed projections.
-              </p>
-            </div>
+      <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+        {selectedMode.label} applies a {selectedMode.multiplier}x adjustment on computed projections.
+      </p>
+    </div>
 
-            <div className="rounded-[22px] border border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
-              <p className="text-sm font-bold text-brand-text dark:text-slate-100">
-                DSS ranking basis
-              </p>
+    <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+      <p className="text-sm font-black text-brand-text dark:text-slate-100">
+        DSS ranking basis
+      </p>
 
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Barangays are ranked by decision score first, then forecasted cases.
-              </p>
-            </div>
-          </div>
+      <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+        Barangays are ranked by decision score first, then forecasted cases.
+      </p>
+    </div>
+  </div>
 
-          <button
-            type="button"
-            onClick={handleRunForecast}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand-blue px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,95,143,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(37,95,143,0.34)] sm:w-auto"
-          >
-            <BarChart3 className="h-4 w-4" />
-            Save forecast run
-          </button>
-        </div>
+  <button
+    type="button"
+    onClick={handleRunForecast}
+    className="group relative flex min-h-[96px] w-full overflow-hidden rounded-[24px] border border-blue-400/30 bg-gradient-to-br from-brand-blue via-blue-600 to-sky-500 px-5 py-4 text-left text-white shadow-[0_18px_38px_rgba(37,95,143,0.30)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(37,95,143,0.38)]"
+  >
+    <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/20 blur-2xl transition group-hover:bg-white/30" />
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/30" />
 
-<div
-  id="risk-summary"
-  className="scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6"
->
-  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
-            <ShieldAlert className="h-3.5 w-3.5" />
+    <div className="relative flex w-full items-center gap-4">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 shadow-inner ring-1 ring-white/30">
+        <BarChart3 className="h-5 w-5" />
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-sm font-black leading-5">
+          Save forecast run
+        </p>
+
+        <p className="mt-1 text-xs leading-5 text-white/80">
+          Log this scenario and DSS result.
+        </p>
+      </div>
+    </div>
+  </button>
+</div>
+        </PremiumPanel>
+
+        <PremiumPanel id="risk-summary" className="p-5 sm:p-6">
+          <SectionBadge icon={ShieldAlert} tone="rose">
             Risk distribution
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Risk summary
-          </h3>
+          </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
             Barangays grouped by computed forecast risk level.
@@ -1329,16 +1511,16 @@ export default function ForecastPage() {
               return (
                 <div
                   key={item.label}
-                  className="rounded-[24px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                  className="rounded-[26px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${item.badge}`}>
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-[18px] ${item.badge}`}>
                         <Icon className="h-5 w-5" />
                       </div>
 
                       <div>
-                        <p className="font-bold text-brand-text dark:text-slate-100">
+                        <p className="font-black text-brand-text dark:text-slate-100">
                           {item.label}
                         </p>
 
@@ -1348,14 +1530,14 @@ export default function ForecastPage() {
                       </div>
                     </div>
 
-                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${item.badge}`}>
+                    <span className={`rounded-full px-3 py-1 text-xs font-black ${item.badge}`}>
                       {item.width}
                     </span>
                   </div>
 
                   <div className="mt-4 h-3.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                     <div
-                      className={`h-3.5 rounded-full ${item.bar}`}
+                      className={`h-3.5 rounded-full shadow-sm ${item.bar}`}
                       style={{ width: item.width }}
                     />
                   </div>
@@ -1364,8 +1546,8 @@ export default function ForecastPage() {
             })}
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-sm font-bold text-brand-text dark:text-slate-100">
+          <div className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+            <p className="text-sm font-black text-brand-text dark:text-slate-100">
               DSS priority distribution
             </p>
 
@@ -1374,44 +1556,38 @@ export default function ForecastPage() {
                 priorityDistribution.map((item) => (
                   <div
                     key={item.priority}
-                    className="flex flex-col gap-2 rounded-[18px] border border-slate-100 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900"
+                    className="flex items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <span
-                        className={`rounded-full border px-3 py-1 text-[11px] font-bold ${getPriorityBadgeStyle(item.priority)}`}
-                      >
-                        {item.priority}
-                      </span>
+                    <span
+                      className={`rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(item.priority)}`}
+                    >
+                      {item.priority}
+                    </span>
 
-                      <span className="text-xs font-black text-brand-text dark:text-slate-100">
-                        {formatNumber(item.count)}
-                      </span>
-                    </div>
+                    <span className="text-sm font-black text-brand-text dark:text-slate-100">
+                      {formatNumber(item.count)}
+                    </span>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-brand-muted dark:text-slate-400">
+                <p className="rounded-[18px] border border-dashed border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                   DSS priorities will appear after dengue records are loaded.
                 </p>
               )}
             </div>
           </div>
-        </div>
+        </PremiumPanel>
       </div>
 
-     <div className="grid gap-5 xl:grid-cols-[0.82fr_1fr]">
-  <div
-    id="top-barangays"
-    className="scroll-mt-28 rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6"
-  >
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            <MapPin className="h-3.5 w-3.5" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(380px,1.06fr)]">
+        <PremiumPanel id="top-barangays" className="p-5 sm:p-6">
+          <SectionBadge icon={MapPin} tone="slate">
             DSS priority list
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Top barangays
-          </h3>
+          </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
             Showing the most important risk indicators first. Open details only when needed.
@@ -1427,47 +1603,72 @@ export default function ForecastPage() {
                   return (
                     <div
                       key={row.barangay}
-                      className="group rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                      className="group rounded-[26px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-brand-blue/20 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-black text-brand-text shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] bg-slate-950 text-sm font-black text-white shadow-sm ring-1 ring-slate-900/5 dark:bg-white dark:text-slate-950">
                             #{index + 1}
                           </div>
 
                           <div className="min-w-0">
-                            <span className="break-words font-bold text-brand-text dark:text-slate-100">
+                            <span className="break-words text-base font-black text-brand-text dark:text-slate-100">
                               {row.barangay}
                             </span>
 
-                            <p className="text-xs text-brand-muted dark:text-slate-400">
+                            <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
                               Forecast: {formatNumber(row.forecast)} cases
                             </p>
                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getRiskBadgeStyle(row.risk)}`}>
+                          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(row.risk)}`}>
                             {row.risk}
                           </span>
 
-                          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${getPriorityBadgeStyle(row.responsePriority)}`}>
+                          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getPriorityBadgeStyle(row.responsePriority)}`}>
                             {row.responsePriority}
                           </span>
                         </div>
                       </div>
 
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs font-semibold text-brand-muted dark:text-slate-500">
-                          DSS score: {formatNumber(row.decisionScore)} points
-                        </p>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                            DSS score
+                          </p>
+                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                            {formatNumber(row.decisionScore)} pts
+                          </p>
+                        </div>
 
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                            Trend
+                          </p>
+                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                            {row.trendLabel}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                            Total
+                          </p>
+                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                            {formatNumber(row.totalCases)} cases
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-end">
                         <button
                           type="button"
                           onClick={() => {
                             setExpandedBarangay(isExpanded ? null : row.barangay)
                           }}
-                          className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
+                          className="inline-flex w-fit items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
                         >
                           {isExpanded ? 'Hide details' : 'View details'}
                           {isExpanded ? (
@@ -1479,9 +1680,9 @@ export default function ForecastPage() {
                       </div>
 
                       {isExpanded && (
-                        <div className="mt-4 rounded-[20px] border border-slate-100 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+                        <div className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
                           <div className="grid gap-2 sm:grid-cols-3">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold ${getTrendStyle(row.trendLabel)}`}>
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black ${getTrendStyle(row.trendLabel)}`}>
                               <TrendIcon className="h-3.5 w-3.5" />
                               {row.trendLabel}
                             </span>
@@ -1491,12 +1692,12 @@ export default function ForecastPage() {
                             </span>
 
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                              Total: {formatNumber(row.totalCases)} cases
+                              Recent avg: {formatDecimal(row.recentAverage)}
                             </span>
                           </div>
 
-                          <div className="mt-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
+                          <div className="mt-4 rounded-[20px] border border-blue-100 bg-blue-50/90 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+                            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
                               Recommended action
                             </p>
 
@@ -1517,7 +1718,7 @@ export default function ForecastPage() {
                       setShowAllTopBarangays((current) => !current)
                       setExpandedBarangay(null)
                     }}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-brand-line bg-white px-4 py-3 text-sm font-bold text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-black text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-blue-300"
                   >
                     {showAllTopBarangays ? 'Show less barangays' : `Show all ${topBarangays.length} barangays`}
                     {showAllTopBarangays ? (
@@ -1529,42 +1730,41 @@ export default function ForecastPage() {
                 )}
               </>
             ) : (
-              <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+              <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                 No forecast ranking available yet. Upload historical dengue records first.
               </div>
             )}
           </div>
-        </div>
+        </PremiumPanel>
 
-        <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            <Target className="h-3.5 w-3.5" />
+        <PremiumPanel className="p-5 sm:p-6 xl:sticky xl:top-24 xl:self-start">
+          <SectionBadge icon={Target} tone="emerald">
             Decision support
-          </div>
+          </SectionBadge>
 
-          <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
             Recommended response
-          </h3>
+          </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            The DSS reads the forecast output, trend, risk level, population exposure, and density before suggesting action.
+            The DSS reads forecast output, trend, risk level, population exposure, and density before suggesting action.
           </p>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-1">
             {decisionHighlights.map((item) => {
               const Icon = item.icon
 
               return (
                 <div
                   key={item.title}
-                  className={`flex items-start gap-3 rounded-[22px] border px-4 py-3.5 shadow-sm ${item.style}`}
+                  className={`flex items-start gap-3 rounded-[24px] border px-4 py-3.5 shadow-sm ${item.style}`}
                 >
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 shadow-sm dark:bg-white/10">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/60 dark:bg-white/10 dark:ring-white/10">
                     <Icon className="h-4 w-4" />
                   </div>
 
                   <div>
-                    <p className="text-sm font-bold">
+                    <p className="text-sm font-black">
                       {item.title}
                     </p>
 
@@ -1577,8 +1777,8 @@ export default function ForecastPage() {
             })}
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:to-slate-900">
-            <p className="flex items-center gap-2 text-sm font-bold text-brand-orange dark:text-amber-300">
+          <div className="mt-5 overflow-hidden rounded-[28px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950">
+            <p className="flex items-center gap-2 text-sm font-black text-brand-orange dark:text-amber-300">
               <ArrowUpRight className="h-4 w-4" />
               Top response plan
             </p>
@@ -1587,7 +1787,7 @@ export default function ForecastPage() {
               <div className="mt-3 space-y-3">
                 <div>
                   <span
-                    className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-bold ${getPriorityBadgeStyle(topDecisionSupport.priority)}`}
+                    className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(topDecisionSupport.priority)}`}
                   >
                     {topDecisionSupport.priority}
                   </span>
@@ -1598,8 +1798,8 @@ export default function ForecastPage() {
                 </div>
 
                 {Array.isArray(topDecisionSupport.actions) && topDecisionSupport.actions.length > 0 && (
-                  <div className="rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  <div className="rounded-[20px] border border-white/80 bg-white/75 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                       Action plan
                     </p>
 
@@ -1621,8 +1821,8 @@ export default function ForecastPage() {
                 )}
 
                 {Array.isArray(topDecisionSupport.rationale) && topDecisionSupport.rationale.length > 0 && (
-                  <div className="rounded-[18px] border border-white/70 bg-white/70 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  <div className="rounded-[20px] border border-white/80 bg-white/75 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                       Why this recommendation
                     </p>
 
@@ -1646,7 +1846,7 @@ export default function ForecastPage() {
               </p>
             )}
           </div>
-        </div>
+        </PremiumPanel>
       </div>
     </div>
   )

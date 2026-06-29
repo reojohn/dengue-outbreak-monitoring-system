@@ -316,59 +316,6 @@ export default function LoginPage() {
         {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
       </button>
 
-      {isSigningIn && (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm animate-fade">
-          <div className="w-full max-w-md rounded-[32px] border border-white/10 bg-slate-950/90 p-7 text-center shadow-2xl">
-            <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
-              <div className={`absolute inset-0 rounded-full border ${currentRoleVisual.ring}`} />
-              <div className={`absolute inset-2 rounded-full border ${currentRoleVisual.ring} animate-ping`} />
-              <div className={`absolute inset-4 rounded-full ${currentRoleVisual.bg} blur-md`} />
-
-              {scanStage === 4 ? (
-                <CheckCircle2 className="relative z-10 h-14 w-14 text-emerald-300 animate-pop" />
-              ) : (
-                <Fingerprint className="relative z-10 h-14 w-14 text-cyan-300 animate-pulse" />
-              )}
-            </div>
-
-            <h3 className="mt-5 text-xl font-black text-white">
-              {currentScan.title}
-            </h3>
-
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              {currentScan.message}
-            </p>
-
-            <div className="mt-5 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-500"
-                style={{ width: `${Math.max(18, scanStage * 25)}%` }}
-              />
-            </div>
-
-            <div className="mt-5 rounded-[22px] border border-cyan-400/20 bg-cyan-500/10 p-4 text-left">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
-                    Detected Role
-                  </p>
-
-                  <p className="mt-1 text-sm font-bold text-white">
-                    {getRoleLabel(roleHint)}
-                  </p>
-                </div>
-
-                <span
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${getRoleBadgeStyle(roleHint)}`}
-                >
-                  {currentRoleVisual.shortLabel}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="relative grid w-full max-w-6xl grid-cols-1 overflow-hidden rounded-[34px] border border-white/10 bg-white/5 shadow-2xl backdrop-blur-2xl animate-slideIn lg:grid-cols-[1.05fr_0.95fr]">
         <section className="relative hidden min-h-[690px] flex-col justify-center overflow-hidden bg-white/5 p-10 text-white lg:flex xl:p-12">
           {scanStage > 0 && (
@@ -414,59 +361,109 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <h1 className="mt-8 text-center text-4xl font-black leading-tight tracking-tight xl:text-[46px]">
-              Barangay-Level Dengue Outbreak Prevention System
-            </h1>
+            {!isSigningIn && (
+              <>
+                <h1 className="mt-8 text-center text-4xl font-black leading-tight tracking-tight xl:text-[46px]">
+                  Barangay-Level Dengue Outbreak Prevention System
+                </h1>
 
-            <p className="mx-auto mt-5 max-w-md text-center text-base leading-8 text-slate-300">
-              Secure prototype access for dengue data upload, risk forecasting, GIS hotspot mapping, and monitoring reports.
-            </p>
+                <p className="mx-auto mt-5 max-w-md text-center text-base leading-8 text-slate-300">
+                  Secure prototype access for dengue data upload, risk forecasting, GIS hotspot mapping, and monitoring reports.
+                </p>
+              </>
+            )}
 
-            <div className="mt-8 grid gap-3">
-              {items.map((item) => {
-                const Icon = item.icon
+            {!isSigningIn && (
+              <div className="mt-8 grid gap-3">
+                {items.map((item) => {
+                  const Icon = item.icon
 
-                return (
-                  <div
-                    key={item.title}
-                    className="rounded-[24px] border border-white/10 bg-white/5 p-4 backdrop-blur"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-300">
-                        <Icon className="h-5 w-5" />
-                      </div>
+                  return (
+                    <div
+                      key={item.title}
+                      className="rounded-[24px] border border-white/10 bg-white/5 p-4 backdrop-blur"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-300">
+                          <Icon className="h-5 w-5" />
+                        </div>
 
-                      <div>
-                        <p className="text-sm font-bold text-white">
-                          {item.title}
-                        </p>
+                        <div>
+                          <p className="text-sm font-bold text-white">
+                            {item.title}
+                          </p>
 
-                        <p className="mt-1 text-sm leading-6 text-slate-400">
-                          {item.description}
-                        </p>
+                          <p className="mt-1 text-sm leading-6 text-slate-400">
+                            {item.description}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {scanStage > 0 && (
-              <div className="mt-7 flex flex-col items-center text-white animate-pulse">
-                <p className="text-sm font-semibold text-cyan-200">
-                  {currentScan.title}
-                </p>
-
-                <p className="mt-1 text-xs text-slate-400">
-                  {currentScan.message}
-                </p>
+                  )
+                })}
               </div>
             )}
 
             {roleHint && (
-              <div className={`mx-auto mt-5 w-fit rounded-full border px-4 py-2 text-sm animate-fade ${getRoleBadgeStyle(roleHint)}`}>
+              <div className={`mx-auto mt-7 w-fit rounded-full border px-4 py-2 text-sm animate-fade ${getRoleBadgeStyle(roleHint)}`}>
                 SELECTED ROLE:{' '}
                 <b>{getRoleLabel(roleHint).toUpperCase()}</b>
+              </div>
+            )}
+
+            {isSigningIn && (
+              <div className="mx-auto mt-7 w-full max-w-md animate-fade">
+                <div className="relative overflow-hidden rounded-[30px] border border-cyan-400/20 bg-slate-950/45 p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                  <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-cyan-400/20 blur-3xl" />
+                  <div className="pointer-events-none absolute -bottom-16 left-0 h-36 w-36 rounded-full bg-blue-500/20 blur-3xl" />
+
+                  <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
+                    <div className={`absolute inset-0 rounded-full border ${currentRoleVisual.ring}`} />
+                    <div className={`absolute inset-2 rounded-full border ${currentRoleVisual.ring} animate-ping`} />
+                    <div className={`absolute inset-4 rounded-full ${currentRoleVisual.bg} blur-md`} />
+
+                    {scanStage === 4 ? (
+                      <CheckCircle2 className="relative z-10 h-14 w-14 text-emerald-300 animate-pop" />
+                    ) : (
+                      <Fingerprint className="relative z-10 h-14 w-14 text-cyan-300 animate-pulse" />
+                    )}
+                  </div>
+
+                  <h3 className="relative mt-5 text-xl font-black text-white">
+                    {currentScan.title}
+                  </h3>
+
+                  <p className="relative mt-2 text-sm leading-6 text-slate-300">
+                    {currentScan.message}
+                  </p>
+
+                  <div className="relative mt-5 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-500"
+                      style={{ width: `${Math.max(18, scanStage * 25)}%` }}
+                    />
+                  </div>
+
+                  <div className="relative mt-5 rounded-[22px] border border-cyan-400/20 bg-cyan-500/10 p-4 text-left">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
+                          Detected Role
+                        </p>
+
+                        <p className="mt-1 text-sm font-bold text-white">
+                          {getRoleLabel(roleHint)}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${getRoleBadgeStyle(roleHint)}`}
+                      >
+                        {currentRoleVisual.shortLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

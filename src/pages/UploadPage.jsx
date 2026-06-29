@@ -1,8 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, CloudRain, Users, Map as MapIcon } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardCheck,
+  CloudRain,
+  Database,
+  FileCheck2,
+  FileText,
+  Map as MapIcon,
+  ShieldCheck,
+  Sparkles,
+  Table2,
+  UploadCloud,
+  Users,
+} from 'lucide-react'
 import * as XLSX from 'xlsx'
-import SectionTitle from '../components/SectionTitle'
 import { useData } from '../context/DataContext'
 import {
   cleanDengueFile,
@@ -1119,7 +1133,7 @@ function getStatusStyle(badge = '') {
     return 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
   }
 
-  if (value.includes('uploaded') || value.includes('sample') || value.includes('ready')) {
+  if (value.includes('uploaded') || value.includes('sample') || value.includes('ready') || value.includes('valid')) {
     return 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
   }
 
@@ -1348,6 +1362,16 @@ export default function UploadPage() {
         recordCount: selectedStatus.recordCount || storedRecords.length,
       }
 
+  const ActiveSourceIcon = selectedSource.icon
+  const validPercent = Number(currentStats.recordCount || 0) > 0
+    ? Math.round((Number(currentStats.validCount || 0) / Number(currentStats.recordCount || 0)) * 100)
+    : 0
+  const readyChecklistCount = checklist.filter((item) => item.ready).length
+  const loadedSourceCount = sources.filter((source) => {
+    return Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0
+  }).length
+  const selectedFileName = selectedStatus.uploadedName || 'No file uploaded yet'
+
   async function handleFileUpload(event) {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -1528,292 +1552,532 @@ setUploadMessage(
   }
 
   return (
-  <div className="space-y-4 pb-6 sm:space-y-5">
-    <SectionTitle
-      title="Data Upload"
-      subtitle="Multi-source data upload with automatic field mapping, cleaning, and validation before forecasting."
-      right={
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <span className="flex flex-1 justify-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 sm:flex-none sm:text-xs">
-            Upload files
-          </span>
-          <span className="flex flex-1 justify-center rounded-full border border-amber-100 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 sm:flex-none sm:text-xs">
-            Review quality
-          </span>
-        </div>
-      }
-    />
+    <div className="relative space-y-6 pb-10">
+      <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/60 blur-3xl dark:bg-blue-500/10" />
 
-   <div
-  id="data-upload"
-  className="scroll-mt-28 grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-[1.15fr_0.85fr]"
->
-      <div className="space-y-4 sm:space-y-5">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-          {sources.map((source) => {
-            const isActive = selected === source.id
-            const status = sourceStatus?.[source.contextKey] || {}
-            const badge = status.badge || 'Not loaded'
-            const SourceIcon = source.icon
+      <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.20)] dark:border-slate-800 sm:p-6 lg:p-7">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_34%)]" />
 
-            return (
-              <button
-  key={source.id}
-  id={source.id === 'boundary' ? 'boundary-upload' : undefined}
-  type="button"
-  onClick={() => {
-    setSelected(source.id)
-    setUploadMessage('')
-    setUploadError('')
-  }}
-  className={`scroll-mt-28 rounded-[22px] border bg-white/90 p-4 text-left shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur transition-all duration-200 dark:bg-slate-900/90 dark:shadow-none sm:rounded-[28px] sm:p-5 sm:shadow-[0_16px_40px_rgba(15,23,42,0.07)] ${
-                  isActive
-                    ? 'border-brand-blue ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:ring-blue-500/20'
-                    : 'border-brand-line/70 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:hover:shadow-none'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border text-lg font-bold shadow-sm dark:shadow-none sm:h-14 sm:w-14 sm:rounded-[20px] ${source.color}`}
-                  >
-                    <SourceIcon className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.3} />
-                  </div>
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-stretch">
+          <div className="flex flex-col justify-between">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" />
+                Data intake center
+              </div>
 
-                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold sm:px-3 sm:text-xs ${getStatusStyle(badge)}`}>
-                    {badge}
-                  </span>
-                </div>
+              <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+                Data Upload and Validation
+              </h1>
 
-                <div className="mt-4">
-                  <h3 className="text-base font-bold tracking-tight text-brand-text dark:text-slate-100 sm:text-lg">
-                    {source.title}
-                  </h3>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/80 sm:text-base">
+                Upload dengue, weather, population, and boundary datasets. The system automatically maps fields, cleans records, validates data quality, and prepares the workspace for forecasting.
+              </p>
+            </div>
 
-                  <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                    {source.desc}
-                  </p>
-
-                  <div
-                    className={`mt-4 rounded-[18px] border border-slate-100 bg-gradient-to-r px-3 py-2.5 text-sm font-medium text-brand-muted dark:border-slate-800 dark:text-slate-300 sm:rounded-[20px] sm:px-4 sm:py-3 ${source.glow}`}
-                  >
-                    {source.type}
-                  </div>
-
-                  <p className="mt-3 text-xs text-brand-muted dark:text-slate-500">
-                    {status.validCount || 0} valid of {status.recordCount || 0} records
-                  </p>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="rounded-[24px] border border-brand-line/70 bg-white/90 p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none sm:rounded-[30px] sm:p-6 sm:shadow-[0_16px_40px_rgba(15,23,42,0.07)]">
-          <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:text-[11px]">
-            Data quality
-          </div>
-
-          <h3 className="text-lg font-bold tracking-tight text-brand-text dark:text-slate-100 sm:text-xl">
-            Validation summary
-          </h3>
-
-          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Uploaded files are automatically mapped, cleaned, and checked before forecasting.
-          </p>
-
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ['Missing values', currentStats.missingCount || 0, 'bg-rose-50 text-brand-red border-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'],
-              ['Invalid values', currentStats.invalidCount || 0, 'bg-orange-50 text-brand-orange border-orange-100 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300'],
-              ['Duplicates removed', currentStats.duplicateCount || 0, 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'],
-              ['Valid records', `${currentStats.validCount || 0}/${currentStats.recordCount || 0}`, 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'],
-            ].map(([label, value, style]) => (
-              <div
-                key={label}
-                className="rounded-[20px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none sm:rounded-[24px]"
-              >
-                <div className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] sm:text-[11px] ${style}`}>
-                  {label}
-                </div>
-
-                <p className="mt-4 text-2xl font-bold tracking-tight text-brand-text dark:text-slate-100 sm:text-3xl">
-                  {value}
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                  Sources loaded
+                </p>
+                <p className="mt-3 text-2xl font-black text-white">
+                  {loadedSourceCount}/{sources.length}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Datasets with valid records
                 </p>
               </div>
-            ))}
-          </div>
 
-          {uploadMessage && (
-            <div className="mt-5 rounded-[18px] border border-emerald-100 bg-emerald-50/70 p-4 text-sm leading-6 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 sm:rounded-[22px]">
-              {uploadMessage}
-            </div>
-          )}
+              <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                  Current validity
+                </p>
+                <p className="mt-3 text-2xl font-black text-white">
+                  {validPercent}%
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Valid records in selected source
+                </p>
+              </div>
 
-          {uploadError && (
-            <div className="mt-5 rounded-[18px] border border-rose-100 bg-rose-50/70 p-4 text-sm leading-6 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300 sm:rounded-[22px]">
-              {uploadError}
-            </div>
-          )}
-
-          {(validationResult?.sourceId === selected && validationResult.mappingSummary) && (
-            <div className="mt-5 rounded-[18px] border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 sm:rounded-[22px]">
-              <span className="font-semibold">Auto-cleaning details:</span>{' '}
-              {validationResult.mappingSummary}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-[24px] border border-brand-line/70 bg-white/90 p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none sm:rounded-[30px] sm:p-6 sm:shadow-[0_16px_40px_rgba(15,23,42,0.07)]">
-          <div className="mb-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 sm:text-[11px]">
-            Records preview
-          </div>
-
-          <h3 className="text-lg font-bold tracking-tight text-brand-text dark:text-slate-100 sm:text-xl">
-            Cleaned records preview
-          </h3>
-
-          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Preview of standardized records after automatic cleaning and validation.
-          </p>
-
-          <div className="mt-5 overflow-hidden rounded-[18px] border border-brand-line dark:border-slate-800 sm:rounded-[22px]">
-            <div className="max-w-full overflow-x-auto">
-              <table className="w-full min-w-[540px] text-left text-sm sm:min-w-[620px]">
-                <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-brand-muted dark:bg-slate-950 dark:text-slate-400 sm:text-xs">
-                  <tr>
-                    {previewHeaders.map((header) => (
-                      <th key={header} className="px-3 py-3 font-semibold sm:px-4">
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
-                  {previewRows.length > 0 ? (
-                    previewRows.slice(0, 8).map((row, index) => (
-                      <tr key={row.id || index} className="dark:hover:bg-slate-800/60">
-                        {renderPreviewCells(selected, row).map((cell, cellIndex) => (
-                          <td
-                            key={`${row.id || index}-${cellIndex}`}
-                            className="px-3 py-3 text-sm text-brand-text dark:text-slate-300 sm:px-4"
-                          >
-                            {String(cell || 'N/A')}
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={previewHeaders.length}
-                        className="px-4 py-6 text-center text-sm text-brand-muted dark:text-slate-400"
-                      >
-                        No records available for this source yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                  Forecast readiness
+                </p>
+                <p className="mt-3 text-2xl font-black text-white">
+                  {readyChecklistCount}/{checklist.length}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Required checks completed
+                </p>
+              </div>
             </div>
           </div>
 
-          <p className="mt-3 text-xs text-brand-muted dark:text-slate-500">
-            Showing up to 8 records only. Swipe sideways on mobile to view the full table.
-          </p>
-        </div>
-      </div>
+          <div className="rounded-[30px] border border-white/20 bg-white/20 p-5 shadow-[0_20px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border border-white/20 bg-white/20 text-white shadow-inner">
+                <ActiveSourceIcon className="h-7 w-7" strokeWidth={2.2} />
+              </div>
 
-      <div className="rounded-[24px] border border-brand-line/70 bg-white/90 p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none sm:rounded-[30px] sm:p-6 sm:shadow-[0_16px_40px_rgba(15,23,42,0.07)]">
-        <div className="mb-2 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 sm:text-[11px]">
-          Validation
-        </div>
-
-        <h3 className="text-lg font-bold tracking-tight text-brand-text dark:text-slate-100 sm:text-xl">
-          Validation checklist
-        </h3>
-
-        <div className="mt-5 space-y-3">
-          {checklist.map((item) => (
-            <div
-              key={item.label}
-              className="flex flex-col gap-2 rounded-[18px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none sm:flex-row sm:items-center sm:justify-between sm:rounded-[22px]"
-            >
-              <span className="text-sm font-medium leading-6 text-brand-text dark:text-slate-100">
-                {item.label}
-              </span>
-
-              <span
-                className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
-                  item.ready
-                    ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-                    : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
-                }`}
-              >
-                {item.ready ? 'Ready' : 'Pending'}
-              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/60">
+                  Selected source
+                </p>
+                <h2 className="mt-2 text-xl font-black tracking-tight text-white">
+                  {selectedSource.title}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-white/70">
+                  {selectedSource.desc}
+                </p>
+              </div>
             </div>
-          ))}
-        </div>
 
-        <div className="mt-5 rounded-[20px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none sm:rounded-[24px]">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500 sm:text-xs">
-            Selected source
-          </div>
+            <div className="mt-5 rounded-[24px] border border-white/20 bg-black/10 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                Current file
+              </p>
+              <p className="mt-2 break-words text-sm font-bold leading-6 text-white">
+                {selectedFileName}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
+                  {selectedSource.type}
+                </span>
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(selectedStatus.badge || 'Not loaded')}`}>
+                  {selectedStatus.badge || 'Not loaded'}
+                </span>
+              </div>
+            </div>
 
-          <div className="mt-2 text-base font-semibold text-brand-text dark:text-slate-100">
-            {selectedSource?.title}
-          </div>
+            <label
+  style={{
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
+    borderColor: 'rgba(255,255,255,0.45)',
+  }}
+  className="group mt-5 flex min-h-[82px] cursor-pointer items-center justify-between gap-4 rounded-[24px] border px-5 py-4 shadow-[0_18px_38px_rgba(15,23,42,0.16)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(15,23,42,0.20)]"
+>
+  <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.24)]">
+      <UploadCloud className="h-5 w-5" />
+    </div>
 
-          <div className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            {selectedSource?.desc}
-          </div>
+    <div className="min-w-0">
+      <p
+        style={{ color: '#0f172a' }}
+        className="break-words text-sm font-black leading-5"
+      >
+        {isProcessing ? 'Processing file...' : `Choose ${selectedSource.title} file`}
+      </p>
 
-          <div className="mt-3 break-words text-xs leading-5 text-brand-muted dark:text-slate-500">
-            Current source file: {selectedStatus.uploadedName || 'No file uploaded'}
-          </div>
-        </div>
-
-        <div className="mt-5 rounded-[20px] border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 p-4 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-900 dark:shadow-none sm:rounded-[24px]">
-          <p className="text-sm font-semibold text-brand-blue dark:text-blue-300">
-            Upload selected source
-          </p>
-
-          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Select a CSV, Excel, JSON, or GeoJSON file. The system will attempt to detect columns, clean values, and standardize records automatically.
-          </p>
-
-          <label className="mt-4 flex min-h-[48px] cursor-pointer items-center justify-center rounded-[18px] border border-brand-blue bg-white px-4 py-3 text-center text-sm font-semibold leading-5 text-brand-blue transition hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-950 dark:text-blue-300 dark:hover:bg-slate-900 sm:rounded-[20px]">
-            {isProcessing ? 'Processing file...' : `Choose ${selectedSource?.title} file`}
-            <input
-              type="file"
-              className="hidden"
-              accept={selectedSource?.accept}
-              onChange={handleFileUpload}
-              disabled={isProcessing}
-            />
-          </label>
-        </div>
-
-        <div className="mt-5 rounded-[20px] border border-amber-100 bg-amber-50/70 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none sm:rounded-[24px]">
-          <p className="text-sm font-semibold text-brand-orange dark:text-amber-300">
-            File format note
-          </p>
-
-          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            CSV, Excel, JSON, and GeoJSON are supported. Boundary layers must be uploaded as GeoJSON or JSON. Shapefile parsing can be added later through the backend.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => navigate('/forecast')}
-          className="mt-5 w-full rounded-[20px] bg-gradient-to-r from-brand-blue to-[#255f8f] px-4 py-4 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(37,95,143,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(37,95,143,0.34)] dark:shadow-none dark:hover:shadow-none sm:rounded-[24px]"
-        >
-          Proceed to Forecast
-        </button>
-      </div>
+      <p
+        style={{ color: '#64748b' }}
+        className="mt-1 text-xs font-semibold leading-5"
+      >
+        Automatic mapping, cleaning, and validation
+      </p>
     </div>
   </div>
-)
+
+  <div
+    style={{
+      backgroundColor: '#f1f5f9',
+      color: '#255f8f',
+    }}
+    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition group-hover:translate-x-0.5"
+  >
+    →
+  </div>
+
+  <input
+    type="file"
+    className="hidden"
+    accept={selectedSource?.accept}
+    onChange={handleFileUpload}
+    disabled={isProcessing}
+  />
+</label>
+          </div>
+        </div>
+      </section>
+
+      <div
+        id="data-upload"
+        className="scroll-mt-28 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.18fr)_390px]"
+      >
+        <div className="space-y-5">
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                  <Database className="h-3.5 w-3.5" />
+                  Dataset sources
+                </div>
+                <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Select the dataset to upload
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  Each source is validated separately so the forecast workflow receives clean and standardized records.
+                </p>
+              </div>
+
+              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {loadedSourceCount} active source{loadedSourceCount === 1 ? '' : 's'}
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {sources.map((source) => {
+                const isActive = selected === source.id
+                const status = sourceStatus?.[source.contextKey] || {}
+                const badge = status.badge || 'Not loaded'
+                const SourceIcon = source.icon
+                const validCount = Number(status.validCount || 0)
+                const recordCount = Number(status.recordCount || 0)
+                const sourcePercent = recordCount > 0 ? Math.round((validCount / recordCount) * 100) : 0
+
+                return (
+                  <button
+                    key={source.id}
+                    id={source.id === 'boundary' ? 'boundary-upload' : undefined}
+                    type="button"
+                    onClick={() => {
+                      setSelected(source.id)
+                      setUploadMessage('')
+                      setUploadError('')
+                    }}
+                    className={`group relative overflow-hidden rounded-[28px] border p-5 text-left shadow-[0_14px_34px_rgba(15,23,42,0.06)] transition-all duration-200 dark:shadow-none ${
+                      isActive
+                        ? 'border-brand-blue bg-gradient-to-br from-blue-50 via-white to-sky-50 ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-900 dark:ring-blue-500/20'
+                        : 'border-brand-line/70 bg-white/90 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-[0_22px_44px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:bg-slate-900/90 dark:hover:shadow-none'
+                    }`}
+                  >
+                    <div className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${source.glow} blur-2xl opacity-70 transition group-hover:opacity-100`} />
+
+                    <div className="relative flex items-start justify-between gap-3">
+                      <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border shadow-sm ${source.color}`}>
+                        <SourceIcon className="h-6 w-6" strokeWidth={2.3} />
+                      </div>
+
+                      <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(badge)}`}>
+                        {badge}
+                      </span>
+                    </div>
+
+                    <div className="relative mt-4">
+                      <h3 className="text-lg font-black tracking-tight text-brand-text dark:text-slate-100">
+                        {source.title}
+                      </h3>
+
+                      <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                        {source.desc}
+                      </p>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-bold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                          {source.type}
+                        </span>
+                        <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-bold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                          {validCount}/{recordCount} valid
+                        </span>
+                      </div>
+
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div
+                          className="h-full rounded-full bg-brand-blue transition-all"
+                          style={{ width: `${sourcePercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Data quality
+                </div>
+                <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Validation summary
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  Uploaded files are automatically mapped, cleaned, and checked before forecasting.
+                </p>
+              </div>
+
+              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-right dark:border-slate-700 dark:bg-slate-800/70">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  Validity score
+                </p>
+                <p className="mt-1 text-2xl font-black text-brand-text dark:text-slate-100">
+                  {validPercent}%
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ['Missing values', currentStats.missingCount || 0, AlertTriangle, 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'],
+                ['Invalid values', currentStats.invalidCount || 0, AlertTriangle, 'border-orange-100 bg-orange-50 text-brand-orange dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300'],
+                ['Duplicates removed', currentStats.duplicateCount || 0, FileCheck2, 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'],
+                ['Valid records', `${currentStats.validCount || 0}/${currentStats.recordCount || 0}`, CheckCircle2, 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'],
+              ].map(([label, value, Icon, style]) => (
+                <div
+                  key={label}
+                  className="rounded-[24px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                >
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${style}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+
+                  <p className="mt-4 text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    {label}
+                  </p>
+
+                  <p className="mt-2 text-3xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {uploadMessage && (
+              <div className="mt-5 flex items-start gap-3 rounded-[24px] border border-emerald-100 bg-emerald-50/80 p-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 shadow-sm dark:bg-white/10">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <p>{uploadMessage}</p>
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="mt-5 flex items-start gap-3 rounded-[24px] border border-rose-100 bg-rose-50/80 p-4 text-sm leading-6 text-brand-red shadow-sm dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 shadow-sm dark:bg-white/10">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <p>{uploadError}</p>
+              </div>
+            )}
+
+            {(validationResult?.sourceId === selected && validationResult.mappingSummary) && (
+              <div className="mt-5 rounded-[24px] border border-blue-100 bg-blue-50/80 p-4 text-sm leading-6 text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                <span className="font-black">Auto-cleaning details:</span>{' '}
+                {validationResult.mappingSummary}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                  <Table2 className="h-3.5 w-3.5" />
+                  Records preview
+                </div>
+                <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Cleaned records preview
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  Preview of standardized records after automatic cleaning and validation.
+                </p>
+              </div>
+
+              <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                Showing 8 rows
+              </span>
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-[24px] border border-brand-line dark:border-slate-800">
+              <div className="max-w-full overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-brand-muted dark:bg-slate-950 dark:text-slate-400">
+                    <tr>
+                      {previewHeaders.map((header) => (
+                        <th key={header} className="px-4 py-4 font-black">
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+                    {previewRows.length > 0 ? (
+                      previewRows.slice(0, 8).map((row, index) => {
+                        const cells = renderPreviewCells(selected, row)
+
+                        return (
+                          <tr key={row.id || index} className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                            {cells.map((cell, cellIndex) => {
+                              const isStatusCell = cellIndex === cells.length - 1
+
+                              return (
+                                <td
+                                  key={`${row.id || index}-${cellIndex}`}
+                                  className="px-4 py-4 text-sm text-brand-text dark:text-slate-300"
+                                >
+                                  {isStatusCell ? (
+                                    <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(String(cell || ''))}`}>
+                                      {String(cell || 'N/A')}
+                                    </span>
+                                  ) : (
+                                    String(cell || 'N/A')
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={previewHeaders.length}
+                          className="px-4 py-10 text-center text-sm text-brand-muted dark:text-slate-400"
+                        >
+                          No records available for this source yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-brand-muted dark:text-slate-500">
+              Showing up to 8 records only. Swipe sideways on mobile to view the full table.
+            </p>
+          </div>
+        </div>
+
+        <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Validation
+            </div>
+
+            <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              Readiness checklist
+            </h3>
+
+            <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+              Complete each requirement before relying on the forecast and DSS outputs.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              {checklist.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-3 rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${
+                        item.ready
+                          ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+                      }`}
+                    >
+                      {item.ready ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4" />
+                      )}
+                    </div>
+
+                    <span className="text-sm font-bold leading-6 text-brand-text dark:text-slate-100">
+                      {item.label}
+                    </span>
+                  </div>
+
+                  <span
+                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${
+                      item.ready
+                        ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                        : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+                    }`}
+                  >
+                    {item.ready ? 'Ready' : 'Pending'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+              <UploadCloud className="h-3.5 w-3.5" />
+              Upload control
+            </div>
+
+            <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              Upload selected source
+            </h3>
+
+            <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                Selected source
+              </p>
+              <div className="mt-3 flex items-start gap-3">
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${selectedSource.color}`}>
+                  <ActiveSourceIcon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-black text-brand-text dark:text-slate-100">
+                    {selectedSource.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                    {selectedSource.desc}
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-4 break-words text-xs leading-5 text-brand-muted dark:text-slate-500">
+                Current source file: {selectedFileName}
+              </p>
+            </div>
+
+            <label className="mt-5 flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-[22px] border border-brand-blue bg-brand-blue px-4 py-4 text-center text-sm font-black leading-5 text-white shadow-[0_14px_30px_rgba(37,95,143,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(37,95,143,0.34)] dark:border-blue-500/30">
+              <UploadCloud className="h-4 w-4" />
+              {isProcessing ? 'Processing file...' : `Choose ${selectedSource?.title} file`}
+              <input
+                type="file"
+                className="hidden"
+                accept={selectedSource?.accept}
+                onChange={handleFileUpload}
+                disabled={isProcessing}
+              />
+            </label>
+
+            <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/75 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
+              <p className="text-sm font-black text-brand-orange dark:text-amber-300">
+                File format note
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                CSV, Excel, JSON, and GeoJSON are supported. Boundary layers must be uploaded as GeoJSON or JSON. Shapefile parsing can be added later through the backend.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigate('/forecast')}
+              className="group mt-5 flex w-full items-center justify-center gap-2 rounded-[22px] bg-gradient-to-r from-brand-blue to-[#255f8f] px-4 py-4 text-sm font-black text-white shadow-[0_14px_30px_rgba(37,95,143,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(37,95,143,0.34)]"
+            >
+              Proceed to Forecast
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+            </button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  )
 }
