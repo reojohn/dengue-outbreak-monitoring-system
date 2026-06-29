@@ -1406,9 +1406,13 @@ export default function UploadPage() {
           ? ` ${backendResult.recordCount - backendResult.validCount} row(s) need review.`
           : ''
 
-        setUploadMessage(
-          `${file.name} was inspected, cleaned, summarized, and forecasted by the backend. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.${invalidNote}${riskNote}`
-        )
+        const highRiskCount = Number(forecastResult?.risk_counts?.High || 0)
+const moderateRiskCount = Number(forecastResult?.risk_counts?.Moderate || 0)
+const lowRiskCount = Number(forecastResult?.risk_counts?.Low || 0)
+
+setUploadMessage(
+  `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.`
+)
 
         addActivityLog(
           'Backend dengue dataset uploaded',
