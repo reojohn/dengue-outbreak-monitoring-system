@@ -358,6 +358,179 @@ function getStatusStyle(badge = '') {
   return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
+function hasBackendForecastData(backendForecastResult) {
+  return (
+    Array.isArray(backendForecastResult?.forecast_results) &&
+    backendForecastResult.forecast_results.length > 0
+  )
+}
+
+function getBackendPriorityLabel(row = {}) {
+  const risk = row.risk_level || 'Low'
+  const trend = row.trend_direction || 'Stable'
+
+  if (risk === 'High') return 'Immediate Response'
+  if (risk === 'Moderate' && trend === 'Increasing') return 'Preventive Monitoring'
+  if (risk === 'Moderate') return 'Preventive Monitoring'
+  if (risk === 'Low' && trend === 'Increasing') return 'Early Monitoring'
+
+  return 'Routine Monitoring'
+}
+
+function getBackendDecisionScore(row = {}) {
+  const risk = row.risk_level || 'Low'
+  const forecast = Number(row.forecast_next_4_periods || 0)
+  const priorityRank = Number(row.priority_rank || 0)
+
+  const riskWeight = {
+    High: 90,
+    Moderate: 60,
+    Low: 30,
+  }[risk] || 20
+
+  const rankBonus = priorityRank > 0 ? Math.max(0, 20 - priorityRank) : 0
+  const forecastBonus = Math.min(60, Math.round(forecast / 2))
+
+  return riskWeight + forecastBonus + rankBonus
+}
+
+function getBackendActionPlan(row = {}) {
+  const recommendation = row.recommendation || getGenericRecommendedAction(row.risk_level)
+  const risk = row.risk_level || 'Low'
+  const barangay = row.barangay || 'the barangay'
+
+  if (risk === 'High') {
+    return [
+      recommendation,
+      `Coordinate immediate barangay-level inspection and cleanup activities in ${barangay}.`,
+      'Validate recent case reports and check if clustered cases are occurring near possible breeding sites.',
+      'Prioritize health education reminders, larval source reduction, and close weekly monitoring.',
+    ]
+  }
+
+  if (risk === 'Moderate') {
+    return [
+      recommendation,
+      `Schedule preventive inspection and community cleanup activities in ${barangay}.`,
+      'Monitor case movement during the next reporting period and prepare escalation if the trend increases.',
+      'Continue barangay information drives on dengue prevention and breeding-site removal.',
+    ]
+  }
+
+  return [
+    recommendation,
+    `Maintain routine surveillance and sanitation monitoring in ${barangay}.`,
+    'Continue public reminders on dengue prevention and household source reduction.',
+  ]
+}
+
+function getBackendRationale(row = {}) {
+  const forecast = Number(row.forecast_next_4_periods || 0)
+  const historical = Number(row.historical_total_cases || 0)
+  const recentAverage = Number(row.recent_average_cases || 0)
+  const previousAverage = Number(row.previous_average_cases || 0)
+  const trend = row.trend_direction || 'Stable'
+  const risk = row.risk_level || 'Low'
+
+  return [
+    `Backend baseline forecast projects ${formatNumber(forecast)} case${forecast === 1 ? '' : 's'} for the next four periods.`,
+    `Risk level is classified as ${risk} using the backend forecast output.`,
+    `Trend direction is ${trend}, based on a recent average of ${formatNumber(recentAverage)} compared with a previous average of ${formatNumber(previousAverage)}.`,
+    `The uploaded dataset contains ${formatNumber(historical)} historical case${historical === 1 ? '' : 's'} for this barangay.`,
+  ]
+}
+
+function buildBackendRiskRows(backendForecastResult = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+
+  return backendRows
+    .map((row) => {
+      const priority = getBackendPriorityLabel(row)
+      const score = getBackendDecisionScore(row)
+      const recommendation = row.recommendation || getGenericRecommendedAction(row.risk_level)
+      const actions = getBackendActionPlan(row)
+      const rationale = getBackendRationale(row)
+
+      return {
+        barangay: row.barangay || 'Unspecified barangay',
+        risk: row.risk_level || 'Low',
+        forecast: Number(row.forecast_next_4_periods || 0),
+        forecastedCases: Number(row.forecast_next_4_periods || 0),
+        predictedCases: Number(row.forecast_next_4_periods || 0),
+        totalCases: Number(row.historical_total_cases || 0),
+        cases: Number(row.historical_total_cases || 0),
+        currentCases: Number(row.forecast_next_period || 0),
+        previousCases: Number(row.previous_average_cases || 0),
+        recentAverage: Number(row.recent_average_cases || 0),
+        previousAverage: Number(row.previous_average_cases || 0),
+        trend: row.trend_direction || 'Stable',
+        trendLabel: row.trend_direction || 'Stable',
+        latestPeriod: row.latest_period || '',
+        priorityRank: Number(row.priority_rank || 0),
+        responsePriority: priority,
+        decisionScore: score,
+        recommendedAction: recommendation,
+        primaryAction: recommendation,
+        recommendedActions: actions,
+        recommendationRationale: rationale,
+        decisionSupport: {
+          priority,
+          score,
+          summary: recommendation,
+          primaryAction: recommendation,
+          actions,
+          rationale,
+          trendDirection: row.trend_direction || 'Stable',
+          densityLevel: 'Density unavailable',
+          populationExposure: 'Population exposure unavailable',
+          forecastPressure: `${row.risk_level || 'Low'} forecast pressure`,
+        },
+      }
+    })
+    .sort((a, b) => {
+      if (a.priorityRank && b.priorityRank) {
+        return a.priorityRank - b.priorityRank
+      }
+
+      return b.forecast - a.forecast
+    })
+}
+
+function buildBackendDashboardStats(backendForecastResult = null, backendDengueSummary = null) {
+  const backendRows = backendForecastResult?.forecast_results || []
+  const riskCounts = backendForecastResult?.risk_counts || {}
+  const originalRowCount = Number(backendForecastResult?.original_row_count || 0)
+  const validRowCount = Number(backendForecastResult?.valid_row_count || 0)
+
+  const totalCases =
+    Number(backendDengueSummary?.total_cases || 0) ||
+    backendRows.reduce((sum, row) => {
+      return sum + Number(row.historical_total_cases || 0)
+    }, 0)
+
+  const fourWeekForecast =
+    Number(backendForecastResult?.total_forecast_next_4_periods || 0) ||
+    backendRows.reduce((sum, row) => {
+      return sum + Number(row.forecast_next_4_periods || 0)
+    }, 0)
+
+  const highRiskCount =
+    Number(riskCounts.High || 0) ||
+    backendRows.filter((row) => row.risk_level === 'High').length
+
+  const dataQuality =
+    originalRowCount > 0
+      ? Math.round((validRowCount / originalRowCount) * 100)
+      : 0
+
+  return {
+    totalCases,
+    highRiskCount,
+    fourWeekForecast,
+    dataQuality,
+  }
+}
+
 function getTopDecisionText(topBarangay) {
   if (!topBarangay) {
     return 'No barangay decision support output is available yet.'
@@ -1863,14 +2036,38 @@ export default function ReportsPage() {
     riskRows = [],
     sourceStatus = {},
     activityLogs = [],
+    backendForecastResult = null,
+    backendDengueSummary = null,
     addActivityLog,
   } = useData()
 
   const generatedAt = getCurrentDateTime()
+  const usingBackendForecast = hasBackendForecastData(backendForecastResult)
+
+  const displayRiskRows = useMemo(() => {
+    if (usingBackendForecast) {
+      return buildBackendRiskRows(backendForecastResult)
+    }
+
+    return riskRows
+  }, [usingBackendForecast, backendForecastResult, riskRows])
+
+  const displayDashboardStats = useMemo(() => {
+    if (usingBackendForecast) {
+      return buildBackendDashboardStats(backendForecastResult, backendDengueSummary)
+    }
+
+    return dashboardStats
+  }, [
+    usingBackendForecast,
+    backendForecastResult,
+    backendDengueSummary,
+    dashboardStats,
+  ])
 
   const sortedRiskRows = useMemo(() => {
-    return getSortedRiskRows(riskRows)
-  }, [riskRows])
+    return getSortedRiskRows(displayRiskRows)
+  }, [displayRiskRows])
 
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
@@ -1888,9 +2085,9 @@ export default function ReportsPage() {
   const reportSummary = useMemo(() => {
     return getReportSummary({
       sortedRiskRows,
-      dashboardStats,
+      dashboardStats: displayDashboardStats,
     })
-  }, [sortedRiskRows, dashboardStats])
+  }, [sortedRiskRows, displayDashboardStats])
 
   async function handleExport() {
     const title = 'Weekly Dengue Decision Support Report'
@@ -1898,7 +2095,7 @@ export default function ReportsPage() {
 
     if (format === 'pdf') {
       downloadPdfReport({
-        dashboardStats,
+        dashboardStats: displayDashboardStats,
         riskRows: sortedRiskRows,
         sourceStatus,
         generatedAt: exportedAt,
@@ -1911,7 +2108,7 @@ export default function ReportsPage() {
 
     if (format === 'excel') {
       downloadExcelWorkbook({
-        dashboardStats,
+        dashboardStats: displayDashboardStats,
         riskRows: sortedRiskRows,
         sourceStatus,
         generatedAt: exportedAt,
@@ -1923,7 +2120,7 @@ export default function ReportsPage() {
 
     if (format === 'powerpoint') {
       await downloadPowerPointDeck({
-        dashboardStats,
+        dashboardStats: displayDashboardStats,
         riskRows: sortedRiskRows,
         sourceStatus,
         generatedAt: exportedAt,
@@ -1938,7 +2135,7 @@ export default function ReportsPage() {
     }
 
     openPrintableReport({
-      dashboardStats,
+      dashboardStats: displayDashboardStats,
       riskRows: sortedRiskRows,
       sourceStatus,
       generatedAt: exportedAt,
@@ -1952,13 +2149,17 @@ export default function ReportsPage() {
     <div className="space-y-5">
       <SectionTitle
         title="Reports and Export"
-        subtitle="Decision-ready outputs for CHO review, barangay coordination, and response planning."
+        subtitle={
+          usingBackendForecast
+            ? 'Decision-ready outputs generated from backend forecast, summary, DSS priority, and response recommendations.'
+            : 'Decision-ready outputs for CHO review, barangay coordination, and response planning.'
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total cases"
-          value={formatNumber(dashboardStats.totalCases)}
+          value={formatNumber(displayDashboardStats.totalCases)}
           helper="Recorded cases in workspace"
           icon={Database}
           tone="blue"
@@ -1974,7 +2175,7 @@ export default function ReportsPage() {
 
         <StatCard
           label="Forecast total"
-          value={formatNumber(dashboardStats.fourWeekForecast)}
+          value={formatNumber(displayDashboardStats.fourWeekForecast)}
           helper="Projected four-week cases"
           icon={BarChart3}
           tone="amber"
@@ -1982,12 +2183,20 @@ export default function ReportsPage() {
 
         <StatCard
           label="Data quality"
-          value={`${dashboardStats.dataQuality || 0}%`}
+          value={`${displayDashboardStats.dataQuality || 0}%`}
           helper="Validated data readiness score"
           icon={CheckCircle2}
           tone="emerald"
         />
       </div>
+
+      {usingBackendForecast && (
+        <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span className="font-bold">Backend report data loaded:</span>{' '}
+          Reports, exports, DSS ranking, and response recommendations are now using the FastAPI backend forecast output from{' '}
+          {backendForecastResult?.filename || sourceStatus?.dengue?.uploadedName || 'the uploaded dengue dataset'}.
+        </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[1fr_0.85fr]">
         <div className="rounded-[30px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
@@ -2003,7 +2212,7 @@ export default function ReportsPage() {
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Planning-ready report based on forecast, risk level, DSS priority, and recommended actions.
+                {usingBackendForecast ? 'Planning-ready report based on backend forecast, risk level, DSS priority, and recommended actions.' : 'Planning-ready report based on forecast, risk level, DSS priority, and recommended actions.'}
               </p>
             </div>
 
@@ -2294,7 +2503,7 @@ export default function ReportsPage() {
             </p>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              PDF, Excel, PowerPoint, and print reports now include DSS priority, decision score, recommended action plan, and decision rationale.
+              {usingBackendForecast ? 'PDF, Excel, PowerPoint, and print reports now include backend forecast totals, DSS priority, recommended action plan, and decision rationale.' : 'PDF, Excel, PowerPoint, and print reports now include DSS priority, decision score, recommended action plan, and decision rationale.'}
             </p>
           </div>
 
