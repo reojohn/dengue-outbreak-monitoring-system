@@ -28,6 +28,7 @@ import {
 import LeafletRiskMap from '../components/LeafletRiskMap'
 import { useData } from '../context/DataContext'
 import { computeDecisionSupport, riskStyles } from '../utils/analytics'
+import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 
 const mapStyleOptions = [
   {
@@ -1854,22 +1855,42 @@ export default function MapPage() {
         <div
           className={
             isMapExpanded
-              ? 'grid gap-5 lg:grid-cols-[0.75fr_1fr]'
+              ? 'grid items-start gap-5 lg:grid-cols-[0.75fr_1fr]'
               : 'space-y-5'
           }
         >
-          <div className="rounded-[30px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-5 text-sm leading-6 text-brand-muted shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-950 dark:text-slate-400 sm:p-6">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-100 bg-white text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-              <Navigation className="h-5 w-5" />
+          <div
+            className={`relative self-start overflow-hidden rounded-[30px] border border-blue-500/20 bg-black shadow-[0_22px_60px_rgba(15,23,42,0.18)] ring-1 ring-white/10 ${
+              isMapExpanded
+                ? 'h-[min(680px,calc(100vh-180px))] min-h-[520px]'
+                : 'h-[360px]'
+            }`}
+          >
+            <div className="absolute inset-0 flex items-center justify-center bg-black">
+              <img
+                src={gisGlobalNetworkGif}
+                alt="Geospatial monitoring animation"
+                className="h-full w-full object-cover object-center opacity-95"
+              />
             </div>
 
-            <p className="mt-4 font-black text-brand-blue dark:text-blue-300">
-              Draggable barangay panel
-            </p>
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.20)_55%,rgba(0,0,0,0.85)_100%)]" />
 
-            <p className="mt-1">
-              Click a barangay on the map. A floating details panel will appear outside the map and can be dragged anywhere on the screen.
-            </p>
+            <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-white/90 backdrop-blur">
+                <Navigation className="h-3.5 w-3.5" />
+                Live geospatial view
+              </div>
+
+              <h3 className="text-lg font-black tracking-tight text-white">
+                Barangay intelligence layer
+              </h3>
+
+              <p className="mt-1 max-w-md text-sm leading-6 text-white/75">
+                Select a barangay on the map to open its risk profile, decision support details, action plan, and recommendation rationale.
+              </p>
+            </div>
           </div>
 
           <div className="rounded-[34px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 sm:p-6">

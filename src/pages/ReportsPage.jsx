@@ -861,10 +861,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           </tbody>
         </table>
 
-        <div class="note">
-          <h3>Prototype Note</h3>
-          <p>This report is generated from the current frontend prototype workspace. Final model testing and official reporting should be performed after the official DOH dengue dataset is available and validated.</p>
-        </div>
+        
       </body>
     </html>
   `
@@ -1141,20 +1138,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     },
   })
 
-  const prototypeY = doc.lastAutoTable.finalY + 24
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
-  doc.text('Prototype Note', margin, prototypeY)
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-
-  const prototypeText =
-    'This report is generated from the current frontend prototype workspace. Final model testing and official reporting should be performed after the official DOH dengue dataset is available and validated.'
-
-  const wrappedPrototype = doc.splitTextToSize(prototypeText, pageWidth - margin * 2)
-  doc.text(wrappedPrototype, margin, prototypeY + 18)
+  
 
   doc.save('weekly-dengue-decision-support-report.pdf')
 }
@@ -1187,11 +1171,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Top DSS barangay', topBarangay?.barangay || 'No data'],
     ['Top DSS priority', topDecision.priority || 'No data'],
     ['Top DSS summary', topDecision.summary || 'No recommendation available'],
-    [],
-    ['Prototype Note'],
-    [
-      'This workbook is generated from the current prototype workspace. Final reporting should use validated official dengue records.',
-    ],
+    
   ])
 
   summarySheet['!cols'] = [{ wch: 34 }, { wch: 110 }]
