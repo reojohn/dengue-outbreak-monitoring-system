@@ -7,8 +7,11 @@ import {
   BarChart3,
   CheckCircle2,
   Clock3,
+  CloudRain,
   Database,
+  Droplets,
   FileText,
+  Gauge,
   Layers3,
   MapPinned,
   Navigation,
@@ -16,6 +19,7 @@ import {
   ShieldAlert,
   Sparkles,
   Target,
+  Thermometer,
   TrendingUp,
   UploadCloud,
 } from 'lucide-react'
@@ -64,6 +68,27 @@ const actions = [
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
+}
+
+function toNumber(value, fallback = 0) {
+  if (value === undefined || value === null || value === '') return fallback
+
+  const cleaned =
+    typeof value === 'string'
+      ? value.replace(/,/g, '').trim()
+      : value
+
+  const number = Number(cleaned)
+
+  return Number.isFinite(number) ? number : fallback
+}
+
+function formatDecimal(value, decimals = 2) {
+  const number = toNumber(value)
+
+  return new Intl.NumberFormat('en-PH', {
+    maximumFractionDigits: decimals,
+  }).format(number)
 }
 
 function getTrendStatus(values = []) {
@@ -137,6 +162,182 @@ function getRiskBadgeStyle(risk) {
   }
 
   return 'border-slate-200 bg-slate-100 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
+function getDecisionSupport(row) {
+  const decisionSupport = row?.decisionSupport || {}
+  const summary =
+    decisionSupport.summary ||
+    row?.recommendedAction ||
+    row?.recommendation ||
+    'Decision support recommendation will appear after risk rows are computed.'
+
+  const priority =
+    decisionSupport.priority ||
+    row?.responsePriority ||
+    (row ? 'Standard Risk Response' : 'Pending Dataset')
+
+  const score =
+    row?.decisionScore ??
+    decisionSupport.score ??
+    row?.riskScore ??
+    row?.multiSourceRiskScore ??
+    0
+
+  const actions = Array.isArray(decisionSupport.actions)
+    ? decisionSupport.actions
+    : Array.isArray(row?.recommendedActions)
+      ? row.recommendedActions
+      : summary
+        ? [summary]
+        : []
+
+  const rationale = Array.isArray(decisionSupport.rationale)
+    ? decisionSupport.rationale
+    : Array.isArray(row?.recommendationRationale)
+      ? row.recommendationRationale
+      : []
+
+  return {
+    priority,
+    score,
+    summary,
+    primaryAction: decisionSupport.primaryAction || row?.primaryAction || actions[0] || summary,
+    actions,
+    rationale,
+    trendDirection:
+      decisionSupport.trendDirection ||
+      row?.trendDirection ||
+      row?.trend ||
+      'Trend unavailable',
+    densityLevel:
+      decisionSupport.densityLevel ||
+      row?.densityLevel ||
+      'Density unavailable',
+    populationExposure:
+      decisionSupport.populationExposure ||
+      row?.populationExposure ||
+      'Population exposure unavailable',
+    forecastPressure:
+      decisionSupport.forecastPressure ||
+      row?.forecastPressure ||
+      'Forecast pressure unavailable',
+    environmentalSuitability:
+      decisionSupport.environmentalSuitability ||
+      row?.environmentalSuitability ||
+      'Environmental data unavailable',
+    rainfallPressure:
+      decisionSupport.rainfallPressure ||
+      row?.rainfallPressure ||
+      'Rainfall data unavailable',
+    temperatureSuitability:
+      decisionSupport.temperatureSuitability ||
+      row?.temperatureSuitability ||
+      'Temperature data unavailable',
+    humiditySuitability:
+      decisionSupport.humiditySuitability ||
+      row?.humiditySuitability ||
+      'Humidity data unavailable',
+    multiSourceRiskScore:
+      decisionSupport.multiSourceRiskScore ??
+      row?.multiSourceRiskScore ??
+      row?.riskScore ??
+      0,
+    riskComponents:
+      decisionSupport.riskComponents ||
+      row?.riskComponents ||
+      {},
+  }
+}
+
+function getMultiSourceScore(row) {
+  const decision = getDecisionSupport(row)
+
+  return toNumber(
+    row?.multiSourceRiskScore ??
+      row?.riskScore ??
+      decision.multiSourceRiskScore ??
+      decision.score
+  )
+}
+
+function getAverageMultiSourceScore(rows = []) {
+  const values = rows
+    .map((row) => getMultiSourceScore(row))
+    .filter((value) => value > 0)
+
+  if (!values.length) return 0
+
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+}
+
+function getEnvironmentalSummary(rows = []) {
+  const withEnvironment = rows.filter((row) => {
+    const decision = getDecisionSupport(row)
+    return !String(decision.environmentalSuitability || '').toLowerCase().includes('unavailable')
+  })
+
+  const highPressure = rows.filter((row) => {
+    const decision = getDecisionSupport(row)
+    const text = [
+      decision.environmentalSuitability,
+      decision.rainfallPressure,
+      decision.humiditySuitability,
+    ].join(' ').toLowerCase()
+
+    return text.includes('high')
+  }).length
+
+  const averageRainfallValues = rows
+    .map((row) => toNumber(row?.averageRainfall ?? row?.avgRainfall))
+    .filter((value) => value > 0)
+
+  const averageTemperatureValues = rows
+    .map((row) => toNumber(row?.averageTemperature ?? row?.avgTemperature))
+    .filter((value) => value > 0)
+
+  const averageHumidityValues = rows
+    .map((row) => toNumber(row?.averageHumidity ?? row?.avgHumidity))
+    .filter((value) => value > 0)
+
+  const averageOf = (values) => {
+    if (!values.length) return 0
+    return values.reduce((sum, value) => sum + value, 0) / values.length
+  }
+
+  return {
+    availableCount: withEnvironment.length,
+    highPressureCount: highPressure,
+    averageRainfall: averageOf(averageRainfallValues),
+    averageTemperature: averageOf(averageTemperatureValues),
+    averageHumidity: averageOf(averageHumidityValues),
+  }
+}
+
+function getIntegrationStatusStyle(status = '') {
+  const value = String(status || '').toLowerCase()
+
+  if (value.includes('ready')) {
+    return 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+  }
+
+  if (value.includes('review')) {
+    return 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+  }
+
+  return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
+function getSourceHealth(sourceStatus = {}) {
+  const sources = Object.values(sourceStatus || {})
+  const loaded = sources.filter((source) => Number(source?.recordCount || 0) > 0)
+
+  return {
+    loadedCount: loaded.length,
+    sourceCount: sources.length,
+    totalValid: sources.reduce((sum, source) => sum + Number(source?.validCount || 0), 0),
+    totalRecords: sources.reduce((sum, source) => sum + Number(source?.recordCount || 0), 0),
+  }
 }
 
 function hasBackendForecastData(backendForecastResult) {
@@ -350,6 +551,8 @@ export default function DashboardPage() {
     activityLogs = [],
     backendForecastResult = null,
     backendDengueSummary = null,
+    integrationReadiness = null,
+    weatherRecords = [],
     resetSampleData,
   } = useData()
 
@@ -382,18 +585,38 @@ export default function DashboardPage() {
     ? backendWeeklyTotals
     : dashboardStats?.weeklyTotals || []
 
-  const priority = usingBackendForecast
-    ? backendPriorityRows.slice(0, 5)
-    : riskRows.slice(0, 5)
+  const displayRiskRows = riskRows.length
+    ? riskRows
+    : usingBackendForecast
+      ? backendPriorityRows
+      : riskRows
+
+  const priority = displayRiskRows.slice(0, 5)
 
   const latestLogs = activityLogs.slice(0, 3)
   const trendStatus = getTrendStatus(weeklyTotals)
 
-  const highRiskCount = Number(displayStats.highRiskCount || 0)
-  const moderateRiskCount = Number(displayStats.moderateRiskCount || 0)
-  const lowRiskCount = Number(displayStats.lowRiskCount || 0)
+  const highRiskCount = displayRiskRows.length
+    ? displayRiskRows.filter((row) => row.risk === 'High').length
+    : Number(displayStats.highRiskCount || 0)
+
+  const moderateRiskCount = displayRiskRows.length
+    ? displayRiskRows.filter((row) => row.risk === 'Moderate').length
+    : Number(displayStats.moderateRiskCount || 0)
+
+  const lowRiskCount = displayRiskRows.length
+    ? displayRiskRows.filter((row) => row.risk === 'Low').length
+    : Number(displayStats.lowRiskCount || 0)
 
   const topPriority = priority[0] || null
+  const topDecision = getDecisionSupport(topPriority)
+  const topMultiSourceScore = getMultiSourceScore(topPriority)
+  const averageMultiSourceScore = getAverageMultiSourceScore(displayRiskRows)
+  const environmentalSummary = getEnvironmentalSummary(displayRiskRows)
+  const sourceHealth = getSourceHealth(sourceStatus)
+  const integrationStatus = integrationReadiness?.status || 'Pending'
+  const integrationScore = toNumber(integrationReadiness?.score)
+  const integrationChecks = integrationReadiness?.checks || []
   const acceptedRecords = Number(
     backendForecastResult?.valid_row_count ||
       sourceStatus?.dengue?.validCount ||
@@ -439,8 +662,8 @@ export default function DashboardPage() {
       {
         title: highestRisk ? `${highestRisk.risk} risk priority` : 'No risk data yet',
         message: highestRisk
-          ? `${highestRisk.barangay} has the highest projected value with ${formatNumber(highestRisk.forecast)} projected cases.`
-          : 'Upload dengue records to generate priority alerts.',
+          ? `${highestRisk.barangay} has the highest priority with ${formatNumber(getMultiSourceScore(highestRisk))}/100 multi-source score and ${formatNumber(highestRisk.forecast)} projected cases.`
+          : 'Upload dengue, weather, population, and boundary records to generate priority alerts.',
         icon: ShieldAlert,
         style: highestRisk?.risk === 'High'
           ? 'border-rose-100 bg-rose-50/75 dark:border-rose-500/20 dark:bg-rose-500/10'
@@ -449,7 +672,7 @@ export default function DashboardPage() {
       {
         title: usingBackendForecast ? 'Analysis ready' : 'Data readiness',
         message: usingBackendForecast
-          ? `The uploaded dengue records are now being used for dashboard totals, priority ranking, trend view, and monitoring alerts.`
+          ? `The uploaded datasets are now feeding dashboard totals, priority ranking, environmental factors, trend view, and monitoring alerts.`
           : `${Object.keys(sourceStatus || {}).length} data sources are available in the prototype workspace.`,
         icon: CheckCircle2,
         style:
@@ -476,8 +699,8 @@ export default function DashboardPage() {
         title="Dashboard Overview"
         subtitle={
           usingBackendForecast
-            ? 'Decision-ready overview from the latest uploaded dengue dataset.'
-            : 'Quick status, dengue trends, priority barangays, and data readiness from the current working dataset.'
+            ? 'Decision-ready overview from the latest uploaded dengue dataset with multi-source context.'
+            : 'Quick status, dengue trends, weather pressure, priority barangays, and data readiness from the current working dataset.'
         }
       />
 
@@ -493,11 +716,11 @@ export default function DashboardPage() {
             </div>
 
             <h2 className="mt-5 max-w-3xl text-3xl font-black tracking-tight text-white sm:text-4xl">
-              Barangay-level risk monitoring for faster dengue response planning.
+              Multi-source dengue command center for faster barangay response planning.
             </h2>
 
             <p className="mt-3 max-w-2xl text-sm leading-7 text-blue-100/90">
-              The dashboard turns uploaded dengue records into a clear view of total cases, forecast pressure, hotspot barangays, and response priorities.
+              The dashboard combines dengue cases, weather indicators, population exposure, and barangay boundaries into a clear command view for forecasting, hotspot ranking, and response priorities.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -515,6 +738,11 @@ export default function DashboardPage() {
                 <Target className="h-4 w-4 text-amber-200" />
                 {formatNumber(highRiskCount)} high-risk barangay{highRiskCount === 1 ? '' : 's'}
               </span>
+
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur">
+                <Layers3 className="h-4 w-4 text-cyan-200" />
+                {integrationStatus} integration
+              </span>
             </div>
           </div>
 
@@ -529,8 +757,8 @@ export default function DashboardPage() {
 
             <p className="mt-2 text-sm leading-6 text-blue-100/90">
               {topPriority
-                ? `${formatNumber(topPriority.forecast)} projected cases. Risk level: ${topPriority.risk}.`
-                : 'Upload dengue records to generate the top priority barangay.'}
+                ? `${formatNumber(topPriority.forecast)} projected cases. Multi-source score: ${formatNumber(topMultiSourceScore)}/100. ${topDecision.environmentalSuitability}.`
+                : 'Upload dengue, weather, population, and boundary records to generate the top priority barangay.'}
             </p>
 
             <button
@@ -591,6 +819,175 @@ export default function DashboardPage() {
           {formatNumber(lowRiskCount)} low-risk barangay{lowRiskCount === 1 ? '' : 's'}.
         </div>
       )}
+
+      <Panel className="p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <SectionBadge tone="blue">
+              <Layers3 className="h-3.5 w-3.5" />
+              Multi-source command summary
+            </SectionBadge>
+
+            <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              Integrated dengue risk intelligence
+            </h3>
+
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+              Shows whether dengue, weather, population, and boundary datasets are working together for forecasting, GIS mapping, and DSS response planning.
+            </p>
+          </div>
+
+          <span className={`inline-flex w-fit rounded-full border px-4 py-1.5 text-xs font-black shadow-sm ${getIntegrationStatusStyle(integrationStatus)}`}>
+            {integrationStatus} • {formatNumber(integrationScore)}% ready
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-blue-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-blue-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                <Gauge className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                  Avg. risk score
+                </p>
+                <p className="text-2xl font-black text-brand-text dark:text-slate-100">
+                  {averageMultiSourceScore > 0 ? `${formatNumber(averageMultiSourceScore)}/100` : 'No data'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-400">
+              Average multi-source score across computed barangay risk rows.
+            </p>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-sky-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-sky-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50 text-sky-600 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300">
+                <CloudRain className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                  Rainfall average
+                </p>
+                <p className="text-2xl font-black text-brand-text dark:text-slate-100">
+                  {environmentalSummary.averageRainfall > 0 ? `${formatDecimal(environmentalSummary.averageRainfall)} mm` : 'No data'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-400">
+              Weather pressure used by the multi-source scoring model.
+            </p>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-amber-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-amber-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                <Thermometer className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                  Temperature avg.
+                </p>
+                <p className="text-2xl font-black text-brand-text dark:text-slate-100">
+                  {environmentalSummary.averageTemperature > 0 ? `${formatDecimal(environmentalSummary.averageTemperature)} °C` : 'No data'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-400">
+              Temperature suitability helps contextualize dengue transmission risk.
+            </p>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-emerald-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-emerald-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <Droplets className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                  Humidity avg.
+                </p>
+                <p className="text-2xl font-black text-brand-text dark:text-slate-100">
+                  {environmentalSummary.averageHumidity > 0 ? `${formatDecimal(environmentalSummary.averageHumidity)}%` : 'No data'}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-400">
+              Humidity and rainfall support the environmental suitability check.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+            <p className="text-sm font-black text-brand-text dark:text-slate-100">
+              Integration checks
+            </p>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {integrationChecks.length > 0 ? (
+                integrationChecks.slice(0, 6).map((check) => (
+                  <div
+                    key={check.label}
+                    className="rounded-[20px] border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <div className="flex items-start gap-2">
+                      {check.ready ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-green dark:text-emerald-300" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-brand-orange dark:text-amber-300" />
+                      )}
+
+                      <div>
+                        <p className="text-xs font-black text-brand-text dark:text-slate-100">
+                          {check.label}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                          {check.description}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-[20px] border border-dashed border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 md:col-span-2">
+                  Upload the dengue, weather, population, and boundary datasets to run integration checks.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
+            <p className="text-sm font-black text-brand-blue dark:text-blue-300">
+              Dataset coverage
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-3 py-2 text-xs font-bold text-brand-muted shadow-sm dark:bg-slate-950/70 dark:text-slate-400">
+                <span>Loaded sources</span>
+                <span>{formatNumber(sourceHealth.loadedCount)} / {formatNumber(sourceHealth.sourceCount)}</span>
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-3 py-2 text-xs font-bold text-brand-muted shadow-sm dark:bg-slate-950/70 dark:text-slate-400">
+                <span>Valid records</span>
+                <span>{formatNumber(sourceHealth.totalValid)} / {formatNumber(sourceHealth.totalRecords)}</span>
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-3 py-2 text-xs font-bold text-brand-muted shadow-sm dark:bg-slate-950/70 dark:text-slate-400">
+                <span>Weather rows</span>
+                <span>{formatNumber(sourceStatus?.weather?.validCount || weatherRecords.length || 0)}</span>
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl bg-white/80 px-3 py-2 text-xs font-bold text-brand-muted shadow-sm dark:bg-slate-950/70 dark:text-slate-400">
+                <span>Barangay risk rows</span>
+                <span>{formatNumber(displayRiskRows.length)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Panel>
 
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
         <Panel className="p-6">
@@ -688,7 +1085,7 @@ export default function DashboardPage() {
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Ranked by risk level, projected cases, and response priority.
+                Ranked by multi-source risk score, environmental pressure, projected cases, and response priority.
               </p>
             </div>
           </div>
@@ -712,14 +1109,12 @@ export default function DashboardPage() {
                         </p>
 
                         <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-                          Forecast: {formatNumber(row.forecast)} cases
+                          Forecast: {formatNumber(row.forecast)} cases • Score: {formatNumber(getMultiSourceScore(row))}/100
                         </p>
 
-                        {usingBackendForecast && row.trendDirection && (
-                          <p className="text-[11px] font-semibold text-brand-muted dark:text-slate-500">
-                            Trend: {row.trendDirection}
-                          </p>
-                        )}
+                        <p className="text-[11px] font-semibold text-brand-muted dark:text-slate-500">
+                          {getDecisionSupport(row).environmentalSuitability}
+                        </p>
                       </div>
                     </div>
 
@@ -728,11 +1123,25 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  {usingBackendForecast && row.recommendation && (
-                    <p className="mt-3 rounded-[18px] border border-slate-100 bg-white/80 px-3 py-2 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
-                      {row.recommendation}
-                    </p>
-                  )}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-[18px] border border-slate-100 bg-white/80 px-3 py-2 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
+                      <span className="font-black text-brand-text dark:text-slate-200">
+                        Rainfall:
+                      </span>{' '}
+                      {getDecisionSupport(row).rainfallPressure}
+                    </div>
+
+                    <div className="rounded-[18px] border border-slate-100 bg-white/80 px-3 py-2 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
+                      <span className="font-black text-brand-text dark:text-slate-200">
+                        Exposure:
+                      </span>{' '}
+                      {getDecisionSupport(row).populationExposure}
+                    </div>
+                  </div>
+
+                  <p className="mt-3 rounded-[18px] border border-slate-100 bg-white/80 px-3 py-2 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
+                    {getDecisionSupport(row).summary}
+                  </p>
                 </div>
               ))
             ) : (
