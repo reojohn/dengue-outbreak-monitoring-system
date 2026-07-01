@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
 async function handleApiResponse(response) {
   const data = await response.json().catch(() => null)
@@ -56,6 +56,15 @@ export async function summarizeDengueFile(file) {
 
 export async function forecastDengueFile(file) {
   const response = await fetch(`${API_BASE_URL}/uploads/forecast-dengue`, {
+    method: 'POST',
+    body: buildFileFormData(file),
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function validatePopulationFile(file) {
+  const response = await fetch(`${API_BASE_URL}/uploads/validate-population`, {
     method: 'POST',
     body: buildFileFormData(file),
   })

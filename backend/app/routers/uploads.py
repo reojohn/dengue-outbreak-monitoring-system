@@ -6,6 +6,7 @@ from app.services.file_inspector import (
     inspect_tabular_file,
     summarize_dengue_file,
 )
+from app.services.population_inspector import validate_population_file
 
 router = APIRouter(
     prefix="/uploads",
@@ -43,3 +44,8 @@ async def summarize_dengue_upload(file: UploadFile = File(...)):
 @router.post("/forecast-dengue")
 async def forecast_dengue_upload(file: UploadFile = File(...)):
     return await generate_baseline_dengue_forecast(file)
+
+
+@router.post("/validate-population")
+async def validate_population_upload(file: UploadFile = File(...)):
+    return await validate_population_file(file)

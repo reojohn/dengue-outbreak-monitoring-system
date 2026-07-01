@@ -10,6 +10,7 @@ import {
   FileCheck2,
   FileText,
   Map as MapIcon,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   Table2,
@@ -23,6 +24,7 @@ import {
   forecastDengueFile,
   inspectUploadedFile,
   summarizeDengueFile,
+  validatePopulationFile,
 } from '../services/api'
 
 const sources = [
@@ -1149,6 +1151,29 @@ function getSourceRecords(sourceId, data) {
   return []
 }
 
+function getBoundaryPreviewRows(records = []) {
+  const boundaryLayer = Array.isArray(records)
+    ? records.find((record) => record?.type === 'FeatureCollection')
+    : records
+
+  if (!boundaryLayer?.features || !Array.isArray(boundaryLayer.features)) {
+    return Array.isArray(records) ? records : []
+  }
+
+  return boundaryLayer.features.map((feature, index) => {
+    const hasGeometry = Boolean(feature.geometry)
+    const hasCoordinates = Boolean(feature.geometry?.coordinates)
+
+    return {
+      id: feature.id || `boundary-preview-${index}`,
+      barangay: getBoundaryName(feature, index),
+      geometryType: feature.geometry?.type || 'No geometry',
+      status: hasGeometry && hasCoordinates ? 'Valid' : 'Missing Geometry',
+    }
+  })
+}
+
+
 function renderPreviewCells(sourceId, row) {
   if (sourceId === 'historical') {
     return [
@@ -1300,6 +1325,71 @@ function buildBackendDengueValidationResult({
   }
 }
 
+function getBackendPopulationValidationCounts(validateResult = {}) {
+  const summary = validateResult.validation_summary || {}
+
+  return {
+    missingCount: Number(summary.invalid_barangay_rows || 0),
+    invalidCount:
+      Number(summary.invalid_population_rows || 0) +
+      Number(summary.invalid_year_rows || 0),
+    duplicateCount: Number(summary.duplicate_barangay_rows || 0),
+  }
+}
+
+function mapBackendPopulationRows(rows = [], offset = 0) {
+  return rows.map((row, index) => ({
+    id: Date.now() + offset + index,
+    barangay: row.barangay || '',
+    barangayKey: row.barangay_key || '',
+    barangayRaw: row.barangay_raw || '',
+    population: Number(row.population || 0),
+    year: row.year ?? '',
+    psgc: row.psgc || '',
+    status: row.validation_status || 'Valid',
+  }))
+}
+
+function formatBackendPopulationMappingSummary(detection = {}) {
+  const matchedFields = detection.matched_fields || {}
+
+  const labels = {
+    barangay: 'barangay',
+    population: 'population',
+    year: 'year',
+    psgc: 'PSGC',
+  }
+
+  return Object.entries(matchedFields)
+    .map(([field, sourceColumn]) => `${labels[field] || field} → ${sourceColumn}`)
+    .join(', ')
+}
+
+function buildBackendPopulationValidationResult({
+  fileName,
+  validateResult,
+}) {
+  const counts = getBackendPopulationValidationCounts(validateResult)
+  const validRecords = mapBackendPopulationRows(validateResult.cleaned_preview || [])
+  const invalidPreview = mapBackendPopulationRows(validateResult.invalid_preview || [], 10000)
+  const mappingSummary = formatBackendPopulationMappingSummary(validateResult.population_detection)
+
+  return {
+    sourceId: 'demographic',
+    fileName,
+    backendPowered: true,
+    previewRows: [...validRecords, ...invalidPreview],
+    validRecords,
+    recordCount: Number(validateResult.original_row_count || 0),
+    validCount: Number(validateResult.valid_row_count || 0),
+    missingCount: counts.missingCount,
+    duplicateCount: counts.duplicateCount,
+    invalidCount: counts.invalidCount,
+    mappingSummary,
+    validateResult,
+  }
+}
+
 export default function UploadPage() {
   const navigate = useNavigate()
   const data = useData()
@@ -1323,9 +1413,17 @@ export default function UploadPage() {
     return getSourceRecords(selected, data)
   }, [selected, data])
 
-  const previewRows = validationResult?.sourceId === selected
-    ? validationResult.previewRows
-    : storedRecords.slice(0, 8)
+  const previewRows = useMemo(() => {
+    if (validationResult?.sourceId === selected) {
+      return validationResult.previewRows || []
+    }
+
+    if (selected === 'boundary') {
+      return getBoundaryPreviewRows(storedRecords)
+    }
+
+    return storedRecords
+  }, [validationResult, selected, storedRecords])
 
   const previewHeaders = getPreviewHeaders(selected)
 
@@ -1371,6 +1469,37 @@ export default function UploadPage() {
     return Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0
   }).length
   const selectedFileName = selectedStatus.uploadedName || 'No file uploaded yet'
+
+  function handleResetWorkspace() {
+    if (isProcessing) return
+
+    updateWorkspace((current) => ({
+      ...current,
+      dengueRecords: [],
+      weatherRecords: [],
+      populationRecords: [],
+      boundaryRecords: [],
+      riskRows: [],
+      backendDengueSummary: null,
+      backendForecastResult: null,
+      sourceStatus: {
+        dengue: {},
+        weather: {},
+        population: {},
+        boundary: {},
+      },
+    }))
+
+    setSelected('historical')
+    setValidationResult(null)
+    setUploadError('')
+    setUploadMessage('Workspace reset. Uploaded datasets, validation results, and generated forecast outputs were cleared.')
+
+    addActivityLog(
+      'Workspace reset',
+      'Uploaded datasets, validation results, and generated forecast outputs were cleared.'
+    )
+  }
 
   async function handleFileUpload(event) {
     const file = event.target.files?.[0]
@@ -1424,22 +1553,57 @@ export default function UploadPage() {
 
         setValidationResult(backendResult)
 
-        const riskCounts = forecastResult.risk_counts || {}
-        const riskNote = ` Forecast generated: ${riskCounts.High || 0} high, ${riskCounts.Moderate || 0} moderate, and ${riskCounts.Low || 0} low-risk barangays.`
-        const invalidNote = backendResult.recordCount > backendResult.validCount
-          ? ` ${backendResult.recordCount - backendResult.validCount} row(s) need review.`
-          : ''
-
         const highRiskCount = Number(forecastResult?.risk_counts?.High || 0)
-const moderateRiskCount = Number(forecastResult?.risk_counts?.Moderate || 0)
-const lowRiskCount = Number(forecastResult?.risk_counts?.Low || 0)
+        const moderateRiskCount = Number(forecastResult?.risk_counts?.Moderate || 0)
+        const lowRiskCount = Number(forecastResult?.risk_counts?.Low || 0)
 
-setUploadMessage(
-  `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.`
-)
+        setUploadMessage(
+          `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.`
+        )
 
         addActivityLog(
           'Backend dengue dataset uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+        )
+
+        return
+      }
+
+      if (selected === 'demographic' && (isCsv || isExcel || fileName.endsWith('.json'))) {
+        const validateResult = await validatePopulationFile(file)
+
+        const backendResult = buildBackendPopulationValidationResult({
+          fileName: file.name,
+          validateResult,
+        })
+
+        updateWorkspace((current) => ({
+          ...current,
+          [selectedSource.recordKey]: backendResult.validRecords,
+          sourceStatus: {
+            ...(current.sourceStatus || {}),
+            [selectedSource.contextKey]: {
+              uploadedName: file.name,
+              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              recordCount: backendResult.recordCount,
+              validCount: backendResult.validCount,
+              missingCount: backendResult.missingCount,
+              duplicateCount: backendResult.duplicateCount,
+              invalidCount: backendResult.invalidCount,
+              mappingSummary: backendResult.mappingSummary,
+              backendPowered: true,
+            },
+          },
+        }))
+
+        setValidationResult(backendResult)
+
+        setUploadMessage(
+          `Upload successful. Population records are backend-validated and ready for integration. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
+        )
+
+        addActivityLog(
+          'Backend population dataset uploaded',
           `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
@@ -1652,54 +1816,14 @@ setUploadMessage(
               </div>
             </div>
 
-            <label
-  style={{
-    backgroundColor: '#ffffff',
-    color: '#0f172a',
-    borderColor: 'rgba(255,255,255,0.45)',
-  }}
-  className="group mt-5 flex min-h-[82px] cursor-pointer items-center justify-between gap-4 rounded-[24px] border px-5 py-4 shadow-[0_18px_38px_rgba(15,23,42,0.16)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(15,23,42,0.20)]"
->
-  <div className="flex min-w-0 items-center gap-3">
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.24)]">
-      <UploadCloud className="h-5 w-5" />
-    </div>
-
-    <div className="min-w-0">
-      <p
-        style={{ color: '#0f172a' }}
-        className="break-words text-sm font-black leading-5"
-      >
-        {isProcessing ? 'Processing file...' : `Choose ${selectedSource.title} file`}
-      </p>
-
-      <p
-        style={{ color: '#64748b' }}
-        className="mt-1 text-xs font-semibold leading-5"
-      >
-        Automatic mapping, cleaning, and validation
-      </p>
-    </div>
-  </div>
-
-  <div
-    style={{
-      backgroundColor: '#f1f5f9',
-      color: '#255f8f',
-    }}
-    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition group-hover:translate-x-0.5"
-  >
-    →
-  </div>
-
-  <input
-    type="file"
-    className="hidden"
-    accept={selectedSource?.accept}
-    onChange={handleFileUpload}
-    disabled={isProcessing}
-  />
-</label>
+            <div className="mt-5 rounded-[24px] border border-white/15 bg-black/10 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
+                Workflow controls
+              </p>
+              <p className="mt-2 text-sm leading-6 text-white/75">
+                Select a dataset card below to upload a new file or reset the workspace.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -1749,13 +1873,17 @@ setUploadMessage(
                       setUploadMessage('')
                       setUploadError('')
                     }}
-                    className={`group relative overflow-hidden rounded-[28px] border p-5 text-left shadow-[0_14px_34px_rgba(15,23,42,0.06)] transition-all duration-200 dark:shadow-none ${
+                    className={`group relative overflow-hidden rounded-[30px] border p-5 text-left shadow-[0_18px_42px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] dark:shadow-none ${
                       isActive
-                        ? 'border-brand-blue bg-gradient-to-br from-blue-50 via-white to-sky-50 ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-900 dark:ring-blue-500/20'
-                        : 'border-brand-line/70 bg-white/90 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-[0_22px_44px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:bg-slate-900/90 dark:hover:shadow-none'
+                        ? 'border-brand-blue bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_36%),linear-gradient(135deg,#eff6ff,#ffffff_54%,#ecfeff)] ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.22),transparent_38%),linear-gradient(135deg,#0f172a,#111827_58%,#082f49)] dark:ring-blue-500/20'
+                        : 'border-brand-line/70 bg-gradient-to-br from-white via-white to-slate-50 hover:border-brand-blue/40 hover:shadow-[0_24px_54px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:hover:border-blue-500/30 dark:hover:shadow-none'
                     }`}
                   >
                     <div className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${source.glow} blur-2xl opacity-70 transition group-hover:opacity-100`} />
+                    <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-80 dark:via-white/20" />
+                    {isActive && (
+                      <div className="pointer-events-none absolute inset-y-5 left-0 w-1 rounded-r-full bg-brand-blue shadow-[0_0_24px_rgba(37,95,143,0.55)]" />
+                    )}
 
                     <div className="relative flex items-start justify-between gap-3">
                       <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border shadow-sm ${source.color}`}>
@@ -1785,9 +1913,20 @@ setUploadMessage(
                         </span>
                       </div>
 
+                      {status.uploadedName && (
+                        <div className="mt-4 rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-950/60">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+                            Current file
+                          </p>
+                          <p className="mt-1 truncate text-xs font-bold text-brand-text dark:text-slate-300">
+                            {status.uploadedName}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                         <div
-                          className="h-full rounded-full bg-brand-blue transition-all"
+                          className="h-full rounded-full bg-gradient-to-r from-brand-blue to-cyan-400 transition-all duration-500"
                           style={{ width: `${sourcePercent}%` }}
                         />
                       </div>
@@ -1795,6 +1934,52 @@ setUploadMessage(
                   </button>
                 )
               })}
+            </div>
+
+            <div className="mt-5 rounded-[30px] border border-brand-blue/20 bg-gradient-to-br from-slate-50 via-white to-blue-50/70 p-4 shadow-[0_16px_38px_rgba(15,23,42,0.07)] dark:border-blue-500/20 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950/30 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${selectedSource.color}`}>
+                    <ActiveSourceIcon className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
+                      Selected upload target
+                    </p>
+                    <h4 className="mt-1 text-base font-black text-brand-text dark:text-slate-100">
+                      {selectedSource.title}
+                    </h4>
+                    <p className="mt-1 break-words text-sm leading-6 text-brand-muted dark:text-slate-400">
+                      Current file: <span className="font-bold text-brand-text dark:text-slate-200">{selectedFileName}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[390px]">
+                  <label className="group flex min-h-[58px] cursor-pointer items-center justify-center gap-2 rounded-[22px] border border-brand-blue bg-brand-blue px-4 py-3 text-center text-sm font-black leading-5 text-white shadow-[0_14px_30px_rgba(37,95,143,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(37,95,143,0.34)] dark:border-blue-500/30">
+                    <UploadCloud className="h-4 w-4 transition group-hover:-translate-y-0.5" />
+                    {isProcessing ? 'Processing file...' : `Choose ${selectedSource.title} file`}
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept={selectedSource?.accept}
+                      onChange={handleFileUpload}
+                      disabled={isProcessing}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleResetWorkspace}
+                    disabled={isProcessing}
+                    className="group flex min-h-[58px] items-center justify-center gap-2 rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-center text-sm font-black leading-5 text-rose-600 shadow-[0_14px_30px_rgba(225,29,72,0.08)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:shadow-[0_18px_38px_rgba(225,29,72,0.14)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  >
+                    <RotateCcw className="h-4 w-4 transition group-hover:-rotate-45" />
+                    Reset workspace
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1891,14 +2076,14 @@ setUploadMessage(
               </div>
 
               <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                Showing 8 rows
+                Showing {previewRows.length} row{previewRows.length === 1 ? '' : 's'}
               </span>
             </div>
 
-            <div className="mt-5 overflow-hidden rounded-[24px] border border-brand-line dark:border-slate-800">
-              <div className="max-w-full overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-sm">
-                  <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-brand-muted dark:bg-slate-950 dark:text-slate-400">
+            <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+              <div className="records-preview-scroll max-h-[560px] max-w-full overflow-auto overscroll-contain">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="sticky top-0 z-20 bg-slate-50/95 text-[11px] uppercase tracking-[0.12em] text-brand-muted shadow-[0_1px_0_rgba(15,23,42,0.08)] backdrop-blur-xl dark:bg-slate-950/95 dark:text-slate-400 dark:shadow-[0_1px_0_rgba(148,163,184,0.12)]">
                     <tr>
                       {previewHeaders.map((header) => (
                         <th key={header} className="px-4 py-4 font-black">
@@ -1910,7 +2095,7 @@ setUploadMessage(
 
                   <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
                     {previewRows.length > 0 ? (
-                      previewRows.slice(0, 8).map((row, index) => {
+                      previewRows.map((row, index) => {
                         const cells = renderPreviewCells(selected, row)
 
                         return (
@@ -1951,8 +2136,8 @@ setUploadMessage(
               </div>
             </div>
 
-            <p className="mt-3 text-xs text-brand-muted dark:text-slate-500">
-              Showing up to 8 records only. Swipe sideways on mobile to view the full table.
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
+              Showing all cleaned records. Scroll inside the table to review more rows, and swipe sideways on smaller screens to view all columns.
             </p>
           </div>
         </div>
@@ -2019,7 +2204,7 @@ setUploadMessage(
             </div>
 
             <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Upload selected source
+              Selected source summary
             </h3>
 
             <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
@@ -2045,18 +2230,6 @@ setUploadMessage(
               </p>
             </div>
 
-            <label className="mt-5 flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-[22px] border border-brand-blue bg-brand-blue px-4 py-4 text-center text-sm font-black leading-5 text-white shadow-[0_14px_30px_rgba(37,95,143,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(37,95,143,0.34)] dark:border-blue-500/30">
-              <UploadCloud className="h-4 w-4" />
-              {isProcessing ? 'Processing file...' : `Choose ${selectedSource?.title} file`}
-              <input
-                type="file"
-                className="hidden"
-                accept={selectedSource?.accept}
-                onChange={handleFileUpload}
-                disabled={isProcessing}
-              />
-            </label>
-
             <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/75 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
               <p className="text-sm font-black text-brand-orange dark:text-amber-300">
                 File format note
@@ -2078,6 +2251,46 @@ setUploadMessage(
           </div>
         </aside>
       </div>
+
+      <style>{`
+        .records-preview-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(37, 95, 143, 0.75) rgba(226, 232, 240, 0.7);
+        }
+
+        .records-preview-scroll::-webkit-scrollbar {
+          width: 10px;
+          height: 10px;
+        }
+
+        .records-preview-scroll::-webkit-scrollbar-track {
+          background: rgba(226, 232, 240, 0.72);
+          border-radius: 999px;
+        }
+
+        .records-preview-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(56, 189, 248, 0.95), rgba(37, 95, 143, 0.95));
+          border: 2px solid rgba(226, 232, 240, 0.9);
+          border-radius: 999px;
+        }
+
+        .records-preview-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(180deg, rgba(14, 165, 233, 1), rgba(30, 64, 175, 1));
+        }
+
+        .dark .records-preview-scroll {
+          scrollbar-color: rgba(56, 189, 248, 0.75) rgba(15, 23, 42, 0.95);
+        }
+
+        .dark .records-preview-scroll::-webkit-scrollbar-track {
+          background: rgba(15, 23, 42, 0.95);
+        }
+
+        .dark .records-preview-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(34, 211, 238, 0.9), rgba(37, 99, 235, 0.9));
+          border: 2px solid rgba(15, 23, 42, 0.95);
+        }
+      `}</style>
     </div>
   )
 }
