@@ -87,6 +87,25 @@ const scanStages = {
   },
 }
 
+const scanStepLabels = [
+  {
+    stage: 1,
+    label: 'Initialize',
+  },
+  {
+    stage: 2,
+    label: 'Credentials',
+  },
+  {
+    stage: 3,
+    label: 'Role Check',
+  },
+  {
+    stage: 4,
+    label: 'Approved',
+  },
+]
+
 const roleVisuals = {
   cho: {
     label: 'City Health Office',
@@ -202,6 +221,7 @@ export default function LoginPage() {
   const DisplayIcon = displayIcon
 
   const roleTheme = currentRoleVisual.glow
+  const progressWidth = `${Math.max(18, scanStage * 25)}%`
 
   function handleSelectAccount(account) {
     if (isSigningIn) return
@@ -331,7 +351,9 @@ export default function LoginPage() {
             </div>
 
             <div className="mt-8 flex justify-center">
-              <div className={`relative flex h-52 w-52 items-center justify-center rounded-full border ${currentRoleVisual.ring} ${currentRoleVisual.bg} shadow-[0_0_70px_rgba(34,211,238,0.16)] transition-all duration-300`}>
+              <div
+                className={`relative flex h-52 w-52 items-center justify-center rounded-full border ${currentRoleVisual.ring} ${currentRoleVisual.bg} shadow-[0_0_70px_rgba(34,211,238,0.16)] transition-all duration-300`}
+              >
                 <div className={`absolute inset-4 rounded-full border ${currentRoleVisual.ring}`} />
                 <div className={`absolute inset-8 rounded-full border ${currentRoleVisual.ring}`} />
 
@@ -405,7 +427,9 @@ export default function LoginPage() {
             )}
 
             {roleHint && (
-              <div className={`mx-auto mt-7 w-fit rounded-full border px-4 py-2 text-sm animate-fade ${getRoleBadgeStyle(roleHint)}`}>
+              <div
+                className={`mx-auto mt-7 w-fit rounded-full border px-4 py-2 text-sm animate-fade ${getRoleBadgeStyle(roleHint)}`}
+              >
                 SELECTED ROLE:{' '}
                 <b>{getRoleLabel(roleHint).toUpperCase()}</b>
               </div>
@@ -417,38 +441,70 @@ export default function LoginPage() {
                   <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-cyan-400/20 blur-3xl" />
                   <div className="pointer-events-none absolute -bottom-16 left-0 h-36 w-36 rounded-full bg-blue-500/20 blur-3xl" />
 
-                  <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
-                    <div className={`absolute inset-0 rounded-full border ${currentRoleVisual.ring}`} />
-                    <div className={`absolute inset-2 rounded-full border ${currentRoleVisual.ring} animate-ping`} />
-                    <div className={`absolute inset-4 rounded-full ${currentRoleVisual.bg} blur-md`} />
-
-                    {scanStage === 4 ? (
-                      <CheckCircle2 className="relative z-10 h-14 w-14 text-emerald-300 animate-pop" />
-                    ) : (
-                      <Fingerprint className="relative z-10 h-14 w-14 text-cyan-300 animate-pulse" />
-                    )}
+                  <div className="relative mx-auto mb-5 flex w-fit items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        scanStage === 4
+                          ? 'bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.9)]'
+                          : 'bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.9)] animate-pulse'
+                      }`}
+                    />
+                    Access Verification
                   </div>
 
-                  <h3 className="relative mt-5 text-xl font-black text-white">
+                  <h3 className="relative text-xl font-black text-white">
                     {currentScan.title}
                   </h3>
 
-                  <p className="relative mt-2 text-sm leading-6 text-slate-300">
+                  <p className="relative mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-300">
                     {currentScan.message}
                   </p>
 
                   <div className="relative mt-5 overflow-hidden rounded-full bg-white/10">
                     <div
-                      className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-500"
-                      style={{ width: `${Math.max(18, scanStage * 25)}%` }}
+                      className={`h-2 rounded-full transition-all duration-500 ${
+                        scanStage === 4
+                          ? 'bg-gradient-to-r from-emerald-300 to-cyan-300'
+                          : 'bg-gradient-to-r from-cyan-400 to-blue-500'
+                      }`}
+                      style={{ width: progressWidth }}
                     />
                   </div>
 
-                  <div className="relative mt-5 rounded-[22px] border border-cyan-400/20 bg-cyan-500/10 p-4 text-left">
+                  <div className="relative mt-5 grid grid-cols-4 gap-2">
+                    {scanStepLabels.map((step) => (
+                      <div
+                        key={step.stage}
+                        className={`rounded-2xl border px-2 py-2 text-center transition-all duration-300 ${
+                          scanStage >= step.stage
+                            ? scanStage === 4
+                              ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-200'
+                              : 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200'
+                            : 'border-white/10 bg-white/[0.03] text-slate-500'
+                        }`}
+                      >
+                        <div
+                          className={`mx-auto mb-1 h-1.5 w-1.5 rounded-full ${
+                            scanStage >= step.stage
+                              ? scanStage === 4
+                                ? 'bg-emerald-300'
+                                : 'bg-cyan-300'
+                              : 'bg-slate-600'
+                          }`}
+                        />
+
+                        <p className="text-[10px] font-bold uppercase tracking-[0.08em]">
+                          {step.label}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="relative mt-5 rounded-[22px] border border-cyan-400/20 bg-slate-950/35 p-4 text-left">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
-                          Detected Role
+                          Verified Access Level
                         </p>
 
                         <p className="mt-1 text-sm font-bold text-white">
@@ -475,7 +531,9 @@ export default function LoginPage() {
             className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-2xl sm:p-8"
           >
             <div className="mb-7 text-center">
-              <div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[22px] border ${currentRoleVisual.ring} ${currentRoleVisual.bg} ${currentRoleVisual.iconColor}`}>
+              <div
+                className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[22px] border ${currentRoleVisual.ring} ${currentRoleVisual.bg} ${currentRoleVisual.iconColor}`}
+              >
                 <RoleIcon className="h-7 w-7" />
               </div>
 
@@ -531,7 +589,9 @@ export default function LoginPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${accountVisual.ring} ${accountVisual.bg} ${accountVisual.iconColor}`}>
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${accountVisual.ring} ${accountVisual.bg} ${accountVisual.iconColor}`}
+                        >
                           <AccountIcon className="h-4.5 w-4.5" />
                         </div>
 

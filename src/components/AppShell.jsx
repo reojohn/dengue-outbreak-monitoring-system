@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bell,
   Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  ShieldAlert,
   CalendarDays,
   CheckCheck,
   ChevronDown,
@@ -111,6 +115,71 @@ function getNotificationDot(type) {
   if (type === 'success') return 'bg-emerald-500'
   if (type === 'activity') return 'bg-blue-500'
   return 'bg-slate-400'
+}
+
+function getNotificationTone(type) {
+  if (type === 'danger') {
+    return {
+      label: 'Priority alert',
+      icon: ShieldAlert,
+      dot: 'bg-rose-400 shadow-[0_0_22px_rgba(251,113,133,0.90)]',
+      iconWrap: 'from-rose-500 via-red-500 to-orange-400 text-white shadow-[0_18px_36px_rgba(244,63,94,0.32)]',
+      border: 'border-rose-200/80 dark:border-rose-400/25',
+      glow: 'bg-rose-400/30 dark:bg-rose-500/20',
+      accent: 'from-rose-400 via-orange-300 to-amber-300',
+      chip: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-200',
+    }
+  }
+
+  if (type === 'warning') {
+    return {
+      label: 'Monitoring notice',
+      icon: AlertTriangle,
+      dot: 'bg-amber-300 shadow-[0_0_22px_rgba(252,211,77,0.90)]',
+      iconWrap: 'from-amber-400 via-orange-400 to-yellow-300 text-slate-950 shadow-[0_18px_36px_rgba(245,158,11,0.28)]',
+      border: 'border-amber-200/80 dark:border-amber-400/25',
+      glow: 'bg-amber-300/30 dark:bg-amber-500/20',
+      accent: 'from-amber-300 via-orange-300 to-yellow-200',
+      chip: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/25 dark:bg-amber-500/10 dark:text-amber-200',
+    }
+  }
+
+  if (type === 'success') {
+    return {
+      label: 'System update',
+      icon: CheckCircle2,
+      dot: 'bg-emerald-300 shadow-[0_0_22px_rgba(110,231,183,0.90)]',
+      iconWrap: 'from-emerald-400 via-teal-400 to-cyan-300 text-slate-950 shadow-[0_18px_36px_rgba(16,185,129,0.24)]',
+      border: 'border-emerald-200/80 dark:border-emerald-400/25',
+      glow: 'bg-emerald-300/30 dark:bg-emerald-500/20',
+      accent: 'from-emerald-300 via-teal-300 to-cyan-200',
+      chip: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-500/10 dark:text-emerald-200',
+    }
+  }
+
+  if (type === 'activity') {
+    return {
+      label: 'Activity update',
+      icon: Activity,
+      dot: 'bg-blue-300 shadow-[0_0_22px_rgba(147,197,253,0.90)]',
+      iconWrap: 'from-blue-500 via-sky-400 to-cyan-300 text-white shadow-[0_18px_36px_rgba(59,130,246,0.28)]',
+      border: 'border-blue-200/80 dark:border-blue-400/25',
+      glow: 'bg-blue-300/30 dark:bg-blue-500/20',
+      accent: 'from-blue-300 via-sky-300 to-cyan-200',
+      chip: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/25 dark:bg-blue-500/10 dark:text-blue-200',
+    }
+  }
+
+  return {
+    label: 'Notification',
+    icon: Info,
+    dot: 'bg-slate-300 shadow-[0_0_22px_rgba(203,213,225,0.80)]',
+    iconWrap: 'from-slate-600 via-slate-500 to-slate-400 text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)]',
+    border: 'border-slate-200/80 dark:border-slate-600/50',
+    glow: 'bg-slate-300/30 dark:bg-slate-500/20',
+    accent: 'from-slate-300 via-slate-200 to-white',
+    chip: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+  }
 }
 
 function getActivityNotificationTarget(log = {}) {
@@ -576,6 +645,86 @@ function NotificationsPanel({
   )
 }
 
+
+function NotificationToast({ notification, visible, onClose, onOpen }) {
+  if (!notification) return null
+
+  const tone = getNotificationTone(notification.type)
+  const ToastIcon = tone.icon
+
+  return (
+    <div
+      className={`fixed right-4 top-4 z-[10000] w-[calc(100vw-2rem)] max-w-[420px] transition-all duration-500 sm:right-6 sm:top-6 ${
+        visible
+          ? 'translate-y-0 opacity-100 blur-0'
+          : '-translate-y-6 opacity-0 blur-sm pointer-events-none'
+      }`}
+      role="status"
+      aria-live="polite"
+    >
+      <div
+  className="dengue-notification-toast group relative overflow-hidden rounded-[30px] border border-slate-700/80 bg-slate-950 p-4 shadow-[0_28px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/10"
+>
+        <div className={`pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full ${tone.glow} blur-3xl`} />
+        <div className="pointer-events-none absolute -bottom-16 left-6 h-36 w-36 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className={`pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent ${tone.accent} to-transparent`} />
+
+        <div className="relative flex items-start gap-3">
+          <div className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br ${tone.iconWrap}`}>
+            <span className="absolute inset-0 rounded-[22px] bg-white/10" />
+            <ToastIcon className="relative h-6 w-6" />
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpen}
+            className="min-w-0 flex-1 text-left outline-none"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${tone.chip}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                {tone.label}
+              </span>
+
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                Just now
+              </span>
+            </div>
+
+            <p className="mt-2 line-clamp-2 text-sm font-black leading-5 text-white">
+              {notification.title}
+            </p>
+
+            <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-slate-300">
+              {notification.message}
+            </p>
+
+            <p className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-cyan-300">
+              Open related page
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-400 shadow-sm transition hover:-translate-y-0.5 hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+            aria-label="Dismiss notification popup"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="relative mt-4 h-1 overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-800">
+          <div
+            key={notification.id}
+            className={`h-full rounded-full bg-gradient-to-r ${tone.accent} dengue-toast-progress`}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ActiveNavCornerFrame() {
   const cornerBase =
     'pointer-events-none absolute h-6 w-6 border-white/95 opacity-100 drop-shadow-[0_0_8px_rgba(255,255,255,0.82)]'
@@ -672,10 +821,14 @@ export default function AppShell({ children }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [readNotificationIds, setReadNotificationIds] = useState(getInitialReadNotifications)
+  const [toastNotification, setToastNotification] = useState(null)
+  const [toastVisible, setToastVisible] = useState(false)
   const settingsButtonRef = useRef(null)
   const settingsPanelRef = useRef(null)
   const notificationsButtonRef = useRef(null)
   const notificationsPanelRef = useRef(null)
+  const lastToastIdRef = useRef('')
+  const toastTimerRef = useRef(null)
   const [textScale, setTextScale] = useState(getInitialTextScale)
   const [comfortableControls, setComfortableControls] = useState(() =>
     getInitialDisplaySetting('dengue-comfortable-controls')
@@ -852,6 +1005,42 @@ export default function AppShell({ children }) {
   }, [notifications, readNotificationIds])
 
   useEffect(() => {
+    const nextToast = unreadNotifications.find((item) => item.id !== 'no-active-alerts')
+
+    if (!nextToast || lastToastIdRef.current === nextToast.id) {
+      return
+    }
+
+    lastToastIdRef.current = nextToast.id
+    setToastNotification(nextToast)
+    setToastVisible(false)
+
+    const showTimer = window.setTimeout(() => {
+      setToastVisible(true)
+    }, 180)
+
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current)
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastVisible(false)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(showTimer)
+    }
+  }, [unreadNotifications])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     function handleOutsidePointerDown(event) {
       const target = event.target
 
@@ -1015,6 +1204,55 @@ export default function AppShell({ children }) {
         to {
           opacity: 1;
           transform: translateY(0) scale(1);
+        }
+      }
+
+      .dengue-notification-toast {
+        animation: dengue-toast-enter 520ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .dengue-notification-toast::after {
+        content: '';
+        pointer-events: none;
+        position: absolute;
+        inset: 1px;
+        border-radius: 29px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.34), transparent 34%, rgba(125,211,252,0.10));
+        opacity: 0.85;
+      }
+
+      .dengue-toast-progress {
+        animation: dengue-toast-progress 4.8s linear forwards;
+        transform-origin: left;
+      }
+
+      @keyframes dengue-toast-enter {
+        0% {
+          opacity: 0;
+          transform: translate3d(24px, -18px, 0) scale(0.94);
+          filter: blur(10px);
+        }
+
+        60% {
+          opacity: 1;
+          transform: translate3d(-4px, 0, 0) scale(1.01);
+          filter: blur(0);
+        }
+
+        100% {
+          opacity: 1;
+          transform: translate3d(0, 0, 0) scale(1);
+          filter: blur(0);
+        }
+      }
+
+      @keyframes dengue-toast-progress {
+        from {
+          transform: scaleX(1);
+        }
+
+        to {
+          transform: scaleX(0);
         }
       }
 
@@ -1207,6 +1445,7 @@ export default function AppShell({ children }) {
     setNotificationsOpen(false)
     setSettingsOpen(false)
     setMobileNavOpen(false)
+    setToastVisible(false)
   }, [location.pathname])
 
   function handleThemeToggle() {
@@ -1264,6 +1503,17 @@ export default function AppShell({ children }) {
     }, 180)
   }
 
+  function handleToastClose() {
+    setToastVisible(false)
+  }
+
+  function handleToastOpen() {
+    if (!toastNotification) return
+
+    setToastVisible(false)
+    handleNotificationClick(toastNotification)
+  }
+
   function handleLogout() {
     if (loggingOut) return
 
@@ -1305,6 +1555,13 @@ export default function AppShell({ children }) {
           </div>
         </div>
       )}
+
+      <NotificationToast
+        notification={toastNotification}
+        visible={toastVisible}
+        onClose={handleToastClose}
+        onOpen={handleToastOpen}
+      />
 
       <div className="sticky top-3 z-[80] mb-3 overflow-hidden rounded-[26px] border border-white/80 bg-white/90 px-4 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/60 backdrop-blur-xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/90 dark:ring-white/5 lg:hidden">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent" />

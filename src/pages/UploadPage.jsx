@@ -22,6 +22,7 @@ import { useData } from '../context/DataContext'
 import {
   cleanDengueFile,
   forecastDengueFile,
+  getBackendAlignmentReport,
   inspectUploadedFile,
   summarizeDengueFile,
   validateBoundaryFile,
@@ -34,8 +35,8 @@ const sources = [
     id: 'historical',
     contextKey: 'dengue',
     recordKey: 'dengueRecords',
-    title: 'Historical dengue data',
-    desc: 'Past dengue case records by barangay and reporting period',
+    title: 'Dengue case records',
+    desc: 'Dengue cases by barangay and date or month',
     type: 'CSV / Excel / JSON',
     icon: FileText,
     color:
@@ -48,8 +49,8 @@ const sources = [
     id: 'meteorological',
     contextKey: 'weather',
     recordKey: 'weatherRecords',
-    title: 'Meteorological data',
-    desc: 'Rainfall, temperature, and humidity records',
+    title: 'Weather records',
+    desc: 'Rainfall, temperature, and humidity by date',
     type: 'CSV / Excel / JSON',
     icon: CloudRain,
     color:
@@ -62,8 +63,8 @@ const sources = [
     id: 'demographic',
     contextKey: 'population',
     recordKey: 'populationRecords',
-    title: 'Demographic data',
-    desc: 'Population records by barangay',
+    title: 'Population records',
+    desc: 'Number of people living in each barangay',
     type: 'CSV / Excel / JSON',
     icon: Users,
     color:
@@ -76,8 +77,8 @@ const sources = [
     id: 'boundary',
     contextKey: 'boundary',
     recordKey: 'boundaryRecords',
-    title: 'Barangay boundary',
-    desc: 'Barangay boundary layer for geospatial mapping',
+    title: 'Map boundary file',
+    desc: 'Barangay shapes used to display areas on the map',
     type: 'GeoJSON / JSON',
     icon: MapIcon,
     color:
@@ -1133,11 +1134,27 @@ function validateBoundaryData(data) {
 function getStatusStyle(badge = '') {
   const value = String(badge).toLowerCase()
 
-  if (value.includes('review') || value.includes('missing') || value.includes('invalid')) {
+  if (
+    value.includes('review') ||
+    value.includes('missing') ||
+    value.includes('invalid') ||
+    value.includes('unmatched') ||
+    value.includes('unavailable')
+  ) {
     return 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
   }
 
-  if (value.includes('uploaded') || value.includes('sample') || value.includes('ready') || value.includes('valid')) {
+  if (
+    value.includes('uploaded') ||
+    value.includes('sample') ||
+    value.includes('ready') ||
+    value.includes('valid') ||
+    value.includes('matched') ||
+    value.includes('found') ||
+    value.includes('complete') ||
+    value.includes('aligned') ||
+    value.includes('checked')
+  ) {
     return 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
   }
 
@@ -1550,6 +1567,279 @@ function buildBackendBoundaryValidationResult({
   }
 }
 
+function selectFullPreviewRows(primaryRows = [], fallbackRows = []) {
+  const primary = Array.isArray(primaryRows) ? primaryRows : []
+  const fallback = Array.isArray(fallbackRows) ? fallbackRows : []
+
+  return fallback.length > primary.length ? fallback : primary
+}
+
+function getMergedDatasetHeaders(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return [
+      'barangay',
+      'period',
+      'cases',
+      'rainfall',
+      'temperature',
+      'humidity',
+      'population',
+      'density',
+      'boundary_match_status',
+      'population_match_status',
+      'weather_match_status',
+    ]
+  }
+
+  const priorityHeaders = [
+    'barangay',
+    'period',
+    'date',
+    'year',
+    'month',
+    'week',
+    'cases',
+    'deaths',
+    'rainfall',
+    'temperature',
+    'humidity',
+    'population',
+    'population_year',
+    'density',
+    'boundary_area_sqkm',
+    'geometry_id',
+    'boundary_match_status',
+    'population_match_status',
+    'weather_match_status',
+  ]
+
+  const rowKeys = new Set()
+
+  rows.slice(0, 25).forEach((row) => {
+    Object.keys(row || {}).forEach((key) => rowKeys.add(key))
+  })
+
+  return [
+    ...priorityHeaders.filter((header) => rowKeys.has(header)),
+    ...Array.from(rowKeys).filter((header) => !priorityHeaders.includes(header)),
+  ]
+}
+
+function getFriendlyMergedHeader(header = '') {
+  const labels = {
+    barangay: 'Barangay',
+    barangay_key: 'System name',
+    period: 'Period',
+    date: 'Date',
+    year: 'Year',
+    month: 'Month',
+    week: 'Week',
+    cases: 'Cases',
+    deaths: 'Deaths',
+    rainfall: 'Rainfall',
+    temperature: 'Temperature',
+    humidity: 'Humidity',
+    population: 'Population',
+    population_year: 'Population year',
+    density: 'People per sq. km',
+    boundary_area_sqkm: 'Barangay area',
+    geometry_id: 'Map area ID',
+    boundary_match_status: 'Found on map?',
+    population_match_status: 'Found in population file?',
+    weather_match_status: 'Weather match',
+  }
+
+  return labels[header] || String(header || '').replaceAll('_', ' ')
+}
+
+function formatFriendlyStatusValue(value) {
+  const text = String(value || '').toLowerCase()
+
+  if (!text || text === 'n/a') return 'N/A'
+  if (text === 'matched') return 'Found'
+  if (text === 'unmatched') return 'Needs Review'
+  if (text === 'exact_date') return 'Same Date'
+  if (text === 'monthly_average') return 'Monthly Weather Average'
+  if (text === 'overall_average') return 'Available Weather Average'
+  if (text === 'unavailable') return 'Not Available'
+
+  return String(value)
+}
+
+function formatMergedCellValue(value) {
+  if (value === undefined || value === null || value === '') {
+    return 'N/A'
+  }
+
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toLocaleString(undefined, { maximumFractionDigits: 3 })
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+
+  return String(value)
+}
+
+function getFriendlyAlignmentWarning(warning = '') {
+  const text = String(warning || '')
+  const lower = text.toLowerCase()
+
+  if (lower.includes('could not be matched with population')) {
+    return text.replace(
+      'dengue barangay name(s) could not be matched with population.',
+      'dengue barangay name(s) were not found in the population file.'
+    )
+  }
+
+  if (lower.includes('could not be matched with boundary')) {
+    return text.replace(
+      'dengue barangay name(s) could not be matched with boundary.',
+      'dengue barangay name(s) were not found in the map boundary file.'
+    )
+  }
+
+  if (lower.includes('dengue data has no psgc values')) {
+    return 'The dengue file has no barangay code, so the system checked using barangay names.'
+  }
+
+  if (lower.includes('population data has no psgc values')) {
+    return 'The population file has no barangay code, so the system checked using barangay names.'
+  }
+
+  if (lower.includes('duplicate')) {
+    return text.replaceAll('PSGC', 'barangay code')
+  }
+
+  return text.replaceAll('PSGC', 'barangay code')
+}
+
+function getAlignmentPairSummary(pairReport = {}) {
+  return {
+    sourceCount: Number(pairReport.source_count || 0),
+    targetCount: Number(pairReport.target_count || 0),
+    matchedCount: Number(pairReport.matched_count || 0),
+    unmatchedCount: Number(pairReport.unmatched_count || 0),
+    matchRate: Number(pairReport.match_rate || 0),
+    warning: pairReport.warning || '',
+  }
+}
+
+function getAlignmentUnmatchedRows(alignmentReport = {}) {
+  const pairReports = alignmentReport?.pair_reports || {}
+  const rows = []
+  const seen = new Set()
+
+  ;[
+    ['Population file', pairReports.dengue_to_population],
+    ['Map boundary file', pairReports.dengue_to_boundary],
+  ].forEach(([targetLabel, report]) => {
+    ;(report?.unmatched || []).forEach((row) => {
+      const key = `${targetLabel}-${row.source_key || row.source_name}`
+
+      if (seen.has(key)) return
+      seen.add(key)
+
+      rows.push({
+        ...row,
+        targetLabel,
+      })
+    })
+  })
+
+  return rows
+}
+
+function formatAlignmentSuggestions(row = {}) {
+  const suggestions = Array.isArray(row.suggestions) ? row.suggestions : []
+
+  if (!suggestions.length) {
+    return 'No close match suggested'
+  }
+
+  return suggestions
+    .slice(0, 3)
+    .map((suggestion) => {
+      const percent = Math.round(Number(suggestion.similarity || 0) * 100)
+      return `${suggestion.target_name || suggestion.target_raw_name || 'Unnamed'}${percent ? ` (${percent}% close)` : ''}`
+    })
+    .join(', ')
+}
+
+function getAlignmentDuplicateTotal(alignmentReport = {}) {
+  const duplicates = alignmentReport?.duplicates || {}
+
+  return Object.values(duplicates).reduce((total, duplicateReport = {}) => {
+    return (
+      total +
+      Number(duplicateReport.duplicate_name_group_count || 0) +
+      Number(duplicateReport.duplicate_psgc_group_count || 0)
+    )
+  }, 0)
+}
+
+async function buildLocalValidationResultForSource(file, sourceId) {
+  const fileName = file.name.toLowerCase()
+  const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
+  const isJson = fileName.endsWith('.json') || fileName.endsWith('.geojson')
+
+  if (isExcel) {
+    if (sourceId === 'boundary') {
+      throw new Error('Excel files cannot be used as barangay boundary layers. Please upload GeoJSON or JSON for boundary data.')
+    }
+
+    const arrayBuffer = await readFileAsArrayBuffer(file)
+    const excelResult = parseExcelWorkbook(arrayBuffer, ['butuan'])
+    let result = null
+
+    if (sourceId === 'historical') result = validateDengueRows(excelResult.rows)
+    if (sourceId === 'meteorological') result = validateWeatherRows(excelResult.rows)
+    if (sourceId === 'demographic') result = validatePopulationRows(excelResult.rows)
+
+    return result
+      ? {
+          ...result,
+          mappingSummary: `${result.mappingSummary || ''}${result.mappingSummary ? ', ' : ''}Excel sheet → ${excelResult.sheetName}`,
+        }
+      : null
+  }
+
+  const text = await readFileAsText(file)
+
+  if (sourceId === 'boundary') {
+    const parsed = parseJson(text)
+    return validateBoundaryData(parsed)
+  }
+
+  if (isJson) {
+    const parsed = parseJson(text)
+
+    if (!Array.isArray(parsed)) {
+      throw new Error('JSON file must contain an array of records or a records/data array.')
+    }
+
+    if (sourceId === 'historical') return validateDengueRows(parsed)
+    if (sourceId === 'meteorological') return validateWeatherRows(parsed)
+    if (sourceId === 'demographic') return validatePopulationRows(parsed)
+
+    return null
+  }
+
+  const parsed = parseCsv(text)
+
+  if (sourceId === 'historical') return validateDengueRows(parsed)
+  if (sourceId === 'meteorological') return validateWeatherRows(parsed)
+  if (sourceId === 'demographic') return validatePopulationRows(parsed)
+
+  return null
+}
+
+
 export default function UploadPage() {
   const navigate = useNavigate()
   const data = useData()
@@ -1559,6 +1849,12 @@ export default function UploadPage() {
     addActivityLog,
     riskRows = [],
     integrationReadiness = null,
+    backendIntegrationStatus = null,
+    backendIntegrationResult = null,
+    backendMergedDataset = [],
+    syncBackendIntegrationStatus,
+    buildBackendIntegrationWorkspace,
+    resetBackendIntegration,
   } = data
 
   const [selected, setSelected] = useState('historical')
@@ -1566,6 +1862,9 @@ export default function UploadPage() {
   const [uploadMessage, setUploadMessage] = useState('')
   const [uploadError, setUploadError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isBuildingBackendDataset, setIsBuildingBackendDataset] = useState(false)
+  const [alignmentReport, setAlignmentReport] = useState(null)
+  const [isCheckingAlignment, setIsCheckingAlignment] = useState(false)
 
   const selectedSource = sources.find((item) => item.id === selected) || sources[0]
   const selectedStatus = sourceStatus?.[selectedSource.contextKey] || {}
@@ -1635,9 +1934,40 @@ export default function UploadPage() {
   const integrationSummary = integrationReadiness?.summary || {}
   const integrationScore = Number(integrationReadiness?.score || 0)
 
+  const backendStatus = backendIntegrationStatus || {}
+  const backendSources = backendStatus.sources || {}
+  const backendLoadedSourceCount = Number(backendStatus.loaded_source_count || 0)
+  const backendRequiredSourceCount = Number(backendStatus.required_source_count || sources.length)
+  const backendStatusLabel = backendStatus.status || 'empty'
+  const backendCanBuildDataset = Boolean(backendStatus.can_build_dataset)
+  const backendComplete = Boolean(backendStatus.complete)
+  const backendMergedRows = Array.isArray(backendMergedDataset) ? backendMergedDataset : []
+  const backendMergedHeaders = useMemo(() => {
+    return getMergedDatasetHeaders(backendMergedRows)
+  }, [backendMergedRows])
+  const backendBuildSummary = backendIntegrationResult?.summary || null
+  const activeAlignmentReport = alignmentReport || null
+  const alignmentPairReports = activeAlignmentReport?.pair_reports || {}
+  const denguePopulationAlignment = getAlignmentPairSummary(alignmentPairReports.dengue_to_population)
+  const dengueBoundaryAlignment = getAlignmentPairSummary(alignmentPairReports.dengue_to_boundary)
+  const populationBoundaryAlignment = getAlignmentPairSummary(alignmentPairReports.population_to_boundary)
+  const alignmentWarnings = Array.isArray(activeAlignmentReport?.warnings)
+    ? activeAlignmentReport.warnings
+    : []
+  const alignmentUnmatchedRows = getAlignmentUnmatchedRows(activeAlignmentReport)
+  const alignmentDuplicateTotal = getAlignmentDuplicateTotal(activeAlignmentReport)
 
-  function handleResetWorkspace() {
+
+  async function handleResetWorkspace() {
     if (isProcessing) return
+
+    setIsProcessing(true)
+
+    try {
+      await resetBackendIntegration?.()
+    } catch {
+      // Continue clearing the frontend workspace even if the backend is offline.
+    }
 
     updateWorkspace((current) => ({
       ...current,
@@ -1648,6 +1978,9 @@ export default function UploadPage() {
       riskRows: [],
       backendDengueSummary: null,
       backendForecastResult: null,
+      backendIntegrationStatus: null,
+      backendIntegrationResult: null,
+      backendMergedDataset: [],
       sourceStatus: {
         dengue: {},
         weather: {},
@@ -1656,15 +1989,125 @@ export default function UploadPage() {
       },
     }))
 
+    setAlignmentReport(null)
     setSelected('historical')
     setValidationResult(null)
     setUploadError('')
-    setUploadMessage('Workspace reset. Uploaded datasets, validation results, and generated forecast outputs were cleared.')
+    setUploadMessage('Workspace reset. Uploaded files, checking results, forecast results, and combined data were cleared.')
 
     addActivityLog(
       'Workspace reset',
-      'Uploaded datasets, validation results, and generated forecast outputs were cleared.'
+      'Uploaded files, checking results, forecast results, and combined data were cleared.'
     )
+
+    setIsProcessing(false)
+  }
+
+  async function handleSyncBackendStatus() {
+    setUploadMessage('')
+    setUploadError('')
+    setIsBuildingBackendDataset(true)
+
+    try {
+      const status = await syncBackendIntegrationStatus?.({ silent: false })
+
+      if (!status) {
+        throw new Error('Unable to check file status. Make sure the system server is running.')
+      }
+
+      setUploadMessage(
+        `File status refreshed. ${Number(status.loaded_source_count || 0)} of ${Number(status.required_source_count || sources.length)} required files are ready.`
+      )
+    } catch (error) {
+      setUploadError(error?.message || 'Unable to refresh file status.')
+    } finally {
+      setIsBuildingBackendDataset(false)
+    }
+  }
+
+  async function handleBuildBackendDataset() {
+    setUploadMessage('')
+    setUploadError('')
+    setIsBuildingBackendDataset(true)
+
+    try {
+      const result = await buildBackendIntegrationWorkspace?.()
+
+      if (!result) {
+        throw new Error('The system did not return combined data. Please try again.')
+      }
+
+      setUploadMessage(
+        `Uploaded files were combined successfully. ${Number(result.row_count || 0)} dengue row${Number(result.row_count || 0) === 1 ? '' : 's'} now include matching weather, population, and map information when available.`
+      )
+    } catch (error) {
+      setUploadError(
+        error?.message ||
+          'Unable to combine the uploaded files. Upload dengue, weather, population, and map files first.'
+      )
+
+      addActivityLog(
+        'Combine uploaded data failed',
+        error?.message || 'Unable to combine the uploaded files.'
+      )
+    } finally {
+      setIsBuildingBackendDataset(false)
+    }
+  }
+
+  async function handleResetBackendIntegration() {
+    setUploadMessage('')
+    setUploadError('')
+    setIsBuildingBackendDataset(true)
+
+    try {
+      const result = await resetBackendIntegration?.()
+
+      setValidationResult(null)
+      setAlignmentReport(null)
+      setUploadMessage(result?.message || 'Combined data was cleared.')
+    } catch (error) {
+      setUploadError(error?.message || 'Unable to clear combined data.')
+    } finally {
+      setIsBuildingBackendDataset(false)
+    }
+  }
+
+  async function handleCheckAlignmentReport() {
+    setUploadMessage('')
+    setUploadError('')
+    setIsCheckingAlignment(true)
+
+    try {
+      const result = await getBackendAlignmentReport()
+
+      setAlignmentReport(result)
+      await syncBackendIntegrationStatus?.({ silent: true })
+
+      const score = Number(result?.alignment_score || 0)
+      const warnings = Array.isArray(result?.warnings) ? result.warnings.length : 0
+
+      setUploadMessage(
+        `Barangay name check completed. ${score}% of names matched, with ${warnings} item${warnings === 1 ? '' : 's'} to review.`
+      )
+
+      addActivityLog(
+        'Barangay name check completed',
+        `Barangay name match: ${score}%. Items to review: ${warnings}.`
+      )
+    } catch (error) {
+      setUploadError(
+        error?.message ||
+          'Unable to check barangay names. Upload the needed files first and make sure the system server is running.'
+      )
+
+      addActivityLog(
+        'Barangay name check failed',
+        error?.message || 'Unable to check barangay names.'
+      )
+    } finally {
+      setIsCheckingAlignment(false)
+    }
   }
 
   async function handleFileUpload(event) {
@@ -1683,19 +2126,32 @@ export default function UploadPage() {
       const isCsv = fileName.endsWith('.csv')
       const isJson = fileName.endsWith('.json') || fileName.endsWith('.geojson')
 
+      let localValidationResult = null
+
+      try {
+        localValidationResult = await buildLocalValidationResultForSource(file, selected)
+      } catch {
+        localValidationResult = null
+      }
+
       if (selected === 'historical' && (isCsv || isExcel)) {
         const inspectResult = await inspectUploadedFile(file)
         const cleanResult = await cleanDengueFile(file)
         const summaryResult = await summarizeDengueFile(file)
         const forecastResult = await forecastDengueFile(file)
 
-        const backendResult = buildBackendDengueValidationResult({
+        const rawBackendResult = buildBackendDengueValidationResult({
           fileName: file.name,
           inspectResult,
           cleanResult,
           summaryResult,
           forecastResult,
         })
+
+        const backendResult = {
+          ...rawBackendResult,
+          previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
 
         updateWorkspace((current) => ({
           ...current,
@@ -1706,7 +2162,7 @@ export default function UploadPage() {
             ...(current.sourceStatus || {}),
             [selectedSource.contextKey]: {
               uploadedName: file.name,
-              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
               missingCount: backendResult.missingCount,
@@ -1729,9 +2185,12 @@ export default function UploadPage() {
         )
 
         addActivityLog(
-          'Backend dengue dataset uploaded',
-          `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+          'Dengue file uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
+
+        await syncBackendIntegrationStatus?.({ silent: true })
+        setAlignmentReport(null)
 
         return
       }
@@ -1739,10 +2198,15 @@ export default function UploadPage() {
       if (selected === 'demographic' && (isCsv || isExcel || fileName.endsWith('.json'))) {
         const validateResult = await validatePopulationFile(file)
 
-        const backendResult = buildBackendPopulationValidationResult({
+        const rawBackendResult = buildBackendPopulationValidationResult({
           fileName: file.name,
           validateResult,
         })
+
+        const backendResult = {
+          ...rawBackendResult,
+          previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
 
         updateWorkspace((current) => ({
           ...current,
@@ -1751,7 +2215,7 @@ export default function UploadPage() {
             ...(current.sourceStatus || {}),
             [selectedSource.contextKey]: {
               uploadedName: file.name,
-              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
               missingCount: backendResult.missingCount,
@@ -1766,13 +2230,16 @@ export default function UploadPage() {
         setValidationResult(backendResult)
 
         setUploadMessage(
-          `Upload successful. Population records are backend-validated and ready for integration. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
+          `Upload successful. Population records were checked and are ready to use. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
         )
 
         addActivityLog(
-          'Backend population dataset uploaded',
-          `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+          'Population file uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
+
+        await syncBackendIntegrationStatus?.({ silent: true })
+        setAlignmentReport(null)
 
         return
       }
@@ -1780,10 +2247,15 @@ export default function UploadPage() {
       if (selected === 'meteorological' && (isCsv || isExcel || fileName.endsWith('.json'))) {
         const validateResult = await validateWeatherFile(file)
 
-        const backendResult = buildBackendWeatherValidationResult({
+        const rawBackendResult = buildBackendWeatherValidationResult({
           fileName: file.name,
           validateResult,
         })
+
+        const backendResult = {
+          ...rawBackendResult,
+          previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
 
         updateWorkspace((current) => ({
           ...current,
@@ -1792,7 +2264,7 @@ export default function UploadPage() {
             ...(current.sourceStatus || {}),
             [selectedSource.contextKey]: {
               uploadedName: file.name,
-              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
               missingCount: backendResult.missingCount,
@@ -1807,13 +2279,16 @@ export default function UploadPage() {
         setValidationResult(backendResult)
 
         setUploadMessage(
-          `Upload successful. Weather records are backend-validated and ready for integration. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
+          `Upload successful. Weather records were checked and are ready to use. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
         )
 
         addActivityLog(
-          'Backend weather dataset uploaded',
-          `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+          'Weather file uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
+
+        await syncBackendIntegrationStatus?.({ silent: true })
+        setAlignmentReport(null)
 
         return
       }
@@ -1821,10 +2296,15 @@ export default function UploadPage() {
       if (selected === 'boundary' && isJson) {
         const validateResult = await validateBoundaryFile(file)
 
-        const backendResult = buildBackendBoundaryValidationResult({
+        const rawBackendResult = buildBackendBoundaryValidationResult({
           fileName: file.name,
           validateResult,
         })
+
+        const backendResult = {
+          ...rawBackendResult,
+          previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
 
         updateWorkspace((current) => ({
           ...current,
@@ -1833,7 +2313,7 @@ export default function UploadPage() {
             ...(current.sourceStatus || {}),
             [selectedSource.contextKey]: {
               uploadedName: file.name,
-              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
               missingCount: backendResult.missingCount,
@@ -1848,13 +2328,16 @@ export default function UploadPage() {
         setValidationResult(backendResult)
 
         setUploadMessage(
-          `Upload successful. Boundary layer is backend-validated and ready for geospatial mapping. ${backendResult.validCount} of ${backendResult.recordCount} features are valid.`
+          `Upload successful. Map boundary file was checked and is ready to use. ${backendResult.validCount} of ${backendResult.recordCount} map areas are valid.`
         )
 
         addActivityLog(
-          'Backend boundary dataset uploaded',
-          `${selectedSource.title} uploaded from ${file.name}. Backend valid features: ${backendResult.validCount}/${backendResult.recordCount}.`
+          'Map boundary file uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Valid map areas: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
+
+        await syncBackendIntegrationStatus?.({ silent: true })
+        setAlignmentReport(null)
 
         return
       }
@@ -1941,7 +2424,7 @@ export default function UploadPage() {
       })
 
       const mappingNote = finalMappingSummary
-        ? ` Auto-mapped fields: ${finalMappingSummary}.`
+        ? ` Detected columns: ${finalMappingSummary}.`
         : ''
 
       setUploadMessage(
@@ -1978,52 +2461,52 @@ export default function UploadPage() {
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
                 <Sparkles className="h-3.5 w-3.5" />
-                Data intake center
+                Upload center
               </div>
 
               <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
-                Data Upload and Validation
+                Upload and Check Data
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-7 text-white/80 sm:text-base">
-                Upload dengue, weather, population, and boundary datasets. The system automatically maps fields, cleans records, validates data quality, and prepares the workspace for forecasting.
+                Add the dengue, weather, population, and map files. The system checks the files, fixes common formatting issues, and tells you what still needs review before using the forecast.
               </p>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                  Sources loaded
+                  Files uploaded
                 </p>
                 <p className="mt-3 text-2xl font-black text-white">
                   {loadedSourceCount}/{sources.length}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-white/70">
-                  Datasets with valid records
+                  Files that passed checking
                 </p>
               </div>
 
               <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                  Current validity
+                  Current file quality
                 </p>
                 <p className="mt-3 text-2xl font-black text-white">
                   {validPercent}%
                 </p>
                 <p className="mt-1 text-xs leading-5 text-white/70">
-                  Valid records in selected source
+                  Good records in this file
                 </p>
               </div>
 
               <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                  Forecast readiness
+                  Ready for forecast?
                 </p>
                 <p className="mt-3 text-2xl font-black text-white">
                   {readyChecklistCount}/{checklist.length}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-white/70">
-                  Required checks completed
+                  Checks completed
                 </p>
               </div>
             </div>
@@ -2037,7 +2520,7 @@ export default function UploadPage() {
 
               <div className="min-w-0">
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/60">
-                  Selected source
+                  Selected file type
                 </p>
                 <h2 className="mt-2 text-xl font-black tracking-tight text-white">
                   {selectedSource.title}
@@ -2067,10 +2550,10 @@ export default function UploadPage() {
 
             <div className="mt-5 rounded-[24px] border border-white/15 bg-black/10 p-4">
               <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                Workflow controls
+                What to do next
               </p>
               <p className="mt-2 text-sm leading-6 text-white/75">
-                Select a dataset card below to upload a new file or reset the workspace.
+                Choose a file type below, upload the file, then review any warnings before continuing.
               </p>
             </div>
           </div>
@@ -2087,18 +2570,18 @@ export default function UploadPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
                   <Database className="h-3.5 w-3.5" />
-                  Dataset sources
+                  Files needed
                 </div>
                 <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                  Select the dataset to upload
+                  Choose the file you want to upload
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Each source is validated separately so the forecast workflow receives clean and standardized records.
+                  Upload each file one at a time. The system will check if the file can be used for the forecast and map.
                 </p>
               </div>
 
               <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                {loadedSourceCount} active source{loadedSourceCount === 1 ? '' : 's'}
+                {loadedSourceCount} file{loadedSourceCount === 1 ? '' : 's'} ready
               </div>
             </div>
 
@@ -2194,7 +2677,7 @@ export default function UploadPage() {
 
                   <div className="min-w-0">
                     <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
-                      Selected upload target
+                      Selected file type
                     </p>
                     <h4 className="mt-1 text-base font-black text-brand-text dark:text-slate-100">
                       {selectedSource.title}
@@ -2225,7 +2708,7 @@ export default function UploadPage() {
                     className="group flex min-h-[58px] items-center justify-center gap-2 rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-center text-sm font-black leading-5 text-rose-600 shadow-[0_14px_30px_rgba(225,29,72,0.08)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:shadow-[0_18px_38px_rgba(225,29,72,0.14)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
                   >
                     <RotateCcw className="h-4 w-4 transition group-hover:-rotate-45" />
-                    Reset workspace
+                    Clear all uploaded files
                   </button>
                 </div>
               </div>
@@ -2237,19 +2720,19 @@ export default function UploadPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  Data quality
+                  File check results
                 </div>
                 <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                  Validation summary
+                  File checking summary
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Uploaded files are automatically mapped, cleaned, and checked before forecasting.
+                  The system checks for missing values, invalid numbers, and duplicate rows before using the file.
                 </p>
               </div>
 
               <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-right dark:border-slate-700 dark:bg-slate-800/70">
                 <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                  Validity score
+                  File quality
                 </p>
                 <p className="mt-1 text-2xl font-black text-brand-text dark:text-slate-100">
                   {validPercent}%
@@ -2261,7 +2744,7 @@ export default function UploadPage() {
               {[
                 ['Missing values', currentStats.missingCount || 0, AlertTriangle, 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'],
                 ['Invalid values', currentStats.invalidCount || 0, AlertTriangle, 'border-orange-100 bg-orange-50 text-brand-orange dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300'],
-                ['Duplicates removed', currentStats.duplicateCount || 0, FileCheck2, 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'],
+                ['Duplicate rows', currentStats.duplicateCount || 0, FileCheck2, 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'],
                 ['Valid records', `${currentStats.validCount || 0}/${currentStats.recordCount || 0}`, CheckCircle2, 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'],
               ].map(([label, value, Icon, style]) => (
                 <div
@@ -2303,7 +2786,7 @@ export default function UploadPage() {
 
             {(validationResult?.sourceId === selected && validationResult.mappingSummary) && (
               <div className="mt-5 rounded-[24px] border border-blue-100 bg-blue-50/80 p-4 text-sm leading-6 text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-                <span className="font-black">Auto-cleaning details:</span>{' '}
+                <span className="font-black">Detected columns:</span>{' '}
                 {validationResult.mappingSummary}
               </div>
             )}
@@ -2314,13 +2797,13 @@ export default function UploadPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300">
                   <ClipboardCheck className="h-3.5 w-3.5" />
-                  Multi-source integration
+                  Readiness check
                 </div>
                 <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                  Data integration readiness
+                  Are the uploaded files ready to work together?
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Checks whether backend-validated dengue, weather, population, and boundary datasets can work together for forecasting, GIS mapping, and DSS outputs.
+                  Checks whether the dengue, weather, population, and map files match well enough to be used together.
                 </p>
               </div>
 
@@ -2336,10 +2819,10 @@ export default function UploadPage() {
 
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ['Shared barangays', integrationSummary.sharedBarangayCount ?? 0, `${integrationSummary.dengueBarangayCount ?? 0} dengue barangays checked`],
-                ['Population barangays', integrationSummary.populationBarangayCount ?? 0, 'Backend-cleaned population records'],
-                ['Boundary features', integrationSummary.boundaryBarangayCount ?? 0, 'GeoJSON barangay features'],
-                ['Forecast rows', integrationSummary.riskRowCount ?? riskRows.length, 'Rows available for DSS outputs'],
+                ['Barangays connected', integrationSummary.sharedBarangayCount ?? 0, `${integrationSummary.dengueBarangayCount ?? 0} dengue barangays checked`],
+                ['Population barangays', integrationSummary.populationBarangayCount ?? 0, 'Barangays in the population file'],
+                ['Map barangays', integrationSummary.boundaryBarangayCount ?? 0, 'Barangays found in the map file'],
+                ['Forecast areas', integrationSummary.riskRowCount ?? riskRows.length, 'Barangays ready for forecast results'],
               ].map(([label, value, detail]) => (
                 <div
                   key={label}
@@ -2408,15 +2891,354 @@ export default function UploadPage() {
           <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  <Database className="h-3.5 w-3.5" />
+                  Combine uploaded files
+                </div>
+                <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Combined data for forecast and map
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  This combines the checked dengue, weather, population, and map files into one table that the forecast, map, and reports can use.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(backendComplete ? 'Ready' : backendStatusLabel)}`}>
+                  {backendStatusLabel.toUpperCase()}
+                </span>
+                <span className="text-xs font-bold text-brand-muted dark:text-slate-400">
+                  {backendLoadedSourceCount}/{backendRequiredSourceCount} file{backendRequiredSourceCount === 1 ? '' : 's'} ready
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {sources.map((source) => {
+                const backendSource = backendSources[source.contextKey] || {}
+                const loaded = Boolean(backendSource.loaded)
+                const SourceIcon = source.icon
+
+                return (
+                  <div
+                    key={`backend-${source.id}`}
+                    className="rounded-[24px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${source.color}`}>
+                        <SourceIcon className="h-4 w-4" />
+                      </div>
+
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${getStatusStyle(loaded ? 'Ready' : 'Pending')}`}>
+                        {loaded ? 'Loaded' : 'Pending'}
+                      </span>
+                    </div>
+
+                    <p className="mt-3 text-sm font-black text-brand-text dark:text-slate-100">
+                      {source.title}
+                    </p>
+
+                    <p className="mt-1 truncate text-xs leading-5 text-brand-muted dark:text-slate-400">
+                      {backendSource.filename || 'No file checked yet'}
+                    </p>
+
+                    <p className="mt-2 text-xs font-bold text-brand-muted dark:text-slate-500">
+                      {Number(backendSource.valid_count || 0)}/{Number(backendSource.record_count || 0)} valid
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              <button
+                type="button"
+                onClick={handleSyncBackendStatus}
+                disabled={isProcessing || isBuildingBackendDataset}
+                className="group flex min-h-[54px] items-center justify-center gap-2 rounded-[22px] border border-blue-200 bg-white px-4 py-3 text-center text-sm font-black text-brand-blue shadow-[0_14px_30px_rgba(37,95,143,0.08)] transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/20 dark:bg-slate-950 dark:text-blue-300 dark:hover:bg-blue-500/10"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Refresh file status
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBuildBackendDataset}
+                disabled={isProcessing || isBuildingBackendDataset || !backendCanBuildDataset}
+                className="group flex min-h-[54px] items-center justify-center gap-2 rounded-[22px] bg-gradient-to-r from-brand-blue to-cyan-500 px-4 py-3 text-center text-sm font-black text-white shadow-[0_14px_30px_rgba(37,95,143,0.25)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(37,95,143,0.32)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Database className="h-4 w-4" />
+                {isBuildingBackendDataset ? 'Combining data...' : 'Combine uploaded data'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetBackendIntegration}
+                disabled={isProcessing || isBuildingBackendDataset}
+                className="group flex min-h-[54px] items-center justify-center gap-2 rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-center text-sm font-black text-rose-600 shadow-[0_14px_30px_rgba(225,29,72,0.08)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Clear combined data
+              </button>
+            </div>
+
+            {backendBuildSummary && (
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ['Combined dengue rows', backendBuildSummary.row_count ?? backendMergedRows.length],
+                  ['Rows with weather', backendBuildSummary.weather_matched_rows ?? 0],
+                  ['Rows with population', backendBuildSummary.population_matched_rows ?? 0],
+                  ['Rows found on map', backendBuildSummary.boundary_matched_rows ?? 0],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-[22px] border border-brand-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950"
+                  >
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+              <div className="records-preview-scroll max-h-[460px] max-w-full overflow-auto overscroll-contain">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="sticky top-0 z-20 bg-slate-50/95 text-[11px] uppercase tracking-[0.12em] text-brand-muted shadow-[0_1px_0_rgba(15,23,42,0.08)] backdrop-blur-xl dark:bg-slate-950/95 dark:text-slate-400 dark:shadow-[0_1px_0_rgba(148,163,184,0.12)]">
+                    <tr>
+                      {backendMergedHeaders.map((header) => (
+                        <th key={header} className="whitespace-nowrap px-4 py-4 font-black">
+                          {getFriendlyMergedHeader(header)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+                    {backendMergedRows.length > 0 ? (
+                      backendMergedRows.map((row, index) => (
+                        <tr key={`backend-merged-${index}`} className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                          {backendMergedHeaders.map((header) => {
+                            const cell = row?.[header]
+                            const isStatusCell = header.includes('status')
+
+                            return (
+                              <td
+                                key={`backend-merged-${index}-${header}`}
+                                className="whitespace-nowrap px-4 py-4 text-sm text-brand-text dark:text-slate-300"
+                              >
+                                {isStatusCell ? (
+                                  <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(String(cell || ''))}`}>
+                                    {formatFriendlyStatusValue(cell)}
+                                  </span>
+                                ) : (
+                                  formatMergedCellValue(cell)
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={backendMergedHeaders.length}
+                          className="px-4 py-10 text-center text-sm text-brand-muted dark:text-slate-400"
+                        >
+                          No combined data yet. Click “Combine uploaded data” after uploading the needed files.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
+              This table shows what the system created after combining the uploaded files. Review rows marked “Needs Review” before using the forecast or map.
+            </p>
+          </div>
+
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300">
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                  Barangay name check
+                </div>
+                <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Check if barangay names match
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  Checks if barangay names in the dengue file can be found in the population file and the map file. This helps prevent missing population counts or missing map areas.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(activeAlignmentReport ? 'Ready' : 'Pending')}`}>
+                  {activeAlignmentReport ? `${Number(activeAlignmentReport.alignment_score || 0)}% matched` : 'Not checked'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCheckAlignmentReport}
+                  disabled={isProcessing || isBuildingBackendDataset || isCheckingAlignment}
+                  className="group flex min-h-[42px] items-center justify-center gap-2 rounded-[18px] border border-violet-200 bg-white px-4 py-2 text-center text-xs font-black text-violet-700 shadow-[0_12px_24px_rgba(109,40,217,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-slate-950 dark:text-violet-300 dark:hover:bg-violet-500/10"
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  {isCheckingAlignment ? 'Checking names...' : 'Check barangay names'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Overall name match', activeAlignmentReport ? `${Number(activeAlignmentReport.alignment_score || 0)}%` : 'N/A', 'How well the barangay names match across files'],
+                ['Dengue names in population file', activeAlignmentReport ? `${denguePopulationAlignment.matchedCount}/${denguePopulationAlignment.sourceCount}` : 'N/A', `${denguePopulationAlignment.matchRate || 0}% found`],
+                ['Dengue names on the map', activeAlignmentReport ? `${dengueBoundaryAlignment.matchedCount}/${dengueBoundaryAlignment.sourceCount}` : 'N/A', `${dengueBoundaryAlignment.matchRate || 0}% found`],
+                ['Population names on the map', activeAlignmentReport ? `${populationBoundaryAlignment.matchedCount}/${populationBoundaryAlignment.sourceCount}` : 'N/A', `${populationBoundaryAlignment.matchRate || 0}% found`],
+              ].map(([label, value, detail]) => (
+                <div
+                  key={label}
+                  className="rounded-[22px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                >
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                    {value}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                    {detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {activeAlignmentReport && (
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-[22px] border border-brand-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    Names needing review
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                    {alignmentUnmatchedRows.length}
+                  </p>
+                </div>
+
+                <div className="rounded-[22px] border border-brand-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    Possible duplicate names
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                    {alignmentDuplicateTotal}
+                  </p>
+                </div>
+
+                <div className="rounded-[22px] border border-brand-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    Items to review
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                    {alignmentWarnings.length}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {alignmentWarnings.length > 0 && (
+              <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/75 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-100 bg-white text-brand-orange dark:border-amber-500/20 dark:bg-white/10 dark:text-amber-300">
+                    <AlertTriangle className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-brand-orange dark:text-amber-300">
+                      Please review these items
+                    </p>
+                    <div className="mt-2 space-y-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                      {alignmentWarnings.map((warning, index) => (
+                        <p key={`alignment-warning-${index}`}>• {getFriendlyAlignmentWarning(warning)}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeAlignmentReport && (
+              <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+                <div className="records-preview-scroll max-h-[360px] max-w-full overflow-auto overscroll-contain">
+                  <table className="w-full min-w-[920px] text-left text-sm">
+                    <thead className="sticky top-0 z-20 bg-slate-50/95 text-[11px] uppercase tracking-[0.12em] text-brand-muted shadow-[0_1px_0_rgba(15,23,42,0.08)] backdrop-blur-xl dark:bg-slate-950/95 dark:text-slate-400 dark:shadow-[0_1px_0_rgba(148,163,184,0.12)]">
+                      <tr>
+                        <th className="px-4 py-4 font-black">Barangay name in dengue file</th>
+                        <th className="px-4 py-4 font-black">Not found in</th>
+                        <th className="px-4 py-4 font-black">System-read name</th>
+                        <th className="px-4 py-4 font-black">Possible correct name</th>
+                        <th className="px-4 py-4 font-black">Status</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+                      {alignmentUnmatchedRows.length > 0 ? (
+                        alignmentUnmatchedRows.map((row, index) => (
+                          <tr key={`alignment-unmatched-${index}`} className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                            <td className="whitespace-nowrap px-4 py-4 font-bold text-brand-text dark:text-slate-200">
+                              {row.source_name || row.source_raw_name || 'Unnamed'}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-4 text-brand-text dark:text-slate-300">
+                              {row.targetLabel}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-4 text-brand-muted dark:text-slate-400">
+                              {row.source_key || 'N/A'}
+                            </td>
+                            <td className="min-w-[280px] px-4 py-4 text-brand-text dark:text-slate-300">
+                              {formatAlignmentSuggestions(row)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-4">
+                              <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle('Needs Review')}`}>
+                                Review Name
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            className="px-4 py-10 text-center text-sm text-brand-muted dark:text-slate-400"
+                          >
+                            All dengue barangay names were found in the population file and map file.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
+              Use this section to fix barangay names before relying on forecast results, map colors, population counts, and recommended actions.
+            </p>
+          </div>
+
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
                   <Table2 className="h-3.5 w-3.5" />
                   Records preview
                 </div>
                 <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                  Cleaned records preview
+                  Checked records preview
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Preview of standardized records after automatic cleaning and validation.
+                  Review the rows after the system checks and organizes the file.
                 </p>
               </div>
 
@@ -2482,7 +3304,7 @@ export default function UploadPage() {
             </div>
 
             <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
-              Showing all cleaned records. Scroll inside the table to review more rows, and swipe sideways on smaller screens to view all columns.
+              Showing all checked records. Scroll inside the table to review more rows, and swipe sideways on smaller screens to view all columns.
             </p>
           </div>
         </div>
@@ -2491,15 +3313,15 @@ export default function UploadPage() {
           <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
               <ClipboardCheck className="h-3.5 w-3.5" />
-              Validation
+              Checklist
             </div>
 
             <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Readiness checklist
+              Before using the forecast
             </h3>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Complete each requirement before relying on the forecast and DSS outputs.
+              Complete these items before using the forecast, map, and recommendations.
             </p>
 
             <div className="mt-5 space-y-3">
@@ -2545,11 +3367,11 @@ export default function UploadPage() {
           <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
               <UploadCloud className="h-3.5 w-3.5" />
-              Upload control
+              Upload help
             </div>
 
             <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Selected source summary
+              Selected file summary
             </h3>
 
             <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
@@ -2577,11 +3399,11 @@ export default function UploadPage() {
 
             <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/75 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
               <p className="text-sm font-black text-brand-orange dark:text-amber-300">
-                File format note
+                Supported file types
               </p>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                CSV, Excel, JSON, and GeoJSON are supported. Boundary layers must be uploaded as GeoJSON or JSON. Shapefile parsing can be added later through the backend.
+                CSV, Excel, JSON, and GeoJSON are supported. The map boundary file must be GeoJSON or JSON.
               </p>
             </div>
 

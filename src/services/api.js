@@ -90,4 +90,31 @@ export async function validateBoundaryFile(file) {
   return handleApiResponse(response)
 }
 
+export async function getBackendIntegrationStatus() {
+  const response = await fetch(`${API_BASE_URL}/integration/status`)
+  return handleApiResponse(response)
+}
+
+export async function buildBackendIntegrationDataset() {
+  const response = await fetch(`${API_BASE_URL}/integration/build-dataset`, {
+    method: 'POST',
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function resetBackendIntegrationWorkspace() {
+  const response = await fetch(`${API_BASE_URL}/integration/reset`, {
+    method: 'DELETE',
+  })
+
+  return handleApiResponse(response)
+}
+
+
+export async function getBackendAlignmentReport() {
+  const response = await fetch(`${API_BASE_URL}/integration/alignment-report`)
+  return handleApiResponse(response)
+}
+
 export { API_BASE_URL }
