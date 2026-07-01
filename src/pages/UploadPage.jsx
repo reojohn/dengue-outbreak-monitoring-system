@@ -25,6 +25,7 @@ import {
   inspectUploadedFile,
   summarizeDengueFile,
   validatePopulationFile,
+  validateWeatherFile,
 } from '../services/api'
 
 const sources = [
@@ -1390,6 +1391,77 @@ function buildBackendPopulationValidationResult({
   }
 }
 
+
+function getBackendWeatherValidationCounts(validateResult = {}) {
+  const summary = validateResult.validation_summary || {}
+
+  return {
+    missingCount: Number(summary.invalid_date_rows || 0),
+    invalidCount:
+      Number(summary.invalid_rainfall_rows || 0) +
+      Number(summary.invalid_temperature_rows || 0) +
+      Number(summary.invalid_humidity_rows || 0),
+    duplicateCount: Number(summary.duplicate_weather_rows || 0),
+  }
+}
+
+function mapBackendWeatherRows(rows = [], offset = 0) {
+  return rows.map((row, index) => ({
+    id: Date.now() + offset + index,
+    reportingDate: row.reporting_date || '',
+    year: row.year ?? '',
+    month: row.month ?? '',
+    rainfall: Number(row.rainfall || 0),
+    temperature: Number(row.temperature || 0),
+    humidity: Number(row.humidity || 0),
+    status: row.validation_status || 'Valid',
+  }))
+}
+
+function formatBackendWeatherMappingSummary(detection = {}) {
+  const matchedFields = detection.matched_fields || {}
+
+  const labels = {
+    date: 'date',
+    year: 'year',
+    month: 'month',
+    day: 'day',
+    doy: 'day of year',
+    rainfall: 'rainfall',
+    temperature: 'temperature',
+    humidity: 'humidity',
+  }
+
+  return Object.entries(matchedFields)
+    .map(([field, sourceColumn]) => `${labels[field] || field} → ${sourceColumn}`)
+    .join(', ')
+}
+
+function buildBackendWeatherValidationResult({
+  fileName,
+  validateResult,
+}) {
+  const counts = getBackendWeatherValidationCounts(validateResult)
+  const validRecords = mapBackendWeatherRows(validateResult.cleaned_preview || [])
+  const invalidPreview = mapBackendWeatherRows(validateResult.invalid_preview || [], 10000)
+  const mappingSummary = formatBackendWeatherMappingSummary(validateResult.weather_detection)
+
+  return {
+    sourceId: 'meteorological',
+    fileName,
+    backendPowered: true,
+    previewRows: [...validRecords, ...invalidPreview],
+    validRecords,
+    recordCount: Number(validateResult.original_row_count || 0),
+    validCount: Number(validateResult.valid_row_count || 0),
+    missingCount: counts.missingCount,
+    duplicateCount: counts.duplicateCount,
+    invalidCount: counts.invalidCount,
+    mappingSummary,
+    validateResult,
+  }
+}
+
 export default function UploadPage() {
   const navigate = useNavigate()
   const data = useData()
@@ -1604,6 +1676,47 @@ export default function UploadPage() {
 
         addActivityLog(
           'Backend population dataset uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+        )
+
+        return
+      }
+
+      if (selected === 'meteorological' && (isCsv || isExcel || fileName.endsWith('.json'))) {
+        const validateResult = await validateWeatherFile(file)
+
+        const backendResult = buildBackendWeatherValidationResult({
+          fileName: file.name,
+          validateResult,
+        })
+
+        updateWorkspace((current) => ({
+          ...current,
+          [selectedSource.recordKey]: backendResult.validRecords,
+          sourceStatus: {
+            ...(current.sourceStatus || {}),
+            [selectedSource.contextKey]: {
+              uploadedName: file.name,
+              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              recordCount: backendResult.recordCount,
+              validCount: backendResult.validCount,
+              missingCount: backendResult.missingCount,
+              duplicateCount: backendResult.duplicateCount,
+              invalidCount: backendResult.invalidCount,
+              mappingSummary: backendResult.mappingSummary,
+              backendPowered: true,
+            },
+          },
+        }))
+
+        setValidationResult(backendResult)
+
+        setUploadMessage(
+          `Upload successful. Weather records are backend-validated and ready for integration. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
+        )
+
+        addActivityLog(
+          'Backend weather dataset uploaded',
           `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 

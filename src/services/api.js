@@ -72,4 +72,13 @@ export async function validatePopulationFile(file) {
   return handleApiResponse(response)
 }
 
+export async function validateWeatherFile(file) {
+  const response = await fetch(`${API_BASE_URL}/uploads/validate-weather`, {
+    method: 'POST',
+    body: buildFileFormData(file),
+  })
+
+  return handleApiResponse(response)
+}
+
 export { API_BASE_URL }
