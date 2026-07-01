@@ -8,16 +8,20 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  CloudRain,
   Database,
   Download,
+  Droplets,
   FileSpreadsheet,
   FileText,
+  Gauge,
   MapPin,
   Presentation,
   Printer,
   Send,
   ShieldAlert,
   Sparkles,
+  Thermometer,
   Users,
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
@@ -88,6 +92,49 @@ function formatNumber(value) {
 function toNumber(value) {
   const number = Number(value)
   return Number.isFinite(number) ? number : 0
+}
+
+function readFirstDefined(source, keys = [], fallback = '') {
+  if (!source) return fallback
+
+  for (const key of keys) {
+    const value = source[key]
+
+    if (value !== undefined && value !== null && value !== '') {
+      return value
+    }
+  }
+
+  return fallback
+}
+
+function readNestedLabel(value, fallback = 'Not available') {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+
+  if (typeof value === 'object') {
+    return value.label || value.name || fallback
+  }
+
+  return String(value)
+}
+
+function readOptionalNumber(source, keys = [], fallback = 0) {
+  const value = readFirstDefined(source, keys, fallback)
+  const number = Number(value)
+
+  return Number.isFinite(number) ? number : fallback
+}
+
+function formatOptionalNumber(value, suffix = '') {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Not available'
+  }
+
+  return `${formatNumber(number)}${suffix}`
 }
 
 function getCurrentDateTime() {
@@ -181,7 +228,71 @@ function getDecisionSupport(row) {
       decisionSupport.forecastPressure ||
       row?.forecastPressure ||
       'Forecast pressure unavailable',
+    environmentalSuitability:
+      readNestedLabel(decisionSupport.environmentalSuitability || row?.environmentalSuitability || row?.environmentalSuitabilityLabel, 'Environmental data unavailable'),
+    environmentalScore:
+      decisionSupport.environmentalScore ??
+      row?.environmentalScore ??
+      row?.environmentScore ??
+      0,
+    rainfallPressure:
+      readNestedLabel(decisionSupport.rainfallPressure || row?.rainfallPressure || row?.rainfallPressureLabel, 'Rainfall pressure unavailable'),
+    temperatureSuitability:
+      readNestedLabel(decisionSupport.temperatureSuitability || row?.temperatureSuitability || row?.temperatureSuitabilityLabel, 'Temperature suitability unavailable'),
+    humiditySuitability:
+      readNestedLabel(decisionSupport.humiditySuitability || row?.humiditySuitability || row?.humiditySuitabilityLabel, 'Humidity suitability unavailable'),
+    multiSourceRiskScore:
+      decisionSupport.multiSourceRiskScore ??
+      decisionSupport.riskScore ??
+      row?.multiSourceRiskScore ??
+      row?.multiSourceScore ??
+      row?.riskScore ??
+      0,
+    riskComponents:
+      decisionSupport.riskComponents ||
+      row?.riskComponents ||
+      row?.riskScoreBreakdown ||
+      {},
   }
+}
+
+function getMultiSourceProfile(row = null) {
+  const decision = getDecisionSupport(row)
+  const score = Number(
+    decision.multiSourceRiskScore ||
+      row?.multiSourceRiskScore ||
+      row?.multiSourceScore ||
+      row?.riskScore ||
+      0
+  )
+
+  return {
+    score: Number.isFinite(score) ? Math.round(score) : 0,
+    environmentalSuitability: decision.environmentalSuitability,
+    rainfallPressure: decision.rainfallPressure,
+    temperatureSuitability: decision.temperatureSuitability,
+    humiditySuitability: decision.humiditySuitability,
+    forecastPressure: decision.forecastPressure,
+    populationExposure: decision.populationExposure,
+    densityLevel: decision.densityLevel,
+    trendDirection: decision.trendDirection,
+    averageRainfall: readOptionalNumber(row, ['averageRainfall', 'avgRainfall', 'rainfall', 'rainfallAverage'], 0),
+    averageTemperature: readOptionalNumber(row, ['averageTemperature', 'avgTemperature', 'temperature', 'temperatureAverage'], 0),
+    averageHumidity: readOptionalNumber(row, ['averageHumidity', 'avgHumidity', 'humidity', 'humidityAverage'], 0),
+    population: readOptionalNumber(row, ['population', 'totalPopulation', 'populationCount'], 0),
+    density: readOptionalNumber(row, ['density'], 0),
+    components: decision.riskComponents || {},
+  }
+}
+
+function getAverageMultiSourceScore(rows = []) {
+  const scores = rows
+    .map((row) => getMultiSourceProfile(row).score)
+    .filter((score) => Number.isFinite(score) && score > 0)
+
+  if (!scores.length) return 0
+
+  return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
 }
 
 function getRiskCounts(riskRows = []) {
@@ -536,8 +647,9 @@ function getTopDecisionText(topBarangay) {
   }
 
   const decision = getDecisionSupport(topBarangay)
+  const profile = getMultiSourceProfile(topBarangay)
 
-  return `${topBarangay.barangay} is the top DSS priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a decision score of ${formatNumber(decision.score)}.`
+  return `${topBarangay.barangay} is the top DSS priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a DSS score of ${formatNumber(decision.score)}, and a multi-source risk score of ${formatNumber(profile.score)}/100.`
 }
 
 function getReportSummary({ sortedRiskRows, dashboardStats }) {
@@ -553,13 +665,16 @@ function getReportSummary({ sortedRiskRows, dashboardStats }) {
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
 
+  const topProfile = getMultiSourceProfile(topBarangay)
+
   return [
     decisionCounts.urgent > 0
       ? `${decisionCounts.urgent} barangay${decisionCounts.urgent === 1 ? '' : 's'} require immediate, high-priority, or escalated response planning.`
       : 'No barangay currently requires immediate or escalated response planning.',
     topBarangay
-      ? `${topBarangay.barangay} is the highest DSS priority with ${topDecision.priority} and ${formatNumber(topBarangay.forecast)} projected cases.`
+      ? `${topBarangay.barangay} is the highest DSS priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a multi-source risk score of ${formatNumber(topProfile.score)}/100.`
       : 'No top priority barangay is available.',
+    `Environmental context used in the report includes ${topProfile.rainfallPressure}, ${topProfile.temperatureSuitability}, and ${topProfile.humiditySuitability}.`,
     `The current workspace has a data quality score of ${dashboardStats?.dataQuality || 0}%.`,
   ]
 }
@@ -597,6 +712,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
   const rowsHtml = sortedRiskRows
     .map((row, index) => {
       const decision = getDecisionSupport(row)
+      const profile = getMultiSourceProfile(row)
 
       return `
         <tr>
@@ -604,9 +720,13 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           <td>${escapeHtml(row.barangay)}</td>
           <td>${escapeHtml(row.risk || 'Unknown')}</td>
           <td>${escapeHtml(decision.priority)}</td>
+          <td>${formatNumber(profile.score)}/100</td>
           <td>${formatNumber(decision.score)}</td>
           <td>${formatNumber(row.forecast)}</td>
-          <td>${formatNumber(row.totalCases)}</td>
+          <td>${escapeHtml(profile.environmentalSuitability)}</td>
+          <td>${escapeHtml(profile.rainfallPressure)}</td>
+          <td>${escapeHtml(profile.temperatureSuitability)}</td>
+          <td>${escapeHtml(profile.humiditySuitability)}</td>
           <td>${escapeHtml(decision.primaryAction)}</td>
         </tr>
       `
@@ -817,15 +937,19 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
               <th>Barangay</th>
               <th>Risk</th>
               <th>DSS Priority</th>
-              <th>Score</th>
+              <th>Multi-Source Score</th>
+              <th>DSS Score</th>
               <th>Forecast</th>
-              <th>Historical Cases</th>
+              <th>Environment</th>
+              <th>Rainfall</th>
+              <th>Temperature</th>
+              <th>Humidity</th>
               <th>Primary Action</th>
             </tr>
           </thead>
 
           <tbody>
-            ${rowsHtml || '<tr><td colspan="8">No barangay decision-support data available.</td></tr>'}
+            ${rowsHtml || '<tr><td colspan="12">No barangay decision-support data available.</td></tr>'}
           </tbody>
         </table>
 
@@ -947,24 +1071,25 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       'Barangay',
       'Risk',
       'DSS Priority',
-      'Score',
+      'MS Score',
       'Forecast',
-      'Historical',
+      'Environment',
       'Primary Action',
     ]],
     body:
       sortedRiskRows.length > 0
         ? sortedRiskRows.map((row, index) => {
             const decision = getDecisionSupport(row)
+            const profile = getMultiSourceProfile(row)
 
             return [
               index + 1,
               row.barangay,
               row.risk || 'Unknown',
               decision.priority,
-              formatNumber(decision.score),
+              `${formatNumber(profile.score)}/100`,
               formatNumber(row.forecast),
-              formatNumber(row.totalCases),
+              `${profile.environmentalSuitability}; ${profile.rainfallPressure}; ${profile.temperatureSuitability}; ${profile.humiditySuitability}`,
               decision.primaryAction,
             ]
           })
@@ -976,14 +1101,14 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       overflow: 'linebreak',
     },
     columnStyles: {
-      0: { cellWidth: 36 },
-      1: { cellWidth: 92 },
-      2: { cellWidth: 52 },
-      3: { cellWidth: 96 },
-      4: { cellWidth: 44 },
+      0: { cellWidth: 34 },
+      1: { cellWidth: 86 },
+      2: { cellWidth: 48 },
+      3: { cellWidth: 92 },
+      4: { cellWidth: 54 },
       5: { cellWidth: 54 },
-      6: { cellWidth: 58 },
-      7: { cellWidth: 300 },
+      6: { cellWidth: 180 },
+      7: { cellWidth: 270 },
     },
     headStyles: {
       fillColor: [37, 95, 143],
@@ -1011,12 +1136,41 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   const wrappedTopText = doc.splitTextToSize(topText, pageWidth - margin * 2)
   doc.text(wrappedTopText, margin, 62)
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
-  doc.text('Action Plan', margin, 110)
+  const topProfile = getMultiSourceProfile(topBarangay)
 
   autoTable(doc, {
-    startY: 124,
+    startY: 100,
+    head: [['Multi-Source Factor', 'Value']],
+    body: [
+      ['Multi-source risk score', `${formatNumber(topProfile.score)}/100`],
+      ['Environmental suitability', topProfile.environmentalSuitability],
+      ['Rainfall pressure', topProfile.rainfallPressure],
+      ['Temperature suitability', topProfile.temperatureSuitability],
+      ['Humidity suitability', topProfile.humiditySuitability],
+      ['Population exposure', topDecision.populationExposure || 'Not available'],
+      ['Density level', topDecision.densityLevel || 'Not available'],
+    ],
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 5,
+    },
+    headStyles: {
+      fillColor: [37, 95, 143],
+      textColor: [255, 255, 255],
+    },
+    margin: {
+      left: margin,
+      right: margin,
+    },
+  })
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.text('Action Plan', margin, doc.lastAutoTable.finalY + 22)
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 34,
     head: [['No.', 'Recommended Action']],
     body:
       topDecision.actions?.length > 0
@@ -1170,6 +1324,11 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Data quality score', `${dashboardStats.dataQuality}%`],
     ['Top DSS barangay', topBarangay?.barangay || 'No data'],
     ['Top DSS priority', topDecision.priority || 'No data'],
+    ['Top multi-source risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
+    ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
+    ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
+    ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
+    ['Top humidity suitability', getMultiSourceProfile(topBarangay).humiditySuitability],
     ['Top DSS summary', topDecision.summary || 'No recommendation available'],
     
   ])
@@ -1183,6 +1342,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       'Barangay',
       'Risk Level',
       'DSS Priority',
+      'Multi-Source Risk Score',
       'Decision Score',
       'Projected Cases',
       'Historical Total Cases',
@@ -1190,6 +1350,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       'Previous Cases',
       'Trend',
       'Trend Direction',
+      'Environmental Suitability',
+      'Rainfall Pressure',
+      'Temperature Suitability',
+      'Humidity Suitability',
       'Forecast Pressure',
       'Population Exposure',
       'Density Level',
@@ -1198,12 +1362,14 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ],
     ...sortedRiskRows.map((row, index) => {
       const decision = getDecisionSupport(row)
+      const profile = getMultiSourceProfile(row)
 
       return [
         index + 1,
         row.barangay,
         row.risk,
         decision.priority,
+        Number(profile.score || 0),
         Number(decision.score || 0),
         Number(row.forecast || 0),
         Number(row.totalCases || 0),
@@ -1211,6 +1377,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
         Number(row.previousCases || 0),
         row.trend || 'Not available',
         decision.trendDirection,
+        profile.environmentalSuitability,
+        profile.rainfallPressure,
+        profile.temperatureSuitability,
+        profile.humiditySuitability,
         decision.forecastPressure,
         decision.populationExposure,
         decision.densityLevel,
@@ -1225,6 +1395,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 30 },
     { wch: 16 },
     { wch: 26 },
+    { wch: 22 },
     { wch: 16 },
     { wch: 18 },
     { wch: 24 },
@@ -1232,6 +1403,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 16 },
     { wch: 24 },
     { wch: 22 },
+    { wch: 34 },
+    { wch: 30 },
+    { wch: 38 },
+    { wch: 30 },
     { wch: 26 },
     { wch: 30 },
     { wch: 24 },
@@ -1240,6 +1415,62 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   ]
 
   XLSX.utils.book_append_sheet(workbook, rankingSheet, 'DSS Ranking')
+
+  const factorSheet = XLSX.utils.aoa_to_sheet([
+    [
+      'Barangay',
+      'Multi-Source Risk Score',
+      'Environmental Suitability',
+      'Rainfall Pressure',
+      'Average Rainfall',
+      'Temperature Suitability',
+      'Average Temperature',
+      'Humidity Suitability',
+      'Average Humidity',
+      'Population Exposure',
+      'Population',
+      'Density Level',
+      'Density',
+    ],
+    ...sortedRiskRows.map((row) => {
+      const decision = getDecisionSupport(row)
+      const profile = getMultiSourceProfile(row)
+
+      return [
+        row.barangay,
+        Number(profile.score || 0),
+        profile.environmentalSuitability,
+        profile.rainfallPressure,
+        Number(profile.averageRainfall || 0),
+        profile.temperatureSuitability,
+        Number(profile.averageTemperature || 0),
+        profile.humiditySuitability,
+        Number(profile.averageHumidity || 0),
+        decision.populationExposure,
+        Number(profile.population || 0),
+        decision.densityLevel,
+        Number(profile.density || 0),
+      ]
+    }),
+  ])
+
+  factorSheet['!cols'] = [
+    { wch: 30 },
+    { wch: 24 },
+    { wch: 34 },
+    { wch: 30 },
+    { wch: 18 },
+    { wch: 38 },
+    { wch: 22 },
+    { wch: 30 },
+    { wch: 18 },
+    { wch: 30 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 18 },
+  ]
+
+  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Multi-Source Factors')
 
   const actionRows = []
 
@@ -1823,6 +2054,63 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     })
   })
 
+  const factorSlide = pptx.addSlide()
+  addSlideTitle(
+    factorSlide,
+    'Multi-Source Risk Factors',
+    'Environmental, population, density, and forecast factors used by the DSS ranking.'
+  )
+
+  factorSlide.addTable(
+    [
+      ['Barangay', 'MS Score', 'Environment', 'Rainfall', 'Temperature', 'Humidity'],
+      ...(topBarangays.length > 0
+        ? topBarangays.map((row) => {
+            const profile = getMultiSourceProfile(row)
+
+            return [
+              row.barangay,
+              `${formatNumber(profile.score)}/100`,
+              profile.environmentalSuitability,
+              profile.rainfallPressure,
+              profile.temperatureSuitability,
+              profile.humiditySuitability,
+            ]
+          })
+        : [['No barangay DSS data available', '-', '-', '-', '-', '-']]),
+    ],
+    {
+      x: 0.65,
+      y: 1.35,
+      w: 12,
+      h: 3.1,
+      fontSize: 8.8,
+      color: COLORS.navy,
+      border: { color: COLORS.line, pt: 1 },
+      fill: { color: COLORS.white },
+      margin: 0.06,
+    }
+  )
+
+  factorSlide.addText(
+    topBarangay
+      ? `${topBarangay.barangay} currently has a multi-source score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
+      : 'Multi-source factors will appear after dengue, weather, population, and boundary records are available.',
+    {
+      x: 0.75,
+      y: 4.95,
+      w: 11.7,
+      h: 0.82,
+      fontSize: 12.5,
+      bold: true,
+      color: COLORS.navy,
+      margin: 0.14,
+      fill: { color: COLORS.lightBlue },
+      line: { color: COLORS.paleBlue },
+      fit: 'shrink',
+    }
+  )
+
   const actionSlide = pptx.addSlide()
   addSlideTitle(
     actionSlide,
@@ -2070,6 +2358,10 @@ export default function ReportsPage() {
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
   const displayRiskRows = useMemo(() => {
+    if (Array.isArray(riskRows) && riskRows.length > 0) {
+      return riskRows
+    }
+
     if (usingBackendForecast) {
       return buildBackendRiskRows(backendForecastResult)
     }
@@ -2103,6 +2395,8 @@ export default function ReportsPage() {
 
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
+  const topProfile = getMultiSourceProfile(topBarangay)
+  const averageMultiSourceScore = getAverageMultiSourceScore(sortedRiskRows)
 
   const selectedExport = exportFormats.find((item) => item.id === format) || exportFormats[0]
   const SelectedExportIcon = selectedExport.icon
@@ -2310,7 +2604,7 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Total cases"
           value={formatNumber(displayDashboardStats.totalCases)}
@@ -2333,6 +2627,14 @@ export default function ReportsPage() {
           helper="Projected four-week cases"
           icon={BarChart3}
           tone="amber"
+        />
+
+        <StatCard
+          label="Avg MS score"
+          value={`${formatNumber(averageMultiSourceScore)}/100`}
+          helper="Average multi-source risk"
+          icon={Gauge}
+          tone="blue"
         />
 
         <StatCard
@@ -2461,6 +2763,7 @@ export default function ReportsPage() {
                 <>
                   {visibleTopBarangays.map((row, index) => {
                     const decision = getDecisionSupport(row)
+                    const profile = getMultiSourceProfile(row)
                     const isExpanded = expandedPriorityBarangay === row.barangay
 
                     return (
@@ -2496,22 +2799,31 @@ export default function ReportsPage() {
                           </div>
                         </div>
 
-                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                              MS score
+                            </p>
+                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                              {formatNumber(profile.score)}/100
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                              Environment
+                            </p>
+                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                              {profile.environmentalSuitability}
+                            </p>
+                          </div>
+
                           <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                               DSS score
                             </p>
                             <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                               {formatNumber(decision.score)} pts
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              Historical
-                            </p>
-                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                              {formatNumber(row.totalCases)} cases
                             </p>
                           </div>
 
@@ -2544,7 +2856,41 @@ export default function ReportsPage() {
 
                         {isExpanded && (
                           <div className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
-                            <div className="rounded-[20px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+                            <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/80">
+                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                                Multi-source risk factors
+                              </p>
+
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {[
+                                  ['Rainfall', profile.rainfallPressure, CloudRain],
+                                  ['Temperature', profile.temperatureSuitability, Thermometer],
+                                  ['Humidity', profile.humiditySuitability, Droplets],
+                                  ['Population exposure', decision.populationExposure, Users],
+                                  ['Density level', decision.densityLevel, Gauge],
+                                  ['Forecast pressure', decision.forecastPressure, BarChart3],
+                                ].map(([label, value, Icon]) => (
+                                  <div
+                                    key={`${row.barangay}-${label}`}
+                                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950"
+                                  >
+                                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-brand-blue dark:bg-blue-500/10 dark:text-blue-300">
+                                      <Icon className="h-4 w-4" />
+                                    </div>
+
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                                      {label}
+                                    </p>
+
+                                    <p className="mt-1 text-xs font-black leading-5 text-brand-text dark:text-slate-100">
+                                      {value}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 rounded-[20px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
                               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
                                 DSS recommendation
                               </p>
@@ -2715,8 +3061,8 @@ export default function ReportsPage() {
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {usingBackendForecast
-                ? 'PDF, Excel, PowerPoint, and print reports now include backend forecast totals, DSS priority, recommended action plan, and decision rationale.'
-                : 'PDF, Excel, PowerPoint, and print reports now include DSS priority, decision score, recommended action plan, and decision rationale.'}
+                ? 'PDF, Excel, PowerPoint, and print reports now include backend forecast totals, DSS priority, recommended action plan, decision rationale, and multi-source environmental risk factors.'
+                : 'PDF, Excel, PowerPoint, and print reports now include DSS priority, multi-source risk score, rainfall, temperature, humidity, population exposure, density, action plan, and decision rationale.'}
             </p>
           </div>
 
@@ -2765,6 +3111,36 @@ export default function ReportsPage() {
                   <p className="mt-3 text-sm font-semibold leading-6 text-brand-text dark:text-slate-200">
                     {topDecision.summary}
                   </p>
+                </div>
+
+                <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                    Multi-source factors
+                  </p>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {[
+                      ['MS score', `${formatNumber(topProfile.score)}/100`],
+                      ['Environment', topProfile.environmentalSuitability],
+                      ['Rainfall', topProfile.rainfallPressure],
+                      ['Temperature', topProfile.temperatureSuitability],
+                      ['Humidity', topProfile.humiditySuitability],
+                      ['Density', topDecision.densityLevel],
+                    ].map(([label, value]) => (
+                      <div
+                        key={`top-${label}`}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900"
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                          {label}
+                        </p>
+
+                        <p className="mt-1 text-xs font-black leading-5 text-brand-text dark:text-slate-100">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {topDecision.actions.length > 0 && (
