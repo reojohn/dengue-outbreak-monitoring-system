@@ -4,6 +4,11 @@ from pathlib import Path
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 
+from app.services.barangay_normalizer import (
+    canonicalize_barangay_name,
+    normalize_barangay_key,
+)
+
 
 DENGUE_FIELD_ALIASES = {
     "barangay": [
@@ -58,6 +63,7 @@ DENGUE_FIELD_ALIASES = {
 def normalize_column_name(column_name: str) -> str:
     return (
         str(column_name)
+        .replace("\ufeff", "")
         .strip()
         .lower()
         .replace(" ", "_")
@@ -303,10 +309,17 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         .str.strip()
     )
 
-    clean_df["barangay"] = barangay_text
+    # Keep the original name for traceability, but use the normalized
+    # barangay name for grouping, forecasting, mapping, and future dataset matching.
+    clean_df["barangay_raw"] = barangay_text
+    clean_df["barangay"] = barangay_text.apply(canonicalize_barangay_name)
+    clean_df["barangay_key"] = barangay_text.apply(normalize_barangay_key)
 
     if has_date:
-        parsed_dates = pd.to_datetime(df[matched_fields["date"]], errors="coerce")
+        parsed_dates = pd.to_datetime(
+            df[matched_fields["date"]],
+            errors="coerce",
+        )
 
         clean_df["date"] = parsed_dates.dt.strftime("%Y-%m-%d")
         clean_df["year"] = parsed_dates.dt.year
@@ -315,7 +328,10 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
 
     else:
         clean_df["date"] = None
-        clean_df["year"] = pd.to_numeric(df[matched_fields["year"]], errors="coerce")
+        clean_df["year"] = pd.to_numeric(
+            df[matched_fields["year"]],
+            errors="coerce",
+        )
 
         if has_month:
             clean_df["month"] = pd.to_numeric(
@@ -333,7 +349,10 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         else:
             clean_df["week"] = pd.NA
 
-    clean_df["cases"] = pd.to_numeric(df[matched_fields["cases"]], errors="coerce")
+    clean_df["cases"] = pd.to_numeric(
+        df[matched_fields["cases"]],
+        errors="coerce",
+    )
 
     if "deaths" in matched_fields:
         clean_df["deaths"] = pd.to_numeric(
@@ -344,9 +363,9 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         clean_df["deaths"] = 0
 
     invalid_barangay = (
-        clean_df["barangay"].isna()
-        | clean_df["barangay"].astype(str).str.strip().eq("")
-        | clean_df["barangay"]
+        clean_df["barangay_raw"].isna()
+        | clean_df["barangay_raw"].astype(str).str.strip().eq("")
+        | clean_df["barangay_raw"]
         .astype(str)
         .str.strip()
         .str.lower()
@@ -371,6 +390,8 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
     valid_df = valid_df[
         [
             "barangay",
+            "barangay_key",
+            "barangay_raw",
             "period",
             "date",
             "year",
@@ -387,6 +408,8 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
     invalid_preview_df = invalid_preview_df[
         [
             "barangay",
+            "barangay_key",
+            "barangay_raw",
             "period",
             "date",
             "year",
@@ -402,6 +425,9 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         "invalid_time_rows": int(invalid_time.sum()),
         "invalid_cases_rows": int(invalid_cases.sum()),
         "invalid_deaths_rows": int(invalid_deaths.sum()),
+        "normalized_barangay_count": int(valid_df["barangay_key"].nunique())
+        if not valid_df.empty
+        else 0,
     }
 
     return {
@@ -424,8 +450,9 @@ async def clean_dengue_file(file: UploadFile):
     invalid_rows = prepared["invalid_rows"]
     validation_summary = prepared["validation_summary"]
 
-    cleaned_preview = make_json_safe_records(valid_df.head(10))
-    invalid_preview = make_json_safe_records(invalid_preview_df.head(10))
+    cleaned_records = make_json_safe_records(valid_df)
+    cleaned_preview = make_json_safe_records(valid_df.head(25))
+    invalid_preview = make_json_safe_records(invalid_preview_df.head(25))
 
     return {
         "message": "Dengue file cleaned successfully.",
@@ -437,6 +464,7 @@ async def clean_dengue_file(file: UploadFile):
         "standard_columns": list(valid_df.columns),
         "validation_summary": validation_summary,
         "dengue_detection": dengue_detection,
+        "cleaned_records": cleaned_records,
         "cleaned_preview": cleaned_preview,
         "invalid_preview": invalid_preview,
     }

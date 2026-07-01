@@ -550,6 +550,7 @@ async def validate_weather_file(file: UploadFile):
     invalid_rows = prepared["invalid_rows"]
     validation_summary = prepared["validation_summary"]
 
+    cleaned_records = make_json_safe_records(valid_df)
     cleaned_preview = make_json_safe_records(valid_df.head(25))
     invalid_preview = make_json_safe_records(invalid_preview_df.head(25))
 
@@ -563,6 +564,7 @@ async def validate_weather_file(file: UploadFile):
         "standard_columns": list(valid_df.columns),
         "validation_summary": validation_summary,
         "weather_detection": weather_detection,
+        "cleaned_records": cleaned_records,
         "cleaned_preview": cleaned_preview,
         "invalid_preview": invalid_preview,
     }

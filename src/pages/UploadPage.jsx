@@ -1304,7 +1304,9 @@ function buildBackendDengueValidationResult({
   forecastResult,
 }) {
   const counts = getBackendValidationCounts(cleanResult)
-  const validRecords = mapBackendCleanedRows(cleanResult.cleaned_preview || [])
+  const validRecords = mapBackendCleanedRows(
+  cleanResult.cleaned_records || cleanResult.cleaned_preview || []
+)
   const invalidPreview = mapBackendInvalidRows(cleanResult.invalid_preview || [])
   const mappingSummary = formatBackendMappingSummary(cleanResult.dengue_detection)
 
@@ -1372,7 +1374,9 @@ function buildBackendPopulationValidationResult({
   validateResult,
 }) {
   const counts = getBackendPopulationValidationCounts(validateResult)
-  const validRecords = mapBackendPopulationRows(validateResult.cleaned_preview || [])
+  const validRecords = mapBackendPopulationRows(
+  validateResult.cleaned_records || validateResult.cleaned_preview || []
+)
   const invalidPreview = mapBackendPopulationRows(validateResult.invalid_preview || [], 10000)
   const mappingSummary = formatBackendPopulationMappingSummary(validateResult.population_detection)
 
@@ -1443,7 +1447,9 @@ function buildBackendWeatherValidationResult({
   validateResult,
 }) {
   const counts = getBackendWeatherValidationCounts(validateResult)
-  const validRecords = mapBackendWeatherRows(validateResult.cleaned_preview || [])
+  const validRecords = mapBackendWeatherRows(
+  validateResult.cleaned_records || validateResult.cleaned_preview || []
+)
   const invalidPreview = mapBackendWeatherRows(validateResult.invalid_preview || [], 10000)
   const mappingSummary = formatBackendWeatherMappingSummary(validateResult.weather_detection)
 
