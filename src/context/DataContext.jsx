@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState } from 'react'
-import { computeDecisionSupport, computeRiskLevel } from '../utils/analytics'
+import { computeDecisionSupport, computeMultiSourceRisk } from '../utils/analytics'
 
 const DataContext = createContext(null)
 
@@ -526,6 +526,129 @@ function getAreaValue(boundaryFeature = null) {
   ])
 }
 
+function sum(values = []) {
+  return values.reduce((total, value) => total + Number(value || 0), 0)
+}
+
+function getWeatherDate(record) {
+  const value = readValue(record, [
+    'reportingDate',
+    'reporting_date',
+    'date',
+    'weatherDate',
+    'weather_date',
+    'observationDate',
+    'observation_date',
+  ])
+
+  return parseCoverageDate(value)
+}
+
+function getWeatherNumber(record, keys = []) {
+  return readNumber(record, keys, 0)
+}
+
+function getWeatherContextForPeriods(periods = [], weatherRecords = []) {
+  const emptyContext = {
+    averageRainfall: 0,
+    totalRainfall: 0,
+    averageTemperature: 0,
+    averageHumidity: 0,
+    weatherRecordCount: 0,
+    weatherCoverageLabel: 'Weather data unavailable',
+  }
+
+  if (!Array.isArray(weatherRecords) || !weatherRecords.length) {
+    return emptyContext
+  }
+
+  const weatherItems = weatherRecords
+    .map((record, index) => ({
+      record,
+      index,
+      date: getWeatherDate(record),
+      rainfall: getWeatherNumber(record, [
+        'rainfall',
+        'rainfall_mm',
+        'rainfallMm',
+        'rain',
+        'rain_mm',
+        'precipitation',
+        'precipitation_mm',
+        'precip',
+        'prectotcorr',
+      ]),
+      temperature: getWeatherNumber(record, [
+        'temperature',
+        'temperature_c',
+        'temperatureC',
+        'temp',
+        'temp_c',
+        'air_temperature',
+        't2m',
+      ]),
+      humidity: getWeatherNumber(record, [
+        'humidity',
+        'relative_humidity',
+        'relativeHumidity',
+        'humidity_percent',
+        'rh',
+        'rh2m',
+      ]),
+    }))
+    .filter((item) => item.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+  if (!weatherItems.length) {
+    return emptyContext
+  }
+
+  const periodDates = periods
+    .map((period) => parseCoverageDate(period.period))
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  let selectedWeatherItems = []
+
+  if (periodDates.length) {
+    const start = new Date(periodDates[0].getTime())
+    const end = new Date(periodDates[periodDates.length - 1].getTime())
+
+    start.setUTCDate(start.getUTCDate() - 14)
+    end.setUTCDate(end.getUTCDate() + 7)
+
+    selectedWeatherItems = weatherItems.filter((item) => {
+      return item.date.getTime() >= start.getTime() && item.date.getTime() <= end.getTime()
+    })
+  }
+
+  if (!selectedWeatherItems.length) {
+    selectedWeatherItems = weatherItems.slice(-30)
+  }
+
+  const rainfallValues = selectedWeatherItems.map((item) => item.rainfall)
+  const temperatureValues = selectedWeatherItems
+    .map((item) => item.temperature)
+    .filter((value) => value !== 0)
+  const humidityValues = selectedWeatherItems
+    .map((item) => item.humidity)
+    .filter((value) => value !== 0)
+
+  const firstDate = selectedWeatherItems[0]?.date
+  const lastDate = selectedWeatherItems[selectedWeatherItems.length - 1]?.date
+
+  return {
+    averageRainfall: Number(average(rainfallValues).toFixed(2)),
+    totalRainfall: Number(sum(rainfallValues).toFixed(2)),
+    averageTemperature: Number(average(temperatureValues).toFixed(2)),
+    averageHumidity: Number(average(humidityValues).toFixed(2)),
+    weatherRecordCount: selectedWeatherItems.length,
+    weatherCoverageLabel: firstDate && lastDate
+      ? `${formatCoverageDate(firstDate)} to ${formatCoverageDate(lastDate)}`
+      : 'Weather data available',
+  }
+}
+
 function getTrendLabel({
   recentAverage,
   previousAverage,
@@ -552,7 +675,8 @@ function getTrendLabel({
 function buildRiskRows(
   dengueRecords = [],
   populationRecords = [],
-  boundaryRecords = []
+  boundaryRecords = [],
+  weatherRecords = []
 ) {
   if (!dengueRecords.length) return []
 
@@ -595,6 +719,8 @@ function buildRiskRows(
     if (a.sortValue !== b.sortValue) return a.sortValue - b.sortValue
     return a.index - b.index
   })
+
+  const weatherContext = getWeatherContextForPeriods(periods, weatherRecords)
 
   return Array.from(barangayMap.values())
     .map((barangayItem) => {
@@ -661,7 +787,28 @@ function buildRiskRows(
       const currentCases =
         caseSeries.length >= 1 ? caseSeries[caseSeries.length - 1] : 0
 
-      const risk = computeRiskLevel(forecast)
+      const multiSourceRisk = computeMultiSourceRisk({
+        forecast,
+        currentCases,
+        previousCases,
+        totalCases: barangayItem.totalCases,
+        trend,
+        trendRate,
+        recentAverage,
+        previousAverage,
+        history: caseSeries,
+        weeklyCases: caseSeries,
+        population,
+        areaSqKm: area,
+        density,
+        averageRainfall: weatherContext.averageRainfall,
+        totalRainfall: weatherContext.totalRainfall,
+        averageTemperature: weatherContext.averageTemperature,
+        averageHumidity: weatherContext.averageHumidity,
+      })
+
+      const risk = multiSourceRisk.risk
+      const riskScore = multiSourceRisk.score
 
       const rowData = {
         barangay: barangayItem.barangay,
@@ -692,6 +839,25 @@ function buildRiskRows(
         area_sqkm: area,
         areaSqKm: area,
         density,
+
+        averageRainfall: weatherContext.averageRainfall,
+        avgRainfall: weatherContext.averageRainfall,
+        totalRainfall: weatherContext.totalRainfall,
+        averageTemperature: weatherContext.averageTemperature,
+        avgTemperature: weatherContext.averageTemperature,
+        averageHumidity: weatherContext.averageHumidity,
+        avgHumidity: weatherContext.averageHumidity,
+        weatherRecordCount: weatherContext.weatherRecordCount,
+        weatherCoverageLabel: weatherContext.weatherCoverageLabel,
+
+        riskScore,
+        multiSourceRiskScore: riskScore,
+        riskComponents: multiSourceRisk.components,
+        environmentalSuitability: multiSourceRisk.environmentalSuitability.label,
+        environmentalScore: multiSourceRisk.environmentalSuitability.score,
+        rainfallPressure: multiSourceRisk.environmentalSuitability.rainfallPressure.label,
+        temperatureSuitability: multiSourceRisk.environmentalSuitability.temperatureSuitability.label,
+        humiditySuitability: multiSourceRisk.environmentalSuitability.humiditySuitability.label,
       }
 
       const decisionSupport = computeDecisionSupport(rowData)
@@ -710,9 +876,23 @@ function buildRiskRows(
         densityLevel: decisionSupport.densityLevel,
         populationExposure: decisionSupport.populationExposure,
         forecastPressure: decisionSupport.forecastPressure,
+        environmentalSuitability: decisionSupport.environmentalSuitability,
+        environmentalScore: decisionSupport.environmentalScore,
+        rainfallPressure: decisionSupport.rainfallPressure,
+        temperatureSuitability: decisionSupport.temperatureSuitability,
+        humiditySuitability: decisionSupport.humiditySuitability,
+        multiSourceRiskScore: decisionSupport.multiSourceRiskScore,
+        riskScore: decisionSupport.riskScore,
+        riskComponents: decisionSupport.riskComponents,
       }
     })
-    .sort((a, b) => b.forecast - a.forecast)
+    .sort((a, b) => {
+      const scoreDifference = Number(b.riskScore || 0) - Number(a.riskScore || 0)
+
+      if (scoreDifference !== 0) return scoreDifference
+
+      return b.forecast - a.forecast
+    })
 }
 
 function buildWeeklyTotals(dengueRecords = []) {
@@ -1264,12 +1444,14 @@ export function DataProvider({ children }) {
     return buildRiskRows(
       workspace.dengueRecords,
       workspace.populationRecords,
-      workspace.boundaryRecords
+      workspace.boundaryRecords,
+      workspace.weatherRecords
     )
   }, [
     workspace.dengueRecords,
     workspace.populationRecords,
     workspace.boundaryRecords,
+    workspace.weatherRecords,
   ])
 
   const weeklyTotals = useMemo(() => {
@@ -1300,6 +1482,7 @@ export function DataProvider({ children }) {
     workspace.dengueRecords,
     workspace.populationRecords,
     workspace.boundaryRecords,
+    workspace.weatherRecords,
     workspace.sourceStatus,
     riskRows,
     weeklyTotals,

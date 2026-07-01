@@ -24,6 +24,13 @@ export const trendDirections = {
   UNKNOWN: 'Trend unavailable',
 }
 
+export const environmentalLevels = {
+  HIGH: 'High environmental suitability',
+  MODERATE: 'Moderate environmental suitability',
+  LOW: 'Low environmental suitability',
+  UNKNOWN: 'Environmental data unavailable',
+}
+
 export const decisionPriorityLevels = {
   IMMEDIATE: 'Immediate Response',
   HIGH: 'High Priority Response',
@@ -81,6 +88,10 @@ export function toNumber(value, fallback = 0) {
   const number = Number(cleaned)
 
   return Number.isFinite(number) ? number : fallback
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
 }
 
 export function computeRiskLevel(value) {
@@ -192,6 +203,260 @@ export function getPopulationExposure(population) {
   return {
     label: 'Limited exposed population',
     score: 0,
+  }
+}
+
+export function getRainfallPressure({ averageRainfall = 0, totalRainfall = 0 } = {}) {
+  const averageValue = toNumber(averageRainfall)
+  const totalValue = toNumber(totalRainfall)
+
+  if (averageValue <= 0 && totalValue <= 0) {
+    return {
+      label: 'Rainfall unavailable',
+      score: 0,
+    }
+  }
+
+  if (averageValue >= 10 || totalValue >= 120) {
+    return {
+      label: 'High rainfall pressure',
+      score: 3,
+    }
+  }
+
+  if (averageValue >= 4 || totalValue >= 50) {
+    return {
+      label: 'Moderate rainfall pressure',
+      score: 2,
+    }
+  }
+
+  return {
+    label: 'Low rainfall pressure',
+    score: 1,
+  }
+}
+
+export function getTemperatureSuitability(temperature) {
+  const value = toNumber(temperature)
+
+  if (value <= 0) {
+    return {
+      label: 'Temperature unavailable',
+      score: 0,
+    }
+  }
+
+  if (value >= 24 && value <= 32) {
+    return {
+      label: 'Temperature within dengue-sensitive range',
+      score: 3,
+    }
+  }
+
+  if ((value >= 20 && value < 24) || (value > 32 && value <= 35)) {
+    return {
+      label: 'Temperature partly suitable for transmission',
+      score: 2,
+    }
+  }
+
+  return {
+    label: 'Lower temperature suitability',
+    score: 1,
+  }
+}
+
+export function getHumiditySuitability(humidity) {
+  const value = toNumber(humidity)
+
+  if (value <= 0) {
+    return {
+      label: 'Humidity unavailable',
+      score: 0,
+    }
+  }
+
+  if (value >= 75) {
+    return {
+      label: 'High humidity pressure',
+      score: 3,
+    }
+  }
+
+  if (value >= 60) {
+    return {
+      label: 'Moderate humidity pressure',
+      score: 2,
+    }
+  }
+
+  return {
+    label: 'Low humidity pressure',
+    score: 1,
+  }
+}
+
+export function getEnvironmentalSuitability(input = {}) {
+  const rainfallPressure = getRainfallPressure({
+    averageRainfall:
+      input.averageRainfall ??
+      input.avgRainfall ??
+      input.rainfall ??
+      input.rainfallAverage,
+    totalRainfall:
+      input.totalRainfall ??
+      input.rainfallTotal,
+  })
+
+  const temperatureSuitability = getTemperatureSuitability(
+    input.averageTemperature ??
+      input.avgTemperature ??
+      input.temperature ??
+      input.temperatureAverage
+  )
+
+  const humiditySuitability = getHumiditySuitability(
+    input.averageHumidity ??
+      input.avgHumidity ??
+      input.humidity ??
+      input.humidityAverage
+  )
+
+  const score =
+    rainfallPressure.score +
+    temperatureSuitability.score +
+    humiditySuitability.score
+
+  const availableFactors = [
+    rainfallPressure.score,
+    temperatureSuitability.score,
+    humiditySuitability.score,
+  ].filter((value) => value > 0).length
+
+  if (!availableFactors) {
+    return {
+      label: environmentalLevels.UNKNOWN,
+      score: 0,
+      rainfallPressure,
+      temperatureSuitability,
+      humiditySuitability,
+    }
+  }
+
+  const normalizedScore = Math.round((score / (availableFactors * 3)) * 100)
+
+  let label = environmentalLevels.LOW
+
+  if (normalizedScore >= 70) {
+    label = environmentalLevels.HIGH
+  } else if (normalizedScore >= 45) {
+    label = environmentalLevels.MODERATE
+  }
+
+  return {
+    label,
+    score,
+    normalizedScore,
+    rainfallPressure,
+    temperatureSuitability,
+    humiditySuitability,
+  }
+}
+
+export function computeMultiSourceRisk(input = {}) {
+  const forecast = toNumber(
+    input.forecast ??
+      input.forecastedCases ??
+      input.predictedCases ??
+      input.projectedCases
+  )
+
+  const currentCases = toNumber(
+    input.currentCases ??
+      input.current_cases ??
+      input.latestCases ??
+      input.latest_cases
+  )
+
+  const previousCases = toNumber(
+    input.previousCases ??
+      input.previous_cases ??
+      input.lastPeriodCases
+  )
+
+  const population = toNumber(
+    input.population ??
+      input.totalPopulation ??
+      input.populationCount
+  )
+
+  const areaSqKm = toNumber(
+    input.area_sqkm ??
+      input.areaSqKm ??
+      input.areaKm2 ??
+      input.area
+  )
+
+  const density = toNumber(input.density) || computeDensity(population, areaSqKm)
+
+  const trendDirection = getTrendDirection({
+    trend: input.trend || input.trendLabel || input.trendStatus,
+    trendRate: input.trendRate,
+    recentAverage: input.recentAverage,
+    previousAverage: input.previousAverage,
+    currentCases,
+    previousCases,
+    history: input.history,
+    weeklyCases: input.weeklyCases,
+  })
+
+  const densityLevel = getDensityLevel(density)
+  const populationExposure = getPopulationExposure(population)
+  const environmentalSuitability = getEnvironmentalSuitability(input)
+
+  const forecastComponent = clamp((forecast / riskThresholds.high) * 40, 0, 40)
+  const currentCaseComponent = clamp((currentCases / 20) * 10, 0, 10)
+  const trendComponent =
+    trendDirection === trendDirections.INCREASING
+      ? 12
+      : trendDirection === trendDirections.STABLE
+        ? 5
+        : trendDirection === trendDirections.DECREASING
+          ? -5
+          : 0
+  const environmentalComponent = clamp(environmentalSuitability.score * 2.2, 0, 20)
+  const populationComponent = clamp(populationExposure.score * 3, 0, 9)
+  const densityComponent = clamp(getDensityScore(densityLevel) * 3, 0, 9)
+
+  const score = Math.round(
+    clamp(
+      forecastComponent +
+        currentCaseComponent +
+        trendComponent +
+        environmentalComponent +
+        populationComponent +
+        densityComponent,
+      0,
+      100
+    )
+  )
+
+  return {
+    score,
+    risk: computeRiskLevel(score),
+    components: {
+      forecast: Math.round(forecastComponent),
+      currentCases: Math.round(currentCaseComponent),
+      trend: Math.round(trendComponent),
+      environment: Math.round(environmentalComponent),
+      population: Math.round(populationComponent),
+      density: Math.round(densityComponent),
+    },
+    environmentalSuitability,
+    densityLevel,
+    populationExposure,
+    trendDirection,
   }
 }
 
@@ -331,11 +596,17 @@ function buildRationale({
   populationExposure,
   totalCases,
   currentCases,
+  environmentalSuitability,
+  multiSourceRiskScore,
 }) {
   const reasons = []
 
   if (risk) {
     reasons.push(`Risk classification is ${risk}.`)
+  }
+
+  if (toNumber(multiSourceRiskScore) > 0) {
+    reasons.push(`Multi-source risk score is ${toNumber(multiSourceRiskScore)} out of 100.`)
   }
 
   if (forecastPressure?.label && forecastPressure.score > 0) {
@@ -348,6 +619,17 @@ function buildRationale({
 
   if (trendDirection === trendDirections.DECREASING) {
     reasons.push('Recent case movement is decreasing, but continued monitoring is still needed.')
+  }
+
+  if (
+    environmentalSuitability?.label &&
+    environmentalSuitability.label !== environmentalLevels.UNKNOWN
+  ) {
+    reasons.push(`${environmentalSuitability.label} was detected from rainfall, temperature, and humidity inputs.`)
+  }
+
+  if (environmentalSuitability?.rainfallPressure?.score >= 2) {
+    reasons.push(`${environmentalSuitability.rainfallPressure.label} may increase mosquito breeding site formation.`)
   }
 
   if (
@@ -379,17 +661,20 @@ function buildActions({
   densityLevel,
   forecast,
   currentCases,
+  environmentalSuitability,
 }) {
   const forecastValue = toNumber(forecast)
   const currentValue = toNumber(currentCases)
-  const isDense =
-    densityLevel === densityLevels.VERY_HIGH ||
-    densityLevel === densityLevels.HIGH
+  const hasRainfallPressure = environmentalSuitability?.rainfallPressure?.score >= 2
+  const hasHighEnvironment = environmentalSuitability?.label === environmentalLevels.HIGH
 
   if (priority === decisionPriorityLevels.IMMEDIATE) {
     return [
       'Activate barangay-level dengue alert and coordinate response within 24 to 48 hours.',
       'Conduct rapid source reduction in the selected barangay, prioritizing stagnant water sites and high-density puroks.',
+      hasRainfallPressure
+        ? 'Inspect canals, water containers, tires, plant pots, and drainage areas after rainfall exposure.'
+        : 'Inspect common stagnant water sites, containers, canals, and drainage areas.',
       'Deploy BHWs for focused household inspection, fever case checking, and dengue prevention advisories.',
       'Coordinate cleanup operations with barangay officials, sanitation teams, and community volunteers.',
       'Review new dengue reports after 7 days to check if the intervention reduced case movement.',
@@ -399,9 +684,11 @@ function buildActions({
   if (priority === decisionPriorityLevels.HIGH) {
     return [
       'Schedule priority source reduction and environmental sanitation within the week.',
-      'Inspect locations with repeated dengue reports and possible mosquito breeding sites.',
+      hasHighEnvironment
+        ? 'Prioritize wet, humid, and dense residential zones during inspection and cleanup.'
+        : 'Inspect locations with repeated dengue reports and possible mosquito breeding sites.',
       'Strengthen barangay advisories through BHWs, schools, community pages, and purok leaders.',
-      'Monitor weekly case updates and escalate if the forecast or recent cases continue to increase.',
+      'Monitor weekly case updates and escalate if the forecast, weather exposure, or recent cases continue to increase.',
     ]
   }
 
@@ -409,7 +696,9 @@ function buildActions({
     return [
       'Increase surveillance because moderate risk is paired with increasing trend or high-density exposure.',
       'Conduct targeted inspection in dense residential zones, schools, drainage areas, and common water storage sites.',
-      'Prepare cleanup and IEC activities before the barangay shifts into high-risk status.',
+      hasRainfallPressure
+        ? 'Add post-rainfall larval source checks to the barangay inspection schedule.'
+        : 'Prepare cleanup and IEC activities before the barangay shifts into high-risk status.',
       'Validate new reports weekly and compare them against the forecasted case count.',
     ]
   }
@@ -418,7 +707,9 @@ function buildActions({
     return [
       'Strengthen preventive messaging and weekly monitoring before the risk level worsens.',
       'Inspect common breeding areas and remind households to remove standing water.',
-      'Coordinate with BHWs to watch for clustering of fever cases.',
+      hasHighEnvironment
+        ? 'Increase IEC reminders during weather conditions that support mosquito survival and breeding.'
+        : 'Coordinate with BHWs to watch for clustering of fever cases.',
       'Reassess the barangay after the next reporting period.',
     ]
   }
@@ -428,7 +719,7 @@ function buildActions({
       'Continue weekly monitoring and maintain routine source reduction activities.',
       'Focus inspections on areas with previous dengue reports or poor drainage conditions.',
       'Keep barangay advisories active and encourage early consultation for fever symptoms.',
-      'Escalate only if forecasted cases, current cases, or trend begin increasing.',
+      'Escalate only if forecasted cases, current cases, weather pressure, or trend begin increasing.',
     ]
   }
 
@@ -451,7 +742,7 @@ function buildActions({
 
   return [
     'Upload and validate dengue records before generating a full decision support recommendation.',
-    'Use boundary and population data as supporting context once case records are available.',
+    'Use weather, boundary, and population data as supporting context once case records are available.',
   ]
 }
 
@@ -461,21 +752,30 @@ function computePriority({
   trendDirection,
   densityLevel,
   populationExposure,
+  environmentalSuitability,
+  multiSourceRiskScore,
 }) {
   const forecastPressure = getForecastPressure(forecast)
+  const environmentalScore = environmentalSuitability?.score || 0
   const score =
     getRiskScore(risk) +
     forecastPressure.score +
     getTrendScore(trendDirection) +
     getDensityScore(densityLevel) +
-    populationExposure.score
+    populationExposure.score +
+    environmentalScore +
+    Math.round(toNumber(multiSourceRiskScore) / 25)
 
   const isIncreasing = trendDirection === trendDirections.INCREASING
   const isDense =
     densityLevel === densityLevels.VERY_HIGH ||
     densityLevel === densityLevels.HIGH
+  const highEnvironment = environmentalSuitability?.label === environmentalLevels.HIGH
 
-  if (risk === riskLevels.HIGH && (isIncreasing || isDense || forecastPressure.score >= 4)) {
+  if (
+    risk === riskLevels.HIGH &&
+    (isIncreasing || isDense || highEnvironment || forecastPressure.score >= 4)
+  ) {
     return {
       priority: decisionPriorityLevels.IMMEDIATE,
       score,
@@ -491,7 +791,7 @@ function computePriority({
     }
   }
 
-  if (risk === riskLevels.MODERATE && isIncreasing && isDense) {
+  if (risk === riskLevels.MODERATE && isIncreasing && (isDense || highEnvironment)) {
     return {
       priority: decisionPriorityLevels.ESCALATED,
       score,
@@ -499,7 +799,7 @@ function computePriority({
     }
   }
 
-  if (risk === riskLevels.MODERATE && isIncreasing) {
+  if (risk === riskLevels.MODERATE && (isIncreasing || highEnvironment)) {
     return {
       priority: decisionPriorityLevels.PREVENTIVE,
       score,
@@ -515,7 +815,7 @@ function computePriority({
     }
   }
 
-  if (risk === riskLevels.LOW && isIncreasing) {
+  if (risk === riskLevels.LOW && (isIncreasing || highEnvironment)) {
     return {
       priority: decisionPriorityLevels.EARLY,
       score,
@@ -544,11 +844,15 @@ function buildDecisionSummary({
   trendDirection,
   densityLevel,
   forecast,
+  environmentalSuitability,
 }) {
   const forecastValue = toNumber(forecast)
+  const highEnvironment = environmentalSuitability?.label === environmentalLevels.HIGH
 
   if (priority === decisionPriorityLevels.IMMEDIATE) {
-    return 'Immediate coordinated response is recommended because the barangay shows high risk with added outbreak pressure from forecast, trend, or exposure conditions.'
+    return highEnvironment
+      ? 'Immediate coordinated response is recommended because high risk is reinforced by case trend, exposure, and weather conditions favorable to dengue transmission.'
+      : 'Immediate coordinated response is recommended because the barangay shows high risk with added outbreak pressure from forecast, trend, or exposure conditions.'
   }
 
   if (priority === decisionPriorityLevels.HIGH) {
@@ -556,11 +860,13 @@ function buildDecisionSummary({
   }
 
   if (priority === decisionPriorityLevels.ESCALATED) {
-    return 'Escalate preventive action because moderate risk is combined with increasing trend and dense population exposure.'
+    return 'Escalate preventive action because moderate risk is combined with increasing trend, dense population exposure, or weather pressure.'
   }
 
   if (priority === decisionPriorityLevels.PREVENTIVE) {
-    return 'Strengthen prevention before the barangay becomes high risk because the recent trend is increasing.'
+    return highEnvironment
+      ? 'Strengthen prevention because weather, case movement, or exposure indicators may allow risk to worsen.'
+      : 'Strengthen prevention before the barangay becomes high risk because the recent trend is increasing.'
   }
 
   if (priority === decisionPriorityLevels.MONITORING) {
@@ -568,7 +874,9 @@ function buildDecisionSummary({
   }
 
   if (priority === decisionPriorityLevels.EARLY) {
-    return 'Place the barangay under early warning watch because case movement is increasing despite a low current risk level.'
+    return highEnvironment
+      ? 'Place the barangay under early warning watch because environmental indicators are elevated even though current case risk is still low.'
+      : 'Place the barangay under early warning watch because case movement is increasing despite a low current risk level.'
   }
 
   if (priority === decisionPriorityLevels.ROUTINE) {
@@ -631,8 +939,6 @@ export function computeDecisionSupport(input = {}) {
 
   const density = toNumber(input.density) || computeDensity(population, areaSqKm)
 
-  const risk = input.risk || computeRiskLevel(forecast)
-
   const trendDirection = getTrendDirection({
     trend: input.trend || input.trendLabel || input.trendStatus,
     trendRate: input.trendRate,
@@ -646,6 +952,19 @@ export function computeDecisionSupport(input = {}) {
 
   const densityLevel = getDensityLevel(density)
   const populationExposure = getPopulationExposure(population)
+  const multiSourceRisk = computeMultiSourceRisk({
+    ...input,
+    forecast,
+    currentCases,
+    previousCases,
+    population,
+    areaSqKm,
+    density,
+    trendDirection,
+  })
+
+  const environmentalSuitability = multiSourceRisk.environmentalSuitability
+  const risk = input.risk || multiSourceRisk.risk
 
   const {
     priority,
@@ -657,6 +976,8 @@ export function computeDecisionSupport(input = {}) {
     trendDirection,
     densityLevel,
     populationExposure,
+    environmentalSuitability,
+    multiSourceRiskScore: multiSourceRisk.score,
   })
 
   const summary = buildDecisionSummary({
@@ -665,6 +986,7 @@ export function computeDecisionSupport(input = {}) {
     trendDirection,
     densityLevel,
     forecast,
+    environmentalSuitability,
   })
 
   const actions = buildActions({
@@ -674,6 +996,7 @@ export function computeDecisionSupport(input = {}) {
     densityLevel,
     forecast,
     currentCases,
+    environmentalSuitability,
   })
 
   const rationale = buildRationale({
@@ -684,6 +1007,8 @@ export function computeDecisionSupport(input = {}) {
     populationExposure,
     totalCases,
     currentCases,
+    environmentalSuitability,
+    multiSourceRiskScore: multiSourceRisk.score,
   })
 
   return {
@@ -699,6 +1024,14 @@ export function computeDecisionSupport(input = {}) {
     densityLevel,
     populationExposure: populationExposure.label,
     forecastPressure: forecastPressure.label,
+    environmentalSuitability: environmentalSuitability.label,
+    environmentalScore: environmentalSuitability.score,
+    rainfallPressure: environmentalSuitability.rainfallPressure.label,
+    temperatureSuitability: environmentalSuitability.temperatureSuitability.label,
+    humiditySuitability: environmentalSuitability.humiditySuitability.label,
+    multiSourceRiskScore: multiSourceRisk.score,
+    riskScore: multiSourceRisk.score,
+    riskComponents: multiSourceRisk.components,
   }
 }
 
