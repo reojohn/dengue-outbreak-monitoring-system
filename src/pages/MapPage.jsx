@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   BarChart3,
   CheckCircle2,
+  CloudRain,
   ChevronDown,
   ChevronUp,
   Crosshair,
+  Droplets,
   Gauge,
   Layers3,
   Map as MapIcon,
@@ -22,6 +24,7 @@ import {
   Satellite,
   ShieldAlert,
   Sun,
+  Thermometer,
   TrendingUp,
   Users,
 } from 'lucide-react'
@@ -104,6 +107,22 @@ function formatOptionalNumber(value, suffix = '') {
   }
 
   return `${formatDecimal(number)}${suffix}`
+}
+
+function formatRiskScore(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Not available'
+  }
+
+  return `${Math.round(number)}/100`
+}
+
+function getLabelValue(value, fallback = 'Not available') {
+  const text = String(value || '').trim()
+
+  return text || fallback
 }
 
 function normalizeBarangayName(value = '') {
@@ -846,8 +865,25 @@ export default function MapPage() {
     return buildBackendRiskRows(backendForecastResult)
   }, [backendForecastResult])
 
-  const displayRiskRows = usingBackendForecast ? backendRiskRows : riskRows
-  const displayPeriodCount = usingBackendForecast
+  const hasMultiSourceRiskRows = riskRows.some((row) => {
+    return (
+      Number(row.multiSourceRiskScore || row.riskScore || 0) > 0 ||
+      Boolean(row.environmentalSuitability) ||
+      Boolean(row.rainfallPressure) ||
+      Boolean(row.temperatureSuitability) ||
+      Boolean(row.humiditySuitability)
+    )
+  })
+
+  const displayRiskRows = hasMultiSourceRiskRows
+    ? riskRows
+    : usingBackendForecast
+      ? backendRiskRows
+      : riskRows
+
+  const usingMultiSourceRisk = hasMultiSourceRiskRows
+
+  const displayPeriodCount = usingBackendForecast && !usingMultiSourceRisk
     ? buildBackendPeriodCount(backendForecastResult)
     : dashboardStats?.weeklyTotals?.length || 0
 
@@ -1209,6 +1245,36 @@ export default function MapPage() {
       tone: 'text-indigo-500 bg-indigo-50 border-indigo-100 dark:text-indigo-300 dark:bg-indigo-500/10 dark:border-indigo-500/20',
     },
     {
+      label: 'Multi-source score',
+      value: details ? formatRiskScore(details.multiSourceRiskScore || details.riskScore) : 'Pending dataset',
+      icon: Radar,
+      tone: 'text-sky-500 bg-sky-50 border-sky-100 dark:text-sky-300 dark:bg-sky-500/10 dark:border-sky-500/20',
+    },
+    {
+      label: 'Environmental suitability',
+      value: details ? getLabelValue(details.environmentalSuitability) : 'Pending weather data',
+      icon: CloudRain,
+      tone: 'text-cyan-500 bg-cyan-50 border-cyan-100 dark:text-cyan-300 dark:bg-cyan-500/10 dark:border-cyan-500/20',
+    },
+    {
+      label: 'Rainfall pressure',
+      value: details ? getLabelValue(details.rainfallPressure) : 'Pending weather data',
+      icon: CloudRain,
+      tone: 'text-blue-500 bg-blue-50 border-blue-100 dark:text-blue-300 dark:bg-blue-500/10 dark:border-blue-500/20',
+    },
+    {
+      label: 'Temperature suitability',
+      value: details ? getLabelValue(details.temperatureSuitability) : 'Pending weather data',
+      icon: Thermometer,
+      tone: 'text-orange-500 bg-orange-50 border-orange-100 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20',
+    },
+    {
+      label: 'Humidity suitability',
+      value: details ? getLabelValue(details.humiditySuitability) : 'Pending weather data',
+      icon: Droplets,
+      tone: 'text-teal-500 bg-teal-50 border-teal-100 dark:text-teal-300 dark:bg-teal-500/10 dark:border-teal-500/20',
+    },
+    {
       label: 'Area',
       value: formatOptionalNumber(selectedArea, ' sq km'),
       icon: MapIcon,
@@ -1450,7 +1516,7 @@ export default function MapPage() {
                   </p>
 
                   <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-400">
-                    Based on forecast, trend, risk, population exposure, and density.
+                    Based on forecast, trend, risk, rainfall, temperature, humidity, population exposure, and density.
                   </p>
                 </div>
 
@@ -1550,9 +1616,11 @@ export default function MapPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
-                {usingBackendForecast
-                  ? 'Barangay-level hotspot monitoring generated from backend forecast output and uploaded boundary data.'
-                  : 'Barangay-level hotspot monitoring generated from validated dengue records and uploaded boundary data.'}
+                {usingMultiSourceRisk
+                  ? 'Barangay-level hotspot monitoring generated from dengue, weather, population, density, and uploaded boundary data.'
+                  : usingBackendForecast
+                    ? 'Barangay-level hotspot monitoring generated from backend forecast output and uploaded boundary data.'
+                    : 'Barangay-level hotspot monitoring generated from validated dengue records and uploaded boundary data.'}
               </p>
             </div>
 
@@ -1718,9 +1786,11 @@ export default function MapPage() {
               </h2>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {usingBackendForecast
-                  ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.'
-                  : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
+                {usingMultiSourceRisk
+                  ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors follow the multi-source dengue, weather, population, and density score.'
+                  : usingBackendForecast
+                    ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.'
+                    : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
               </p>
             </div>
 
@@ -1888,7 +1958,7 @@ export default function MapPage() {
               </h3>
 
               <p className="mt-1 max-w-md text-sm leading-6 text-white/75">
-                Select a barangay on the map to open its risk profile, decision support details, action plan, and recommendation rationale.
+                Select a barangay on the map to open its multi-source risk profile, weather factors, decision support details, action plan, and recommendation rationale.
               </p>
             </div>
           </div>
@@ -1904,9 +1974,11 @@ export default function MapPage() {
             </h2>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              {usingBackendForecast
-                ? 'Top barangays are ranked using the backend forecast priority output.'
-                : 'Top barangays will appear after risk scores are computed.'}
+              {usingMultiSourceRisk
+                ? 'Top barangays are ranked using multi-source risk score, environmental suitability, and DSS priority.'
+                : usingBackendForecast
+                  ? 'Top barangays are ranked using the backend forecast priority output.'
+                  : 'Top barangays will appear after risk scores are computed.'}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -1934,6 +2006,10 @@ export default function MapPage() {
 
                         <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
                           Forecast: {formatNumber(row.forecast)} cases
+                        </p>
+
+                        <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">
+                          Multi-source score: {formatRiskScore(row.multiSourceRiskScore || row.riskScore)}
                         </p>
 
                         <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">
@@ -1966,9 +2042,11 @@ export default function MapPage() {
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {hasRiskData
-                  ? usingBackendForecast
-                    ? 'The hotspot map is using backend forecast rows, backend recommendations, and the uploaded barangay boundary polygons.'
-                    : 'The hotspot map is using computed dengue risk rows, decision support outputs, and the uploaded barangay boundary polygons.'
+                  ? usingMultiSourceRisk
+                    ? 'The hotspot map is using dengue case trend, weather factors, population exposure, density, decision support outputs, and uploaded barangay boundary polygons.'
+                    : usingBackendForecast
+                      ? 'The hotspot map is using backend forecast rows, backend recommendations, and the uploaded barangay boundary polygons.'
+                      : 'The hotspot map is using computed dengue risk rows, decision support outputs, and the uploaded barangay boundary polygons.'
                   : hasBoundaryData
                     ? 'The map is currently showing barangay boundary polygons only. Risk coloring and decision support will activate after dengue records are processed.'
                     : 'The hotspot map will become interactive after the system receives boundary data and computes barangay-level risk rows.'}

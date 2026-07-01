@@ -78,6 +78,22 @@ function formatOptionalNumber(value, suffix = '') {
   return `${formatNumber(number)}${suffix}`
 }
 
+function formatRiskScore(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Not available'
+  }
+
+  return `${Math.round(number)}/100`
+}
+
+function getLabelValue(value, fallback = 'Not available') {
+  const text = String(value || '').trim()
+
+  return text || fallback
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -428,6 +444,32 @@ function getDecisionSupport(row) {
     row?.populationExposure ||
     'Population exposure unavailable'
 
+  const environmentalSuitability =
+    decisionSupport.environmentalSuitability ||
+    row?.environmentalSuitability ||
+    'Environmental data unavailable'
+
+  const rainfallPressure =
+    decisionSupport.rainfallPressure ||
+    row?.rainfallPressure ||
+    'Rainfall data unavailable'
+
+  const temperatureSuitability =
+    decisionSupport.temperatureSuitability ||
+    row?.temperatureSuitability ||
+    'Temperature data unavailable'
+
+  const humiditySuitability =
+    decisionSupport.humiditySuitability ||
+    row?.humiditySuitability ||
+    'Humidity data unavailable'
+
+  const multiSourceRiskScore =
+    row?.multiSourceRiskScore ??
+    row?.riskScore ??
+    decisionSupport.multiSourceRiskScore ??
+    0
+
   return {
     summary,
     priority,
@@ -438,6 +480,11 @@ function getDecisionSupport(row) {
     trendDirection,
     forecastPressure,
     populationExposure,
+    environmentalSuitability,
+    rainfallPressure,
+    temperatureSuitability,
+    humiditySuitability,
+    multiSourceRiskScore,
   }
 }
 
@@ -499,8 +546,18 @@ function buildTooltipHtml({ feature, row }) {
       </div>
 
       <div class="risk-tooltip-row">
+        <span>Multi-source score</span>
+        <strong>${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</strong>
+      </div>
+
+      <div class="risk-tooltip-row">
         <span>DSS priority</span>
         <strong>${escapeHtml(decision.priority)}</strong>
+      </div>
+
+      <div class="risk-tooltip-row">
+        <span>Environment</span>
+        <strong>${escapeHtml(decision.environmentalSuitability)}</strong>
       </div>
 
       <div class="risk-tooltip-row">
@@ -612,7 +669,7 @@ function buildDetailedPopupHtml({ feature, row, populationRow }) {
       <div class="barangay-decision-banner ${priorityClassName}">
         <span>Decision Support Priority</span>
         <strong>${escapeHtml(decision.priority)}</strong>
-        <small>Decision score: ${escapeHtml(formatNumber(decision.score))} points</small>
+        <small>Decision score: ${escapeHtml(formatNumber(decision.score))} points · Multi-source score: ${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</small>
       </div>
 
       <div class="barangay-detail-grid">
@@ -634,6 +691,31 @@ function buildDetailedPopupHtml({ feature, row, populationRow }) {
         <div class="barangay-detail-stat">
           <span>Risk level</span>
           <strong>${escapeHtml(risk)}</strong>
+        </div>
+
+        <div class="barangay-detail-stat">
+          <span>Multi-source score</span>
+          <strong>${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</strong>
+        </div>
+
+        <div class="barangay-detail-stat">
+          <span>Environmental suitability</span>
+          <strong>${escapeHtml(decision.environmentalSuitability)}</strong>
+        </div>
+
+        <div class="barangay-detail-stat">
+          <span>Rainfall pressure</span>
+          <strong>${escapeHtml(decision.rainfallPressure)}</strong>
+        </div>
+
+        <div class="barangay-detail-stat">
+          <span>Temperature suitability</span>
+          <strong>${escapeHtml(decision.temperatureSuitability)}</strong>
+        </div>
+
+        <div class="barangay-detail-stat">
+          <span>Humidity suitability</span>
+          <strong>${escapeHtml(decision.humiditySuitability)}</strong>
         </div>
 
         <div class="barangay-detail-stat">
@@ -686,6 +768,11 @@ function buildDetailedPopupHtml({ feature, row, populationRow }) {
         <div>
           <span>Population exposure</span>
           <strong>${escapeHtml(decision.populationExposure)}</strong>
+        </div>
+
+        <div>
+          <span>Environmental suitability</span>
+          <strong>${escapeHtml(decision.environmentalSuitability)}</strong>
         </div>
       </div>
 
@@ -821,7 +908,7 @@ export default function LeafletRiskMap({
   const mapKey = useMemo(() => {
     const boundaryCount = boundaryGeoJson?.features?.length || 0
     const riskHash = rows
-      .map((row) => `${row.barangay}-${row.risk}-${row.forecast}-${row.responsePriority}`)
+      .map((row) => `${row.barangay}-${row.risk}-${row.forecast}-${row.responsePriority}-${row.multiSourceRiskScore || row.riskScore || 0}-${row.environmentalSuitability || ''}`)
       .join('|')
 
     return `${selected}-${boundaryCount}-${riskHash}-${mapStyle}-${layoutKey}-${showDetailsPanel ? 'popup' : 'external'}`
