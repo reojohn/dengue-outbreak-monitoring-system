@@ -24,6 +24,7 @@ import {
   forecastDengueFile,
   inspectUploadedFile,
   summarizeDengueFile,
+  validateBoundaryFile,
   validatePopulationFile,
   validateWeatherFile,
 } from '../services/api'
@@ -1462,6 +1463,87 @@ function buildBackendWeatherValidationResult({
   }
 }
 
+
+function getBackendBoundaryValidationCounts(validateResult = {}) {
+  const summary = validateResult.validation_summary || {}
+
+  return {
+    missingCount: Number(summary.missing_barangay_name_rows || 0),
+    invalidCount: Number(summary.invalid_geometry_rows || 0),
+    duplicateCount: Number(summary.duplicate_boundary_rows || 0),
+  }
+}
+
+function mapBackendBoundaryRows(rows = [], offset = 0) {
+  return rows.map((row, index) => ({
+    id: row.id || `backend-boundary-${offset + index}`,
+    barangay: row.barangay || '',
+    barangayKey: row.barangay_key || '',
+    barangayRaw: row.barangay_raw || '',
+    geometryType: row.geometry_type || row.geometryType || 'Feature',
+    psgc: row.psgc || '',
+    status: row.status || 'Valid',
+  }))
+}
+
+function mapBackendBoundaryGeoJsonRows(cleanedGeojson = null) {
+  if (!cleanedGeojson?.features || !Array.isArray(cleanedGeojson.features)) {
+    return []
+  }
+
+  return cleanedGeojson.features.map((feature, index) => {
+    const properties = feature.properties || {}
+
+    return {
+      id: feature.id || `backend-boundary-feature-${index}`,
+      barangay: properties.barangay || properties.adm4_name || properties.name || `Boundary ${index + 1}`,
+      barangayKey: properties.barangay_key || '',
+      barangayRaw: properties.barangay_raw || properties.adm4_name || properties.name || '',
+      geometryType: feature.geometry?.type || 'No geometry',
+      psgc: properties.psgc || properties.adm4_pcode || properties.PSGC || '',
+      status: properties.validation_status || 'Valid',
+    }
+  })
+}
+
+function formatBackendBoundaryMappingSummary(detection = {}) {
+  const readiness = detection.readiness || 'ready_for_mapping'
+
+  if (readiness === 'ready_for_mapping') {
+    return 'GeoJSON FeatureCollection → barangay boundary layer'
+  }
+
+  return 'GeoJSON boundary layer → needs review'
+}
+
+function buildBackendBoundaryValidationResult({
+  fileName,
+  validateResult,
+}) {
+  const counts = getBackendBoundaryValidationCounts(validateResult)
+  const cleanedGeojson = validateResult.cleaned_geojson || null
+  const geojsonPreviewRows = mapBackendBoundaryGeoJsonRows(cleanedGeojson)
+  const cleanedPreviewRows = mapBackendBoundaryRows(validateResult.cleaned_preview || [])
+  const invalidPreview = mapBackendBoundaryRows(validateResult.invalid_preview || [], 10000)
+  const validPreview = geojsonPreviewRows.length > 0 ? geojsonPreviewRows : cleanedPreviewRows
+  const mappingSummary = formatBackendBoundaryMappingSummary(validateResult.boundary_detection)
+
+  return {
+    sourceId: 'boundary',
+    fileName,
+    backendPowered: true,
+    previewRows: [...validPreview, ...invalidPreview],
+    validRecords: cleanedGeojson ? [cleanedGeojson] : [],
+    recordCount: Number(validateResult.original_feature_count || 0),
+    validCount: Number(validateResult.valid_feature_count || 0),
+    missingCount: counts.missingCount,
+    duplicateCount: counts.duplicateCount,
+    invalidCount: counts.invalidCount,
+    mappingSummary,
+    validateResult,
+  }
+}
+
 export default function UploadPage() {
   const navigate = useNavigate()
   const data = useData()
@@ -1587,6 +1669,7 @@ export default function UploadPage() {
       const fileName = file.name.toLowerCase()
       const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
       const isCsv = fileName.endsWith('.csv')
+      const isJson = fileName.endsWith('.json') || fileName.endsWith('.geojson')
 
       if (selected === 'historical' && (isCsv || isExcel)) {
         const inspectResult = await inspectUploadedFile(file)
@@ -1718,6 +1801,47 @@ export default function UploadPage() {
         addActivityLog(
           'Backend weather dataset uploaded',
           `${selectedSource.title} uploaded from ${file.name}. Backend valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
+        )
+
+        return
+      }
+
+      if (selected === 'boundary' && isJson) {
+        const validateResult = await validateBoundaryFile(file)
+
+        const backendResult = buildBackendBoundaryValidationResult({
+          fileName: file.name,
+          validateResult,
+        })
+
+        updateWorkspace((current) => ({
+          ...current,
+          [selectedSource.recordKey]: backendResult.validRecords,
+          sourceStatus: {
+            ...(current.sourceStatus || {}),
+            [selectedSource.contextKey]: {
+              uploadedName: file.name,
+              badge: backendResult.validCount > 0 ? 'Backend Validated' : 'Needs Review',
+              recordCount: backendResult.recordCount,
+              validCount: backendResult.validCount,
+              missingCount: backendResult.missingCount,
+              duplicateCount: backendResult.duplicateCount,
+              invalidCount: backendResult.invalidCount,
+              mappingSummary: backendResult.mappingSummary,
+              backendPowered: true,
+            },
+          },
+        }))
+
+        setValidationResult(backendResult)
+
+        setUploadMessage(
+          `Upload successful. Boundary layer is backend-validated and ready for geospatial mapping. ${backendResult.validCount} of ${backendResult.recordCount} features are valid.`
+        )
+
+        addActivityLog(
+          'Backend boundary dataset uploaded',
+          `${selectedSource.title} uploaded from ${file.name}. Backend valid features: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
         return
