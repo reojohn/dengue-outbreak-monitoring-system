@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, UploadFile
 
 from app.services.baseline_forecast import generate_baseline_dengue_forecast
+from app.services.boundary_inspector import validate_boundary_file
 from app.services.file_inspector import (
     clean_dengue_file,
     inspect_tabular_file,
@@ -55,3 +56,8 @@ async def validate_population_upload(file: UploadFile = File(...)):
 @router.post("/validate-weather")
 async def validate_weather_upload(file: UploadFile = File(...)):
     return await validate_weather_file(file)
+
+
+@router.post("/validate-boundary")
+async def validate_boundary_upload(file: UploadFile = File(...)):
+    return await validate_boundary_file(file)

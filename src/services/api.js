@@ -81,4 +81,13 @@ export async function validateWeatherFile(file) {
   return handleApiResponse(response)
 }
 
+export async function validateBoundaryFile(file) {
+  const response = await fetch(`${API_BASE_URL}/uploads/validate-boundary`, {
+    method: 'POST',
+    body: buildFileFormData(file),
+  })
+
+  return handleApiResponse(response)
+}
+
 export { API_BASE_URL }
