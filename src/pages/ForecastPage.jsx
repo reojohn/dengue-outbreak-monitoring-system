@@ -5,22 +5,28 @@ import {
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
+  CloudRain,
   ChevronDown,
   ChevronUp,
   ClipboardList,
   Database,
+  Droplets,
+  Gauge,
   LineChart,
   MapPin,
   ShieldAlert,
   Sparkles,
   Target,
+  Thermometer,
   TrendingDown,
   TrendingUp,
+  Users,
 } from 'lucide-react'
 import SparkChart from '../components/SparkChart'
 import { useData } from '../context/DataContext'
 import {
   computeDecisionSupport,
+  computeMultiSourceRisk,
   computeRiskLevel,
   riskStyles,
 } from '../utils/analytics'
@@ -254,6 +260,159 @@ function average(values) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function sum(values = []) {
+  return values.reduce((total, value) => total + Number(value || 0), 0)
+}
+
+function parseCoverageDate(value) {
+  if (value === undefined || value === null || value === '') return null
+
+  const raw = String(value).trim()
+
+  if (!raw) return null
+
+  const weekMatch = raw.match(/^(\d{4})-?W(\d{1,2})$/i)
+
+  if (weekMatch) {
+    const year = Number(weekMatch[1])
+    const week = Number(weekMatch[2])
+    const date = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7))
+
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const parsed = new Date(raw)
+
+  if (Number.isNaN(parsed.getTime())) return null
+
+  return parsed
+}
+
+function formatCoverageDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'N/A'
+
+  return date.toISOString().slice(0, 10)
+}
+
+function getWeatherDate(record) {
+  const value = readValue(record, [
+    'reportingDate',
+    'reporting_date',
+    'date',
+    'weatherDate',
+    'weather_date',
+    'observationDate',
+    'observation_date',
+  ])
+
+  return parseCoverageDate(value)
+}
+
+function getWeatherNumber(record, keys = []) {
+  return readNumber(record, keys, 0)
+}
+
+function getWeatherContextForPeriods(periods = [], weatherRecords = []) {
+  const emptyContext = {
+    averageRainfall: 0,
+    totalRainfall: 0,
+    averageTemperature: 0,
+    averageHumidity: 0,
+    weatherRecordCount: 0,
+    weatherCoverageLabel: 'Weather data unavailable',
+  }
+
+  if (!Array.isArray(weatherRecords) || !weatherRecords.length) {
+    return emptyContext
+  }
+
+  const weatherItems = weatherRecords
+    .map((record, index) => ({
+      record,
+      index,
+      date: getWeatherDate(record),
+      rainfall: getWeatherNumber(record, [
+        'rainfall',
+        'rainfall_mm',
+        'rainfallMm',
+        'rain',
+        'rain_mm',
+        'precipitation',
+        'precipitation_mm',
+        'precip',
+        'prectotcorr',
+      ]),
+      temperature: getWeatherNumber(record, [
+        'temperature',
+        'temperature_c',
+        'temperatureC',
+        'temp',
+        'temp_c',
+        'air_temperature',
+        't2m',
+      ]),
+      humidity: getWeatherNumber(record, [
+        'humidity',
+        'relative_humidity',
+        'relativeHumidity',
+        'humidity_percent',
+        'rh',
+        'rh2m',
+      ]),
+    }))
+    .filter((item) => item.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+  if (!weatherItems.length) {
+    return emptyContext
+  }
+
+  const periodDates = periods
+    .map((period) => parseCoverageDate(period.period))
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  let selectedWeatherItems = []
+
+  if (periodDates.length) {
+    const start = new Date(periodDates[0].getTime())
+    const end = new Date(periodDates[periodDates.length - 1].getTime())
+
+    start.setUTCDate(start.getUTCDate() - 14)
+    end.setUTCDate(end.getUTCDate() + 7)
+
+    selectedWeatherItems = weatherItems.filter((item) => {
+      return item.date.getTime() >= start.getTime() && item.date.getTime() <= end.getTime()
+    })
+  }
+
+  if (!selectedWeatherItems.length) {
+    selectedWeatherItems = weatherItems.slice(-30)
+  }
+
+  const rainfallValues = selectedWeatherItems.map((item) => item.rainfall)
+  const temperatureValues = selectedWeatherItems
+    .map((item) => item.temperature)
+    .filter((value) => value !== 0)
+  const humidityValues = selectedWeatherItems
+    .map((item) => item.humidity)
+    .filter((value) => value !== 0)
+
+  const firstDate = selectedWeatherItems[0]?.date
+  const lastDate = selectedWeatherItems[selectedWeatherItems.length - 1]?.date
+
+  return {
+    averageRainfall: Number(average(rainfallValues).toFixed(2)),
+    totalRainfall: Number(sum(rainfallValues).toFixed(2)),
+    averageTemperature: Number(average(temperatureValues).toFixed(2)),
+    averageHumidity: Number(average(humidityValues).toFixed(2)),
+    weatherRecordCount: selectedWeatherItems.length,
+    weatherCoverageLabel: firstDate && lastDate
+      ? `${formatCoverageDate(firstDate)} to ${formatCoverageDate(lastDate)}`
+      : 'Weather data available',
+  }
 }
 
 function getTrendLabel(rate) {
@@ -526,7 +685,8 @@ function buildDynamicForecastRows(
   records = [],
   multiplier = 1,
   populationRecords = [],
-  boundaryRecords = []
+  boundaryRecords = [],
+  weatherRecords = []
 ) {
   const { periods, barangays } = groupDengueRecords(records)
 
@@ -540,6 +700,7 @@ function buildDynamicForecastRows(
   }
 
   const weeklyTotals = periods.map((period) => period.totalCases)
+  const weatherContext = getWeatherContextForPeriods(periods, weatherRecords)
 
   const forecastRows = barangays.map((barangayItem) => {
     const boundaryFeature = getBoundaryFeatureForBarangay(
@@ -579,7 +740,6 @@ function buildDynamicForecastRows(
       Math.round(recentAverage * 4 * multiplier * (1 + cappedTrendRate))
     )
 
-    const risk = computeRiskLevel(projectedFourWeekCases)
     const trendLabel = getTrendLabel(cappedTrendRate)
 
     const firstValue = caseSeries[0] || 0
@@ -599,6 +759,29 @@ function buildDynamicForecastRows(
 
     const currentCases =
       caseSeries.length >= 1 ? caseSeries[caseSeries.length - 1] : 0
+
+    const multiSourceRisk = computeMultiSourceRisk({
+      forecast: projectedFourWeekCases,
+      currentCases,
+      previousCases,
+      totalCases: barangayItem.totalCases,
+      trend: trendLabel,
+      trendRate: cappedTrendRate,
+      recentAverage,
+      previousAverage,
+      history: caseSeries,
+      weeklyCases: caseSeries,
+      population,
+      areaSqKm: area,
+      density,
+      averageRainfall: weatherContext.averageRainfall,
+      totalRainfall: weatherContext.totalRainfall,
+      averageTemperature: weatherContext.averageTemperature,
+      averageHumidity: weatherContext.averageHumidity,
+    })
+
+    const risk = multiSourceRisk.risk
+    const riskScore = multiSourceRisk.score
 
     const rowData = {
       barangay: barangayItem.barangay,
@@ -627,6 +810,23 @@ function buildDynamicForecastRows(
       area_sqkm: area,
       areaSqKm: area,
       density,
+      averageRainfall: weatherContext.averageRainfall,
+      avgRainfall: weatherContext.averageRainfall,
+      totalRainfall: weatherContext.totalRainfall,
+      averageTemperature: weatherContext.averageTemperature,
+      avgTemperature: weatherContext.averageTemperature,
+      averageHumidity: weatherContext.averageHumidity,
+      avgHumidity: weatherContext.averageHumidity,
+      weatherRecordCount: weatherContext.weatherRecordCount,
+      weatherCoverageLabel: weatherContext.weatherCoverageLabel,
+      riskScore,
+      multiSourceRiskScore: riskScore,
+      riskComponents: multiSourceRisk.components,
+      environmentalSuitability: multiSourceRisk.environmentalSuitability.label,
+      environmentalScore: multiSourceRisk.environmentalSuitability.score,
+      rainfallPressure: multiSourceRisk.environmentalSuitability.rainfallPressure.label,
+      temperatureSuitability: multiSourceRisk.environmentalSuitability.temperatureSuitability.label,
+      humiditySuitability: multiSourceRisk.environmentalSuitability.humiditySuitability.label,
     }
 
     const decisionSupport = computeDecisionSupport(rowData)
@@ -644,6 +844,14 @@ function buildDynamicForecastRows(
       densityLevel: decisionSupport.densityLevel,
       populationExposure: decisionSupport.populationExposure,
       forecastPressure: decisionSupport.forecastPressure,
+      environmentalSuitability: decisionSupport.environmentalSuitability,
+      environmentalScore: decisionSupport.environmentalScore,
+      rainfallPressure: decisionSupport.rainfallPressure,
+      temperatureSuitability: decisionSupport.temperatureSuitability,
+      humiditySuitability: decisionSupport.humiditySuitability,
+      multiSourceRiskScore: decisionSupport.multiSourceRiskScore,
+      riskScore: decisionSupport.riskScore,
+      riskComponents: decisionSupport.riskComponents,
     }
   })
 
@@ -667,6 +875,10 @@ function buildDynamicForecastRows(
 
   return {
     forecastRows: forecastRows.sort((a, b) => {
+      const scoreDifference = Number(b.riskScore || 0) - Number(a.riskScore || 0)
+
+      if (scoreDifference !== 0) return scoreDifference
+
       if (b.decisionScore !== a.decisionScore) {
         return b.decisionScore - a.decisionScore
       }
@@ -692,7 +904,10 @@ function getTrendRateFromLabel(label = '') {
 
 function buildBackendForecastRows(
   backendForecastResult = null,
-  multiplier = 1
+  multiplier = 1,
+  populationRecords = [],
+  boundaryRecords = [],
+  weatherRecords = []
 ) {
   const backendRows = backendForecastResult?.forecast_results || []
 
@@ -705,10 +920,18 @@ function buildBackendForecastRows(
     }
   }
 
+  const backendPeriods = backendRows.map((backendRow, index) => ({
+    period: readText(backendRow, ['latest_period'], `Backend period ${index + 1}`),
+    index,
+    sortValue: index,
+  }))
+
+  const weatherContext = getWeatherContextForPeriods(backendPeriods, weatherRecords)
+
   const forecastRows = backendRows.map((backendRow) => {
     const baseForecast = readNumber(backendRow, ['forecast_next_4_periods'], 0)
     const adjustedForecast = Math.max(0, Math.round(baseForecast * multiplier))
-    const risk = computeRiskLevel(adjustedForecast)
+    const barangay = readText(backendRow, ['barangay'], 'Unspecified barangay')
     const trendLabel = readText(backendRow, ['trend_direction'], 'Stable')
     const trendRate = getTrendRateFromLabel(trendLabel)
     const forecastNextPeriod = Math.max(
@@ -741,8 +964,36 @@ function buildBackendForecastRows(
       },
     ]
 
+    const boundaryFeature = getBoundaryFeatureForBarangay(barangay, boundaryRecords)
+    const population = getPopulationValue(barangay, populationRecords, boundaryFeature)
+    const area = getAreaValue(boundaryFeature)
+    const density = population > 0 && area > 0 ? population / area : 0
+
+    const multiSourceRisk = computeMultiSourceRisk({
+      forecast: adjustedForecast,
+      currentCases: forecastNextPeriod,
+      previousCases: previousAverage,
+      totalCases: historicalTotalCases,
+      trend: trendLabel,
+      trendRate,
+      recentAverage,
+      previousAverage,
+      history: caseSeries,
+      weeklyCases: caseSeries,
+      population,
+      areaSqKm: area,
+      density,
+      averageRainfall: weatherContext.averageRainfall,
+      totalRainfall: weatherContext.totalRainfall,
+      averageTemperature: weatherContext.averageTemperature,
+      averageHumidity: weatherContext.averageHumidity,
+    })
+
+    const risk = multiSourceRisk.risk
+    const riskScore = multiSourceRisk.score
+
     const rowData = {
-      barangay: readText(backendRow, ['barangay'], 'Unspecified barangay'),
+      barangay,
       totalCases: historicalTotalCases,
       cases: historicalTotalCases,
       currentCases: forecastNextPeriod,
@@ -764,10 +1015,27 @@ function buildBackendForecastRows(
       caseHistory: series,
       series,
       periods: [latestPeriod],
-      population: 0,
-      area_sqkm: 0,
-      areaSqKm: 0,
-      density: 0,
+      population,
+      area_sqkm: area,
+      areaSqKm: area,
+      density,
+      averageRainfall: weatherContext.averageRainfall,
+      avgRainfall: weatherContext.averageRainfall,
+      totalRainfall: weatherContext.totalRainfall,
+      averageTemperature: weatherContext.averageTemperature,
+      avgTemperature: weatherContext.averageTemperature,
+      averageHumidity: weatherContext.averageHumidity,
+      avgHumidity: weatherContext.averageHumidity,
+      weatherRecordCount: weatherContext.weatherRecordCount,
+      weatherCoverageLabel: weatherContext.weatherCoverageLabel,
+      riskScore,
+      multiSourceRiskScore: riskScore,
+      riskComponents: multiSourceRisk.components,
+      environmentalSuitability: multiSourceRisk.environmentalSuitability.label,
+      environmentalScore: multiSourceRisk.environmentalSuitability.score,
+      rainfallPressure: multiSourceRisk.environmentalSuitability.rainfallPressure.label,
+      temperatureSuitability: multiSourceRisk.environmentalSuitability.temperatureSuitability.label,
+      humiditySuitability: multiSourceRisk.environmentalSuitability.humiditySuitability.label,
       backendPriorityRank: readNumber(backendRow, ['priority_rank'], 0),
       backendRecommendation: readText(backendRow, ['recommendation'], ''),
       backendRiskLevel: readText(backendRow, ['risk_level'], risk),
@@ -794,6 +1062,14 @@ function buildBackendForecastRows(
       densityLevel: decisionSupport.densityLevel,
       populationExposure: decisionSupport.populationExposure,
       forecastPressure: decisionSupport.forecastPressure,
+      environmentalSuitability: decisionSupport.environmentalSuitability,
+      environmentalScore: decisionSupport.environmentalScore,
+      rainfallPressure: decisionSupport.rainfallPressure,
+      temperatureSuitability: decisionSupport.temperatureSuitability,
+      humiditySuitability: decisionSupport.humiditySuitability,
+      multiSourceRiskScore: decisionSupport.multiSourceRiskScore,
+      riskScore: decisionSupport.riskScore,
+      riskComponents: decisionSupport.riskComponents,
     }
   })
 
@@ -921,7 +1197,7 @@ return {
 
   return {
     title: 'Frontend forecast and decision support computed',
-    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. Forecast, risk level, trend, and DSS priority were generated in the frontend fallback workflow.`,
+    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. Forecast, multi-source risk score, weather factors, trend, and DSS priority were generated in the frontend workflow.`,
     style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
     icon: CheckCircle2,
   }
@@ -1034,6 +1310,7 @@ export default function ForecastPage() {
     dengueRecords = [],
     populationRecords = [],
     boundaryRecords = [],
+    weatherRecords = [],
     sourceStatus,
     backendForecastResult = null,
     addActivityLog,
@@ -1051,7 +1328,10 @@ export default function ForecastPage() {
     if (hasBackendForecastData(backendForecastResult)) {
       return buildBackendForecastRows(
         backendForecastResult,
-        selectedMode.multiplier
+        selectedMode.multiplier,
+        populationRecords,
+        boundaryRecords,
+        weatherRecords
       )
     }
 
@@ -1059,7 +1339,8 @@ export default function ForecastPage() {
       dengueRecords,
       selectedMode.multiplier,
       populationRecords,
-      boundaryRecords
+      boundaryRecords,
+      weatherRecords
     )
   }, [
     backendForecastResult,
@@ -1067,6 +1348,7 @@ export default function ForecastPage() {
     selectedMode,
     populationRecords,
     boundaryRecords,
+    weatherRecords,
   ])
 
   const topBarangays = forecastRows.slice(0, 5)
@@ -1100,6 +1382,21 @@ export default function ForecastPage() {
 
   const highestRiskBarangay = forecastRows[0]
   const topDecisionSupport = highestRiskBarangay?.decisionSupport || null
+  const topRiskScore = Number(
+    highestRiskBarangay?.riskScore ||
+      highestRiskBarangay?.multiSourceRiskScore ||
+      0
+  )
+  const topEnvironmentalSuitability = highestRiskBarangay?.environmentalSuitability || 'Environmental data unavailable'
+  const topRainfallPressure = highestRiskBarangay?.rainfallPressure || 'Rainfall unavailable'
+  const topTemperatureSuitability = highestRiskBarangay?.temperatureSuitability || 'Temperature unavailable'
+  const topHumiditySuitability = highestRiskBarangay?.humiditySuitability || 'Humidity unavailable'
+  const topWeatherCoverage = highestRiskBarangay?.weatherCoverageLabel || 'Weather data unavailable'
+  const topAverageRainfall = Number(highestRiskBarangay?.averageRainfall || highestRiskBarangay?.avgRainfall || 0)
+  const topAverageTemperature = Number(highestRiskBarangay?.averageTemperature || highestRiskBarangay?.avgTemperature || 0)
+  const topAverageHumidity = Number(highestRiskBarangay?.averageHumidity || highestRiskBarangay?.avgHumidity || 0)
+  const topWeatherRecordCount = Number(highestRiskBarangay?.weatherRecordCount || 0)
+  const topRiskComponents = highestRiskBarangay?.riskComponents || {}
   const computationStatus = getComputationStatus(
     dengueRecords,
     sourceStatus,
@@ -1119,6 +1416,37 @@ export default function ForecastPage() {
   const increasingBarangays = forecastRows.filter((row) => {
     return row.trendLabel === 'Increasing'
   }).length
+
+  const multiSourceFactorCards = [
+    {
+      label: 'Multi-source score',
+      value: topRiskScore > 0 ? `${formatNumber(topRiskScore)}/100` : 'No data',
+      helper: 'Combined dengue, weather, exposure, and density score',
+      icon: Gauge,
+      tone: topRiskScore >= 60 ? 'rose' : topRiskScore >= 25 ? 'amber' : 'blue',
+    },
+    {
+      label: 'Rainfall pressure',
+      value: topAverageRainfall > 0 ? `${formatDecimal(topAverageRainfall)} mm avg` : 'No data',
+      helper: topRainfallPressure,
+      icon: CloudRain,
+      tone: 'blue',
+    },
+    {
+      label: 'Temperature suitability',
+      value: topAverageTemperature > 0 ? `${formatDecimal(topAverageTemperature)} °C` : 'No data',
+      helper: topTemperatureSuitability,
+      icon: Thermometer,
+      tone: 'amber',
+    },
+    {
+      label: 'Humidity suitability',
+      value: topAverageHumidity > 0 ? `${formatDecimal(topAverageHumidity)}%` : 'No data',
+      helper: topHumiditySuitability,
+      icon: Droplets,
+      tone: 'emerald',
+    },
+  ]
 
   const decisionHighlights = useMemo(() => {
     if (!forecastRows.length) {
@@ -1168,7 +1496,7 @@ export default function ForecastPage() {
       {
         title: 'Top DSS focus',
         body: highestRiskBarangay
-          ? `${highestRiskBarangay.barangay} is currently ranked highest by DSS score because of its forecast, risk level, trend, and exposure context.`
+          ? `${highestRiskBarangay.barangay} is currently ranked highest by multi-source score because of its forecast, trend, weather, population exposure, and density context.`
           : 'No top barangay has been computed yet.',
         icon: Target,
         style: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
@@ -1210,8 +1538,8 @@ export default function ForecastPage() {
 
             <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
               {usingBackendForecast
-                ? 'FastAPI backend forecast output is converted into barangay-level risk, DSS ranking, and response recommendations.'
-                : 'Historical dengue records are analyzed into barangay-level projections, risk levels, DSS priority, and response recommendations.'}
+                ? 'FastAPI backend forecast output is combined with weather, population, density, and boundary context for barangay-level risk, DSS ranking, and response recommendations.'
+                : 'Historical dengue records are combined with weather, population, density, and boundary context to generate barangay-level projections, multi-source risk scores, DSS priority, and response recommendations.'}
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -1352,6 +1680,95 @@ export default function ForecastPage() {
         </div>
       </div>
 
+      <PremiumPanel id="multi-source-risk-factors" className="p-5 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <SectionBadge icon={Gauge} tone="emerald">
+              Multi-source risk factors
+            </SectionBadge>
+
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              Environmental and exposure context
+            </h2>
+
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+              The selected top barangay is scored using dengue forecast, trend, rainfall, temperature, humidity, population exposure, density, and boundary-derived area.
+            </p>
+          </div>
+
+          <div className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-black text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+            {topEnvironmentalSuitability}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {multiSourceFactorCards.map((item) => (
+            <StatCard
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              helper={item.helper}
+              icon={item.icon}
+              tone={item.tone}
+            />
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+            <p className="text-sm font-black text-brand-text dark:text-slate-100">
+              Risk score breakdown
+            </p>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                ['Forecast', topRiskComponents.forecast || 0],
+                ['Current cases', topRiskComponents.currentCases || 0],
+                ['Trend', topRiskComponents.trend || 0],
+                ['Environment', topRiskComponents.environment || 0],
+                ['Population', topRiskComponents.population || 0],
+                ['Density', topRiskComponents.density || 0],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-[20px] border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                      {label}
+                    </span>
+                    <span className="text-sm font-black text-brand-text dark:text-slate-100">
+                      {formatNumber(value)}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-brand-blue to-cyan-400"
+                      style={{ width: `${Math.min(Math.max(Number(value || 0), 0), 40) * 2.5}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
+            <p className="text-sm font-black text-brand-blue dark:text-blue-300">
+              Weather window used
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
+              {topWeatherCoverage}. The system used {formatNumber(topWeatherRecordCount)} weather record{topWeatherRecordCount === 1 ? '' : 's'} near the dengue reporting period.
+            </p>
+
+            <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
+              These weather values support risk scoring only. Official thresholds can still be calibrated when more historical dengue data is available.
+            </p>
+          </div>
+        </div>
+      </PremiumPanel>
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.24fr)_minmax(360px,0.76fr)]">
         <PremiumPanel id="forecast-model" className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1410,8 +1827,8 @@ export default function ForecastPage() {
               Computation method:
             </span>{' '}
             {usingBackendForecast
-              ? 'Backend forecast output, trend direction, risk level, scenario multiplier, and DSS scoring are used to display priority recommendations.'
-              : 'Recent case averages, trend movement, scenario multiplier, population exposure, density, and barangay boundary context are used to compute forecast risk and DSS priority.'}
+              ? 'Backend forecast output, trend direction, weather suitability, population exposure, density, risk score, scenario multiplier, and DSS scoring are used to display priority recommendations.'
+              : 'Recent case averages, trend movement, scenario multiplier, rainfall, temperature, humidity, population exposure, density, and barangay boundary context are used to compute multi-source risk and DSS priority.'}
           </div>
 
           <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-950">
@@ -1459,7 +1876,7 @@ export default function ForecastPage() {
       </p>
 
       <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-        Barangays are ranked by decision score first, then forecasted cases.
+        Barangays are ranked by multi-source risk score first, then DSS decision score and forecasted cases.
       </p>
     </div>
   </div>
@@ -1617,7 +2034,7 @@ export default function ForecastPage() {
                             </span>
 
                             <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
-                              Forecast: {formatNumber(row.forecast)} cases
+                              Forecast: {formatNumber(row.forecast)} cases • Score: {formatNumber(row.riskScore || row.multiSourceRiskScore || 0)}/100
                             </p>
                           </div>
                         </div>
@@ -1633,7 +2050,7 @@ export default function ForecastPage() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                             DSS score
@@ -1658,6 +2075,15 @@ export default function ForecastPage() {
                           </p>
                           <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                             {formatNumber(row.totalCases)} cases
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                            Environment
+                          </p>
+                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                            {row.environmentalSuitability || 'Unavailable'}
                           </p>
                         </div>
                       </div>
@@ -1694,6 +2120,35 @@ export default function ForecastPage() {
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                               Recent avg: {formatDecimal(row.recentAverage)}
                             </span>
+                          </div>
+
+                          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+                                Rainfall
+                              </p>
+                              <p className="mt-1 text-xs font-bold text-brand-text dark:text-slate-300">
+                                {formatOptionalNumber(row.averageRainfall || row.avgRainfall, ' mm avg')}
+                              </p>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+                                Temperature
+                              </p>
+                              <p className="mt-1 text-xs font-bold text-brand-text dark:text-slate-300">
+                                {formatOptionalNumber(row.averageTemperature || row.avgTemperature, ' °C')}
+                              </p>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+                                Humidity
+                              </p>
+                              <p className="mt-1 text-xs font-bold text-brand-text dark:text-slate-300">
+                                {formatOptionalNumber(row.averageHumidity || row.avgHumidity, '%')}
+                              </p>
+                            </div>
                           </div>
 
                           <div className="mt-4 rounded-[20px] border border-blue-100 bg-blue-50/90 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
@@ -1747,7 +2202,7 @@ export default function ForecastPage() {
           </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            The DSS reads forecast output, trend, risk level, population exposure, and density before suggesting action.
+            The DSS reads forecast output, trend, risk score, rainfall, temperature, humidity, population exposure, density, and boundary context before suggesting action.
           </p>
 
           <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-1">
