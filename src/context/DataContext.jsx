@@ -795,6 +795,362 @@ function getBoundaryFeatureCount(boundaryRecords = []) {
   return boundaryGeoJson?.features?.length || 0
 }
 
+
+function makeBarangayItem(name = '', meta = {}) {
+  const label = String(name || '').trim()
+  const key = normalizeBarangayName(label)
+  const compactKey = compactBarangayName(label)
+
+  return {
+    name: label,
+    key,
+    compactKey,
+    ...meta,
+  }
+}
+
+function uniqueBarangayItems(items = []) {
+  const map = new Map()
+
+  items.forEach((item) => {
+    if (!item?.key && !item?.compactKey) return
+
+    const key = item.key || item.compactKey
+
+    if (!map.has(key)) {
+      map.set(key, item)
+    }
+  })
+
+  return Array.from(map.values()).sort((a, b) => {
+    return String(a.name || '').localeCompare(String(b.name || ''))
+  })
+}
+
+function getDengueBarangayItems(dengueRecords = []) {
+  if (!Array.isArray(dengueRecords)) return []
+
+  return uniqueBarangayItems(
+    dengueRecords.map((record) => {
+      return makeBarangayItem(getRecordBarangay(record), { source: 'dengue' })
+    })
+  )
+}
+
+function getPopulationBarangayItems(populationRecords = []) {
+  if (!Array.isArray(populationRecords)) return []
+
+  return uniqueBarangayItems(
+    populationRecords.map((record) => {
+      return makeBarangayItem(getRecordName(record), { source: 'population' })
+    })
+  )
+}
+
+function getBoundaryBarangayItems(boundaryRecords = []) {
+  const boundaryGeoJson = getBoundaryGeoJson(boundaryRecords)
+
+  if (!boundaryGeoJson?.features?.length) return []
+
+  return uniqueBarangayItems(
+    boundaryGeoJson.features.map((feature, index) => {
+      return makeBarangayItem(
+        getFeatureName(feature) || getFeatureReferenceName(feature) || `Boundary ${index + 1}`,
+        {
+          source: 'boundary',
+          feature,
+        }
+      )
+    })
+  )
+}
+
+function findItemMatch(sourceItem, targetItems = []) {
+  return targetItems.find((targetItem) => {
+    if (!sourceItem?.key || !targetItem?.key) return false
+
+    return (
+      sourceItem.key === targetItem.key ||
+      sourceItem.compactKey === targetItem.compactKey ||
+      namesMatch(sourceItem.name, targetItem.name)
+    )
+  }) || null
+}
+
+function compareBarangayCoverage(sourceItems = [], targetItems = []) {
+  const matched = []
+  const missing = []
+
+  sourceItems.forEach((sourceItem) => {
+    const match = findItemMatch(sourceItem, targetItems)
+
+    if (match) {
+      matched.push({
+        source: sourceItem,
+        target: match,
+      })
+    } else {
+      missing.push(sourceItem)
+    }
+  })
+
+  return {
+    total: sourceItems.length,
+    matchedCount: matched.length,
+    missingCount: missing.length,
+    matched,
+    missing,
+    missingPreview: missing.slice(0, 8).map((item) => item.name),
+  }
+}
+
+function parseCoverageDate(value) {
+  if (value === undefined || value === null || value === '') return null
+
+  const raw = String(value).trim()
+
+  if (!raw) return null
+
+  const weekMatch = raw.match(/^(\d{4})-?W(\d{1,2})$/i)
+
+  if (weekMatch) {
+    const year = Number(weekMatch[1])
+    const week = Number(weekMatch[2])
+    const date = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7))
+
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const parsed = new Date(raw)
+
+  if (Number.isNaN(parsed.getTime())) return null
+
+  return parsed
+}
+
+function formatCoverageDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'N/A'
+
+  return date.toISOString().slice(0, 10)
+}
+
+function getDateRange(records = [], keyGroups = []) {
+  if (!Array.isArray(records) || !records.length) {
+    return {
+      start: null,
+      end: null,
+      count: 0,
+      label: 'No records',
+    }
+  }
+
+  const dates = records
+    .map((record) => {
+      for (const keys of keyGroups) {
+        const value = readValue(record, keys)
+        const parsed = parseCoverageDate(value)
+
+        if (parsed) return parsed
+      }
+
+      return null
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  if (!dates.length) {
+    return {
+      start: null,
+      end: null,
+      count: 0,
+      label: 'Date coverage unavailable',
+    }
+  }
+
+  const start = dates[0]
+  const end = dates[dates.length - 1]
+
+  return {
+    start,
+    end,
+    count: dates.length,
+    label: `${formatCoverageDate(start)} to ${formatCoverageDate(end)}`,
+  }
+}
+
+function buildWeatherCoverageCheck(dengueRecords = [], weatherRecords = []) {
+  const dengueRange = getDateRange(dengueRecords, [
+    ['reportingDate', 'reporting_date', 'date', 'period'],
+  ])
+
+  const weatherRange = getDateRange(weatherRecords, [
+    ['reportingDate', 'reporting_date', 'date', 'weatherDate'],
+  ])
+
+  if (!dengueRecords.length || !weatherRecords.length) {
+    return {
+      ready: false,
+      value: 'Pending',
+      detail: 'Upload both dengue and weather records to check date coverage.',
+      dengueRange,
+      weatherRange,
+    }
+  }
+
+  if (!dengueRange.start || !weatherRange.start) {
+    return {
+      ready: false,
+      value: 'Needs Review',
+      detail: 'Date fields could not be compared. Check reporting date columns.',
+      dengueRange,
+      weatherRange,
+    }
+  }
+
+  const fullyCovered =
+    weatherRange.start.getTime() <= dengueRange.start.getTime() &&
+    weatherRange.end.getTime() >= dengueRange.end.getTime()
+
+  const overlaps =
+    weatherRange.start.getTime() <= dengueRange.end.getTime() &&
+    weatherRange.end.getTime() >= dengueRange.start.getTime()
+
+  if (fullyCovered) {
+    return {
+      ready: true,
+      value: 'Covered',
+      detail: `Weather coverage ${weatherRange.label} covers dengue records ${dengueRange.label}.`,
+      dengueRange,
+      weatherRange,
+    }
+  }
+
+  if (overlaps) {
+    return {
+      ready: false,
+      value: 'Partial',
+      detail: `Weather coverage ${weatherRange.label} only partially overlaps dengue records ${dengueRange.label}.`,
+      dengueRange,
+      weatherRange,
+    }
+  }
+
+  return {
+    ready: false,
+    value: 'No overlap',
+    detail: `Weather coverage ${weatherRange.label} does not overlap dengue records ${dengueRange.label}.`,
+    dengueRange,
+    weatherRange,
+  }
+}
+
+function buildIntegrationReadiness(workspace = {}, riskRows = []) {
+  const dengueRecords = workspace.dengueRecords || []
+  const populationRecords = workspace.populationRecords || []
+  const weatherRecords = workspace.weatherRecords || []
+  const boundaryRecords = workspace.boundaryRecords || []
+
+  const dengueBarangays = getDengueBarangayItems(dengueRecords)
+  const populationBarangays = getPopulationBarangayItems(populationRecords)
+  const boundaryBarangays = getBoundaryBarangayItems(boundaryRecords)
+
+  const denguePopulation = compareBarangayCoverage(dengueBarangays, populationBarangays)
+  const dengueBoundary = compareBarangayCoverage(dengueBarangays, boundaryBarangays)
+  const populationBoundary = compareBarangayCoverage(populationBarangays, boundaryBarangays)
+  const weatherCoverage = buildWeatherCoverageCheck(dengueRecords, weatherRecords)
+
+  const sharedBarangayCount = dengueBarangays.filter((barangay) => {
+    return (
+      findItemMatch(barangay, populationBarangays) &&
+      findItemMatch(barangay, boundaryBarangays)
+    )
+  }).length
+
+  const allSourcesLoaded =
+    dengueRecords.length > 0 &&
+    populationRecords.length > 0 &&
+    weatherRecords.length > 0 &&
+    boundaryBarangays.length > 0
+
+  const checks = [
+    {
+      id: 'dengue-population-match',
+      label: 'Dengue barangays matched with population',
+      ready: denguePopulation.total > 0 && denguePopulation.missingCount === 0,
+      value: `${denguePopulation.matchedCount}/${denguePopulation.total || 0}`,
+      detail: denguePopulation.missingCount
+        ? `${denguePopulation.missingCount} dengue barangay name(s) are missing in population data.`
+        : 'All dengue barangays have matching population records.',
+      missingPreview: denguePopulation.missingPreview,
+    },
+    {
+      id: 'dengue-boundary-match',
+      label: 'Dengue barangays matched with boundary layer',
+      ready: dengueBoundary.total > 0 && dengueBoundary.missingCount === 0,
+      value: `${dengueBoundary.matchedCount}/${dengueBoundary.total || 0}`,
+      detail: dengueBoundary.missingCount
+        ? `${dengueBoundary.missingCount} dengue barangay name(s) are missing in the boundary layer.`
+        : 'All dengue barangays have matching boundary features.',
+      missingPreview: dengueBoundary.missingPreview,
+    },
+    {
+      id: 'population-boundary-match',
+      label: 'Population barangays matched with boundary layer',
+      ready: populationBoundary.total > 0 && populationBoundary.missingCount === 0,
+      value: `${populationBoundary.matchedCount}/${populationBoundary.total || 0}`,
+      detail: populationBoundary.missingCount
+        ? `${populationBoundary.missingCount} population barangay name(s) are missing in the boundary layer.`
+        : 'All population barangays have matching boundary features.',
+      missingPreview: populationBoundary.missingPreview,
+    },
+    {
+      id: 'weather-coverage',
+      label: 'Weather coverage compared with dengue dates',
+      ready: weatherCoverage.ready,
+      value: weatherCoverage.value,
+      detail: weatherCoverage.detail,
+      missingPreview: [],
+    },
+    {
+      id: 'forecast-rows-ready',
+      label: 'Forecast and DSS rows generated',
+      ready: Array.isArray(riskRows) && riskRows.length > 0,
+      value: `${Array.isArray(riskRows) ? riskRows.length : 0} barangay rows`,
+      detail: riskRows?.length
+        ? 'Forecast-ready barangay rows are available for dashboard, map, reports, and DSS views.'
+        : 'Upload dengue records to generate forecast-ready barangay rows.',
+      missingPreview: [],
+    },
+  ]
+
+  const readyCount = checks.filter((check) => check.ready).length
+  const score = checks.length ? Math.round((readyCount / checks.length) * 100) : 0
+
+  const status = !allSourcesLoaded
+    ? 'Pending'
+    : readyCount === checks.length
+      ? 'Ready'
+      : 'Needs Review'
+
+  return {
+    status,
+    score,
+    readyCount,
+    checkCount: checks.length,
+    allSourcesLoaded,
+    checks,
+    summary: {
+      dengueBarangayCount: dengueBarangays.length,
+      populationBarangayCount: populationBarangays.length,
+      boundaryBarangayCount: boundaryBarangays.length,
+      sharedBarangayCount,
+      weatherDateCoverage: weatherCoverage.weatherRange.label,
+      dengueDateCoverage: weatherCoverage.dengueRange.label,
+      riskRowCount: Array.isArray(riskRows) ? riskRows.length : 0,
+    },
+  }
+}
+
 export function DataProvider({ children }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
 
@@ -949,12 +1305,23 @@ export function DataProvider({ children }) {
     weeklyTotals,
   ])
 
+  const integrationReadiness = useMemo(() => {
+    return buildIntegrationReadiness(workspace, riskRows)
+  }, [
+    workspace.dengueRecords,
+    workspace.weatherRecords,
+    workspace.populationRecords,
+    workspace.boundaryRecords,
+    riskRows,
+  ])
+
   const value = {
     ...workspace,
 
     riskRows,
     weeklyTotals,
     dashboardStats,
+    integrationReadiness,
 
     updateWorkspace,
     addActivityLog,

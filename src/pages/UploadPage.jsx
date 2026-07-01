@@ -1558,6 +1558,7 @@ export default function UploadPage() {
     updateWorkspace,
     addActivityLog,
     riskRows = [],
+    integrationReadiness = null,
   } = data
 
   const [selected, setSelected] = useState('historical')
@@ -1629,6 +1630,11 @@ export default function UploadPage() {
     return Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0
   }).length
   const selectedFileName = selectedStatus.uploadedName || 'No file uploaded yet'
+  const integrationStatus = integrationReadiness?.status || 'Pending'
+  const integrationChecks = integrationReadiness?.checks || []
+  const integrationSummary = integrationReadiness?.summary || {}
+  const integrationScore = Number(integrationReadiness?.score || 0)
+
 
   function handleResetWorkspace() {
     if (isProcessing) return
@@ -2301,6 +2307,102 @@ export default function UploadPage() {
                 {validationResult.mappingSummary}
               </div>
             )}
+          </div>
+
+          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300">
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                  Multi-source integration
+                </div>
+                <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Data integration readiness
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  Checks whether backend-validated dengue, weather, population, and boundary datasets can work together for forecasting, GIS mapping, and DSS outputs.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(integrationStatus)}`}>
+                  {integrationStatus}
+                </span>
+                <span className="text-xs font-bold text-brand-muted dark:text-slate-400">
+                  {integrationScore}% ready
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Shared barangays', integrationSummary.sharedBarangayCount ?? 0, `${integrationSummary.dengueBarangayCount ?? 0} dengue barangays checked`],
+                ['Population barangays', integrationSummary.populationBarangayCount ?? 0, 'Backend-cleaned population records'],
+                ['Boundary features', integrationSummary.boundaryBarangayCount ?? 0, 'GeoJSON barangay features'],
+                ['Forecast rows', integrationSummary.riskRowCount ?? riskRows.length, 'Rows available for DSS outputs'],
+              ].map(([label, value, detail]) => (
+                <div
+                  key={label}
+                  className="rounded-[22px] border border-brand-line bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                >
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                    {value}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                    {detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {integrationChecks.map((check) => (
+                <div
+                  key={check.id}
+                  className="rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex gap-3">
+                      <div
+                        className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${
+                          check.ready
+                            ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                            : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+                        }`}
+                      >
+                        {check.ready ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4" />
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                          {check.label}
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                          {check.detail}
+                        </p>
+
+                        {Array.isArray(check.missingPreview) && check.missingPreview.length > 0 && (
+                          <p className="mt-2 text-xs leading-5 text-brand-orange dark:text-amber-300">
+                            Review: {check.missingPreview.join(', ')}{check.missingPreview.length >= 8 ? '...' : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <span className={`w-fit shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(check.ready ? 'Ready' : 'Needs Review')}`}>
+                      {check.value}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
