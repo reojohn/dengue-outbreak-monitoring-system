@@ -30,6 +30,7 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
+import { createBackendNotificationEvent } from '../services/api'
 
 const exportFormats = [
   {
@@ -2408,6 +2409,27 @@ export default function ReportsPage() {
     })
   }, [sortedRiskRows, displayDashboardStats])
 
+
+  async function recordReportGenerated(formatLabel, exportedAt) {
+    try {
+      await createBackendNotificationEvent({
+        title: 'Report generated',
+        message: `${formatLabel} decision-support report was generated at ${exportedAt}.`,
+        severity: 'success',
+        category: 'report_generated',
+        to: '/reports',
+        hash: 'export-center',
+        meta: {
+          format: formatLabel,
+          generatedAt: exportedAt,
+          priorityBarangayCount: sortedRiskRows.length,
+        },
+      })
+    } catch {
+      // Keep report export usable even when the backend notification service is offline.
+    }
+  }
+
   async function handleExport() {
     const title = 'Weekly Dengue Decision Support Report'
     const exportedAt = getCurrentDateTime()
@@ -2422,6 +2444,7 @@ export default function ReportsPage() {
       })
 
       addActivityLog?.('Report exported', 'PDF decision-support report downloaded directly.')
+      await recordReportGenerated('PDF', exportedAt)
       return
     }
 
@@ -2434,6 +2457,7 @@ export default function ReportsPage() {
       })
 
       addActivityLog?.('Report exported', 'Excel decision-support workbook downloaded as an XLSX file.')
+      await recordReportGenerated('Excel', exportedAt)
       return
     }
 
@@ -2449,6 +2473,7 @@ export default function ReportsPage() {
         'Report exported',
         'PowerPoint decision-support briefing deck generated and downloaded as a PPTX file.'
       )
+      await recordReportGenerated('PowerPoint', exportedAt)
 
       return
     }
@@ -2462,6 +2487,7 @@ export default function ReportsPage() {
     })
 
     addActivityLog?.('Print view opened', 'Printable decision-support report opened for manual printing.')
+    await recordReportGenerated('Printable', exportedAt)
   }
 
   return (

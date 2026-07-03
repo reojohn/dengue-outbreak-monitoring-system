@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -9,6 +10,7 @@ import {
   Database,
   FileCheck2,
   FileText,
+  Loader2,
   Map as MapIcon,
   RotateCcw,
   ShieldCheck,
@@ -23,6 +25,7 @@ import {
   cleanDengueFile,
   forecastDengueFile,
   getBackendAlignmentReport,
+  getUploadDatabaseStatus,
   inspectUploadedFile,
   summarizeDengueFile,
   validateBoundaryFile,
@@ -1153,7 +1156,8 @@ function getStatusStyle(badge = '') {
     value.includes('found') ||
     value.includes('complete') ||
     value.includes('aligned') ||
-    value.includes('checked')
+    value.includes('checked') ||
+    value.includes('online')
   ) {
     return 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
   }
@@ -1839,6 +1843,301 @@ async function buildLocalValidationResultForSource(file, sourceId) {
   return null
 }
 
+function withTimeout(promise, milliseconds, message) {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(message || 'The system took too long to respond. Please try again.'))
+    }, milliseconds)
+
+    Promise.resolve(promise)
+      .then(resolve)
+      .catch(reject)
+      .finally(() => {
+        window.clearTimeout(timer)
+      })
+  })
+}
+
+
+const AUTO_PREPARATION_STORAGE_KEY = 'dengue-auto-prepared-source-signature'
+
+function getStoredAutoPreparationKey() {
+  try {
+    return window.localStorage.getItem(AUTO_PREPARATION_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+function saveAutoPreparationKey(key = '') {
+  if (!key) return
+
+  try {
+    window.localStorage.setItem(AUTO_PREPARATION_STORAGE_KEY, key)
+  } catch {
+    // Ignore storage errors. The in-memory guard will still work for this page visit.
+  }
+}
+
+function clearAutoPreparationKey() {
+  try {
+    window.localStorage.removeItem(AUTO_PREPARATION_STORAGE_KEY)
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+
+function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
+  if (!visible) return null
+
+  const steps = [
+    {
+      id: 'combine',
+      label: 'Combining files',
+      message: 'Creating one clean table from dengue, weather, population, and map files.',
+      icon: Database,
+    },
+    {
+      id: 'names',
+      label: 'Checking barangay names',
+      message: 'Making sure dengue barangays match the population file and map boundary file.',
+      icon: ClipboardCheck,
+    },
+    {
+      id: 'done',
+      label: 'Ready',
+      message: 'Automatic preparation is complete. You can review the results below.',
+      icon: CheckCircle2,
+    },
+  ]
+
+  const activeIndex = Math.max(
+    0,
+    steps.findIndex((item) => item.id === step)
+  )
+
+  const activeStep = steps[activeIndex] || steps[0]
+  const ActiveIcon = activeStep.icon
+
+  const modal = (
+    <div className="fixed inset-0 z-[99999] flex min-h-dvh items-center justify-center overflow-hidden bg-slate-950/75 px-4 py-6 backdrop-blur-md">
+      <div className="relative w-full max-w-[520px] overflow-hidden rounded-[36px] border border-white/15 bg-slate-950 p-6 text-white shadow-[0_34px_100px_rgba(0,0,0,0.58)] ring-1 ring-white/10">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-cyan-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-6 h-64 w-64 rounded-full bg-emerald-400/15 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.10)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.10)_1px,transparent_1px)] bg-[size:22px_22px] opacity-25" />
+        <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
+
+        <div className="relative">
+          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-cyan-300/25 bg-cyan-400/10 shadow-[0_0_38px_rgba(34,211,238,0.30)]">
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-[26px] bg-gradient-to-br from-cyan-400 via-blue-500 to-emerald-400 text-white shadow-[0_18px_42px_rgba(14,165,233,0.42)]">
+              <span className="absolute inset-0 rounded-[26px] border border-white/30 animate-ping" />
+              {step === 'done' ? (
+                <ActiveIcon className="relative h-8 w-8" strokeWidth={2.6} />
+              ) : (
+                <Loader2 className="relative h-8 w-8 animate-spin" strokeWidth={2.6} />
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 text-center">
+            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200">
+              Automatic data preparation
+            </p>
+
+            <h3 className="mt-3 text-2xl font-black tracking-tight">
+              {activeStep.label}
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-slate-300">
+              {detail || activeStep.message}
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-2 sm:grid-cols-3">
+            {steps.map((item, index) => {
+              const StepIcon = item.icon
+              const isDone = index < activeIndex || step === 'done'
+              const isActive = index === activeIndex && step !== 'done'
+
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-[22px] border px-3 py-3 text-center transition ${
+                    isDone
+                      ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-200'
+                      : isActive
+                        ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,0.12)]'
+                        : 'border-white/10 bg-white/5 text-slate-400'
+                  }`}
+                >
+                  <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl bg-white/10">
+                    {isDone ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : isActive ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <StepIcon className="h-4 w-4" />
+                    )}
+                  </div>
+
+                  <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em]">
+                    {item.label}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-blue-400 to-emerald-300 shadow-[0_0_20px_rgba(34,211,238,0.55)] transition-all duration-500"
+              style={{ width: `${step === 'done' ? 100 : activeIndex === 0 ? 42 : 76}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  return createPortal(modal, document.body)
+}
+
+
+function getBadgeFromDatabaseUpload(upload = {}) {
+  if (!upload) return 'Not loaded'
+
+  const status = String(upload.status || '').toLowerCase()
+  const validCount = Number(upload.valid_row_count || 0)
+
+  if (status.includes('validated') && validCount > 0) return 'Saved online'
+  if (status.includes('failed')) return 'Needs Review'
+
+  return validCount > 0 ? 'Saved online' : 'Needs Review'
+}
+
+function buildSourceStatusFromDatabaseUploads(uploads = {}) {
+  return Object.entries(uploads).reduce((acc, [datasetType, upload]) => {
+    acc[datasetType] = {
+      uploadedName: upload.original_filename || 'Saved online',
+      badge: getBadgeFromDatabaseUpload(upload),
+      recordCount: Number(upload.original_row_count || 0),
+      validCount: Number(upload.valid_row_count || 0),
+      missingCount: 0,
+      duplicateCount: 0,
+      invalidCount: Number(upload.invalid_row_count || 0),
+      mappingSummary: 'Loaded from online database',
+      backendPowered: true,
+      databaseUploadId: upload.upload_id,
+      uploadedAt: upload.uploaded_at,
+    }
+
+    return acc
+  }, {})
+}
+
+
+function getUniqueBarangayRows(rows = []) {
+  const map = new Map()
+
+  rows.forEach((row) => {
+    const key = String(row?.barangay_key || row?.barangay || '').trim().toLowerCase()
+
+    if (!key || map.has(key)) return
+
+    map.set(key, row)
+  })
+
+  return Array.from(map.values())
+}
+
+function buildSavedDatasetPairReport(rows = [], statusField = '') {
+  const uniqueRows = getUniqueBarangayRows(rows)
+  const matchedRows = uniqueRows.filter((row) => String(row?.[statusField] || '').toLowerCase() === 'matched')
+  const unmatchedRows = uniqueRows.filter((row) => String(row?.[statusField] || '').toLowerCase() !== 'matched')
+  const sourceCount = uniqueRows.length
+  const matchedCount = matchedRows.length
+  const unmatchedCount = unmatchedRows.length
+  const matchRate = sourceCount > 0 ? Math.round((matchedCount / sourceCount) * 100) : 0
+
+  return {
+    source_count: sourceCount,
+    target_count: sourceCount,
+    matched_count: matchedCount,
+    unmatched_count: unmatchedCount,
+    match_rate: matchRate,
+    warning: unmatchedCount > 0 ? `${unmatchedCount} barangay name(s) need review.` : '',
+    unmatched: unmatchedRows.map((row) => ({
+      source_name: row?.barangay_original || row?.barangay || 'Unnamed',
+      source_raw_name: row?.barangay_original || row?.barangay || 'Unnamed',
+      source_key: row?.barangay_original_key || row?.barangay_key || '',
+      suggestions: [],
+    })),
+  }
+}
+
+function buildSavedDatasetPopulationBoundaryReport(rows = []) {
+  const uniqueRows = getUniqueBarangayRows(rows)
+  const matchedRows = uniqueRows.filter((row) => {
+    return (
+      String(row?.population_match_status || '').toLowerCase() === 'matched' &&
+      String(row?.boundary_match_status || '').toLowerCase() === 'matched'
+    )
+  })
+  const unmatchedRows = uniqueRows.filter((row) => !matchedRows.includes(row))
+  const sourceCount = uniqueRows.length
+  const matchedCount = matchedRows.length
+  const unmatchedCount = unmatchedRows.length
+  const matchRate = sourceCount > 0 ? Math.round((matchedCount / sourceCount) * 100) : 0
+
+  return {
+    source_count: sourceCount,
+    target_count: sourceCount,
+    matched_count: matchedCount,
+    unmatched_count: unmatchedCount,
+    match_rate: matchRate,
+    warning: unmatchedCount > 0 ? `${unmatchedCount} population barangay name(s) need review against the map.` : '',
+    unmatched: unmatchedRows.map((row) => ({
+      source_name: row?.barangay || 'Unnamed',
+      source_raw_name: row?.barangay_original || row?.barangay || 'Unnamed',
+      source_key: row?.barangay_key || '',
+      suggestions: [],
+    })),
+  }
+}
+
+function buildAlignmentReportFromMergedRows(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return null
+
+  const dengueToPopulation = buildSavedDatasetPairReport(rows, 'population_match_status')
+  const dengueToBoundary = buildSavedDatasetPairReport(rows, 'boundary_match_status')
+  const populationToBoundary = buildSavedDatasetPopulationBoundaryReport(rows)
+  const pairReports = {
+    dengue_to_population: dengueToPopulation,
+    dengue_to_boundary: dengueToBoundary,
+    population_to_boundary: populationToBoundary,
+  }
+
+  const matchRates = [
+    dengueToPopulation.match_rate,
+    dengueToBoundary.match_rate,
+    populationToBoundary.match_rate,
+  ]
+  const alignmentScore = Math.round(
+    matchRates.reduce((total, value) => total + Number(value || 0), 0) / matchRates.length
+  )
+  const warnings = Object.values(pairReports)
+    .map((report) => report.warning)
+    .filter(Boolean)
+
+  return {
+    alignment_score: alignmentScore,
+    warnings,
+    pair_reports: pairReports,
+    duplicates: {},
+    source: 'saved_integrated_dataset',
+  }
+}
 
 export default function UploadPage() {
   const navigate = useNavigate()
@@ -1865,6 +2164,55 @@ export default function UploadPage() {
   const [isBuildingBackendDataset, setIsBuildingBackendDataset] = useState(false)
   const [alignmentReport, setAlignmentReport] = useState(null)
   const [isCheckingAlignment, setIsCheckingAlignment] = useState(false)
+  const [databaseUploadStatus, setDatabaseUploadStatus] = useState(null)
+  const [autoProcessing, setAutoProcessing] = useState({
+    visible: false,
+    step: 'combine',
+    detail: '',
+  })
+  const autoPreparationKeyRef = useRef(getStoredAutoPreparationKey())
+  const autoPreparationRunningRef = useRef(false)
+  const autoPreparationRunIdRef = useRef(0)
+  const databaseUploadStatusLoadedRef = useRef(false)
+
+  useEffect(() => {
+    if (databaseUploadStatusLoadedRef.current) return undefined
+
+    databaseUploadStatusLoadedRef.current = true
+    let cancelled = false
+
+    async function loadDatabaseUploadStatus() {
+      try {
+        const status = await withTimeout(
+          getUploadDatabaseStatus(),
+          15000,
+          'Checking online uploaded files is taking too long.'
+        )
+
+        if (cancelled || !status) return
+
+        setDatabaseUploadStatus(status)
+
+        const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(status.uploads || {})
+
+        updateWorkspace((current) => ({
+          ...current,
+          sourceStatus: {
+            ...(current.sourceStatus || {}),
+            ...databaseSourceStatus,
+          },
+        }))
+      } catch {
+        // Do not block the Upload page if the online database status cannot be loaded.
+      }
+    }
+
+    loadDatabaseUploadStatus()
+
+    return () => {
+      cancelled = true
+    }
+  }, [updateWorkspace])
 
   const selectedSource = sources.find((item) => item.id === selected) || sources[0]
   const selectedStatus = sourceStatus?.[selectedSource.contextKey] || {}
@@ -1925,8 +2273,12 @@ export default function UploadPage() {
     ? Math.round((Number(currentStats.validCount || 0) / Number(currentStats.recordCount || 0)) * 100)
     : 0
   const readyChecklistCount = checklist.filter((item) => item.ready).length
+  const databaseUploads = databaseUploadStatus?.uploads || {}
   const loadedSourceCount = sources.filter((source) => {
-    return Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0
+    return (
+      Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0 ||
+      Number(databaseUploads?.[source.contextKey]?.valid_row_count || 0) > 0
+    )
   }).length
   const selectedFileName = selectedStatus.uploadedName || 'No file uploaded yet'
   const integrationStatus = integrationReadiness?.status || 'Pending'
@@ -1936,17 +2288,47 @@ export default function UploadPage() {
 
   const backendStatus = backendIntegrationStatus || {}
   const backendSources = backendStatus.sources || {}
-  const backendLoadedSourceCount = Number(backendStatus.loaded_source_count || 0)
+
+  const sourceStatusLoadedSourceCount = sources.filter((source) => {
+    return Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0
+  }).length
+
+  const databaseLoadedSourceCount = sources.filter((source) => {
+    return Number(databaseUploads?.[source.contextKey]?.valid_row_count || 0) > 0
+  }).length
+
+  const backendLoadedSourceCount = Math.max(
+    Number(backendStatus.loaded_source_count || 0),
+    databaseLoadedSourceCount,
+    sourceStatusLoadedSourceCount
+  )
+
   const backendRequiredSourceCount = Number(backendStatus.required_source_count || sources.length)
-  const backendStatusLabel = backendStatus.status || 'empty'
-  const backendCanBuildDataset = Boolean(backendStatus.can_build_dataset)
-  const backendComplete = Boolean(backendStatus.complete)
+
+  const backendStatusLabel =
+    backendLoadedSourceCount >= backendRequiredSourceCount
+      ? 'ready'
+      : backendStatus.status || 'empty'
+
+  const backendCanBuildDataset = Boolean(
+    backendStatus.can_build_dataset ||
+      Number(databaseUploads?.dengue?.valid_row_count || 0) > 0 ||
+      Number(sourceStatus?.dengue?.validCount || 0) > 0
+  )
+
+  const backendComplete = Boolean(
+    backendStatus.complete ||
+      backendLoadedSourceCount >= backendRequiredSourceCount
+  )
   const backendMergedRows = Array.isArray(backendMergedDataset) ? backendMergedDataset : []
   const backendMergedHeaders = useMemo(() => {
     return getMergedDatasetHeaders(backendMergedRows)
   }, [backendMergedRows])
   const backendBuildSummary = backendIntegrationResult?.summary || null
-  const activeAlignmentReport = alignmentReport || null
+  const savedDatasetAlignmentReport = useMemo(() => {
+    return buildAlignmentReportFromMergedRows(backendMergedRows)
+  }, [backendMergedRows])
+  const activeAlignmentReport = alignmentReport || savedDatasetAlignmentReport || null
   const alignmentPairReports = activeAlignmentReport?.pair_reports || {}
   const denguePopulationAlignment = getAlignmentPairSummary(alignmentPairReports.dengue_to_population)
   const dengueBoundaryAlignment = getAlignmentPairSummary(alignmentPairReports.dengue_to_boundary)
@@ -1956,10 +2338,67 @@ export default function UploadPage() {
     : []
   const alignmentUnmatchedRows = getAlignmentUnmatchedRows(activeAlignmentReport)
   const alignmentDuplicateTotal = getAlignmentDuplicateTotal(activeAlignmentReport)
+  const backendSourceSignature = sources
+    .map((source) => {
+      const backendSource = backendSources[source.contextKey] || {}
+      const databaseUpload = databaseUploads[source.contextKey] || {}
+      const statusSource = sourceStatus?.[source.contextKey] || {}
+
+      const filename =
+        backendSource.filename ||
+        databaseUpload.original_filename ||
+        statusSource.uploadedName ||
+        ''
+
+      const validCount = Number(
+        backendSource.valid_count ??
+          databaseUpload.valid_row_count ??
+          statusSource.validCount ??
+          0
+      )
+
+      const recordCount = Number(
+        backendSource.record_count ??
+          databaseUpload.original_row_count ??
+          statusSource.recordCount ??
+          0
+      )
+
+      const loaded = Boolean(backendSource.loaded || validCount > 0)
+
+      return [
+        source.contextKey,
+        filename,
+        validCount,
+        recordCount,
+        loaded ? 'loaded' : 'pending',
+      ].join(':')
+    })
+    .join('|')
+  const allRequiredFilesReady = Boolean(
+    backendCanBuildDataset &&
+      backendRequiredSourceCount >= sources.length &&
+      backendLoadedSourceCount >= backendRequiredSourceCount
+  )
+  const hasCombinedBackendData = Boolean(
+    backendMergedRows.length > 0 ||
+      Number(backendBuildSummary?.row_count || 0) > 0 ||
+      Number(backendIntegrationResult?.row_count || 0) > 0
+  )
 
 
   async function handleResetWorkspace() {
     if (isProcessing) return
+
+    clearAutoPreparationKey()
+    autoPreparationKeyRef.current = ''
+    autoPreparationRunIdRef.current += 1
+    autoPreparationRunningRef.current = false
+    setAutoProcessing({
+      visible: false,
+      step: 'combine',
+      detail: '',
+    })
 
     setIsProcessing(true)
 
@@ -2009,7 +2448,11 @@ export default function UploadPage() {
     setIsBuildingBackendDataset(true)
 
     try {
-      const status = await syncBackendIntegrationStatus?.({ silent: false })
+      const status = await withTimeout(
+        syncBackendIntegrationStatus?.({ silent: false }),
+        15000,
+        'Refreshing file status is taking too long. Make sure the system server is running.'
+      )
 
       if (!status) {
         throw new Error('Unable to check file status. Make sure the system server is running.')
@@ -2031,14 +2474,40 @@ export default function UploadPage() {
     setIsBuildingBackendDataset(true)
 
     try {
-      const result = await buildBackendIntegrationWorkspace?.()
+      const result = await withTimeout(
+        buildBackendIntegrationWorkspace?.(),
+        45000,
+        'Combining the uploaded files is taking too long. Make sure the system server is running.'
+      )
 
       if (!result) {
         throw new Error('The system did not return combined data. Please try again.')
       }
 
+      let alignmentMessage = ''
+
+      try {
+        const alignmentResult = await withTimeout(
+          getBackendAlignmentReport(),
+          30000,
+          'Barangay name checking is taking too long. Please try again.'
+        )
+        setAlignmentReport(alignmentResult)
+
+        const score = Number(alignmentResult?.alignment_score || 0)
+        const warnings = Array.isArray(alignmentResult?.warnings) ? alignmentResult.warnings.length : 0
+        alignmentMessage = ` Barangay name check also completed with ${score}% matched and ${warnings} item${warnings === 1 ? '' : 's'} to review.`
+      } catch {
+        alignmentMessage = ' Barangay name check can be run again if needed.'
+      }
+
+      if (backendSourceSignature) {
+        autoPreparationKeyRef.current = backendSourceSignature
+        saveAutoPreparationKey(backendSourceSignature)
+      }
+
       setUploadMessage(
-        `Uploaded files were combined successfully. ${Number(result.row_count || 0)} dengue row${Number(result.row_count || 0) === 1 ? '' : 's'} now include matching weather, population, and map information when available.`
+        `Uploaded files were combined successfully. ${Number(result.row_count || 0)} dengue row${Number(result.row_count || 0) === 1 ? '' : 's'} now include matching weather, population, and map information when available.${alignmentMessage}`
       )
     } catch (error) {
       setUploadError(
@@ -2056,12 +2525,29 @@ export default function UploadPage() {
   }
 
   async function handleResetBackendIntegration() {
+    autoPreparationRunIdRef.current += 1
+    autoPreparationRunningRef.current = false
+    setAutoProcessing({
+      visible: false,
+      step: 'combine',
+      detail: '',
+    })
+
     setUploadMessage('')
     setUploadError('')
     setIsBuildingBackendDataset(true)
 
     try {
-      const result = await resetBackendIntegration?.()
+      const result = await withTimeout(
+        resetBackendIntegration?.(),
+        15000,
+        'Clearing combined data is taking too long. Make sure the system server is running.'
+      )
+
+      if (backendSourceSignature) {
+        autoPreparationKeyRef.current = backendSourceSignature
+        saveAutoPreparationKey(backendSourceSignature)
+      }
 
       setValidationResult(null)
       setAlignmentReport(null)
@@ -2079,13 +2565,26 @@ export default function UploadPage() {
     setIsCheckingAlignment(true)
 
     try {
-      const result = await getBackendAlignmentReport()
+      const result = await withTimeout(
+        getBackendAlignmentReport(),
+        30000,
+        'Barangay name checking is taking too long. Please try again.'
+      )
 
       setAlignmentReport(result)
-      await syncBackendIntegrationStatus?.({ silent: true })
+      await withTimeout(
+        syncBackendIntegrationStatus?.({ silent: true }),
+        15000,
+        'The file was uploaded, but refreshing the file status took too long.'
+      )
 
       const score = Number(result?.alignment_score || 0)
       const warnings = Array.isArray(result?.warnings) ? result.warnings.length : 0
+
+      if (backendSourceSignature) {
+        autoPreparationKeyRef.current = backendSourceSignature
+        saveAutoPreparationKey(backendSourceSignature)
+      }
 
       setUploadMessage(
         `Barangay name check completed. ${score}% of names matched, with ${warnings} item${warnings === 1 ? '' : 's'} to review.`
@@ -2110,11 +2609,247 @@ export default function UploadPage() {
     }
   }
 
+
+  useEffect(() => {
+    if (!allRequiredFilesReady) return
+    if (!hasCombinedBackendData) return
+    if (alignmentReport) return
+    if (isProcessing || isBuildingBackendDataset || isCheckingAlignment) return
+
+    let cancelled = false
+
+    async function runAutomaticBarangayNameCheck() {
+      setIsCheckingAlignment(true)
+
+      try {
+        const result = await withTimeout(
+          getBackendAlignmentReport(),
+          30000,
+          'Barangay name checking is taking too long. The saved combined data will still be shown.'
+        )
+
+        if (cancelled) return
+
+        setAlignmentReport(result)
+
+        const score = Number(result?.alignment_score || 0)
+        const warnings = Array.isArray(result?.warnings) ? result.warnings.length : 0
+
+        addActivityLog(
+          'Barangay name check completed',
+          `Barangay names were checked automatically. Match: ${score}%. Items to review: ${warnings}.`
+        )
+      } catch {
+        if (cancelled || !savedDatasetAlignmentReport) return
+
+        const score = Number(savedDatasetAlignmentReport?.alignment_score || 0)
+        const warnings = Array.isArray(savedDatasetAlignmentReport?.warnings)
+          ? savedDatasetAlignmentReport.warnings.length
+          : 0
+
+        addActivityLog(
+          'Barangay name check loaded from saved data',
+          `Barangay name check was read from the saved combined dataset. Match: ${score}%. Items to review: ${warnings}.`
+        )
+      } finally {
+        if (!cancelled) {
+          setIsCheckingAlignment(false)
+        }
+      }
+    }
+
+    runAutomaticBarangayNameCheck()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    allRequiredFilesReady,
+    hasCombinedBackendData,
+    alignmentReport,
+    isProcessing,
+    isBuildingBackendDataset,
+    isCheckingAlignment,
+    savedDatasetAlignmentReport,
+    addActivityLog,
+  ])
+
+
+
+  useEffect(() => {
+    if (!allRequiredFilesReady) return
+    if (hasCombinedBackendData) return
+    if (isProcessing || autoPreparationRunningRef.current) return
+    if (!backendSourceSignature || backendSourceSignature.includes('pending')) return
+
+    const preparationKey = backendSourceSignature
+
+    if (autoPreparationKeyRef.current === preparationKey) return
+    if (getStoredAutoPreparationKey() === preparationKey) {
+      autoPreparationKeyRef.current = preparationKey
+      return
+    }
+
+    const runId = autoPreparationRunIdRef.current + 1
+    autoPreparationRunIdRef.current = runId
+    autoPreparationKeyRef.current = preparationKey
+    autoPreparationRunningRef.current = true
+    saveAutoPreparationKey(preparationKey)
+
+    let closeTimer = null
+
+    const isCurrentRun = () => autoPreparationRunIdRef.current === runId
+
+    async function runAutomaticPreparation() {
+      setUploadMessage('')
+      setUploadError('')
+      setIsBuildingBackendDataset(true)
+      setIsCheckingAlignment(true)
+      setAutoProcessing({
+        visible: true,
+        step: 'combine',
+        detail: 'All four files are ready. The system is now combining them automatically, so users do not need to click another button.',
+      })
+
+      try {
+        const result = await withTimeout(
+          buildBackendIntegrationWorkspace?.(),
+          45000,
+          'Combining the uploaded files is taking too long. Please make sure the system server is running, then click “Run again”.'
+        )
+
+        if (!result) {
+          throw new Error('The system did not return combined data. Please try again.')
+        }
+
+        if (!isCurrentRun()) return
+
+        setAutoProcessing({
+          visible: true,
+          step: 'names',
+          detail: 'Combined data is ready. The system is now checking barangay names across the dengue, population, and map files.',
+        })
+
+        const alignmentResult = await withTimeout(
+          getBackendAlignmentReport(),
+          30000,
+          'Barangay name checking is taking too long. The combined data was prepared, but the name check did not finish. You can click “Check again” later.'
+        )
+
+        if (!isCurrentRun()) return
+
+        setAlignmentReport(alignmentResult)
+
+        await withTimeout(
+          syncBackendIntegrationStatus?.({ silent: true }),
+          15000,
+          'The files were prepared, but refreshing the status took too long.'
+        )
+
+        if (!isCurrentRun()) return
+
+        const rowCount = Number(
+          result?.row_count ||
+            result?.summary?.row_count ||
+            backendBuildSummary?.row_count ||
+            backendMergedRows.length ||
+            0
+        )
+        const score = Number(alignmentResult?.alignment_score || 0)
+        const warnings = Array.isArray(alignmentResult?.warnings)
+          ? alignmentResult.warnings.length
+          : 0
+
+        setUploadMessage(
+          `Automatic preparation completed. ${rowCount} dengue row${rowCount === 1 ? '' : 's'} were combined, and the barangay name check finished with ${score}% matched and ${warnings} item${warnings === 1 ? '' : 's'} to review.`
+        )
+
+        addActivityLog(
+          'Automatic data preparation completed',
+          `The system automatically combined uploaded files and checked barangay names. Rows: ${rowCount}. Barangay name match: ${score}%. Items to review: ${warnings}.`
+        )
+
+        setAutoProcessing({
+          visible: true,
+          step: 'done',
+          detail: 'The uploaded files were combined and barangay names were checked automatically.',
+        })
+
+        closeTimer = window.setTimeout(() => {
+          if (isCurrentRun()) {
+            setAutoProcessing((current) => ({
+              ...current,
+              visible: false,
+            }))
+          }
+        }, 950)
+      } catch (error) {
+        if (!isCurrentRun()) return
+
+        setUploadError(
+          error?.message ||
+            'Automatic preparation failed. Check that all four files are uploaded and the system server is running.'
+        )
+
+        addActivityLog(
+          'Automatic data preparation failed',
+          error?.message || 'The system could not automatically prepare the uploaded files.'
+        )
+
+        setAutoProcessing((current) => ({
+          ...current,
+          visible: false,
+        }))
+      } finally {
+        if (isCurrentRun()) {
+          setIsBuildingBackendDataset(false)
+          setIsCheckingAlignment(false)
+          autoPreparationRunningRef.current = false
+        }
+      }
+    }
+
+    runAutomaticPreparation()
+
+    return () => {
+      if (closeTimer) {
+        window.clearTimeout(closeTimer)
+      }
+    }
+  }, [
+    allRequiredFilesReady,
+    hasCombinedBackendData,
+    backendSourceSignature,
+    isProcessing,
+  ])
+
+  async function refreshBackendStatusAfterUpload() {
+    try {
+      await withTimeout(
+        syncBackendIntegrationStatus?.({ silent: true }),
+        15000,
+        'The file was uploaded, but refreshing the file status took too long.'
+      )
+    } catch {
+      // Keep the upload successful even if the status refresh is slow.
+    }
+  }
+
   async function handleFileUpload(event) {
     const file = event.target.files?.[0]
     event.target.value = ''
 
     if (!file || !selectedSource) return
+
+    clearAutoPreparationKey()
+    autoPreparationKeyRef.current = ''
+    autoPreparationRunIdRef.current += 1
+    autoPreparationRunningRef.current = false
+    setAutoProcessing({
+      visible: false,
+      step: 'combine',
+      detail: '',
+    })
 
     setIsProcessing(true)
     setUploadMessage('')
@@ -2189,7 +2924,7 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
-        await syncBackendIntegrationStatus?.({ silent: true })
+        await refreshBackendStatusAfterUpload()
         setAlignmentReport(null)
 
         return
@@ -2238,7 +2973,7 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
-        await syncBackendIntegrationStatus?.({ silent: true })
+        await refreshBackendStatusAfterUpload()
         setAlignmentReport(null)
 
         return
@@ -2287,7 +3022,7 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
-        await syncBackendIntegrationStatus?.({ silent: true })
+        await refreshBackendStatusAfterUpload()
         setAlignmentReport(null)
 
         return
@@ -2336,7 +3071,7 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid map areas: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
-        await syncBackendIntegrationStatus?.({ silent: true })
+        await refreshBackendStatusAfterUpload()
         setAlignmentReport(null)
 
         return
@@ -2449,6 +3184,12 @@ export default function UploadPage() {
 
   return (
     <div className="relative space-y-6 pb-10">
+      <AutoProcessingModal
+        visible={autoProcessing.visible}
+        step={autoProcessing.step}
+        detail={autoProcessing.detail}
+      />
+
       <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/60 blur-3xl dark:bg-blue-500/10" />
 
       <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.20)] dark:border-slate-800 sm:p-6 lg:p-7">
@@ -2893,13 +3634,13 @@ export default function UploadPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
                   <Database className="h-3.5 w-3.5" />
-                  Combine uploaded files
+                  Automatic data preparation
                 </div>
                 <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                  Combined data for forecast and map
+                  Automatic combined data for forecast and map
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  This combines the checked dengue, weather, population, and map files into one table that the forecast, map, and reports can use.
+                  Once all four files are uploaded, the system automatically combines them into one table for the forecast, map, and reports. No extra click is needed.
                 </p>
               </div>
 
@@ -2916,7 +3657,35 @@ export default function UploadPage() {
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {sources.map((source) => {
                 const backendSource = backendSources[source.contextKey] || {}
-                const loaded = Boolean(backendSource.loaded)
+                const databaseUpload = databaseUploads[source.contextKey] || {}
+                const statusSource = sourceStatus?.[source.contextKey] || {}
+
+                const loaded = Boolean(
+                  backendSource.loaded ||
+                    Number(databaseUpload.valid_row_count || 0) > 0 ||
+                    Number(statusSource.validCount || 0) > 0
+                )
+
+                const sourceFilename =
+                  backendSource.filename ||
+                  databaseUpload.original_filename ||
+                  statusSource.uploadedName ||
+                  'No file checked yet'
+
+                const sourceValidCount = Number(
+                  backendSource.valid_count ??
+                    databaseUpload.valid_row_count ??
+                    statusSource.validCount ??
+                    0
+                )
+
+                const sourceRecordCount = Number(
+                  backendSource.record_count ??
+                    databaseUpload.original_row_count ??
+                    statusSource.recordCount ??
+                    0
+                )
+
                 const SourceIcon = source.icon
 
                 return (
@@ -2939,11 +3708,11 @@ export default function UploadPage() {
                     </p>
 
                     <p className="mt-1 truncate text-xs leading-5 text-brand-muted dark:text-slate-400">
-                      {backendSource.filename || 'No file checked yet'}
+                      {sourceFilename}
                     </p>
 
                     <p className="mt-2 text-xs font-bold text-brand-muted dark:text-slate-500">
-                      {Number(backendSource.valid_count || 0)}/{Number(backendSource.record_count || 0)} valid
+                      {sourceValidCount}/{sourceRecordCount} valid
                     </p>
                   </div>
                 )
@@ -2958,7 +3727,7 @@ export default function UploadPage() {
                 className="group flex min-h-[54px] items-center justify-center gap-2 rounded-[22px] border border-blue-200 bg-white px-4 py-3 text-center text-sm font-black text-brand-blue shadow-[0_14px_30px_rgba(37,95,143,0.08)] transition hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/20 dark:bg-slate-950 dark:text-blue-300 dark:hover:bg-blue-500/10"
               >
                 <ShieldCheck className="h-4 w-4" />
-                Refresh file status
+                Refresh status
               </button>
 
               <button
@@ -2968,7 +3737,7 @@ export default function UploadPage() {
                 className="group flex min-h-[54px] items-center justify-center gap-2 rounded-[22px] bg-gradient-to-r from-brand-blue to-cyan-500 px-4 py-3 text-center text-sm font-black text-white shadow-[0_14px_30px_rgba(37,95,143,0.25)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(37,95,143,0.32)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Database className="h-4 w-4" />
-                {isBuildingBackendDataset ? 'Combining data...' : 'Combine uploaded data'}
+                {isBuildingBackendDataset ? 'Preparing automatically...' : hasCombinedBackendData ? 'Run again' : 'Waiting for 4 files'}
               </button>
 
               <button
@@ -3049,7 +3818,7 @@ export default function UploadPage() {
                           colSpan={backendMergedHeaders.length}
                           className="px-4 py-10 text-center text-sm text-brand-muted dark:text-slate-400"
                         >
-                          No combined data yet. Click “Combine uploaded data” after uploading the needed files.
+                          No combined data yet. Upload all four files and the system will combine them automatically.
                         </td>
                       </tr>
                     )}
@@ -3068,13 +3837,13 @@ export default function UploadPage() {
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300">
                   <ClipboardCheck className="h-3.5 w-3.5" />
-                  Barangay name check
+                  Automatic barangay name check
                 </div>
                 <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                  Check if barangay names match
+                  Barangay names are checked automatically
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Checks if barangay names in the dengue file can be found in the population file and the map file. This helps prevent missing population counts or missing map areas.
+                  After the four files are ready, the system automatically checks whether barangay names in the dengue file match the population file and map file. This prevents missing population counts or missing map areas.
                 </p>
               </div>
 
@@ -3089,7 +3858,7 @@ export default function UploadPage() {
                   className="group flex min-h-[42px] items-center justify-center gap-2 rounded-[18px] border border-violet-200 bg-white px-4 py-2 text-center text-xs font-black text-violet-700 shadow-[0_12px_24px_rgba(109,40,217,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-slate-950 dark:text-violet-300 dark:hover:bg-violet-500/10"
                 >
                   <ClipboardCheck className="h-4 w-4" />
-                  {isCheckingAlignment ? 'Checking names...' : 'Check barangay names'}
+                  {isCheckingAlignment ? 'Checking names...' : activeAlignmentReport ? 'Check again' : 'Runs automatically'}
                 </button>
               </div>
             </div>

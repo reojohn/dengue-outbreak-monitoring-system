@@ -5,3 +5,6 @@ numpy
 scikit-learn
 openpyxl
 python-multipart
+sqlalchemy
+psycopg[binary]
+python-dotenv

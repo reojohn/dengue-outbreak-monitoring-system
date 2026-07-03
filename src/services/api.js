@@ -90,6 +90,11 @@ export async function validateBoundaryFile(file) {
   return handleApiResponse(response)
 }
 
+export async function getUploadDatabaseStatus() {
+  const response = await fetch(`${API_BASE_URL}/uploads/database-status`)
+  return handleApiResponse(response)
+}
+
 export async function getBackendIntegrationStatus() {
   const response = await fetch(`${API_BASE_URL}/integration/status`)
   return handleApiResponse(response)
@@ -111,9 +116,116 @@ export async function resetBackendIntegrationWorkspace() {
   return handleApiResponse(response)
 }
 
+export async function getLatestBackendIntegrationDataset() {
+  const response = await fetch(`${API_BASE_URL}/integration/latest-dataset`)
+  return handleApiResponse(response)
+}
+
 
 export async function getBackendAlignmentReport() {
   const response = await fetch(`${API_BASE_URL}/integration/alignment-report`)
+  return handleApiResponse(response)
+}
+
+
+
+
+export async function getGeospatialHotspots({
+  radiusKm = 3,
+  fallbackNearestCount = 3,
+} = {}) {
+  const params = new URLSearchParams({
+    radius_km: String(radiusKm),
+    fallback_nearest_count: String(fallbackNearestCount),
+  })
+
+  const response = await fetch(`${API_BASE_URL}/geospatial/hotspots?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+export async function getBackendNotifications() {
+  const response = await fetch(`${API_BASE_URL}/notifications`)
+  return handleApiResponse(response)
+}
+
+export async function createBackendNotificationEvent({
+  title,
+  message,
+  severity = 'info',
+  category = 'system_event',
+  to = '/dashboard',
+  hash = 'dashboard-summary',
+  meta = {},
+}) {
+  const response = await fetch(`${API_BASE_URL}/notifications/events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title,
+      message,
+      severity,
+      category,
+      to,
+      hash,
+      meta,
+    }),
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function getDecisionActions({ status = '', barangay = '' } = {}) {
+  const params = new URLSearchParams()
+
+  if (status) params.set('status', status)
+  if (barangay) params.set('barangay', barangay)
+
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/decision-actions${query ? `?${query}` : ''}`)
+  return handleApiResponse(response)
+}
+
+export async function createDecisionAction(payload) {
+  const response = await fetch(`${API_BASE_URL}/decision-actions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function updateDecisionAction(actionId, payload) {
+  const response = await fetch(`${API_BASE_URL}/decision-actions/${actionId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function deleteDecisionAction(actionId) {
+  const response = await fetch(`${API_BASE_URL}/decision-actions/${actionId}`, {
+    method: 'DELETE',
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function getLatestSavedForecast() {
+  const response = await fetch(`${API_BASE_URL}/forecast/latest`)
+  return handleApiResponse(response)
+}
+
+export async function getLatestSavedBoundaryGeoJson() {
+  const response = await fetch(`${API_BASE_URL}/uploads/latest-boundary-geojson`)
   return handleApiResponse(response)
 }
 

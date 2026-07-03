@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   CalendarDays,
   CheckCheck,
+  ClipboardCheck,
   ChevronDown,
   LayoutDashboard,
   Map,
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
+import { getBackendNotifications } from '../services/api'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -107,6 +109,52 @@ function getTextScaleLabel(value) {
   if (value >= 115) return 'Large'
 
   return 'Default'
+}
+
+
+function normalizeNotificationSeverity(value = '') {
+  const severity = String(value || '').toLowerCase()
+
+  if (['danger', 'critical', 'error', 'high'].includes(severity)) return 'danger'
+  if (['warning', 'warn', 'moderate'].includes(severity)) return 'warning'
+  if (['success', 'ok', 'low'].includes(severity)) return 'success'
+  if (['activity', 'event'].includes(severity)) return 'activity'
+
+  return 'info'
+}
+
+function normalizeBackendNotification(item = {}, index = 0) {
+  const severity = normalizeNotificationSeverity(item.severity || item.type)
+  const id = item.id || `backend-notification-${index}-${item.title || 'alert'}`
+
+  return {
+    id,
+    title: item.title || 'Backend notification',
+    message: item.message || 'A backend alert was generated.',
+    type: severity,
+    severity,
+    category: item.category || 'backend',
+    source: item.source || 'backend',
+    timestamp: item.timestamp || item.created_at || item.generated_at || '',
+    to: item.to || '/dashboard',
+    hash: item.hash || 'dashboard-summary',
+    meta: item.meta || {},
+  }
+}
+
+function formatNotificationTime(timestamp = '') {
+  if (!timestamp) return 'Just now'
+
+  const date = new Date(timestamp)
+
+  if (Number.isNaN(date.getTime())) return 'Just now'
+
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function getNotificationDot(type) {
@@ -632,6 +680,15 @@ function NotificationsPanel({
                     {item.message}
                   </p>
 
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                      {formatNotificationTime(item.timestamp)}
+                    </span>
+                    <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                      {String(item.source || '').includes('backend') ? 'Backend alert' : item.source === 'activity-log' ? 'Activity log' : 'Local fallback'}
+                    </span>
+                  </div>
+
                   <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-brand-blue dark:text-blue-300">
                     Open related page
                   </p>
@@ -812,6 +869,9 @@ export default function AppShell({ children }) {
     riskRows = [],
     sourceStatus = {},
     activityLogs = [],
+    backendForecastResult = null,
+    backendIntegrationStatus = null,
+    backendIntegrationResult = null,
     addActivityLog,
   } = useData()
 
@@ -821,6 +881,8 @@ export default function AppShell({ children }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [readNotificationIds, setReadNotificationIds] = useState(getInitialReadNotifications)
+  const [backendNotifications, setBackendNotifications] = useState([])
+  const [backendNotificationError, setBackendNotificationError] = useState('')
   const [toastNotification, setToastNotification] = useState(null)
   const [toastVisible, setToastVisible] = useState(false)
   const settingsButtonRef = useRef(null)
@@ -857,6 +919,46 @@ export default function AppShell({ children }) {
     return getRecordPeriod(lastRecord) || 'Current period'
   }, [dengueRecords])
 
+
+  useEffect(() => {
+    let active = true
+
+    async function loadBackendNotifications() {
+      try {
+        const result = await getBackendNotifications()
+        const items = Array.isArray(result?.notifications)
+          ? result.notifications.map((item, index) => normalizeBackendNotification(item, index))
+          : []
+
+        if (!active) return
+
+        setBackendNotifications(items)
+        setBackendNotificationError('')
+      } catch (error) {
+        if (!active) return
+
+        setBackendNotificationError(
+          error?.message || 'Backend notification service is unavailable.'
+        )
+      }
+    }
+
+    loadBackendNotifications()
+
+    return () => {
+      active = false
+    }
+  }, [
+    dengueRecords.length,
+    riskRows.length,
+    sourceStatus,
+    activityLogs.length,
+    backendForecastResult,
+    backendIntegrationStatus,
+    backendIntegrationResult,
+    location.pathname,
+  ])
+
   const systemStatus = hasDengueData
     ? {
         label: 'Dataset loaded',
@@ -874,34 +976,58 @@ export default function AppShell({ children }) {
   const notifications = useMemo(() => {
     const items = []
 
-    const highRiskRows = riskRows.filter((row) => row.risk === 'High')
-    const moderateRiskRows = riskRows.filter((row) => row.risk === 'Moderate')
-    const lowRiskRows = riskRows.filter((row) => row.risk === 'Low')
-    const topBarangay = riskRows[0]
+    backendNotifications.forEach((item) => {
+      items.push(item)
+    })
 
-    if (!hasDengueData) {
+    if (backendNotificationError) {
       items.push({
-        id: 'dengue-dataset-pending',
-        title: 'Dengue dataset pending',
-        message: 'Upload and validate historical dengue records before barangay risk statuses can be generated.',
+        id: `backend-notification-service-unavailable-${backendNotificationError}`,
+        title: 'Backend notification service unavailable',
+        message: 'The app is temporarily showing local notification fallbacks because backend alerts could not be loaded.',
         type: 'warning',
+        severity: 'warning',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/upload',
         hash: 'data-upload',
       })
     }
 
-    if (hasDengueData && riskRows.length === 0) {
+    const highRiskRows = riskRows.filter((row) => row.risk === 'High')
+    const moderateRiskRows = riskRows.filter((row) => row.risk === 'Moderate')
+    const lowRiskRows = riskRows.filter((row) => row.risk === 'Low')
+    const topBarangay = riskRows[0]
+
+    if (!backendNotifications.length && !hasDengueData) {
+      items.push({
+        id: 'dengue-dataset-pending',
+        title: 'Dengue dataset pending',
+        message: 'Upload and validate historical dengue records before barangay risk statuses can be generated.',
+        type: 'warning',
+        severity: 'warning',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
+        to: '/upload',
+        hash: 'data-upload',
+      })
+    }
+
+    if (!backendNotifications.length && hasDengueData && riskRows.length === 0) {
       items.push({
         id: 'risk-scoring-pending',
         title: 'Risk scoring pending',
         message: 'Dengue records are loaded, but no barangay risk ranking has been computed yet.',
         type: 'warning',
+        severity: 'warning',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/forecast',
         hash: 'forecast-model',
       })
     }
 
-    if (highRiskRows.length > 0) {
+    if (!backendNotifications.length && highRiskRows.length > 0) {
       const names = highRiskRows
         .slice(0, 3)
         .map((row) => row.barangay)
@@ -912,12 +1038,15 @@ export default function AppShell({ children }) {
         title: `${highRiskRows.length} high-risk barangay${highRiskRows.length === 1 ? '' : 's'}`,
         message: `${names}${highRiskRows.length > 3 ? ', and others' : ''} require priority monitoring and early response planning.`,
         type: 'danger',
+        severity: 'danger',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/forecast',
         hash: 'top-barangays',
       })
     }
 
-    if (moderateRiskRows.length > 0) {
+    if (!backendNotifications.length && moderateRiskRows.length > 0) {
       const names = moderateRiskRows
         .slice(0, 3)
         .map((row) => row.barangay)
@@ -928,23 +1057,30 @@ export default function AppShell({ children }) {
         title: `${moderateRiskRows.length} moderate-risk barangay${moderateRiskRows.length === 1 ? '' : 's'}`,
         message: `${names}${moderateRiskRows.length > 3 ? ', and others' : ''} should be monitored for possible escalation.`,
         type: 'warning',
+        severity: 'warning',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/forecast',
         hash: 'risk-summary',
       })
     }
 
-    if (topBarangay) {
+    if (!backendNotifications.length && topBarangay) {
       items.push({
         id: `top-priority-${topBarangay.barangay}-${topBarangay.risk}-${topBarangay.forecast}`,
         title: `Top priority: ${topBarangay.barangay}`,
         message: `${topBarangay.forecast || 0} projected cases, ${topBarangay.totalCases || 0} historical cases, classified as ${topBarangay.risk} risk.`,
         type: topBarangay.risk === 'High' ? 'danger' : topBarangay.risk === 'Moderate' ? 'warning' : 'success',
+        severity: topBarangay.risk === 'High' ? 'danger' : topBarangay.risk === 'Moderate' ? 'warning' : 'success',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/forecast',
         hash: 'top-barangays',
       })
     }
 
     if (
+      !backendNotifications.length &&
       hasDengueData &&
       riskRows.length > 0 &&
       highRiskRows.length === 0 &&
@@ -956,17 +1092,23 @@ export default function AppShell({ children }) {
         title: 'Barangay risk status stable',
         message: 'All currently ranked barangays are classified as low risk under the available records.',
         type: 'success',
+        severity: 'success',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/dashboard',
         hash: 'dashboard-summary',
       })
     }
 
-    if (!hasBoundaryData) {
+    if (!backendNotifications.length && !hasBoundaryData) {
       items.push({
         id: 'boundary-layer-pending',
         title: 'Boundary layer pending',
         message: 'Upload a barangay boundary GeoJSON file before using the final GIS map layer.',
         type: 'warning',
+        severity: 'warning',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/upload',
         hash: 'boundary-upload',
       })
@@ -981,6 +1123,9 @@ export default function AppShell({ children }) {
           title: log.action,
           message: log.details,
           type: 'activity',
+          severity: 'activity',
+          source: 'activity-log',
+          timestamp: log.timestamp || new Date().toISOString(),
           ...target,
         })
       })
@@ -992,13 +1137,29 @@ export default function AppShell({ children }) {
         title: 'No active alerts',
         message: 'There are no dengue risk alerts or pending dataset requirements at this time.',
         type: 'success',
+        severity: 'success',
+        source: 'frontend-fallback',
+        timestamp: new Date().toISOString(),
         to: '/dashboard',
         hash: 'dashboard-summary',
       })
     }
 
-    return items
-  }, [hasDengueData, hasBoundaryData, riskRows, activityLogs])
+    const seen = new Set()
+
+    return items.filter((item) => {
+      if (seen.has(item.id)) return false
+      seen.add(item.id)
+      return true
+    })
+  }, [
+    backendNotifications,
+    backendNotificationError,
+    hasDengueData,
+    hasBoundaryData,
+    riskRows,
+    activityLogs,
+  ])
 
   const unreadNotifications = useMemo(() => {
     return notifications.filter((item) => !readNotificationIds.includes(item.id))
@@ -1529,6 +1690,21 @@ export default function AppShell({ children }) {
       navigate('/', { replace: true })
     }, 800)
   }
+  function handleOpenActionCommandCenter() {
+  setMobileNavOpen(false)
+  navigate('/forecast#decision-action-tracking')
+
+  window.setTimeout(() => {
+    const targetElement = document.getElementById('decision-action-tracking')
+
+    if (targetElement) {
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }
+  }, 180)
+}
 
   return (
     <div className="relative min-h-screen bg-slate-100 px-3 py-3 text-brand-text transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100 sm:px-5 sm:py-5 lg:px-6">
@@ -1670,21 +1846,37 @@ export default function AppShell({ children }) {
             )}
           </button>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/10 p-4 shadow-inner backdrop-blur">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/50">
-              System status
-            </p>
+          <button
+  type="button"
+  onClick={handleOpenActionCommandCenter}
+  className="group relative w-full overflow-hidden rounded-[28px] border border-white/15 bg-white/10 p-4 text-left shadow-inner backdrop-blur transition hover:bg-white/15"
+>
+  <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-sky-300/20 blur-2xl" />
 
-            <p className="mt-3 text-sm font-semibold text-white/90">
-              {systemStatus.label}
-            </p>
+  <div className="relative flex items-start gap-3">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/15 bg-white/10 text-white">
+      <ClipboardCheck className="h-5 w-5" />
+    </div>
 
-            <span
-              className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs font-black ${systemStatus.badgeStyle}`}
-            >
-              {systemStatus.badge}
-            </span>
-          </div>
+    <div className="min-w-0">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-white/50">
+        Quick action
+      </p>
+
+      <p className="mt-2 text-sm font-black text-white">
+        Create response action
+      </p>
+
+      <p className="mt-1 text-xs leading-5 text-white/60">
+        Go to the action command center.
+      </p>
+    </div>
+  </div>
+
+  <span className="relative mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-[#0f2742]">
+    Open action tracker
+  </span>
+</button>
         </div>
       </aside>
 
@@ -1770,50 +1962,46 @@ export default function AppShell({ children }) {
 
             
 
-            <div className="relative overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur">
-  <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-300/20 blur-2xl" />
-  <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+            <button
+  type="button"
+  onClick={handleOpenActionCommandCenter}
+  className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-gradient-to-br from-white/18 via-white/10 to-sky-400/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_40px_rgba(15,23,42,0.22)] backdrop-blur transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/15 hover:shadow-[0_22px_48px_rgba(14,165,233,0.22)]"
+>
+  <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-sky-300/25 blur-2xl transition group-hover:bg-sky-300/35" />
+  <div className="pointer-events-none absolute -bottom-10 left-4 h-24 w-24 rounded-full bg-emerald-300/15 blur-2xl" />
+  <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
 
-  <div className="relative flex items-start justify-between gap-3">
-    <div>
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
-        System status
+  <div className="relative flex items-start gap-3">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/15 bg-white/12 text-white shadow-inner transition group-hover:bg-white/18">
+      <ClipboardCheck className="h-5 w-5" />
+    </div>
+
+    <div className="min-w-0 flex-1">
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">
+        Quick action
       </p>
 
       <p className="mt-2 text-sm font-black leading-5 text-white">
-        {systemStatus.label}
+        Create response action
       </p>
 
-      <p className="mt-1 text-xs leading-5 text-white/60">
-        Dataset and workspace readiness
+      <p className="mt-1 text-xs leading-5 text-white/65">
+        Open the action command center and assign barangay response tasks.
       </p>
     </div>
-
-    <span className="mt-1 flex h-3 w-3 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.85)]" />
   </div>
 
-  <div className="relative mt-4 rounded-2xl border border-white/10 bg-black/10 p-3">
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
-        Readiness
-      </span>
+  <div className="relative mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/10 px-3 py-2.5">
+    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
+      Forecast page
+    </span>
 
-      <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${systemStatus.badgeStyle}`}>
-        {systemStatus.badge}
-      </span>
-    </div>
-
-    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-      <div
-        className={`h-full rounded-full ${
-          hasDengueData
-            ? 'w-full bg-gradient-to-r from-emerald-300 to-teal-300'
-            : 'w-1/2 bg-gradient-to-r from-amber-300 to-orange-300'
-        }`}
-      />
-    </div>
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-[#0f2742] shadow-sm">
+      Open
+      <Plus className="h-3 w-3" />
+    </span>
   </div>
-</div>
+</button>
           </div>
         </aside>
 

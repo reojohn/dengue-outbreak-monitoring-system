@@ -4,17 +4,29 @@ from math import cos, radians
 import pandas as pd
 from fastapi import HTTPException
 
+from app.services.barangay_name_resolver import (
+    build_barangay_reference,
+    get_boundary_barangay_name,
+    get_record_barangay_name,
+    get_record_psgc,
+    resolve_barangay_name,
+)
 from app.services.barangay_normalizer import normalize_barangay_key
 from app.services.file_inspector import make_json_safe_records
 from app.services.integration_state import (
     build_source_status_summary,
     get_all_integration_sources,
 )
-
+from app.services.database_integration import save_integration_result
 
 MERGED_DATASET_COLUMNS = [
     "barangay",
     "barangay_key",
+    "barangay_original",
+    "barangay_original_key",
+    "barangay_match_status",
+    "barangay_match_confidence",
+    "barangay_match_note",
     "period",
     "date",
     "year",
@@ -34,6 +46,31 @@ MERGED_DATASET_COLUMNS = [
     "population_match_status",
     "weather_match_status",
 ]
+
+
+BARANGAY_MATCHED_STATUSES = {
+    "psgc_matched",
+    "exact_matched",
+    "auto_matched",
+}
+
+
+def _safe_text(value):
+    if value is None:
+        return ""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    text = str(value).strip()
+
+    if text.lower() in ["", "nan", "none", "nat", "null"]:
+        return ""
+
+    return text
 
 
 def _to_number(value, fallback=0):
@@ -83,6 +120,7 @@ def _record_key(record):
         record.get("barangay_key")
         or record.get("barangay")
         or record.get("barangay_raw")
+        or record.get("barangay_name")
         or record.get("name")
         or ""
     )
@@ -197,20 +235,24 @@ def _geometry_area_sq_km(geometry):
     return 0
 
 
-def _build_population_lookup(population_records):
+def _build_population_lookup(population_records, barangay_reference):
     lookup = {}
 
     for record in population_records:
-        key = _record_key(record)
+        resolved = resolve_barangay_name(record, barangay_reference)
+        key = resolved.get("barangay_key") or _record_key(record)
 
         if not key:
             continue
 
         candidate = {
-            "barangay": record.get("barangay") or record.get("barangay_raw") or "",
+            "barangay": resolved.get("barangay") or get_record_barangay_name(record),
+            "barangay_original": get_record_barangay_name(record),
+            "barangay_match_status": resolved.get("match_status"),
+            "barangay_match_confidence": resolved.get("match_confidence"),
             "population": _to_int_or_none(record.get("population")),
             "population_year": _to_int_or_none(record.get("year")),
-            "psgc": record.get("psgc") or "",
+            "psgc": get_record_psgc(record),
         }
 
         current = lookup.get(key)
@@ -241,11 +283,10 @@ def _build_boundary_lookup(boundary_geojson):
             continue
 
         properties = feature.get("properties") or {}
+        barangay_name = get_boundary_barangay_name(properties)
         key = normalize_barangay_key(
             properties.get("barangay_key")
-            or properties.get("barangay")
-            or properties.get("barangay_raw")
-            or properties.get("name")
+            or barangay_name
             or ""
         )
 
@@ -265,7 +306,7 @@ def _build_boundary_lookup(boundary_geojson):
 
         lookup[key] = {
             "geometry_id": str(geometry_id),
-            "barangay": properties.get("barangay") or properties.get("barangay_raw") or "",
+            "barangay": barangay_name,
             "psgc": properties.get("psgc") or properties.get("PSGC") or "",
             "boundary_area_sqkm": round(area_sqkm, 4) if area_sqkm else None,
             "geometry_type": geometry.get("type") or "",
@@ -390,6 +431,18 @@ def _summarize_matches(rows):
             "boundary_match_status",
             {"matched"},
         ),
+        "barangay_exact_matched_rows": count_match(
+            "barangay_match_status",
+            {"psgc_matched", "exact_matched"},
+        ),
+        "barangay_auto_matched_rows": count_match(
+            "barangay_match_status",
+            {"auto_matched"},
+        ),
+        "barangay_needs_review_rows": count_match(
+            "barangay_match_status",
+            {"needs_review", "unmatched"},
+        ),
         "unique_barangay_count": len({row.get("barangay_key") for row in rows if row.get("barangay_key")}),
     }
 
@@ -414,15 +467,20 @@ def build_model_ready_dataset():
     population_records = (sources.get("population") or {}).get("records") or []
     boundary_geojson = (sources.get("boundary") or {}).get("geojson") or {}
 
-    population_lookup = _build_population_lookup(population_records)
+    barangay_reference = build_barangay_reference(
+        boundary_geojson=boundary_geojson,
+        population_records=population_records,
+    )
+    population_lookup = _build_population_lookup(population_records, barangay_reference)
     boundary_lookup = _build_boundary_lookup(boundary_geojson)
     weather_context = _build_weather_context(weather_records)
 
     merged_rows = []
 
     for record in dengue_records:
-        barangay = record.get("barangay") or record.get("barangay_raw") or ""
-        barangay_key = _record_key(record)
+        resolved_barangay = resolve_barangay_name(record, barangay_reference)
+        barangay = resolved_barangay.get("barangay") or get_record_barangay_name(record)
+        barangay_key = resolved_barangay.get("barangay_key") or _record_key(record)
         period = _period_from_record(record)
 
         population_match = population_lookup.get(barangay_key)
@@ -439,6 +497,11 @@ def build_model_ready_dataset():
         row = {
             "barangay": barangay,
             "barangay_key": barangay_key,
+            "barangay_original": resolved_barangay.get("original_barangay") or get_record_barangay_name(record),
+            "barangay_original_key": resolved_barangay.get("original_barangay_key") or _record_key(record),
+            "barangay_match_status": resolved_barangay.get("match_status"),
+            "barangay_match_confidence": round(_to_number(resolved_barangay.get("match_confidence"), 0), 3),
+            "barangay_match_note": resolved_barangay.get("match_note"),
             "period": period,
             "date": _safe_date(record.get("date")),
             "year": _to_int_or_none(record.get("year")),
@@ -462,13 +525,26 @@ def build_model_ready_dataset():
         merged_rows.append(row)
 
     merged_df = pd.DataFrame(merged_rows, columns=MERGED_DATASET_COLUMNS)
+    merged_dataset = make_json_safe_records(merged_df)
+    merged_preview = make_json_safe_records(merged_df.head(25))
+    summary = _summarize_matches(merged_rows)
+
+    database_result = save_integration_result(
+        integration_status=status,
+        summary=summary,
+        merged_rows=merged_dataset,
+    )
 
     return {
-        "message": "Model-ready multi-source dataset built successfully.",
+        "message": "Model-ready multi-source dataset built successfully and saved to Supabase.",
         "integration_status": status,
         "standard_columns": MERGED_DATASET_COLUMNS,
         "row_count": int(len(merged_df)),
-        "summary": _summarize_matches(merged_rows),
-        "merged_dataset": make_json_safe_records(merged_df),
-        "merged_preview": make_json_safe_records(merged_df.head(25)),
+        "summary": summary,
+        "barangay_reference_count": len(barangay_reference.get("items", [])),
+        "merged_dataset": merged_dataset,
+        "merged_preview": merged_preview,
+        "database_integration": database_result,
+        "database_integration_run_id": database_result.get("integration_run_id"),
+        "database_saved_row_count": database_result.get("saved_row_count"),
     }

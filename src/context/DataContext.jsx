@@ -3,6 +3,9 @@ import { computeDecisionSupport, computeMultiSourceRisk } from '../utils/analyti
 import {
   buildBackendIntegrationDataset,
   getBackendIntegrationStatus,
+  getLatestBackendIntegrationDataset,
+  getLatestSavedBoundaryGeoJson,
+  getLatestSavedForecast,
   resetBackendIntegrationWorkspace,
 } from '../services/api'
 
@@ -1501,6 +1504,163 @@ export function DataProvider({ children }) {
     return result
   }
 
+  async function loadLatestBackendIntegrationDataset({ silent = false } = {}) {
+    try {
+      const result = await getLatestBackendIntegrationDataset()
+
+      if (!result?.has_saved_dataset) {
+        return null
+      }
+
+      updateWorkspace((current) => ({
+        ...current,
+        backendIntegrationStatus: current.backendIntegrationStatus || {
+          status: 'ready',
+          can_build_dataset: true,
+          complete: true,
+          loaded_source_count: 4,
+          required_source_count: 4,
+          loaded_sources: ['dengue', 'weather', 'population', 'boundary'],
+          missing_sources: [],
+          sources: current.backendIntegrationStatus?.sources || {},
+          message: 'Latest saved integrated dataset loaded from the online database.',
+        },
+        backendIntegrationResult: {
+          message: result.message,
+          integration_run: result.integration_run,
+          row_count: result.row_count,
+          summary: result.summary,
+          merged_dataset: Array.isArray(result.merged_dataset)
+            ? result.merged_dataset
+            : [],
+          merged_preview: Array.isArray(result.merged_preview)
+            ? result.merged_preview
+            : [],
+          databaseBacked: true,
+        },
+        backendMergedDataset: Array.isArray(result.merged_dataset)
+          ? result.merged_dataset
+          : [],
+      }))
+
+      return result
+    } catch (error) {
+      if (!silent) {
+        addActivityLog(
+          'Saved combined data unavailable',
+          error?.message || 'The frontend could not load the latest saved combined dataset.'
+        )
+      }
+
+      return null
+    }
+  }
+
+  async function loadLatestSavedForecast({ silent = false } = {}) {
+    try {
+      const result = await getLatestSavedForecast()
+
+      if (!result?.has_saved_forecast) {
+        return null
+      }
+
+      const forecastResults = Array.isArray(result.forecast_results)
+        ? result.forecast_results
+        : []
+
+      const validRowCount = forecastResults.reduce((sum, row) => {
+        return sum + Number(row.record_count || 0)
+      }, 0)
+
+      const normalizedForecastResult = {
+        message: result.message || 'Latest saved forecast loaded from Supabase.',
+        note: 'This forecast was loaded from the online database.',
+        filename: 'latest_saved_forecast_from_database',
+        file_type: 'database',
+        original_row_count: validRowCount,
+        valid_row_count: validRowCount,
+        invalid_row_count: 0,
+        barangay_count: Number(result.barangay_count || forecastResults.length),
+        total_forecast_next_4_periods: Number(result.total_forecast_next_4_periods || 0),
+        risk_counts: result.risk_counts || {},
+        validation_summary: result.validation_summary || {},
+        forecast_results: forecastResults,
+        forecast_run: result.forecast_run || null,
+        databaseBacked: true,
+        database_forecast_run_id: result.forecast_run?.forecast_run_id || null,
+      }
+
+      updateWorkspace((current) => ({
+        ...current,
+        backendForecastResult: normalizedForecastResult,
+      }))
+
+      return normalizedForecastResult
+    } catch (error) {
+      if (!silent) {
+        addActivityLog(
+          'Saved forecast unavailable',
+          error?.message || 'The frontend could not load the latest saved forecast.'
+        )
+      }
+
+      return null
+    }
+  }
+
+  async function loadLatestSavedBoundaryGeoJson({ silent = false } = {}) {
+    try {
+      const result = await getLatestSavedBoundaryGeoJson()
+
+      if (!result?.has_saved_boundary) {
+        return null
+      }
+
+      const boundaryGeoJson = result.boundary_geojson || {
+        type: 'FeatureCollection',
+        features: [],
+      }
+
+      const features = Array.isArray(boundaryGeoJson.features)
+        ? boundaryGeoJson.features
+        : []
+
+      if (!features.length) {
+        return null
+      }
+
+      const uploadedName =
+        result.upload?.original_filename ||
+        features[0]?.properties?.source_filename ||
+        'latest_saved_boundary_geojson'
+
+      updateWorkspace((current) => ({
+        ...current,
+        boundaryRecords: [boundaryGeoJson],
+        sourceStatus: normalizeSourceStatus({
+          ...(current.sourceStatus || {}),
+          boundary: {
+            uploadedName,
+            badge: 'Saved Online',
+            recordCount: Number(result.feature_count || features.length),
+            validCount: Number(result.feature_count || features.length),
+          },
+        }),
+      }))
+
+      return result
+    } catch (error) {
+      if (!silent) {
+        addActivityLog(
+          'Saved boundary map unavailable',
+          error?.message || 'The frontend could not load the latest saved barangay boundary map.'
+        )
+      }
+
+      return null
+    }
+  }
+
   async function resetBackendIntegration() {
     const result = await resetBackendIntegrationWorkspace()
 
@@ -1521,6 +1681,9 @@ export function DataProvider({ children }) {
 
   useEffect(() => {
     syncBackendIntegrationStatus({ silent: true })
+    loadLatestSavedBoundaryGeoJson({ silent: true })
+    loadLatestBackendIntegrationDataset({ silent: true })
+    loadLatestSavedForecast({ silent: true })
   }, [])
 
   const riskRows = useMemo(() => {
@@ -1597,6 +1760,9 @@ export function DataProvider({ children }) {
 
     syncBackendIntegrationStatus,
     buildBackendIntegrationWorkspace,
+    loadLatestBackendIntegrationDataset,
+    loadLatestSavedBoundaryGeoJson,
+    loadLatestSavedForecast,
     resetBackendIntegration,
 
     resetSampleData: clearWorkspace,

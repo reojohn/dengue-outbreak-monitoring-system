@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import LeafletRiskMap from '../components/LeafletRiskMap'
 import { useData } from '../context/DataContext'
+import { getGeospatialHotspots } from '../services/api'
 import { computeDecisionSupport, riskStyles } from '../utils/analytics'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 
@@ -483,6 +484,186 @@ function getPriorityBadgeStyle(priority) {
   return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
+function getHotspotBadgeStyle(level) {
+  const value = String(level || '').toLowerCase()
+
+  if (value.includes('confirmed')) {
+    return 'border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+  }
+
+  if (value.includes('emerging')) {
+    return 'border-orange-100 bg-orange-50 text-orange-600 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300'
+  }
+
+  if (value.includes('watch')) {
+    return 'border-amber-100 bg-amber-50 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+  }
+
+  if (value.includes('review')) {
+    return 'border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300'
+  }
+
+  if (value.includes('low')) {
+    return 'border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+  }
+
+  return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
+function getHotspotLevelLabel(level) {
+  const value = String(level || '').trim()
+
+  if (!value) return 'Hotspot not checked'
+
+  if (value === 'Confirmed Hotspot') return 'Confirmed hotspot'
+  if (value === 'Emerging Hotspot') return 'Emerging hotspot'
+  if (value === 'Watch Area') return 'Watch area'
+  if (value === 'Low Spatial Concern') return 'Low map concern'
+  if (value === 'Needs Map Review') return 'Needs map review'
+
+  return value
+}
+
+function isMapReviewHotspot(row = null) {
+  if (!row) return false
+
+  return (
+    row.hotspot_level === 'Needs Map Review' ||
+    row.has_map_boundary === false ||
+    row.spatial_influence_source === 'no_map_boundary'
+  )
+}
+
+function getMapReviewPriorityText(row = null) {
+  const cases = Number(row?.total_cases || row?.cases || row?.totalCases || 0)
+  const baseRisk = Number(row?.base_risk_score || 0)
+
+  if (cases >= 25 || baseRisk >= 70) {
+    return 'High dengue concern'
+  }
+
+  if (cases > 0 || baseRisk >= 45) {
+    return 'Needs data review'
+  }
+
+  return 'Map review needed'
+}
+
+function getMapReviewMessage(row = null) {
+  const cases = Number(row?.total_cases || row?.cases || row?.totalCases || 0)
+  const baseRisk = Number(row?.base_risk_score || 0)
+
+  if (cases > 0 || baseRisk > 0) {
+    return (
+      'This barangay has dengue records, but it is not ranked as a normal spatial hotspot because the map boundary is not matched yet.'
+    )
+  }
+
+  return (
+    'This barangay needs a map boundary match before the system can calculate spatial influence.'
+  )
+}
+
+function formatHotspotScore(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Not checked'
+  }
+
+  return `${Math.round(number)}/100`
+}
+
+function formatHotspotDistance(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Distance not available'
+  }
+
+  return `${formatDecimal(number, 2)} km away`
+}
+
+function getHotspotInfluenceRows(hotspot = null) {
+  const withinRadius = Array.isArray(hotspot?.within_radius_barangays)
+    ? hotspot.within_radius_barangays
+    : []
+
+  const nearestFallback = Array.isArray(hotspot?.nearest_barangays_used)
+    ? hotspot.nearest_barangays_used
+    : []
+
+  const spatialInfluence = Array.isArray(hotspot?.spatial_influence_barangays)
+    ? hotspot.spatial_influence_barangays
+    : []
+
+  if (withinRadius.length > 0) {
+    return {
+      rows: withinRadius,
+      source: 'within_radius',
+      label: 'Within selected radius',
+    }
+  }
+
+  if (nearestFallback.length > 0) {
+    return {
+      rows: nearestFallback,
+      source: 'nearest_fallback',
+      label: 'Nearest fallback used',
+    }
+  }
+
+  if (spatialInfluence.length > 0) {
+    return {
+      rows: spatialInfluence,
+      source: hotspot?.spatial_influence_source || 'spatial_context',
+      label: 'Spatial context',
+    }
+  }
+
+  return {
+    rows: [],
+    source: hotspot?.spatial_influence_source || 'none',
+    label: hotspot?.has_map_boundary === false ? 'Needs map review' : 'No spatial influence found',
+  }
+}
+
+function getHotspotInfluenceLabel(hotspot = null) {
+  const influence = getHotspotInfluenceRows(hotspot)
+
+  if (!influence.rows.length) {
+    if (hotspot?.has_map_boundary === false) {
+      return 'Map boundary not matched'
+    }
+
+    return 'No barangay inside selected radius'
+  }
+
+  const firstRow = influence.rows[0]
+  const prefix = influence.source === 'nearest_fallback'
+    ? 'Nearest fallback'
+    : influence.source === 'within_radius'
+      ? 'Within radius'
+      : 'Spatial context'
+
+  return `${prefix}: ${firstRow.barangay} (${formatHotspotDistance(firstRow.distance_km)})`
+}
+
+function getHotspotInfluenceNote(hotspot = null) {
+  return (
+    hotspot?.spatial_influence_note ||
+    'Run the hotspot analysis to check within-radius barangays and fallback spatial context.'
+  )
+}
+
+function getHotspotReason(hotspot = null) {
+  return (
+    hotspot?.reason ||
+    'Run the hotspot analysis to check if within-radius barangays are affecting this area.'
+  )
+}
+
+
 function getMapStatusStyle(hasRiskData, hasBoundaryData) {
   if (hasRiskData) {
     return 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
@@ -510,7 +691,7 @@ function getDefaultPanelPosition() {
   }
 
   return {
-    x: Math.max(16, window.innerWidth - 460),
+    x: Math.max(16, window.innerWidth - 590),
     y: 120,
   }
 }
@@ -518,7 +699,7 @@ function getDefaultPanelPosition() {
 function clampPanelPosition(position) {
   if (typeof window === 'undefined') return position
 
-  const panelWidth = Math.min(430, window.innerWidth - 24)
+  const panelWidth = Math.min(560, window.innerWidth - 24)
   const minX = 12
   const minY = 12
   const maxX = Math.max(minX, window.innerWidth - panelWidth - 12)
@@ -601,7 +782,7 @@ function buildBackendActionPlan({
       'Maintain routine dengue surveillance and regular environmental sanitation activities.',
       'Continue household reminders on removing stagnant water and seeking early consultation for fever symptoms.',
       'Check if new cases are clustered in a specific purok or household group before escalating the response.',
-      'Keep barangay advisories active during rainy periods or when nearby barangays show higher risk.',
+      'Keep barangay advisories active during rainy periods or when within-radius barangays show higher risk.',
       'Reassess the barangay after the next reporting period.'
     )
   } else {
@@ -875,13 +1056,11 @@ export default function MapPage() {
     )
   })
 
-  const displayRiskRows = hasMultiSourceRiskRows
-    ? riskRows
-    : usingBackendForecast
-      ? backendRiskRows
-      : riskRows
+  const displayRiskRows = usingBackendForecast
+  ? backendRiskRows
+  : riskRows
 
-  const usingMultiSourceRisk = hasMultiSourceRiskRows
+ const usingMultiSourceRisk = !usingBackendForecast && hasMultiSourceRiskRows
 
   const displayPeriodCount = usingBackendForecast && !usingMultiSourceRisk
     ? buildBackendPeriodCount(backendForecastResult)
@@ -894,6 +1073,9 @@ export default function MapPage() {
   const [legendOpen, setLegendOpen] = useState(true)
   const [mapStyle, setMapStyle] = useState('dark')
   const [isMapExpanded, setIsMapExpanded] = useState(false)
+  const [hotspotResult, setHotspotResult] = useState(null)
+  const [hotspotError, setHotspotError] = useState('')
+  const [isLoadingHotspots, setIsLoadingHotspots] = useState(false)
 
   const boundaryGeoJson = useMemo(() => {
     return getBoundaryGeoJson(boundaryRecords)
@@ -911,6 +1093,33 @@ export default function MapPage() {
     boundaryFeatureCount > 0
 
   const canShowMap = hasRiskData || hasBoundaryData
+
+  const hotspotRows = useMemo(() => {
+    return Array.isArray(hotspotResult?.hotspots) ? hotspotResult.hotspots : []
+  }, [hotspotResult])
+
+  const hotspotSummary = hotspotResult?.summary || null
+  const hotspotLevelCounts = hotspotSummary?.level_counts || {}
+  const hotspotPriorityCount =
+    Number(hotspotLevelCounts['Confirmed Hotspot'] || 0) +
+    Number(hotspotLevelCounts['Emerging Hotspot'] || 0)
+  const realHotspotReady = hotspotRows.length > 0
+
+  const rankedHotspotRows = useMemo(() => {
+    return hotspotRows.filter((row) => !isMapReviewHotspot(row))
+  }, [hotspotRows])
+
+  const mapReviewRows = useMemo(() => {
+    return hotspotRows
+      .filter((row) => isMapReviewHotspot(row))
+      .sort((a, b) => {
+        if (Number(b.total_cases || 0) !== Number(a.total_cases || 0)) {
+          return Number(b.total_cases || 0) - Number(a.total_cases || 0)
+        }
+
+        return Number(b.base_risk_score || 0) - Number(a.base_risk_score || 0)
+      })
+  }, [hotspotRows])
 
   useEffect(() => {
     if (!dragState) return undefined
@@ -1031,6 +1240,23 @@ export default function MapPage() {
     selected ||
     (selectedBoundaryFeature ? getFeatureName(selectedBoundaryFeature) : 'No barangay selected')
 
+  const selectedHotspot = useMemo(() => {
+    if (!selected && !selectedLabel) return null
+
+    return (
+      hotspotRows.find((row) => {
+        return (
+          namesMatch(row.barangay, selected) ||
+          namesMatch(row.barangay, selectedLabel)
+        )
+      }) || null
+    )
+  }, [hotspotRows, selected, selectedLabel])
+
+  const selectedNeedsMapReview = Boolean(
+    selectedHotspot && isMapReviewHotspot(selectedHotspot)
+  )
+
   const selectedArea = getAreaValue({
     row: details,
     feature: selectedBoundaryFeature,
@@ -1123,7 +1349,11 @@ export default function MapPage() {
     })
   }, [details, selectedDecisionSupport, selectedLabel])
 
-  const summary = hasRiskData ? displayRiskRows.slice(0, 5) : []
+  const summary = realHotspotReady
+    ? rankedHotspotRows.slice(0, 5)
+    : hasRiskData
+      ? displayRiskRows.slice(0, 5)
+      : []
 
   function openSelectedPanel() {
     setSelectedPanelPosition((current) => {
@@ -1233,6 +1463,32 @@ export default function MapPage() {
       tone: 'text-emerald-500 bg-emerald-50 border-emerald-100 dark:text-emerald-300 dark:bg-emerald-500/10 dark:border-emerald-500/20',
     },
     {
+      label: 'Hotspot level',
+      value: selectedHotspot ? getHotspotLevelLabel(selectedHotspot.hotspot_level) : 'Run hotspot analysis',
+      icon: MapPinned,
+      tone: 'text-rose-500 bg-rose-50 border-rose-100 dark:text-rose-300 dark:bg-rose-500/10 dark:border-rose-500/20',
+    },
+    {
+      label: 'Hotspot score',
+      value: selectedHotspot
+        ? selectedNeedsMapReview
+          ? 'Not finalized'
+          : formatHotspotScore(selectedHotspot.hotspot_score)
+        : 'Not checked',
+      icon: Radar,
+      tone: 'text-violet-500 bg-violet-50 border-violet-100 dark:text-violet-300 dark:bg-violet-500/10 dark:border-violet-500/20',
+    },
+    {
+      label: 'Spatial influence',
+      value: selectedHotspot
+        ? selectedNeedsMapReview
+          ? 'Not available'
+          : formatHotspotScore(selectedHotspot.neighbor_influence_score)
+        : 'Not checked',
+      icon: Navigation,
+      tone: 'text-orange-500 bg-orange-50 border-orange-100 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20',
+    },
+    {
       label: 'DSS priority',
       value: selectedPriority,
       icon: Navigation,
@@ -1294,6 +1550,34 @@ export default function MapPage() {
     },
   ]
 
+  async function handleRunHotspotAnalysis() {
+    setHotspotError('')
+    setIsLoadingHotspots(true)
+
+    try {
+      const result = await getGeospatialHotspots()
+
+      setHotspotResult(result)
+
+      const summary = result?.summary || {}
+      const hotspotCount =
+        Number(summary?.level_counts?.['Confirmed Hotspot'] || 0) +
+        Number(summary?.level_counts?.['Emerging Hotspot'] || 0)
+
+      addActivityLog?.(
+        'Geospatial hotspot analysis generated',
+        `${formatNumber(hotspotCount)} hotspot area${hotspotCount === 1 ? '' : 's'} identified using barangay risk and spatial influence.`
+      )
+    } catch (error) {
+      setHotspotError(
+        error?.message ||
+          'Unable to run hotspot analysis. Upload and combine dengue, weather, population, and boundary data first.'
+      )
+    } finally {
+      setIsLoadingHotspots(false)
+    }
+  }
+
   function renderMapControls() {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -1348,6 +1632,16 @@ export default function MapPage() {
 
   <ArrowUpRight className="h-4 w-4 shrink-0 text-brand-blue transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
 </button>
+
+        <button
+          type="button"
+          onClick={handleRunHotspotAnalysis}
+          disabled={isLoadingHotspots || !hasBoundaryData}
+          className="inline-flex items-center gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
+        >
+          <Radar className="h-3.5 w-3.5" />
+          {isLoadingHotspots ? 'Checking hotspots...' : 'Run hotspot analysis'}
+        </button>
 
         <button
           type="button"
@@ -1420,7 +1714,7 @@ export default function MapPage() {
         createPortal(
           (
         <div
-          className={`fixed z-[9999] w-[min(430px,calc(100vw-24px))] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.30)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:ring-white/10 ${
+          className={`fixed z-[9999] w-[min(560px,calc(100vw-24px))] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.30)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:ring-white/10 ${
             dragState ? 'select-none ring-2 ring-brand-blue/30' : ''
           }`}
           style={{
@@ -1443,7 +1737,7 @@ export default function MapPage() {
                 Selected area
               </div>
 
-              <p className="mt-2 text-xs font-semibold text-brand-muted dark:text-slate-400">
+              <p className="mt-2 text-sm font-semibold text-brand-muted dark:text-slate-400">
                 Drag this panel anywhere on the screen.
               </p>
             </div>
@@ -1458,8 +1752,8 @@ export default function MapPage() {
             </button>
           </div>
 
-          <div className="max-h-[calc(100vh-170px)] overflow-y-auto p-5">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-500">
+          <div className="max-h-[calc(100vh-150px)] overflow-y-auto p-6">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-500">
               Selected barangay
             </p>
 
@@ -1469,15 +1763,21 @@ export default function MapPage() {
 
             <div className="mt-3 flex flex-wrap gap-2">
               <span
-                className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(details?.risk)}`}
+                className={`inline-flex rounded-full border px-3 py-1.5 text-sm font-black ${getRiskBadgeStyle(details?.risk)}`}
               >
                 {getRiskLabel(details?.risk)}
               </span>
 
               <span
-                className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getPriorityBadgeStyle(selectedPriority)}`}
+                className={`inline-flex rounded-full border px-3 py-1.5 text-sm font-black ${getPriorityBadgeStyle(selectedPriority)}`}
               >
                 {selectedPriority}
+              </span>
+
+              <span
+                className={`inline-flex rounded-full border px-3 py-1.5 text-sm font-black ${getHotspotBadgeStyle(selectedHotspot?.hotspot_level)}`}
+              >
+                {getHotspotLevelLabel(selectedHotspot?.hotspot_level)}
               </span>
             </div>
 
@@ -1496,11 +1796,11 @@ export default function MapPage() {
                       <Icon className="h-5 w-5" />
                     </div>
 
-                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                       {metric.label}
                     </p>
 
-                    <p className="mt-2 text-sm font-black leading-6 text-brand-text dark:text-slate-100">
+                    <p className="mt-2 text-base font-black leading-7 text-brand-text dark:text-slate-100">
                       {metric.value}
                     </p>
                   </div>
@@ -1508,14 +1808,156 @@ export default function MapPage() {
               })}
             </div>
 
+            <div className={`mt-4 rounded-[26px] border p-5 shadow-sm ${
+              selectedNeedsMapReview
+                ? 'border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 dark:border-blue-500/25 dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-950'
+                : 'border-violet-100 bg-gradient-to-br from-violet-50 via-white to-blue-50 dark:border-violet-500/20 dark:from-violet-500/10 dark:via-slate-900 dark:to-slate-950'
+            } dark:shadow-none`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className={`text-sm font-black uppercase tracking-[0.14em] ${
+                    selectedNeedsMapReview
+                      ? 'text-blue-700 dark:text-blue-300'
+                      : 'text-violet-700 dark:text-violet-300'
+                  }`}>
+                    {selectedNeedsMapReview ? 'Map review required' : 'Real hotspot analysis'}
+                  </p>
+
+                  <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-300">
+                    {selectedNeedsMapReview
+                      ? 'This barangay has dengue records, but it is not included in the normal spatial hotspot ranking until the barangay name is matched to a map boundary.'
+                      : 'This checks whether this barangay has dengue risk within the selected radius. If no barangay is inside the radius, the nearest barangay is shown only as fallback context.'}
+                  </p>
+                </div>
+
+                <span
+                  className={`w-fit rounded-full border px-3 py-1.5 text-sm font-black ${getHotspotBadgeStyle(selectedHotspot?.hotspot_level)}`}
+                >
+                  {getHotspotLevelLabel(selectedHotspot?.hotspot_level)}
+                </span>
+              </div>
+
+              {selectedHotspot ? (
+                selectedNeedsMapReview ? (
+                  <>
+                    <div className="mt-4 rounded-[22px] border border-blue-100 bg-white/85 p-4 shadow-sm dark:border-blue-500/20 dark:bg-slate-950/70">
+                      <p className="text-sm font-black text-blue-700 dark:text-blue-300">
+                        Important interpretation
+                      </p>
+
+                      <p className="mt-2 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">
+                        {getMapReviewMessage(selectedHotspot)} Do not treat this as a low-priority result. Review the barangay name match first, then rerun the hotspot analysis.
+                      </p>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                          Dengue cases
+                        </p>
+                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                          {formatNumber(selectedHotspot.total_cases || details?.totalCases || details?.cases || 0)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                          Local risk before map check
+                        </p>
+                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                          {formatHotspotScore(selectedHotspot.base_risk_score)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                          Map status
+                        </p>
+                        <p className="mt-2 text-base font-black leading-6 text-brand-text dark:text-slate-100">
+                          Boundary not matched
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[20px] border border-blue-100 bg-white/85 p-4 text-base leading-7 text-brand-muted dark:border-blue-500/20 dark:bg-slate-950/70 dark:text-slate-300">
+                      <span className="font-black text-brand-text dark:text-slate-100">
+                        Why this is not ranked as a normal hotspot:
+                      </span>{' '}
+                      The system cannot calculate centroid location, distance, within-radius influence, or spatial concentration until the boundary match is fixed.
+                    </div>
+
+                    <div className="mt-3 rounded-[20px] border border-blue-100 bg-white/85 p-4 text-base leading-7 text-brand-muted dark:border-blue-500/20 dark:bg-slate-950/70 dark:text-slate-300">
+                      <span className="font-black text-brand-text dark:text-slate-100">
+                        Recommended map action:
+                      </span>{' '}
+                      {selectedHotspot.recommended_map_action || 'Correct the barangay name or boundary match before using this area in map-based hotspot decisions.'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                          Hotspot score
+                        </p>
+                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                          {formatHotspotScore(selectedHotspot.hotspot_score)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                          Spatial influence
+                        </p>
+                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                          {formatHotspotScore(selectedHotspot.neighbor_influence_score)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                          Spatial context
+                        </p>
+                        <p className="mt-2 text-base font-black leading-6 text-brand-text dark:text-slate-100">
+                          {getHotspotInfluenceLabel(selectedHotspot)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">
+                      {getHotspotReason(selectedHotspot)}
+                    </p>
+
+                    <div className="mt-3 rounded-[20px] border border-white/80 bg-white/85 p-4 text-base leading-7 text-brand-muted dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300">
+                      <span className="font-black text-brand-text dark:text-slate-100">
+                        Spatial rule:
+                      </span>{' '}
+                      {getHotspotInfluenceNote(selectedHotspot)}
+                    </div>
+
+                    <div className="mt-3 rounded-[20px] border border-white/80 bg-white/85 p-4 text-base leading-7 text-brand-muted dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300">
+                      <span className="font-black text-brand-text dark:text-slate-100">
+                        Recommended map action:
+                      </span>{' '}
+                      {selectedHotspot.recommended_map_action || 'Continue routine monitoring.'}
+                    </div>
+                  </>
+                )
+              ) : (
+                <div className="mt-4 rounded-[20px] border border-white/80 bg-white/85 p-4 text-base leading-7 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300">
+                  Run hotspot analysis to show spatial influence, hotspot score, and map-based action guidance for this area.
+                </div>
+              )}
+            </div>
+
             <div className="mt-4 rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950 dark:shadow-none">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
+                  <p className="text-sm font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
                     Decision support recommendation
                   </p>
 
-                  <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-400">
+                  <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">
                     Based on forecast, trend, risk, rainfall, temperature, humidity, population exposure, and density.
                   </p>
                 </div>
@@ -1527,13 +1969,13 @@ export default function MapPage() {
                 </span>
               </div>
 
-              <p className="mt-3 text-sm font-semibold leading-6 text-brand-text dark:text-slate-200">
+              <p className="mt-3 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">
                 {selectedRecommendation}
               </p>
 
               {selectedActionPlan.length > 0 && (
                 <div className="mt-4 rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                     Action plan
                   </p>
 
@@ -1541,7 +1983,7 @@ export default function MapPage() {
                     {selectedActionPlan.slice(0, 8).map((action, index) => (
                       <div
                         key={`${action}-${index}`}
-                        className="flex gap-2 text-sm leading-6 text-brand-text dark:text-slate-300"
+                        className="flex gap-3 text-base leading-7 text-brand-text dark:text-slate-300"
                       >
                         <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
                           {index + 1}
@@ -1556,7 +1998,7 @@ export default function MapPage() {
 
               {selectedRationale.length > 0 && (
                 <div className="mt-3 rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                     Why this recommendation
                   </p>
 
@@ -1564,7 +2006,7 @@ export default function MapPage() {
                     {selectedRationale.slice(0, 8).map((reason, index) => (
                       <div
                         key={`${reason}-${index}`}
-                        className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400"
+                        className="flex gap-3 text-sm leading-6 text-brand-muted dark:text-slate-400"
                       >
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-green dark:text-emerald-300" />
                         <span>{reason}</span>
@@ -1576,14 +2018,14 @@ export default function MapPage() {
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                 <span className="font-black text-brand-text dark:text-slate-200">
                   Boundary:
                 </span>{' '}
                 {selectedBoundaryFeature ? 'Matched to uploaded polygon' : 'Not matched yet'}
               </div>
 
-              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                 <span className="font-black text-brand-text dark:text-slate-200">
                   Population:
                 </span>{' '}
@@ -1616,11 +2058,13 @@ export default function MapPage() {
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
-                {usingMultiSourceRisk
-                  ? 'Barangay-level hotspot monitoring generated from dengue, weather, population, density, and uploaded boundary data.'
-                  : usingBackendForecast
-                    ? 'Barangay-level hotspot monitoring generated from backend forecast output and uploaded boundary data.'
-                    : 'Barangay-level hotspot monitoring generated from validated dengue records and uploaded boundary data.'}
+                {realHotspotReady
+                  ? 'Barangay-level hotspot monitoring generated from dengue risk, spatial influence, spatial concentration, and uploaded boundary data.'
+                  : usingMultiSourceRisk
+                    ? 'Barangay-level hotspot monitoring generated from dengue, weather, population, density, and uploaded boundary data.'
+                    : usingBackendForecast
+                      ? 'Barangay-level hotspot monitoring generated from backend forecast output and uploaded boundary data.'
+                      : 'Barangay-level hotspot monitoring generated from validated dengue records and uploaded boundary data.'}
               </p>
             </div>
 
@@ -1651,13 +2095,13 @@ export default function MapPage() {
 
               <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
-                  High-risk areas
+                  Hotspot areas
                 </p>
                 <p className="mt-2 text-2xl font-black tracking-tight text-white">
-                  {formatNumber(highRiskCount)}
+                  {formatNumber(realHotspotReady ? hotspotPriorityCount : highRiskCount)}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-white/70">
-                  Barangays requiring attention
+                  {realHotspotReady ? 'Confirmed or emerging hotspot areas' : 'Barangays requiring attention'}
                 </p>
               </div>
             </div>
@@ -1786,11 +2230,13 @@ export default function MapPage() {
               </h2>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {usingMultiSourceRisk
-                  ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors follow the multi-source dengue, weather, population, and density score.'
-                  : usingBackendForecast
-                    ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.'
-                    : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
+                {realHotspotReady
+                  ? 'Boundary polygons are displayed from the uploaded GeoJSON. The hotspot analysis now checks each barangay together with within-radius barangays.'
+                  : usingMultiSourceRisk
+                    ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors follow the multi-source dengue, weather, population, and density score.'
+                    : usingBackendForecast
+                      ? 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors now follow the backend forecast result.'
+                      : 'Boundary polygons are displayed from the uploaded GeoJSON. Risk colors appear after dengue records are validated.'}
               </p>
             </div>
 
@@ -1811,7 +2257,7 @@ export default function MapPage() {
                   Hotspot monitoring layer
                 </div>
 
-                <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
+                <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-500">
                   Current base layer: {activeMapStyle.label}
                 </p>
               </div>
@@ -1825,6 +2271,10 @@ export default function MapPage() {
                   <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-bold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
                     {hasRiskData ? 'Risk layer active' : 'Boundary-only view'}
                   </div>
+
+                  <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-bold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
+                    {realHotspotReady ? 'Hotspot analysis ready' : 'Hotspot analysis not run'}
+                  </div>
                 </div>
 
                 {renderMapControls()}
@@ -1833,6 +2283,12 @@ export default function MapPage() {
 
             {mapContent}
           </div>
+
+          {hotspotError && (
+            <div className="mt-4 rounded-[24px] border border-amber-100 bg-amber-50/80 p-4 text-sm leading-6 text-brand-orange shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+              {hotspotError}
+            </div>
+          )}
 
           <div className="mt-4 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
             <button
@@ -1915,7 +2371,7 @@ export default function MapPage() {
             </p>
 
             {hasBoundaryData && (
-              <p className="mt-2 text-xs font-semibold text-brand-muted dark:text-slate-500">
+              <p className="mt-2 text-sm font-semibold text-brand-muted dark:text-slate-500">
                 Loaded boundary features: {formatNumber(boundaryFeatureCount || sourceStatus?.boundary?.validCount || 0)}
               </p>
             )}
@@ -1958,7 +2414,7 @@ export default function MapPage() {
               </h3>
 
               <p className="mt-1 max-w-md text-sm leading-6 text-white/75">
-                Select a barangay on the map to open its multi-source risk profile, weather factors, decision support details, action plan, and recommendation rationale.
+                Select a barangay on the map to open its risk profile, real hotspot score, spatial influence, action plan, and recommendation rationale.
               </p>
             </div>
           </div>
@@ -1974,11 +2430,13 @@ export default function MapPage() {
             </h2>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              {usingMultiSourceRisk
-                ? 'Top barangays are ranked using multi-source risk score, environmental suitability, and DSS priority.'
-                : usingBackendForecast
-                  ? 'Top barangays are ranked using the backend forecast priority output.'
-                  : 'Top barangays will appear after risk scores are computed.'}
+              {realHotspotReady
+                ? 'Top barangays are ranked using real hotspot score, spatial influence, and map boundary matching.'
+                : usingMultiSourceRisk
+                  ? 'Top barangays are ranked using multi-source risk score, environmental suitability, and DSS priority.'
+                  : usingBackendForecast
+                    ? 'Top barangays are ranked using the backend forecast priority output.'
+                    : 'Top barangays will appear after risk scores are computed.'}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -2005,23 +2463,33 @@ export default function MapPage() {
                         </span>
 
                         <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
-                          Forecast: {formatNumber(row.forecast)} cases
+                          {realHotspotReady
+                            ? `Hotspot score: ${formatHotspotScore(row.hotspot_score)}`
+                            : `Forecast: ${formatNumber(row.forecast)} cases`}
                         </p>
 
                         <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">
-                          Multi-source score: {formatRiskScore(row.multiSourceRiskScore || row.riskScore)}
+                          {realHotspotReady
+                            ? `Spatial influence: ${formatHotspotScore(row.neighbor_influence_score)}`
+                            : `Multi-source score: ${formatRiskScore(row.multiSourceRiskScore || row.riskScore)}`}
                         </p>
 
                         <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">
-                          {row.responsePriority || row.decisionSupport?.priority || 'Decision pending'}
+                          {realHotspotReady
+                            ? getHotspotInfluenceLabel(row)
+                            : row.responsePriority || row.decisionSupport?.priority || 'Decision pending'}
                         </p>
                       </div>
                     </div>
 
                     <span
-                      className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getRiskBadgeStyle(row.risk)}`}
+                      className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${
+                        realHotspotReady
+                          ? getHotspotBadgeStyle(row.hotspot_level)
+                          : getRiskBadgeStyle(row.risk)
+                      }`}
                     >
-                      {row.risk}
+                      {realHotspotReady ? getHotspotLevelLabel(row.hotspot_level) : row.risk}
                     </span>
                   </button>
                 ))
@@ -2034,6 +2502,54 @@ export default function MapPage() {
               )}
             </div>
 
+            {realHotspotReady && mapReviewRows.length > 0 && (
+              <div className="mt-5 rounded-[26px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-slate-900">
+                <p className="flex items-center gap-2 text-sm font-black text-blue-700 dark:text-blue-300">
+                  <AlertTriangle className="h-4 w-4" />
+                  Barangays needing map name review
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  These barangays are separated from the normal hotspot ranking because the system cannot match them to a map boundary yet. They may still need urgent attention based on dengue records.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  {mapReviewRows.map((row) => (
+                    <button
+                      key={`map-review-${row.barangay}`}
+                      type="button"
+                      onClick={() => handleSelectBarangay(row.barangay)}
+                      className={`w-full rounded-[20px] border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                        namesMatch(selected, row.barangay)
+                          ? 'border-blue-300 bg-blue-100/80 ring-2 ring-blue-500/20 dark:border-blue-500/40 dark:bg-blue-500/15'
+                          : 'border-blue-100 bg-white/85 dark:border-blue-500/20 dark:bg-slate-950/70'
+                      }`}
+                    >
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-base font-black text-brand-text dark:text-slate-100">
+                            {row.barangay}
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">
+                            Dengue cases: {formatNumber(row.total_cases || 0)} • Local risk before map check: {formatHotspotScore(row.base_risk_score)}
+                          </p>
+
+                          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                            {getMapReviewMessage(row)}
+                          </p>
+                        </div>
+
+                        <span className={`w-fit rounded-full border px-3 py-1.5 text-xs font-black ${getHotspotBadgeStyle(row.hotspot_level)}`}>
+                          {getMapReviewPriorityText(row)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-5 rounded-[24px] border border-blue-100 bg-gradient-to-r from-blue-50 to-sky-50 p-4 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-900 dark:shadow-none">
               <p className="flex items-center gap-2 text-sm font-black text-brand-blue dark:text-blue-300">
                 <MapPinned className="h-4 w-4" />
@@ -2041,16 +2557,41 @@ export default function MapPage() {
               </p>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                {hasRiskData
-                  ? usingMultiSourceRisk
-                    ? 'The hotspot map is using dengue case trend, weather factors, population exposure, density, decision support outputs, and uploaded barangay boundary polygons.'
-                    : usingBackendForecast
-                      ? 'The hotspot map is using backend forecast rows, backend recommendations, and the uploaded barangay boundary polygons.'
-                      : 'The hotspot map is using computed dengue risk rows, decision support outputs, and the uploaded barangay boundary polygons.'
-                  : hasBoundaryData
-                    ? 'The map is currently showing barangay boundary polygons only. Risk coloring and decision support will activate after dengue records are processed.'
-                    : 'The hotspot map will become interactive after the system receives boundary data and computes barangay-level risk rows.'}
+                {realHotspotReady
+                  ? 'The hotspot map now includes real spatial analysis. Barangays are reviewed using their own risk level, within-radius barangays, and clearly labeled nearest fallback context when needed.'
+                  : hasRiskData
+                    ? usingMultiSourceRisk
+                      ? 'The hotspot map is using dengue case trend, weather factors, population exposure, density, decision support outputs, and uploaded barangay boundary polygons.'
+                      : usingBackendForecast
+                        ? 'The hotspot map is using backend forecast rows, backend recommendations, and the uploaded barangay boundary polygons.'
+                        : 'The hotspot map is using computed dengue risk rows, decision support outputs, and the uploaded barangay boundary polygons.'
+                    : hasBoundaryData
+                      ? 'The map is currently showing barangay boundary polygons only. Risk coloring and decision support will activate after dengue records are processed.'
+                      : 'The hotspot map will become interactive after the system receives boundary data and computes barangay-level risk rows.'}
               </p>
+            </div>
+
+            <div className="mt-4 rounded-[24px] border border-violet-100 bg-violet-50/80 p-4 shadow-sm dark:border-violet-500/20 dark:bg-violet-500/10 dark:shadow-none">
+              <p className="flex items-center gap-2 text-sm font-black text-violet-700 dark:text-violet-300">
+                <Radar className="h-4 w-4" />
+                Real hotspot analysis
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                {realHotspotReady
+                  ? `${formatNumber(hotspotPriorityCount)} barangay${hotspotPriorityCount === 1 ? '' : 's'} are confirmed or emerging hotspots. ${formatNumber(hotspotSummary?.barangays_needing_map_review || 0)} barangay${Number(hotspotSummary?.barangays_needing_map_review || 0) === 1 ? '' : 's'} need map name review.`
+                  : 'Click “Run hotspot analysis” to check spatial influence and spatial concentration.'}
+              </p>
+
+              <button
+                type="button"
+                onClick={handleRunHotspotAnalysis}
+                disabled={isLoadingHotspots || !hasBoundaryData}
+                className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white shadow-[0_12px_24px_rgba(109,40,217,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-violet-500 dark:hover:bg-violet-400"
+              >
+                <Radar className="h-3.5 w-3.5" />
+                {isLoadingHotspots ? 'Checking hotspots...' : 'Run hotspot analysis'}
+              </button>
             </div>
 
             <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
@@ -2063,7 +2604,7 @@ export default function MapPage() {
                 {sourceStatus?.boundary?.uploadedName || 'No boundary file uploaded yet'}
               </p>
 
-              <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
+              <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-500">
                 Boundary features: {formatNumber(boundaryFeatureCount || sourceStatus?.boundary?.validCount || 0)}
               </p>
             </div>

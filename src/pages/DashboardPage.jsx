@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BarChart3,
   CheckCircle2,
+  ClipboardCheck,
   Clock3,
   CloudRain,
   Database,
@@ -29,6 +30,7 @@ import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
 
 const actionRoutes = {
+  'Create response action': '/forecast#decision-action-tracking',
   'Upload data': '/upload',
   'Run forecast': '/forecast',
   'Open map': '/map',
@@ -36,6 +38,13 @@ const actionRoutes = {
 }
 
 const actions = [
+  {
+    label: 'Create response action',
+    description: 'Open the action command center and assign barangay response tasks',
+    icon: ClipboardCheck,
+    style:
+      'border-sky-100 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300',
+  },
   {
     label: 'Upload data',
     description: 'Import dengue records and supporting datasets',
@@ -141,7 +150,12 @@ function getStatusStyle(badge = '') {
     return 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300'
   }
 
-  if (value.includes('validated') || value.includes('uploaded')) {
+  if (
+  value.includes('validated') ||
+  value.includes('uploaded') ||
+  value.includes('saved online') ||
+  value.includes('checked')
+) {
     return 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
   }
 
@@ -347,20 +361,314 @@ function hasBackendForecastData(backendForecastResult) {
   )
 }
 
-function buildBackendPriorityRows(backendForecastResult = null) {
+function normalizeDashboardBarangayKey(value = '') {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ñ/g, 'n')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\bpob\.?\b/gi, ' ')
+    .replace(/\bbgy\.?\b/gi, ' ')
+    .replace(/\bbarangay\b/gi, ' ')
+    .replace(/\./g, ' ')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function getDashboardRowBarangayKey(row = {}) {
+  return (
+    row.barangay_key ||
+    row.barangay_original_key ||
+    normalizeDashboardBarangayKey(row.barangay || row.barangay_original || '')
+  )
+}
+
+function normalizeClimateValue(value, type = '') {
+  let number = toNumber(value, 0)
+
+  // Some uploaded CSV values use comma decimals, like 29,496 for 29.496.
+  // If those values were already saved as 29496 in the database, scale them back for display.
+  if (type === 'rainfall' && number > 1000) number = number / 1000
+  if (type === 'temperature' && number > 1000) number = number / 1000
+  if (type === 'humidity' && number > 1000) number = number / 1000
+
+  return number
+}
+
+function averagePositive(values = []) {
+  const cleaned = values
+    .map((value) => Number(value || 0))
+    .filter((value) => Number.isFinite(value) && value > 0)
+
+  if (!cleaned.length) return 0
+
+  return cleaned.reduce((sum, value) => sum + value, 0) / cleaned.length
+}
+
+function getRainfallPressureLabel(value) {
+  const rainfall = Number(value || 0)
+
+  if (rainfall >= 20) return 'High rainfall pressure'
+  if (rainfall >= 8) return 'Moderate rainfall pressure'
+  if (rainfall > 0) return 'Low rainfall pressure'
+
+  return 'Rainfall data unavailable'
+}
+
+function getTemperatureSuitabilityLabel(value) {
+  const temperature = Number(value || 0)
+
+  if (temperature >= 25 && temperature <= 32) return 'Favorable temperature range'
+  if (temperature > 0) return 'Temperature outside ideal range'
+
+  return 'Temperature data unavailable'
+}
+
+function getHumiditySuitabilityLabel(value) {
+  const humidity = Number(value || 0)
+
+  if (humidity >= 70) return 'High humidity suitability'
+  if (humidity >= 50) return 'Moderate humidity suitability'
+  if (humidity > 0) return 'Low humidity suitability'
+
+  return 'Humidity data unavailable'
+}
+
+function getEnvironmentalSuitabilityLabel({ rainfall, temperature, humidity }) {
+  if (!rainfall && !temperature && !humidity) {
+    return 'Environmental data unavailable'
+  }
+
+  const pressureCount = [
+    rainfall >= 20,
+    temperature >= 25 && temperature <= 32,
+    humidity >= 70,
+  ].filter(Boolean).length
+
+  if (pressureCount >= 2) return 'Weather conditions may support dengue spread'
+  if (pressureCount === 1) return 'Some weather conditions need monitoring'
+
+  return 'Weather conditions available for review'
+}
+
+function getPopulationExposureLabel(population) {
+  const value = Number(population || 0)
+
+  if (value >= 10000) return 'High population exposure'
+  if (value >= 5000) return 'Moderate population exposure'
+  if (value > 0) return 'Lower population exposure'
+
+  return 'Population exposure unavailable'
+}
+
+function getDensityLevelLabel(density) {
+  const value = Number(density || 0)
+
+  if (value >= 5000) return 'Very crowded area'
+  if (value >= 1000) return 'Crowded area'
+  if (value > 0) return 'Lower crowding level'
+
+  return 'Density unavailable'
+}
+
+function getForecastPressureLabel(forecast) {
+  const value = Number(forecast || 0)
+
+  if (value >= 60) return 'High forecast pressure'
+  if (value >= 25) return 'Moderate forecast pressure'
+  if (value > 0) return 'Low forecast pressure'
+
+  return 'Forecast pressure unavailable'
+}
+
+function getPriorityLabel(risk = '') {
+  if (risk === 'High') return 'Immediate Response Priority'
+  if (risk === 'Moderate') return 'Preventive Monitoring Priority'
+  if (risk === 'Low') return 'Routine Monitoring Priority'
+
+  return 'Standard Risk Response'
+}
+
+function buildCombinedDatasetLookup(backendMergedDataset = []) {
+  const lookup = new Map()
+
+  if (!Array.isArray(backendMergedDataset)) return lookup
+
+  backendMergedDataset.forEach((row) => {
+    const key = getDashboardRowBarangayKey(row)
+
+    if (!key) return
+
+    if (!lookup.has(key)) {
+      lookup.set(key, [])
+    }
+
+    lookup.get(key).push(row)
+  })
+
+  return lookup
+}
+
+function summarizeCombinedRows(rows = []) {
+  const rainfallValues = rows.map((row) => normalizeClimateValue(row.rainfall, 'rainfall'))
+  const temperatureValues = rows.map((row) => normalizeClimateValue(row.temperature, 'temperature'))
+  const humidityValues = rows.map((row) => normalizeClimateValue(row.humidity, 'humidity'))
+  const populationValues = rows.map((row) => toNumber(row.population, 0))
+  const densityValues = rows.map((row) => toNumber(row.density, 0))
+  const areaValues = rows.map((row) => toNumber(row.boundary_area_sqkm, 0))
+
+  const averageRainfall = averagePositive(rainfallValues)
+  const averageTemperature = averagePositive(temperatureValues)
+  const averageHumidity = averagePositive(humidityValues)
+  const population = averagePositive(populationValues)
+  const density = averagePositive(densityValues)
+  const areaSqKm = averagePositive(areaValues)
+
+  return {
+    averageRainfall,
+    avgRainfall: averageRainfall,
+    averageTemperature,
+    avgTemperature: averageTemperature,
+    averageHumidity,
+    avgHumidity: averageHumidity,
+    population,
+    density,
+    areaSqKm,
+    area_sqkm: areaSqKm,
+    weatherRecordCount: rows.filter((row) => {
+      return row.rainfall !== undefined || row.temperature !== undefined || row.humidity !== undefined
+    }).length,
+    weatherCoverageLabel: rows.length
+      ? 'Loaded from saved combined dataset'
+      : 'Weather data unavailable',
+    rainfallPressure: getRainfallPressureLabel(averageRainfall),
+    temperatureSuitability: getTemperatureSuitabilityLabel(averageTemperature),
+    humiditySuitability: getHumiditySuitabilityLabel(averageHumidity),
+    environmentalSuitability: getEnvironmentalSuitabilityLabel({
+      rainfall: averageRainfall,
+      temperature: averageTemperature,
+      humidity: averageHumidity,
+    }),
+    populationExposure: getPopulationExposureLabel(population),
+    densityLevel: getDensityLevelLabel(density),
+  }
+}
+
+function getMergedDatasetEnvironmentalSummary(backendMergedDataset = [], fallbackRows = []) {
+  const rows = Array.isArray(backendMergedDataset) ? backendMergedDataset : []
+  const summary = summarizeCombinedRows(rows)
+
+  if (
+    summary.averageRainfall > 0 ||
+    summary.averageTemperature > 0 ||
+    summary.averageHumidity > 0
+  ) {
+    return {
+      availableCount: summary.weatherRecordCount,
+      highPressureCount: rows.filter((row) => {
+        const rainfall = normalizeClimateValue(row.rainfall, 'rainfall')
+        const humidity = normalizeClimateValue(row.humidity, 'humidity')
+
+        return rainfall >= 20 || humidity >= 70
+      }).length,
+      averageRainfall: summary.averageRainfall,
+      averageTemperature: summary.averageTemperature,
+      averageHumidity: summary.averageHumidity,
+    }
+  }
+
+  return getEnvironmentalSummary(fallbackRows)
+}
+
+function buildBackendPriorityRows(backendForecastResult = null, backendMergedDataset = []) {
   const backendRows = backendForecastResult?.forecast_results || []
+  const combinedLookup = buildCombinedDatasetLookup(backendMergedDataset)
 
   return backendRows
-    .map((row) => ({
-      barangay: row.barangay || 'Unspecified barangay',
-      forecast: Number(row.forecast_next_4_periods || 0),
-      risk: row.risk_level || 'Low',
-      priorityRank: Number(row.priority_rank || 0),
-      recommendation: row.recommendation || '',
-      historicalTotalCases: Number(row.historical_total_cases || 0),
-      latestPeriod: row.latest_period || '',
-      trendDirection: row.trend_direction || 'Stable',
-    }))
+    .map((row) => {
+      const barangay = row.barangay || 'Unspecified barangay'
+      const barangayKey = row.barangay_key || normalizeDashboardBarangayKey(barangay)
+      const combinedRows = combinedLookup.get(barangayKey) || []
+      const combinedSummary = summarizeCombinedRows(combinedRows)
+      const forecast = Number(row.forecast_next_4_periods || 0)
+      const risk = row.risk_level || 'Low'
+      const cappedRiskScore = Math.min(
+        100,
+        Math.max(0, Number(row.risk_score ?? row.forecast_next_4_periods ?? 0))
+      )
+      const priority = getPriorityLabel(risk)
+      const recommendation = row.recommendation || ''
+      const trendDirection = row.trend_direction || 'Stable'
+      const recentAverage = Number(row.recent_average_cases || 0)
+      const previousAverage = Number(row.previous_average_cases || 0)
+      const forecastNextPeriod = Number(row.forecast_next_period || 0)
+      const historicalTotalCases = Number(row.historical_total_cases || 0)
+
+      const riskComponents = {
+        forecast: Math.min(40, Math.round(forecast / 3)),
+        currentCases: Math.min(20, Math.round(forecastNextPeriod / 2)),
+        trend: trendDirection === 'Increasing' ? 15 : trendDirection === 'Decreasing' ? 3 : 8,
+        environment: combinedSummary.averageRainfall || combinedSummary.averageHumidity ? 15 : 0,
+        population: combinedSummary.population ? 8 : 0,
+        density: combinedSummary.density ? 8 : 0,
+      }
+
+      return {
+        barangay,
+        barangayKey,
+        forecast,
+        forecastedCases: forecast,
+        predictedCases: forecast,
+        currentCases: forecastNextPeriod,
+        previousCases: previousAverage,
+        totalCases: historicalTotalCases,
+        cases: historicalTotalCases,
+        risk,
+        priorityRank: Number(row.priority_rank || 0),
+        recommendation,
+        recommendedAction: recommendation,
+        historicalTotalCases,
+        latestPeriod: row.latest_period || '',
+        trendDirection,
+        trend: trendDirection,
+        trendLabel: trendDirection,
+        recentAverage,
+        previousAverage,
+        riskScore: cappedRiskScore,
+        multiSourceRiskScore: cappedRiskScore,
+        decisionScore: cappedRiskScore,
+        responsePriority: priority,
+        forecastPressure: getForecastPressureLabel(forecast),
+        ...combinedSummary,
+        riskComponents,
+        decisionSupport: {
+          priority,
+          score: cappedRiskScore,
+          summary: recommendation || 'Continue dengue prevention and barangay-level monitoring.',
+          primaryAction: recommendation || 'Continue dengue prevention and barangay-level monitoring.',
+          actions: recommendation ? [recommendation] : ['Continue dengue prevention and barangay-level monitoring.'],
+          rationale: [
+            `${barangay} is ranked #${Number(row.priority_rank || 0) || 'N/A'} in the latest saved forecast.`,
+            `${formatNumber(forecast)} cases are expected in the forecast window.`,
+            combinedSummary.environmentalSuitability,
+          ],
+          trendDirection,
+          densityLevel: combinedSummary.densityLevel,
+          populationExposure: combinedSummary.populationExposure,
+          forecastPressure: getForecastPressureLabel(forecast),
+          environmentalSuitability: combinedSummary.environmentalSuitability,
+          environmentalScore: riskComponents.environment,
+          rainfallPressure: combinedSummary.rainfallPressure,
+          temperatureSuitability: combinedSummary.temperatureSuitability,
+          humiditySuitability: combinedSummary.humiditySuitability,
+          multiSourceRiskScore: cappedRiskScore,
+          riskScore: cappedRiskScore,
+          riskComponents,
+        },
+      }
+    })
     .sort((a, b) => {
       if (a.priorityRank && b.priorityRank) {
         return a.priorityRank - b.priorityRank
@@ -368,6 +676,105 @@ function buildBackendPriorityRows(backendForecastResult = null) {
 
       return b.forecast - a.forecast
     })
+}
+
+function buildDatabaseIntegrationReadiness({
+  backendMergedDataset = [],
+  backendForecastResult = null,
+  sourceStatus = {},
+}) {
+  const mergedRows = Array.isArray(backendMergedDataset) ? backendMergedDataset : []
+  const forecastRows = backendForecastResult?.forecast_results || []
+  const sourceHealth = getSourceHealth(sourceStatus)
+
+  const hasAllSources = sourceHealth.loadedCount >= 4 || mergedRows.length > 0
+  const hasForecastRows = forecastRows.length > 0
+  const hasWeatherRows = mergedRows.some((row) => {
+    return row.weather_match_status === 'Matched' || row.weather_match_status === 'Monthly Weather Average' || row.rainfall !== undefined
+  })
+  const hasPopulationRows = mergedRows.some((row) => {
+    return row.population_match_status === 'Found' || row.population !== undefined
+  })
+  const hasBoundaryRows = mergedRows.some((row) => {
+    return row.boundary_match_status === 'Found' || row.geometry_id || row.boundary_area_sqkm !== undefined
+  })
+  const barangayMatchReady = mergedRows.length > 0 && mergedRows.every((row) => {
+    const status = String(row.barangay_match_status || '').toLowerCase()
+    return status.includes('exact') || status.includes('matched') || status.includes('auto')
+  })
+
+  const checks = [
+    {
+      id: 'sources-loaded',
+      label: 'All required datasets loaded',
+      ready: hasAllSources,
+      value: `${formatNumber(sourceHealth.loadedCount)} / ${formatNumber(Math.max(sourceHealth.sourceCount, 4))}`,
+      description: hasAllSources
+        ? 'Dengue, weather, population, and boundary files are available from the saved workspace.'
+        : 'Load all four required datasets before relying on the dashboard.',
+    },
+    {
+      id: 'barangay-name-check',
+      label: 'Barangay names checked automatically',
+      ready: barangayMatchReady,
+      value: barangayMatchReady ? 'Matched' : 'Needs Review',
+      description: barangayMatchReady
+        ? 'Barangay names in the dengue file were matched with the supporting datasets.'
+        : 'Some barangay names still need review.',
+    },
+    {
+      id: 'weather-linked',
+      label: 'Weather rows linked',
+      ready: hasWeatherRows,
+      value: hasWeatherRows ? 'Linked' : 'Missing',
+      description: hasWeatherRows
+        ? 'Rainfall, temperature, and humidity values are available in the saved combined dataset.'
+        : 'Weather values were not found in the saved combined dataset.',
+    },
+    {
+      id: 'population-linked',
+      label: 'Population rows linked',
+      ready: hasPopulationRows,
+      value: hasPopulationRows ? 'Linked' : 'Missing',
+      description: hasPopulationRows
+        ? 'Population values are available in the saved combined dataset.'
+        : 'Population values were not found in the saved combined dataset.',
+    },
+    {
+      id: 'boundary-linked',
+      label: 'Map boundary rows linked',
+      ready: hasBoundaryRows,
+      value: hasBoundaryRows ? 'Linked' : 'Missing',
+      description: hasBoundaryRows
+        ? 'Barangay map references are available for GIS display.'
+        : 'Boundary references were not found in the saved combined dataset.',
+    },
+    {
+      id: 'forecast-ready',
+      label: 'Forecast and DSS rows generated',
+      ready: hasForecastRows,
+      value: `${formatNumber(forecastRows.length)} barangay row${forecastRows.length === 1 ? '' : 's'}`,
+      description: hasForecastRows
+        ? 'Saved forecast rows are available for dashboard, map, reports, and recommended actions.'
+        : 'Run the forecast to generate barangay risk rows.',
+    },
+  ]
+
+  const readyCount = checks.filter((check) => check.ready).length
+  const score = checks.length ? Math.round((readyCount / checks.length) * 100) : 0
+
+  return {
+    status: score === 100 ? 'Ready' : score > 0 ? 'Needs Review' : 'Pending',
+    score,
+    readyCount,
+    checkCount: checks.length,
+    allSourcesLoaded: hasAllSources,
+    checks,
+    summary: {
+      mergedRowCount: mergedRows.length,
+      forecastRowCount: forecastRows.length,
+    },
+  }
 }
 
 function buildBackendWeeklyTotals(backendForecastResult = null) {
@@ -551,6 +958,7 @@ export default function DashboardPage() {
     activityLogs = [],
     backendForecastResult = null,
     backendDengueSummary = null,
+    backendMergedDataset = [],
     integrationReadiness = null,
     weatherRecords = [],
     resetSampleData,
@@ -559,8 +967,8 @@ export default function DashboardPage() {
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
   const backendPriorityRows = useMemo(() => {
-    return buildBackendPriorityRows(backendForecastResult)
-  }, [backendForecastResult])
+    return buildBackendPriorityRows(backendForecastResult, backendMergedDataset)
+  }, [backendForecastResult, backendMergedDataset])
 
   const backendWeeklyTotals = useMemo(() => {
     return buildBackendWeeklyTotals(backendForecastResult)
@@ -569,6 +977,18 @@ export default function DashboardPage() {
   const backendDashboardStats = useMemo(() => {
     return buildBackendDashboardStats(backendForecastResult, backendDengueSummary)
   }, [backendForecastResult, backendDengueSummary])
+
+  const databaseIntegrationReadiness = useMemo(() => {
+    return buildDatabaseIntegrationReadiness({
+      backendMergedDataset,
+      backendForecastResult,
+      sourceStatus,
+    })
+  }, [backendMergedDataset, backendForecastResult, sourceStatus])
+
+  const displayIntegrationReadiness = usingBackendForecast || backendMergedDataset.length > 0
+    ? databaseIntegrationReadiness
+    : integrationReadiness
 
   const displayStats = usingBackendForecast
     ? backendDashboardStats
@@ -585,11 +1005,9 @@ export default function DashboardPage() {
     ? backendWeeklyTotals
     : dashboardStats?.weeklyTotals || []
 
-  const displayRiskRows = riskRows.length
-    ? riskRows
-    : usingBackendForecast
-      ? backendPriorityRows
-      : riskRows
+  const displayRiskRows = usingBackendForecast
+  ? backendPriorityRows
+  : riskRows
 
   const priority = displayRiskRows.slice(0, 5)
 
@@ -612,11 +1030,13 @@ export default function DashboardPage() {
   const topDecision = getDecisionSupport(topPriority)
   const topMultiSourceScore = getMultiSourceScore(topPriority)
   const averageMultiSourceScore = getAverageMultiSourceScore(displayRiskRows)
-  const environmentalSummary = getEnvironmentalSummary(displayRiskRows)
+  const environmentalSummary = usingBackendForecast || backendMergedDataset.length > 0
+    ? getMergedDatasetEnvironmentalSummary(backendMergedDataset, displayRiskRows)
+    : getEnvironmentalSummary(displayRiskRows)
   const sourceHealth = getSourceHealth(sourceStatus)
-  const integrationStatus = integrationReadiness?.status || 'Pending'
-  const integrationScore = toNumber(integrationReadiness?.score)
-  const integrationChecks = integrationReadiness?.checks || []
+  const integrationStatus = displayIntegrationReadiness?.status || 'Pending'
+  const integrationScore = toNumber(displayIntegrationReadiness?.score)
+  const integrationChecks = displayIntegrationReadiness?.checks || []
   const acceptedRecords = Number(
     backendForecastResult?.valid_row_count ||
       sourceStatus?.dengue?.validCount ||
@@ -629,6 +1049,28 @@ export default function DashboardPage() {
       : Number(displayStats.dataQuality || 0) > 0
         ? 'Needs checking'
         : 'Waiting for data'
+
+  function handleQuickActionNavigation(route) {
+    if (!route) return
+
+    const [path, hash] = route.split('#')
+    const targetPath = hash ? `${path}#${hash}` : path
+
+    navigate(targetPath)
+
+    if (!hash) return
+
+    window.setTimeout(() => {
+      const targetElement = document.getElementById(hash)
+
+      if (targetElement) {
+        targetElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      }
+    }, 220)
+  }
 
   const riskDistribution = [
     {
@@ -1176,7 +1618,7 @@ export default function DashboardPage() {
                 <button
                   key={action.label}
                   type="button"
-                  onClick={() => navigate(actionRoutes[action.label])}
+                  onClick={() => handleQuickActionNavigation(actionRoutes[action.label])}
                   className="group flex w-full items-center justify-between gap-3 rounded-[24px] border border-brand-line bg-gradient-to-r from-white to-slate-50 px-4 py-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
                 >
                   <div className="flex items-center gap-3">

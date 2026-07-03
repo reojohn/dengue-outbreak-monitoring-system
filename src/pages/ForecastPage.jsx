@@ -22,6 +22,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react'
+import DecisionActionTracker from '../components/DecisionActionTracker'
 import SparkChart from '../components/SparkChart'
 import { useData } from '../context/DataContext'
 import {
@@ -33,17 +34,17 @@ import {
 
 const modeMeta = {
   caution: {
-    label: 'Low growth',
+    label: 'Lower estimate',
     multiplier: 0.9,
     chip: 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
   },
   baseline: {
-    label: 'Baseline',
+    label: 'Most likely',
     multiplier: 1,
     chip: 'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
   },
   elevated: {
-    label: 'Moderate increase',
+    label: 'Higher estimate',
     multiplier: 1.15,
     chip: 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
   },
@@ -921,7 +922,7 @@ function buildBackendForecastRows(
   }
 
   const backendPeriods = backendRows.map((backendRow, index) => ({
-    period: readText(backendRow, ['latest_period'], `Backend period ${index + 1}`),
+    period: readText(backendRow, ['latest_period'], `Forecast period ${index + 1}`),
     index,
     sortValue: index,
   }))
@@ -1189,15 +1190,15 @@ return {
   if (!records.length) {
     return {
       title: 'No dengue records available',
-      message: 'Upload historical dengue records before running the forecast workflow.',
+      message: 'Upload dengue case records first before generating a forecast.',
       style: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
       icon: AlertTriangle,
     }
   }
 
   return {
-    title: 'Frontend forecast and decision support computed',
-    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. Forecast, multi-source risk score, weather factors, trend, and DSS priority were generated in the frontend workflow.`,
+    title: 'Forecast ready',
+    message: `${formatNumber(records.length)} dengue record${records.length === 1 ? '' : 's'} loaded from ${sourceStatus?.dengue?.uploadedName || 'current dataset'}. The system prepared the forecast, checked recent changes, weather, population, and barangay size, then ranked the barangays by priority.`,
     style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
     icon: CheckCircle2,
   }
@@ -1387,7 +1388,7 @@ export default function ForecastPage() {
       highestRiskBarangay?.multiSourceRiskScore ||
       0
   )
-  const topEnvironmentalSuitability = highestRiskBarangay?.environmentalSuitability || 'Environmental data unavailable'
+  const topEnvironmentalSuitability = highestRiskBarangay?.environmentalSuitability || 'Weather data unavailable'
   const topRainfallPressure = highestRiskBarangay?.rainfallPressure || 'Rainfall unavailable'
   const topTemperatureSuitability = highestRiskBarangay?.temperatureSuitability || 'Temperature unavailable'
   const topHumiditySuitability = highestRiskBarangay?.humiditySuitability || 'Humidity unavailable'
@@ -1419,28 +1420,28 @@ export default function ForecastPage() {
 
   const multiSourceFactorCards = [
     {
-      label: 'Multi-source score',
+      label: 'Overall risk score',
       value: topRiskScore > 0 ? `${formatNumber(topRiskScore)}/100` : 'No data',
-      helper: 'Combined dengue, weather, exposure, and density score',
+      helper: 'Combined case, weather, population, and crowding score',
       icon: Gauge,
       tone: topRiskScore >= 60 ? 'rose' : topRiskScore >= 25 ? 'amber' : 'blue',
     },
     {
-      label: 'Rainfall pressure',
-      value: topAverageRainfall > 0 ? `${formatDecimal(topAverageRainfall)} mm avg` : 'No data',
+      label: 'Rainfall level',
+      value: topAverageRainfall > 0 ? `${formatDecimal(topAverageRainfall)} mm average` : 'No data',
       helper: topRainfallPressure,
       icon: CloudRain,
       tone: 'blue',
     },
     {
-      label: 'Temperature suitability',
+      label: 'Temperature condition',
       value: topAverageTemperature > 0 ? `${formatDecimal(topAverageTemperature)} °C` : 'No data',
       helper: topTemperatureSuitability,
       icon: Thermometer,
       tone: 'amber',
     },
     {
-      label: 'Humidity suitability',
+      label: 'Humidity level',
       value: topAverageHumidity > 0 ? `${formatDecimal(topAverageHumidity)}%` : 'No data',
       helper: topHumiditySuitability,
       icon: Droplets,
@@ -1452,20 +1453,20 @@ export default function ForecastPage() {
     if (!forecastRows.length) {
       return [
         {
-          title: 'Dataset required',
-          body: 'Upload historical dengue records before generating decision support recommendations.',
+          title: 'Dengue records needed',
+          body: 'Upload dengue case records first so the system can suggest which barangays need attention.',
           icon: Database,
           style: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
         },
         {
-          title: 'Validation required',
-          body: 'Validate dengue records in the upload module so the system can compute barangay-level forecast, risk, and response priority.',
+          title: 'Check the uploaded file',
+          body: 'Review the uploaded dengue records so the system can prepare barangay forecasts, risk levels, and recommended actions.',
           icon: ClipboardList,
           style: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
         },
         {
-          title: 'Automatic DSS ready',
-          body: 'Once records are available, this page will rank barangays by decision score, not by risk color alone.',
+          title: 'Priority list ready',
+          body: 'Once records are available, this page will rank barangays by overall priority, not by color alone.',
           icon: Target,
           style: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
         },
@@ -1474,30 +1475,30 @@ export default function ForecastPage() {
 
     return [
       {
-        title: 'Priority barangays',
+        title: 'Barangays needing attention',
         body: immediatePriorityCount > 0
-          ? `${immediatePriorityCount} barangay${immediatePriorityCount === 1 ? '' : 's'} require immediate, high-priority, or escalated attention under the selected scenario.`
-          : 'No barangay currently requires immediate or escalated response under the selected scenario.',
+          ? `${immediatePriorityCount} barangay${immediatePriorityCount === 1 ? '' : 's'} need quick or high-priority action based on the selected forecast setting.`
+          : 'No barangay currently needs urgent action based on the selected forecast setting.',
         icon: ShieldAlert,
         style: immediatePriorityCount > 0
           ? 'border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
           : 'border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
       },
       {
-        title: 'Increasing trend watch',
+        title: 'Barangays with rising cases',
         body: increasingBarangays > 0
-          ? `${increasingBarangays} barangay${increasingBarangays === 1 ? ' has' : 's have'} increasing recent case movement and should be checked before risk escalates.`
-          : 'Current dengue trends are stable or decreasing across the computed barangays.',
+          ? `${increasingBarangays} barangay${increasingBarangays === 1 ? ' has' : 's have'} rising recent cases and should be checked before the situation gets worse.`
+          : 'Current dengue cases are stable or decreasing across the checked barangays.',
         icon: TrendingUp,
         style: increasingBarangays > 0
           ? 'border-amber-100 bg-amber-50 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
           : 'border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
       },
       {
-        title: 'Top DSS focus',
+        title: 'Main barangay to focus on',
         body: highestRiskBarangay
-          ? `${highestRiskBarangay.barangay} is currently ranked highest by multi-source score because of its forecast, trend, weather, population exposure, and density context.`
-          : 'No top barangay has been computed yet.',
+          ? `${highestRiskBarangay.barangay} is currently the top priority because of its expected cases, recent changes, weather, population, and crowding level.`
+          : 'No top barangay has been identified yet.',
         icon: Target,
         style: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
       },
@@ -1511,8 +1512,8 @@ export default function ForecastPage() {
 
   function handleRunForecast() {
     addActivityLog(
-      usingBackendForecast ? 'Backend forecast saved' : 'Forecast generated',
-      `${selectedMode.label} forecast and decision support computed from ${formatNumber(loadedRecordCount)} dengue records with ${formatNumber(projectedTotal)} projected cases.`
+      usingBackendForecast ? 'Forecast saved' : 'Forecast generated',
+      `${selectedMode.label} forecast prepared from ${formatNumber(loadedRecordCount)} dengue records with ${formatNumber(projectedTotal)} expected cases.`
     )
   }
 
@@ -1529,50 +1530,50 @@ export default function ForecastPage() {
           <div>
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur">
               <Sparkles className="h-3.5 w-3.5" />
-              Forecast intelligence
+              Case forecast
             </div>
 
             <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
-              Forecast and Risk Scoring
+              Dengue Case Forecast
             </h1>
 
             <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
               {usingBackendForecast
-                ? 'FastAPI backend forecast output is combined with weather, population, density, and boundary context for barangay-level risk, DSS ranking, and response recommendations.'
-                : 'Historical dengue records are combined with weather, population, density, and boundary context to generate barangay-level projections, multi-source risk scores, DSS priority, and response recommendations.'}
+                ? 'The latest uploaded data was analyzed together with weather, population, and barangay map details to show which areas may need attention first.'
+                : 'Dengue records are checked together with weather, population, and barangay map details to estimate future cases and suggest actions for each barangay.'}
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <HeroMetric
-                label="Projected total"
+                label="Expected total cases"
                 value={formatNumber(projectedTotal)}
-                helper="Four-week case forecast"
+                helper="Expected cases in the next four weeks"
               />
 
               <HeroMetric
-                label="Urgent DSS alerts"
+                label="Urgent alerts"
                 value={formatNumber(immediatePriorityCount)}
-                helper="Immediate or escalated priorities"
+                helper="Barangays needing quick action"
               />
 
               <HeroMetric
-                label="High-risk areas"
+                label="High-risk barangays"
                 value={formatNumber(highRiskCount)}
-                helper="Barangays above high threshold"
+                helper="Barangays with high warning level"
               />
             </div>
           </div>
 
           <div className="rounded-[28px] border border-white/25 bg-white/20 p-4 shadow-[0_20px_48px_rgba(0,0,0,0.16)] backdrop-blur-xl">
   <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/80">
-    Scenario control
+    Forecast setting
   </p>
 
   <div className="mt-3 grid gap-2">
     {[
-      ['caution', 'Low growth', '0.90x'],
-      ['baseline', 'Baseline', '1.00x'],
-      ['elevated', 'Moderate increase', '1.15x'],
+      ['caution', 'Lower estimate', '0.90x'],
+      ['baseline', 'Most likely', '1.00x'],
+      ['elevated', 'Higher estimate', '1.15x'],
     ].map(([key, label, multiplier]) => {
       const isActive = mode === key
 
@@ -1621,7 +1622,7 @@ export default function ForecastPage() {
   </div>
 
   <div className="mt-4 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs leading-5 text-white/80">
-    Selected mode applies a scenario multiplier before the DSS ranks barangays by decision score.
+    This setting adjusts the estimate before the system ranks barangays by priority.
   </div>
 </div>
         </div>
@@ -1629,7 +1630,7 @@ export default function ForecastPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Projected total"
+          label="Expected total cases"
           value={formatNumber(projectedTotal)}
           helper="Four-week projected cases"
           icon={LineChart}
@@ -1637,25 +1638,25 @@ export default function ForecastPage() {
         />
 
         <StatCard
-          label="Top DSS priority"
+          label="Top priority barangay"
           value={highestRiskBarangay?.barangay || 'No data'}
-          helper={highestRiskBarangay?.responsePriority || 'Top ranked barangay'}
+          helper={highestRiskBarangay?.responsePriority || 'Highest priority barangay'}
           icon={Target}
           tone="rose"
         />
 
         <StatCard
-          label="Historical cases"
+          label="Cases in records"
           value={formatNumber(actualTotal)}
-          helper="Total cases in loaded dataset"
+          helper="Total cases from the uploaded file"
           icon={Activity}
           tone="amber"
         />
 
         <StatCard
-          label="Loaded records"
+          label="Records checked"
           value={formatNumber(loadedRecordCount)}
-          helper={usingBackendForecast ? 'Backend valid records used' : 'Dengue records used'}
+          helper={usingBackendForecast ? 'Valid records used' : 'Dengue records used'}
           icon={Database}
           tone="emerald"
         />
@@ -1684,15 +1685,15 @@ export default function ForecastPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <SectionBadge icon={Gauge} tone="emerald">
-              Multi-source risk factors
+              Factors used for risk level
             </SectionBadge>
 
             <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Environmental and exposure context
+              Weather and community details
             </h2>
 
             <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              The selected top barangay is scored using dengue forecast, trend, rainfall, temperature, humidity, population exposure, density, and boundary-derived area.
+              The top barangay is checked using expected cases, recent changes, rainfall, temperature, humidity, population, crowding level, and barangay land area.
             </p>
           </div>
 
@@ -1717,17 +1718,17 @@ export default function ForecastPage() {
         <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/70">
             <p className="text-sm font-black text-brand-text dark:text-slate-100">
-              Risk score breakdown
+              What affected the score
             </p>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {[
-                ['Forecast', topRiskComponents.forecast || 0],
+                ['Expected cases', topRiskComponents.forecast || 0],
                 ['Current cases', topRiskComponents.currentCases || 0],
-                ['Trend', topRiskComponents.trend || 0],
-                ['Environment', topRiskComponents.environment || 0],
+                ['Recent change', topRiskComponents.trend || 0],
+                ['Weather', topRiskComponents.environment || 0],
                 ['Population', topRiskComponents.population || 0],
-                ['Density', topRiskComponents.density || 0],
+                ['Crowding', topRiskComponents.density || 0],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -1755,7 +1756,7 @@ export default function ForecastPage() {
 
           <div className="rounded-[26px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
             <p className="text-sm font-black text-brand-blue dark:text-blue-300">
-              Weather window used
+              Weather records used
             </p>
 
             <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
@@ -1763,7 +1764,7 @@ export default function ForecastPage() {
             </p>
 
             <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
-              These weather values support risk scoring only. Official thresholds can still be calibrated when more historical dengue data is available.
+              These weather values help estimate risk. The warning levels can still be improved when more dengue records are available.
             </p>
           </div>
         </div>
@@ -1774,17 +1775,17 @@ export default function ForecastPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <SectionBadge icon={Sparkles} tone="amber">
-                Forecast model
+                Forecast details
               </SectionBadge>
 
               <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                Projected weekly cases
+                Expected weekly cases
               </h2>
 
               <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {usingBackendForecast
-                  ? 'Loaded from the backend baseline forecast endpoint after upload validation.'
-                  : 'Computed from recent dengue case movement in the loaded records.'}
+                  ? 'Loaded from the latest checked forecast after upload review.'
+                  : 'Estimated from recent dengue case changes in the uploaded records.'}
               </p>
             </div>
 
@@ -1796,7 +1797,7 @@ export default function ForecastPage() {
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
-                Latest source total
+                Latest case total
               </p>
               <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
                 {formatNumber(latestSourceTotal)}
@@ -1805,7 +1806,7 @@ export default function ForecastPage() {
 
             <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
-                Source periods
+                Periods checked
               </p>
               <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
                 {formatNumber(computedPeriods.length)}
@@ -1814,7 +1815,7 @@ export default function ForecastPage() {
 
             <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
-                Adjustment
+                Forecast adjustment
               </p>
               <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
                 {formatDecimal(selectedMode.multiplier, 2)}x
@@ -1824,26 +1825,26 @@ export default function ForecastPage() {
 
           <div className="mt-5 rounded-[26px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/50 px-4 py-4 text-sm leading-6 text-brand-text shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:text-slate-300">
             <span className="font-black text-brand-text dark:text-slate-100">
-              Computation method:
+              How the forecast was prepared:
             </span>{' '}
             {usingBackendForecast
-              ? 'Backend forecast output, trend direction, weather suitability, population exposure, density, risk score, scenario multiplier, and DSS scoring are used to display priority recommendations.'
-              : 'Recent case averages, trend movement, scenario multiplier, rainfall, temperature, humidity, population exposure, density, and barangay boundary context are used to compute multi-source risk and DSS priority.'}
+              ? 'The latest forecast, recent case changes, weather, population, crowding level, and selected forecast setting are used to show priority recommendations.'
+              : 'Recent case averages, case changes, rainfall, temperature, humidity, population, crowding level, and barangay map details are used to estimate risk and rank barangays by priority.'}
           </div>
 
           <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_40px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-950">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-500">
-                  Projected weekly case values
+                  Expected weekly case values
                 </p>
                 <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">
-                  Forecast curve for the selected scenario.
+                  Expected case pattern for the selected setting.
                 </p>
               </div>
 
               <div className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                {computedPeriods.length} source periods
+                {computedPeriods.length} periods checked
               </div>
             </div>
 
@@ -1852,7 +1853,7 @@ export default function ForecastPage() {
                 <SparkChart values={projectedWeeklyValues} />
               ) : (
                 <div className="flex h-full items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 text-center text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-                  No chart available until dengue records are loaded.
+                  No chart available until dengue records are uploaded.
                 </div>
               )}
             </div>
@@ -1862,21 +1863,21 @@ export default function ForecastPage() {
   <div className="grid gap-3 sm:grid-cols-2">
     <div className="rounded-[22px] border border-blue-100 bg-blue-50/80 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
       <p className="text-sm font-black text-brand-blue dark:text-blue-300">
-        Scenario mode
+        Forecast setting
       </p>
 
       <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-        {selectedMode.label} applies a {selectedMode.multiplier}x adjustment on computed projections.
+        {selectedMode.label} uses a {selectedMode.multiplier}x adjustment on the case estimate.
       </p>
     </div>
 
     <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
       <p className="text-sm font-black text-brand-text dark:text-slate-100">
-        DSS ranking basis
+        How barangays are ranked
       </p>
 
       <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-        Barangays are ranked by multi-source risk score first, then DSS decision score and forecasted cases.
+        Barangays are ranked by overall risk first, then by priority level and expected cases.
       </p>
     </div>
   </div>
@@ -1896,11 +1897,11 @@ export default function ForecastPage() {
 
       <div className="min-w-0">
         <p className="text-sm font-black leading-5">
-          Save forecast run
+          Save forecast result
         </p>
 
         <p className="mt-1 text-xs leading-5 text-white/80">
-          Log this scenario and DSS result.
+          Add this forecast result to the activity log.
         </p>
       </div>
     </div>
@@ -1910,7 +1911,7 @@ export default function ForecastPage() {
 
         <PremiumPanel id="risk-summary" className="p-5 sm:p-6">
           <SectionBadge icon={ShieldAlert} tone="rose">
-            Risk distribution
+            Risk overview
           </SectionBadge>
 
           <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
@@ -1918,7 +1919,7 @@ export default function ForecastPage() {
           </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Barangays grouped by computed forecast risk level.
+            Barangays grouped by their estimated risk level.
           </p>
 
           <div className="mt-5 space-y-4">
@@ -1965,7 +1966,7 @@ export default function ForecastPage() {
 
           <div className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-900/70">
             <p className="text-sm font-black text-brand-text dark:text-slate-100">
-              DSS priority distribution
+              Priority overview
             </p>
 
             <div className="mt-3 space-y-2">
@@ -1988,7 +1989,7 @@ export default function ForecastPage() {
                 ))
               ) : (
                 <p className="rounded-[18px] border border-dashed border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-                  DSS priorities will appear after dengue records are loaded.
+                  Priority levels will appear after dengue records are uploaded.
                 </p>
               )}
             </div>
@@ -1999,7 +2000,7 @@ export default function ForecastPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(380px,1.06fr)]">
         <PremiumPanel id="top-barangays" className="p-5 sm:p-6">
           <SectionBadge icon={MapPin} tone="slate">
-            DSS priority list
+            Priority barangay list
           </SectionBadge>
 
           <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
@@ -2007,7 +2008,7 @@ export default function ForecastPage() {
           </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Showing the most important risk indicators first. Open details only when needed.
+            Showing the barangays that need attention first. Open details only when needed.
           </p>
 
           <div className="mt-5 space-y-3">
@@ -2034,7 +2035,7 @@ export default function ForecastPage() {
                             </span>
 
                             <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
-                              Forecast: {formatNumber(row.forecast)} cases • Score: {formatNumber(row.riskScore || row.multiSourceRiskScore || 0)}/100
+                              Forecast: {formatNumber(row.forecast)} cases • Risk: {formatNumber(row.riskScore || row.multiSourceRiskScore || 0)}/100
                             </p>
                           </div>
                         </div>
@@ -2053,10 +2054,10 @@ export default function ForecastPage() {
                       <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            DSS score
+                            Priority points
                           </p>
                           <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                            {formatNumber(row.decisionScore)} pts
+                            {formatNumber(row.decisionScore)} points
                           </p>
                         </div>
 
@@ -2080,7 +2081,7 @@ export default function ForecastPage() {
 
                         <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            Environment
+                            Weather status
                           </p>
                           <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                             {row.environmentalSuitability || 'Unavailable'}
@@ -2114,11 +2115,11 @@ export default function ForecastPage() {
                             </span>
 
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                              Density: {formatOptionalNumber(row.density, ' people/sq km')}
+                              Crowding: {formatOptionalNumber(row.density, ' people/sq km')}
                             </span>
 
                             <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                              Recent avg: {formatDecimal(row.recentAverage)}
+                              Recent average: {formatDecimal(row.recentAverage)}
                             </span>
                           </div>
 
@@ -2128,7 +2129,7 @@ export default function ForecastPage() {
                                 Rainfall
                               </p>
                               <p className="mt-1 text-xs font-bold text-brand-text dark:text-slate-300">
-                                {formatOptionalNumber(row.averageRainfall || row.avgRainfall, ' mm avg')}
+                                {formatOptionalNumber(row.averageRainfall || row.avgRainfall, ' mm average')}
                               </p>
                             </div>
 
@@ -2194,7 +2195,7 @@ export default function ForecastPage() {
 
         <PremiumPanel className="p-5 sm:p-6 xl:sticky xl:top-24 xl:self-start">
           <SectionBadge icon={Target} tone="emerald">
-            Decision support
+            Recommended actions
           </SectionBadge>
 
           <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
@@ -2202,7 +2203,7 @@ export default function ForecastPage() {
           </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            The DSS reads forecast output, trend, risk score, rainfall, temperature, humidity, population exposure, density, and boundary context before suggesting action.
+            The system checks the forecast, recent case changes, risk level, weather, population, crowding level, and barangay map details before suggesting an action.
           </p>
 
           <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-1">
@@ -2235,7 +2236,7 @@ export default function ForecastPage() {
           <div className="mt-5 overflow-hidden rounded-[28px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950">
             <p className="flex items-center gap-2 text-sm font-black text-brand-orange dark:text-amber-300">
               <ArrowUpRight className="h-4 w-4" />
-              Top response plan
+              Main response plan
             </p>
 
             {topDecisionSupport ? (
@@ -2278,7 +2279,7 @@ export default function ForecastPage() {
                 {Array.isArray(topDecisionSupport.rationale) && topDecisionSupport.rationale.length > 0 && (
                   <div className="rounded-[20px] border border-white/80 bg-white/75 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                     <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                      Why this recommendation
+                      Why this is recommended
                     </p>
 
                     <div className="mt-3 space-y-2">
@@ -2297,12 +2298,15 @@ export default function ForecastPage() {
               </div>
             ) : (
               <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                The forecast ranking updates automatically when new valid dengue records are uploaded.
+                The priority list updates automatically when new valid dengue records are uploaded.
               </p>
             )}
           </div>
         </PremiumPanel>
       </div>
+
+      <DecisionActionTracker priorityRows={topBarangays} />
+
     </div>
   )
 }
