@@ -129,8 +129,8 @@ function normalizeBackendNotification(item = {}, index = 0) {
 
   return {
     id,
-    title: item.title || 'Backend notification',
-    message: item.message || 'A backend alert was generated.',
+    title: item.title || 'System notification',
+    message: item.message || 'A system alert was generated.',
     type: severity,
     severity,
     category: item.category || 'backend',
@@ -612,11 +612,11 @@ function NotificationsPanel({
 
             <div className="min-w-0">
               <p className="text-base font-black tracking-tight text-brand-text dark:text-slate-100">
-                Dengue notifications
+                Dengue alerts and reminders
               </p>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Barangay risk status, dataset readiness, and activity updates.
+                High-risk barangays, hotspot warnings, uploaded data status, and recent system activity.
               </p>
             </div>
           </div>
@@ -685,12 +685,12 @@ function NotificationsPanel({
                       {formatNotificationTime(item.timestamp)}
                     </span>
                     <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-                      {String(item.source || '').includes('backend') ? 'Backend alert' : item.source === 'activity-log' ? 'Activity log' : 'Local fallback'}
+                      {String(item.source || '').includes('backend') || String(item.source || '').includes('database') ? 'System alert' : item.source === 'activity-log' ? 'Recent activity' : 'App reminder'}
                     </span>
                   </div>
 
                   <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-brand-blue dark:text-blue-300">
-                    Open related page
+                    Open details
                   </p>
                 </div>
               </div>
@@ -757,7 +757,7 @@ function NotificationToast({ notification, visible, onClose, onOpen }) {
             </p>
 
             <p className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-cyan-300">
-              Open related page
+              Open details
             </p>
           </button>
 
@@ -916,12 +916,13 @@ export default function AppShell({ children }) {
     if (!dengueRecords.length) return 'No period'
 
     const lastRecord = dengueRecords[dengueRecords.length - 1]
-    return getRecordPeriod(lastRecord) || 'Current period'
+    return getRecordPeriod(lastRecord) || 'Latest period'
   }, [dengueRecords])
 
 
   useEffect(() => {
     let active = true
+    let refreshTimer = null
 
     async function loadBackendNotifications() {
       try {
@@ -938,36 +939,45 @@ export default function AppShell({ children }) {
         if (!active) return
 
         setBackendNotificationError(
-          error?.message || 'Backend notification service is unavailable.'
+          error?.message || 'Notification alerts are temporarily unavailable. Please check if the server is running.'
         )
       }
     }
 
     loadBackendNotifications()
+    refreshTimer = window.setInterval(loadBackendNotifications, 30000)
 
     return () => {
       active = false
+
+      if (refreshTimer) {
+        window.clearInterval(refreshTimer)
+      }
     }
   }, [
     dengueRecords.length,
     riskRows.length,
-    sourceStatus,
+    sourceStatus?.dengue?.validCount,
+    sourceStatus?.weather?.validCount,
+    sourceStatus?.population?.validCount,
+    sourceStatus?.boundary?.validCount,
     activityLogs.length,
-    backendForecastResult,
-    backendIntegrationStatus,
-    backendIntegrationResult,
+    backendForecastResult?.forecast_run_id,
+    backendForecastResult?.updated_at,
+    backendIntegrationStatus?.loaded_source_count,
+    backendIntegrationResult?.integration_run_id,
     location.pathname,
   ])
 
   const systemStatus = hasDengueData
     ? {
-        label: 'Dataset loaded',
+        label: 'Data ready',
         badge: 'Ready',
         chip: 'bg-emerald-50 text-brand-green dark:bg-emerald-500/10 dark:text-emerald-300',
         badgeStyle: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
       }
     : {
-        label: 'Waiting for dataset',
+        label: 'Waiting for data',
         badge: 'Pending',
         chip: 'bg-amber-50 text-brand-orange dark:bg-amber-500/10 dark:text-amber-300',
         badgeStyle: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
@@ -983,8 +993,8 @@ export default function AppShell({ children }) {
     if (backendNotificationError) {
       items.push({
         id: `backend-notification-service-unavailable-${backendNotificationError}`,
-        title: 'Backend notification service unavailable',
-        message: 'The app is temporarily showing local notification fallbacks because backend alerts could not be loaded.',
+        title: 'Notification alerts unavailable',
+        message: 'The system could not load the latest alert list. Please check if the server is running.',
         type: 'warning',
         severity: 'warning',
         source: 'frontend-fallback',
@@ -1002,8 +1012,8 @@ export default function AppShell({ children }) {
     if (!backendNotifications.length && !hasDengueData) {
       items.push({
         id: 'dengue-dataset-pending',
-        title: 'Dengue dataset pending',
-        message: 'Upload and validate historical dengue records before barangay risk statuses can be generated.',
+        title: 'Dengue records needed',
+        message: 'Upload and check the dengue records before barangay risk levels can be shown.',
         type: 'warning',
         severity: 'warning',
         source: 'frontend-fallback',
@@ -1016,8 +1026,8 @@ export default function AppShell({ children }) {
     if (!backendNotifications.length && hasDengueData && riskRows.length === 0) {
       items.push({
         id: 'risk-scoring-pending',
-        title: 'Risk scoring pending',
-        message: 'Dengue records are loaded, but no barangay risk ranking has been computed yet.',
+        title: 'Risk results not ready',
+        message: 'Dengue records are loaded, but the barangay risk ranking is not ready yet.',
         type: 'warning',
         severity: 'warning',
         source: 'frontend-fallback',
@@ -1089,8 +1099,8 @@ export default function AppShell({ children }) {
     ) {
       items.push({
         id: 'barangay-risk-status-stable',
-        title: 'Barangay risk status stable',
-        message: 'All currently ranked barangays are classified as low risk under the available records.',
+        title: 'Barangay risk status is stable',
+        message: 'All currently ranked barangays are low risk based on the available records.',
         type: 'success',
         severity: 'success',
         source: 'frontend-fallback',
@@ -1103,8 +1113,8 @@ export default function AppShell({ children }) {
     if (!backendNotifications.length && !hasBoundaryData) {
       items.push({
         id: 'boundary-layer-pending',
-        title: 'Boundary layer pending',
-        message: 'Upload a barangay boundary GeoJSON file before using the final GIS map layer.',
+        title: 'Map file needed',
+        message: 'Upload the barangay map file before using the final map view.',
         type: 'warning',
         severity: 'warning',
         source: 'frontend-fallback',
