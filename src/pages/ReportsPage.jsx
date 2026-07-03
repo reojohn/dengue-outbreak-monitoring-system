@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -30,13 +30,13 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent } from '../services/api'
+import { createBackendNotificationEvent, getGeospatialHotspots } from '../services/api'
 
 const exportFormats = [
   {
     id: 'pdf',
     label: 'PDF report',
-    desc: 'Downloads a PDF decision-support report',
+    desc: 'Downloads a PDF response report',
     icon: FileText,
     style:
       'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
@@ -44,7 +44,7 @@ const exportFormats = [
   {
     id: 'excel',
     label: 'Excel workbook',
-    desc: 'Downloads an XLSX workbook with DSS sheets',
+    desc: 'Downloads an XLSX workbook with response planning sheets',
     icon: FileSpreadsheet,
     style:
       'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -52,7 +52,7 @@ const exportFormats = [
   {
     id: 'powerpoint',
     label: 'PowerPoint deck',
-    desc: 'Generates a designed PPTX briefing deck',
+    desc: 'Generates a designed briefing presentation',
     icon: Presentation,
     style:
       'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
@@ -60,7 +60,7 @@ const exportFormats = [
   {
     id: 'print',
     label: 'Print view',
-    desc: 'Opens a browser print-ready DSS report',
+    desc: 'Opens a browser print-ready response report',
     icon: Printer,
     style:
       'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
@@ -455,6 +455,297 @@ function getPriorityBadgeStyle(priority) {
   return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
+function getHotspotLevelLabel(level) {
+  const value = String(level || '').trim()
+
+  if (!value) return 'Not checked'
+  if (value === 'Confirmed Hotspot') return 'Confirmed hotspot'
+  if (value === 'Emerging Hotspot') return 'Emerging hotspot'
+  if (value === 'Watch Area') return 'Watch area'
+  if (value === 'Low Spatial Concern') return 'Low map concern'
+  if (value === 'Needs Map Review') return 'Needs map name review'
+
+  return value
+}
+
+function getHotspotBadgeStyle(level) {
+  const value = String(level || '').toLowerCase()
+
+  if (value.includes('confirmed')) {
+    return 'border-rose-100 bg-rose-50 text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+  }
+
+  if (value.includes('emerging')) {
+    return 'border-orange-100 bg-orange-50 text-orange-600 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300'
+  }
+
+  if (value.includes('watch')) {
+    return 'border-amber-100 bg-amber-50 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+  }
+
+  if (value.includes('review')) {
+    return 'border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300'
+  }
+
+  if (value.includes('low')) {
+    return 'border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+  }
+
+  return 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
+function formatHotspotScore(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) {
+    return 'Not checked'
+  }
+
+  return `${Math.round(number)}/100`
+}
+
+function normalizeBarangayName(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ñ/g, 'n')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\bpob\.?\b/gi, ' ')
+    .replace(/\bbgy\.?\b/gi, ' ')
+    .replace(/\bbarangay\b/gi, ' ')
+    .replace(/\./g, ' ')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function namesMatch(first, second) {
+  const a = normalizeBarangayName(first)
+  const b = normalizeBarangayName(second)
+  const compactA = a.replace(/\s+/g, '')
+  const compactB = b.replace(/\s+/g, '')
+
+  if (!a || !b) return false
+  if (a === b) return true
+  if (compactA === compactB) return true
+  if (a.length >= 4 && b.includes(a)) return true
+  if (b.length >= 4 && a.includes(b)) return true
+
+  return false
+}
+
+function getHotspotForBarangay(row = null, hotspotRows = []) {
+  if (!row || !Array.isArray(hotspotRows)) return null
+
+  return (
+    hotspotRows.find((hotspot) => {
+      return (
+        namesMatch(hotspot.barangay, row.barangay) ||
+        namesMatch(hotspot.barangay_key, row.barangay) ||
+        namesMatch(hotspot.barangay, row.barangay_key)
+      )
+    }) || null
+  )
+}
+
+function getHotspotCounts(hotspotRows = []) {
+  return hotspotRows.reduce(
+    (acc, row) => {
+      const level = row.hotspot_level || 'Not checked'
+
+      if (level === 'Confirmed Hotspot') acc.confirmed += 1
+      else if (level === 'Emerging Hotspot') acc.emerging += 1
+      else if (level === 'Watch Area') acc.watch += 1
+      else if (level === 'Needs Map Review') acc.needsReview += 1
+      else if (level === 'Low Spatial Concern') acc.low += 1
+      else acc.notChecked += 1
+
+      return acc
+    },
+    {
+      confirmed: 0,
+      emerging: 0,
+      watch: 0,
+      low: 0,
+      needsReview: 0,
+      notChecked: 0,
+    }
+  )
+}
+
+function getReportDataSourceLabel(usingSavedForecast) {
+  return usingSavedForecast ? 'Saved forecast and uploaded map data' : 'Current workspace data'
+}
+
+
+function toTitleCase(value = '') {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function formatReportDateTime(value, fallback = 'Not recorded') {
+  if (!value) return fallback
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value)
+  }
+
+  return date.toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function getSourceDateValue(item = {}) {
+  return (
+    item.uploadedAt ||
+    item.uploaded_at ||
+    item.uploadDate ||
+    item.upload_date ||
+    item.createdAt ||
+    item.created_at ||
+    item.timestamp ||
+    item.savedAt ||
+    item.saved_at ||
+    ''
+  )
+}
+
+function getReportSourceRows(sourceStatus = {}) {
+  return Object.entries(sourceStatus || {}).map(([key, item = {}]) => {
+    const totalRecords = Number(item.recordCount || item.totalRecords || item.total_records || 0)
+    const validRecords = Number(item.validCount || item.validRecords || item.valid_records || 0)
+    const explicitInvalidRecords = Number(item.invalidCount || item.invalidRecords || item.invalid_records || 0)
+    const invalidRecords = explicitInvalidRecords > 0
+      ? explicitInvalidRecords
+      : Math.max(0, totalRecords - validRecords)
+
+    return {
+      dataset: toTitleCase(key),
+      filename: item.uploadedName || item.filename || item.file_name || 'No file uploaded',
+      uploadedAt: formatReportDateTime(getSourceDateValue(item)),
+      status: item.badge || item.status || 'No status',
+      totalRecords,
+      validRecords,
+      invalidRecords,
+    }
+  })
+}
+
+function formatThresholds(value) {
+  if (!value) {
+    return 'High risk: 70 and above; Moderate risk: 45 to 69; Low risk: below 45.'
+  }
+
+  if (typeof value === 'string') return value
+
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, item]) => `${toTitleCase(key)}: ${item}`)
+      .join('; ')
+  }
+
+  return String(value)
+}
+
+function getTopHighRiskBarangays(rows = []) {
+  const names = rows
+    .filter((row) => row.risk === 'High')
+    .slice(0, 5)
+    .map((row) => row.barangay)
+    .filter(Boolean)
+
+  return names.length ? names.join(', ') : 'No high-risk barangay in the current report.'
+}
+
+function getOfficialReportMetadata({
+  sourceStatus = {},
+  backendForecastResult = null,
+  generatedAt = '',
+  sortedRiskRows = [],
+  usingBackendForecast = false,
+  generatedBy = 'CHO user',
+  role = 'City Health Office / Barangay Dengue Response Team',
+} = {}) {
+  const sourceRows = getReportSourceRows(sourceStatus)
+  const totalRecords = sourceRows.reduce((sum, row) => sum + Number(row.totalRecords || 0), 0)
+  const validRecords = sourceRows.reduce((sum, row) => sum + Number(row.validRecords || 0), 0)
+  const invalidRecords = sourceRows.reduce((sum, row) => sum + Number(row.invalidRecords || 0), 0)
+  const filenames = sourceRows
+    .map((row) => row.filename)
+    .filter((filename) => filename && filename !== 'No file uploaded')
+
+  const uploadedDates = sourceRows
+    .map((row) => row.uploadedAt)
+    .filter((value) => value && value !== 'Not recorded')
+
+  return {
+    reportId: `DR-${new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}`,
+    generatedAt,
+    generatedBy,
+    role,
+    dataSourceFilename: filenames.length ? filenames.join('; ') : 'No uploaded file recorded',
+    uploadDateTime: uploadedDates.length ? uploadedDates.join('; ') : 'Not recorded in current upload status',
+    totalRecords,
+    validRecords,
+    invalidRecords,
+    forecastMethod:
+      backendForecastResult?.forecast_method ||
+      backendForecastResult?.method ||
+      (usingBackendForecast
+        ? 'Saved baseline trend forecast using uploaded dengue case records.'
+        : 'Current workspace forecast and response ranking.'),
+    modelVersion:
+      backendForecastResult?.model_version ||
+      backendForecastResult?.modelVersion ||
+      'Prototype baseline model v1.0',
+    riskThresholds: formatThresholds(
+      backendForecastResult?.risk_thresholds || backendForecastResult?.riskThresholds
+    ),
+    forecastWindow:
+      backendForecastResult?.forecast_window ||
+      backendForecastResult?.forecastWindow ||
+      backendForecastResult?.forecast_period ||
+      'Next 4 reporting periods',
+    topHighRiskBarangays: getTopHighRiskBarangays(sortedRiskRows),
+    sourceRows,
+    limitations: [
+      'Forecast and risk levels depend on the uploaded records available at report generation time.',
+      'The report supports planning and prioritization but does not replace official epidemiological investigation.',
+      'Barangay name mismatches, missing map boundaries, or incomplete weather/population records can affect results.',
+      'Recommendations should be reviewed by authorized health personnel before field implementation.',
+    ],
+  }
+}
+
+function getOfficialMetadataRows(metadata = {}) {
+  return [
+    ['Report ID', metadata.reportId || 'Not assigned'],
+    ['Data source filename', metadata.dataSourceFilename || 'No uploaded file recorded'],
+    ['Upload date/time', metadata.uploadDateTime || 'Not recorded'],
+    ['Generated date/time', metadata.generatedAt || 'Not recorded'],
+    ['Generated by', metadata.generatedBy || 'CHO user'],
+    ['Role', metadata.role || 'City Health Office / Barangay Dengue Response Team'],
+    ['Total records', formatNumber(metadata.totalRecords || 0)],
+    ['Valid records', formatNumber(metadata.validRecords || 0)],
+    ['Invalid records', formatNumber(metadata.invalidRecords || 0)],
+    ['Forecast method', metadata.forecastMethod || 'Not recorded'],
+    ['Model version', metadata.modelVersion || 'Not recorded'],
+    ['Risk thresholds', metadata.riskThresholds || 'Not recorded'],
+    ['Forecast period/window', metadata.forecastWindow || 'Not recorded'],
+    ['Top high-risk barangays', metadata.topHighRiskBarangays || 'No high-risk barangay in the current report.'],
+  ]
+}
+
 function getStatusStyle(badge = '') {
   const value = String(badge || '').toLowerCase()
 
@@ -544,8 +835,8 @@ function getBackendRationale(row = {}) {
   const risk = row.risk_level || 'Low'
 
   return [
-    `Backend baseline forecast projects ${formatNumber(forecast)} case${forecast === 1 ? '' : 's'} for the next four periods.`,
-    `Risk level is classified as ${risk} using the backend forecast output.`,
+    `The saved forecast projects ${formatNumber(forecast)} case${forecast === 1 ? '' : 's'} for the next four periods.`,
+    `Risk level is classified as ${risk} using the saved forecast result.`,
     `Trend direction is ${trend}, based on a recent average of ${formatNumber(recentAverage)} compared with a previous average of ${formatNumber(previousAverage)}.`,
     `The uploaded dataset contains ${formatNumber(historical)} historical case${historical === 1 ? '' : 's'} for this barangay.`,
   ]
@@ -644,21 +935,21 @@ function buildBackendDashboardStats(backendForecastResult = null, backendDengueS
 
 function getTopDecisionText(topBarangay) {
   if (!topBarangay) {
-    return 'No barangay decision support output is available yet.'
+    return 'No barangay response planning output is available yet.'
   }
 
   const decision = getDecisionSupport(topBarangay)
   const profile = getMultiSourceProfile(topBarangay)
 
-  return `${topBarangay.barangay} is the top DSS priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a DSS score of ${formatNumber(decision.score)}, and a multi-source risk score of ${formatNumber(profile.score)}/100.`
+  return `${topBarangay.barangay} is the top Response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a Response score of ${formatNumber(decision.score)}, and a combined data risk score of ${formatNumber(profile.score)}/100.`
 }
 
 function getReportSummary({ sortedRiskRows, dashboardStats }) {
   if (!sortedRiskRows.length) {
     return [
       'No barangay risk ranking is available yet.',
-      'Upload or load dengue case records before generating a complete decision-support report.',
-      'Use mock data only for prototype demonstration while waiting for the official DOH dataset.',
+      'Upload or load dengue case records before generating a complete response planning report.',
+      'Upload the official dengue records when they are available, then generate the report again.',
     ]
   }
 
@@ -673,7 +964,7 @@ function getReportSummary({ sortedRiskRows, dashboardStats }) {
       ? `${decisionCounts.urgent} barangay${decisionCounts.urgent === 1 ? '' : 's'} require immediate, high-priority, or escalated response planning.`
       : 'No barangay currently requires immediate or escalated response planning.',
     topBarangay
-      ? `${topBarangay.barangay} is the highest DSS priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a multi-source risk score of ${formatNumber(topProfile.score)}/100.`
+      ? `${topBarangay.barangay} is the highest Response priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a combined data risk score of ${formatNumber(topProfile.score)}/100.`
       : 'No top priority barangay is available.',
     `Environmental context used in the report includes ${topProfile.rainfallPressure}, ${topProfile.temperatureSuitability}, and ${topProfile.humiditySuitability}.`,
     `The current workspace has a data quality score of ${dashboardStats?.dataQuality || 0}%.`,
@@ -702,13 +993,47 @@ function buildPrintableRationaleList(rationale = []) {
     .join('')
 }
 
-function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title }) {
+function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
+  const hotspotCounts = getHotspotCounts(hotspotRows)
+  const topHotspot = hotspotRows[0] || null
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
+  const officialMetadata = reportMetadata || getOfficialReportMetadata({
+    sourceStatus,
+    generatedAt,
+    sortedRiskRows,
+  })
+
+  const metadataHtml = getOfficialMetadataRows(officialMetadata)
+    .map(([label, value]) => `
+      <tr>
+        <td>${escapeHtml(label)}</td>
+        <td>${escapeHtml(value)}</td>
+      </tr>
+    `)
+    .join('')
+
+  const sourceDetailHtml = (officialMetadata.sourceRows || [])
+    .map((row) => `
+      <tr>
+        <td>${escapeHtml(row.dataset)}</td>
+        <td>${escapeHtml(row.filename)}</td>
+        <td>${escapeHtml(row.uploadedAt)}</td>
+        <td>${escapeHtml(row.status)}</td>
+        <td>${formatNumber(row.totalRecords)}</td>
+        <td>${formatNumber(row.validRecords)}</td>
+        <td>${formatNumber(row.invalidRecords)}</td>
+      </tr>
+    `)
+    .join('')
+
+  const limitationHtml = (officialMetadata.limitations || [])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join('')
 
   const rowsHtml = sortedRiskRows
     .map((row, index) => {
@@ -724,6 +1049,8 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           <td>${formatNumber(profile.score)}/100</td>
           <td>${formatNumber(decision.score)}</td>
           <td>${formatNumber(row.forecast)}</td>
+          <td>${escapeHtml(getHotspotLevelLabel(getHotspotForBarangay(row, hotspotRows)?.hotspot_level))}</td>
+          <td>${escapeHtml(formatHotspotScore(getHotspotForBarangay(row, hotspotRows)?.hotspot_score))}</td>
           <td>${escapeHtml(profile.environmentalSuitability)}</td>
           <td>${escapeHtml(profile.rainfallPressure)}</td>
           <td>${escapeHtml(profile.temperatureSuitability)}</td>
@@ -889,6 +1216,20 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
 
         <h1>${escapeHtml(title)}</h1>
         <p class="muted">Generated: ${escapeHtml(generatedAt)}</p>
+        <p class="muted">Report data: ${escapeHtml(dataSourceLabel)}</p>
+
+        <h2>Official Report Details</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${metadataHtml}
+          </tbody>
+        </table>
 
         <div class="cards">
           <div class="card">
@@ -897,7 +1238,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           </div>
 
           <div class="card">
-            <small>DSS Alerts</small>
+            <small>Response Alerts</small>
             <strong>${formatNumber(decisionCounts.urgent)}</strong>
           </div>
 
@@ -917,7 +1258,13 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
         <p>Moderate risk barangays: ${formatNumber(moderateRiskCount)}</p>
         <p>Low risk barangays: ${formatNumber(lowRiskCount)}</p>
 
-        <h2>DSS Priority Distribution</h2>
+        <h2>Hotspot Summary</h2>
+        <p>Confirmed hotspots: ${formatNumber(hotspotCounts.confirmed)}</p>
+        <p>Emerging hotspots: ${formatNumber(hotspotCounts.emerging)}</p>
+        <p>Barangays needing map name review: ${formatNumber(hotspotCounts.needsReview)}</p>
+        <p>Top hotspot: ${escapeHtml(topHotspot?.barangay || 'Not checked')}</p>
+
+        <h2>Response Priority Distribution</h2>
         <table>
           <thead>
             <tr>
@@ -926,21 +1273,23 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
             </tr>
           </thead>
           <tbody>
-            ${priorityHtml || '<tr><td colspan="2">No DSS priority data available.</td></tr>'}
+            ${priorityHtml || '<tr><td colspan="2">No Response priority data available.</td></tr>'}
           </tbody>
         </table>
 
-        <h2>Barangay Decision Support Ranking</h2>
+        <h2>Barangay Response Planning Ranking</h2>
         <table>
           <thead>
             <tr>
               <th>Rank</th>
               <th>Barangay</th>
               <th>Risk</th>
-              <th>DSS Priority</th>
-              <th>Multi-Source Score</th>
-              <th>DSS Score</th>
+              <th>Response Priority</th>
+              <th>Combined data Score</th>
+              <th>Response Score</th>
               <th>Forecast</th>
+              <th>Hotspot</th>
+              <th>Hotspot Score</th>
               <th>Environment</th>
               <th>Rainfall</th>
               <th>Temperature</th>
@@ -950,7 +1299,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           </thead>
 
           <tbody>
-            ${rowsHtml || '<tr><td colspan="12">No barangay decision-support data available.</td></tr>'}
+            ${rowsHtml || '<tr><td colspan="14">No barangay response planning data available.</td></tr>'}
           </tbody>
         </table>
 
@@ -964,18 +1313,18 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
             ${buildPrintableActionList(topDecision.actions)}
           </ol>
 
-          <h4>Decision Rationale</h4>
+          <h4>Why this recommendation</h4>
           <ul>
             ${buildPrintableRationaleList(topDecision.rationale)}
           </ul>
         </div>
 
-        <h2>Data Source Readiness</h2>
+        <h2>Uploaded Data Readiness</h2>
         <table>
           <thead>
             <tr>
               <th>Dataset</th>
-              <th>Source/File</th>
+              <th>File</th>
               <th>Status</th>
               <th>Valid Records</th>
             </tr>
@@ -985,6 +1334,29 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
             ${sourcesHtml || '<tr><td colspan="4">No source status available.</td></tr>'}
           </tbody>
         </table>
+
+        <h2>Official Source Details</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Dataset</th>
+              <th>Filename</th>
+              <th>Upload date/time</th>
+              <th>Status</th>
+              <th>Total</th>
+              <th>Valid</th>
+              <th>Invalid</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sourceDetailHtml || '<tr><td colspan="7">No uploaded source details available.</td></tr>'}
+          </tbody>
+        </table>
+
+        <h2>Limitations and Assumptions</h2>
+        <ul>
+          ${limitationHtml || '<li>No limitations recorded.</li>'}
+        </ul>
 
         
       </body>
@@ -1002,13 +1374,20 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
   reportWindow.document.close()
 }
 
-function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title }) {
+function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
+  const hotspotCounts = getHotspotCounts(hotspotRows)
+  const topHotspot = hotspotRows[0] || null
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
+  const officialMetadata = reportMetadata || getOfficialReportMetadata({
+    sourceStatus,
+    generatedAt,
+    sortedRiskRows,
+  })
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -1035,14 +1414,18 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     head: [['Metric', 'Value']],
     body: [
       ['Total recorded cases', formatNumber(dashboardStats.totalCases)],
-      ['DSS alerts', formatNumber(decisionCounts.urgent)],
+      ['Urgent alerts', formatNumber(decisionCounts.urgent)],
       ['High-risk barangays', formatNumber(highRiskCount)],
       ['Moderate-risk barangays', formatNumber(moderateRiskCount)],
       ['Low-risk barangays', formatNumber(lowRiskCount)],
+      ['Confirmed hotspots', formatNumber(hotspotCounts.confirmed)],
+      ['Emerging hotspots', formatNumber(hotspotCounts.emerging)],
+      ['Map names needing review', formatNumber(hotspotCounts.needsReview)],
+      ['Report data source', dataSourceLabel],
       ['Four-week forecast total', formatNumber(dashboardStats.fourWeekForecast)],
       ['Data quality score', `${dashboardStats.dataQuality}%`],
-      ['Top DSS barangay', topBarangay?.barangay || 'No data'],
-      ['Top DSS priority', topDecision.priority || 'No data'],
+      ['Top priority barangay', topBarangay?.barangay || 'No data'],
+      ['Top Response priority', topDecision.priority || 'No data'],
     ],
     theme: 'grid',
     styles: {
@@ -1059,11 +1442,37 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     },
   })
 
-  const rankingStartY = doc.lastAutoTable.finalY + 22
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 16,
+    head: [['Official Report Detail', 'Value']],
+    body: getOfficialMetadataRows(officialMetadata),
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 5,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: [4, 120, 87],
+      textColor: [255, 255, 255],
+    },
+    columnStyles: {
+      0: { cellWidth: 150 },
+      1: { cellWidth: 620 },
+    },
+    margin: {
+      left: margin,
+      right: margin,
+    },
+  })
+
+  doc.addPage()
+
+  const rankingStartY = 42
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Barangay Decision Support Ranking', margin, rankingStartY)
+  doc.text('Barangay Response Planning Ranking', margin, rankingStartY)
 
   autoTable(doc, {
     startY: rankingStartY + 12,
@@ -1071,9 +1480,10 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       'Rank',
       'Barangay',
       'Risk',
-      'DSS Priority',
-      'MS Score',
+      'Response Priority',
+      'Combined Score',
       'Forecast',
+      'Hotspot',
       'Environment',
       'Primary Action',
     ]],
@@ -1090,11 +1500,12 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
               decision.priority,
               `${formatNumber(profile.score)}/100`,
               formatNumber(row.forecast),
+              getHotspotLevelLabel(getHotspotForBarangay(row, hotspotRows)?.hotspot_level),
               `${profile.environmentalSuitability}; ${profile.rainfallPressure}; ${profile.temperatureSuitability}; ${profile.humiditySuitability}`,
               decision.primaryAction,
             ]
           })
-        : [['-', 'No barangay decision-support data available', '-', '-', '-', '-', '-', '-']],
+        : [['-', 'No barangay response planning data available', '-', '-', '-', '-', '-', '-', '-']],
     theme: 'grid',
     styles: {
       fontSize: 7,
@@ -1108,8 +1519,9 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       3: { cellWidth: 92 },
       4: { cellWidth: 54 },
       5: { cellWidth: 54 },
-      6: { cellWidth: 180 },
-      7: { cellWidth: 270 },
+      6: { cellWidth: 82 },
+      7: { cellWidth: 128 },
+      8: { cellWidth: 250 },
     },
     headStyles: {
       fillColor: [37, 95, 143],
@@ -1141,9 +1553,9 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   autoTable(doc, {
     startY: 100,
-    head: [['Multi-Source Factor', 'Value']],
+    head: [['Combined data Factor', 'Value']],
     body: [
-      ['Multi-source risk score', `${formatNumber(topProfile.score)}/100`],
+      ['Combined risk score', `${formatNumber(topProfile.score)}/100`],
       ['Environmental suitability', topProfile.environmentalSuitability],
       ['Rainfall pressure', topProfile.rainfallPressure],
       ['Temperature suitability', topProfile.temperatureSuitability],
@@ -1203,7 +1615,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
-  doc.text('Decision Rationale', margin, rationaleStartY)
+  doc.text('Why this recommendation', margin, rationaleStartY)
 
   autoTable(doc, {
     startY: rationaleStartY + 12,
@@ -1231,7 +1643,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
-  doc.text('DSS Priority Distribution', margin, priorityStartY)
+  doc.text('Response Priority Distribution', margin, priorityStartY)
 
   autoTable(doc, {
     startY: priorityStartY + 12,
@@ -1264,11 +1676,11 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Data Source Readiness', margin, 42)
+  doc.text('Uploaded Data Readiness', margin, 42)
 
   autoTable(doc, {
     startY: 58,
-    head: [['Dataset', 'Source/File', 'Status', 'Valid Records']],
+    head: [['Dataset', 'File', 'Status', 'Valid Records']],
     body:
       sources.length > 0
         ? sources.map(([key, item = {}]) => [
@@ -1293,57 +1705,180 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     },
   })
 
-  
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 20,
+    head: [['Dataset', 'Filename', 'Upload date/time', 'Total', 'Valid', 'Invalid']],
+    body:
+      officialMetadata.sourceRows?.length > 0
+        ? officialMetadata.sourceRows.map((row) => [
+            row.dataset,
+            row.filename,
+            row.uploadedAt,
+            formatNumber(row.totalRecords),
+            formatNumber(row.validRecords),
+            formatNumber(row.invalidRecords),
+          ])
+        : [['-', 'No uploaded source details available', '-', '-', '-', '-']],
+    theme: 'grid',
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 4,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: [4, 120, 87],
+      textColor: [255, 255, 255],
+    },
+    columnStyles: {
+      0: { cellWidth: 82 },
+      1: { cellWidth: 230 },
+      2: { cellWidth: 130 },
+      3: { cellWidth: 70 },
+      4: { cellWidth: 70 },
+      5: { cellWidth: 70 },
+    },
+    margin: {
+      left: margin,
+      right: margin,
+    },
+  })
 
-  doc.save('weekly-dengue-decision-support-report.pdf')
+  doc.addPage()
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text('Limitations and Assumptions', margin, 42)
+
+  autoTable(doc, {
+    startY: 58,
+    head: [['No.', 'Limitation / Assumption']],
+    body: (officialMetadata.limitations || []).map((item, index) => [index + 1, item]),
+    theme: 'grid',
+    styles: {
+      fontSize: 9,
+      cellPadding: 6,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: [180, 83, 9],
+      textColor: [255, 255, 255],
+    },
+    columnStyles: {
+      0: { cellWidth: 40 },
+      1: { cellWidth: 720 },
+    },
+    margin: {
+      left: margin,
+      right: margin,
+    },
+  })
+
+  doc.save('weekly-dengue-response-planning-report.pdf')
 }
 
-function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt }) {
+function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
+  const hotspotCounts = getHotspotCounts(hotspotRows)
+  const topHotspot = hotspotRows[0] || null
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
+  const officialMetadata = reportMetadata || getOfficialReportMetadata({
+    sourceStatus,
+    generatedAt,
+    sortedRiskRows,
+  })
 
   const workbook = XLSX.utils.book_new()
 
   const summarySheet = XLSX.utils.aoa_to_sheet([
-    ['Weekly Dengue Decision Support Report'],
+    ['Weekly Dengue Response Planning Report'],
     ['Generated', generatedAt],
+    ['Report ID', officialMetadata.reportId],
+    ['Generated by', officialMetadata.generatedBy],
+    ['Role', officialMetadata.role],
+    ['Forecast method', officialMetadata.forecastMethod],
+    ['Model version', officialMetadata.modelVersion],
+    ['Forecast period/window', officialMetadata.forecastWindow],
     [],
     ['Metric', 'Value'],
     ['Total recorded cases', Number(dashboardStats.totalCases || 0)],
-    ['DSS alerts', decisionCounts.urgent],
+    ['Urgent alerts', decisionCounts.urgent],
     ['Preventive priority barangays', decisionCounts.preventive],
     ['Watch or monitoring barangays', decisionCounts.watch],
     ['Routine monitoring barangays', decisionCounts.routine],
     ['High-risk barangays', highRiskCount],
     ['Moderate-risk barangays', moderateRiskCount],
     ['Low-risk barangays', lowRiskCount],
+    ['Confirmed hotspots', hotspotCounts.confirmed],
+    ['Emerging hotspots', hotspotCounts.emerging],
+    ['Map names needing review', hotspotCounts.needsReview],
+    ['Top hotspot barangay', topHotspot?.barangay || 'Not checked'],
+    ['Report data source', dataSourceLabel],
     ['Four-week forecast total', Number(dashboardStats.fourWeekForecast || 0)],
     ['Data quality score', `${dashboardStats.dataQuality}%`],
-    ['Top DSS barangay', topBarangay?.barangay || 'No data'],
-    ['Top DSS priority', topDecision.priority || 'No data'],
-    ['Top multi-source risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
+    ['Top priority barangay', topBarangay?.barangay || 'No data'],
+    ['Top Response priority', topDecision.priority || 'No data'],
+    ['Top combined data risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
     ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
     ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
     ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
     ['Top humidity suitability', getMultiSourceProfile(topBarangay).humiditySuitability],
-    ['Top DSS summary', topDecision.summary || 'No recommendation available'],
+    ['Top response summary', topDecision.summary || 'No recommendation available'],
     
   ])
 
   summarySheet['!cols'] = [{ wch: 34 }, { wch: 110 }]
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
 
+  const metadataSheet = XLSX.utils.aoa_to_sheet([
+    ['Official Report Metadata', 'Details'],
+    ...getOfficialMetadataRows(officialMetadata),
+  ])
+
+  metadataSheet['!cols'] = [{ wch: 34 }, { wch: 120 }]
+  XLSX.utils.book_append_sheet(workbook, metadataSheet, 'Official Metadata')
+
+  const officialSourcesSheet = XLSX.utils.aoa_to_sheet([
+    ['Dataset', 'Filename', 'Upload Date/Time', 'Status', 'Total Records', 'Valid Records', 'Invalid Records'],
+    ...(officialMetadata.sourceRows || []).map((row) => [
+      row.dataset,
+      row.filename,
+      row.uploadedAt,
+      row.status,
+      Number(row.totalRecords || 0),
+      Number(row.validRecords || 0),
+      Number(row.invalidRecords || 0),
+    ]),
+  ])
+
+  officialSourcesSheet['!cols'] = [
+    { wch: 22 },
+    { wch: 54 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+  ]
+  XLSX.utils.book_append_sheet(workbook, officialSourcesSheet, 'Official Sources')
+
+  const assumptionsSheet = XLSX.utils.aoa_to_sheet([
+    ['No.', 'Limitation / Assumption'],
+    ...(officialMetadata.limitations || []).map((item, index) => [index + 1, item]),
+  ])
+
+  assumptionsSheet['!cols'] = [{ wch: 8 }, { wch: 120 }]
+  XLSX.utils.book_append_sheet(workbook, assumptionsSheet, 'Limitations')
+
   const rankingSheet = XLSX.utils.aoa_to_sheet([
     [
       'Rank',
       'Barangay',
       'Risk Level',
-      'DSS Priority',
-      'Multi-Source Risk Score',
+      'Response Priority',
+      'Combined data Risk Score',
       'Decision Score',
       'Projected Cases',
       'Historical Total Cases',
@@ -1358,6 +1893,8 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       'Forecast Pressure',
       'Population Exposure',
       'Density Level',
+      'Hotspot Level',
+      'Hotspot Score',
       'Primary Action',
       'Recommendation Summary',
     ],
@@ -1385,6 +1922,8 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
         decision.forecastPressure,
         decision.populationExposure,
         decision.densityLevel,
+        getHotspotLevelLabel(getHotspotForBarangay(row, hotspotRows)?.hotspot_level),
+        Number(getHotspotForBarangay(row, hotspotRows)?.hotspot_score || 0),
         decision.primaryAction,
         decision.summary,
       ]
@@ -1411,16 +1950,18 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 26 },
     { wch: 30 },
     { wch: 24 },
+    { wch: 24 },
+    { wch: 18 },
     { wch: 70 },
     { wch: 90 },
   ]
 
-  XLSX.utils.book_append_sheet(workbook, rankingSheet, 'DSS Ranking')
+  XLSX.utils.book_append_sheet(workbook, rankingSheet, 'Response Ranking')
 
   const factorSheet = XLSX.utils.aoa_to_sheet([
     [
       'Barangay',
-      'Multi-Source Risk Score',
+      'Combined data Risk Score',
       'Environmental Suitability',
       'Rainfall Pressure',
       'Average Rainfall',
@@ -1471,7 +2012,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 18 },
   ]
 
-  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Multi-Source Factors')
+  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Combined data Factors')
 
   const actionRows = []
 
@@ -1500,7 +2041,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   })
 
   const actionSheet = XLSX.utils.aoa_to_sheet([
-    ['Barangay', 'DSS Priority', 'Action No.', 'Recommended Action'],
+    ['Barangay', 'Response Priority', 'Action No.', 'Recommended Action'],
     ...actionRows,
   ])
 
@@ -1538,7 +2079,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   })
 
   const rationaleSheet = XLSX.utils.aoa_to_sheet([
-    ['Barangay', 'DSS Priority', 'Decision Rationale'],
+    ['Barangay', 'Response Priority', 'Why this recommendation'],
     ...rationaleRows,
   ])
 
@@ -1551,7 +2092,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   XLSX.utils.book_append_sheet(workbook, rationaleSheet, 'Rationale')
 
   const prioritySheet = XLSX.utils.aoa_to_sheet([
-    ['DSS Priority', 'Barangay Count'],
+    ['Response Priority', 'Barangay Count'],
     ...priorityDistribution.map((item) => [
       item.priority,
       item.count,
@@ -1565,6 +2106,42 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   XLSX.utils.book_append_sheet(workbook, prioritySheet, 'Priority Distribution')
 
+
+  const hotspotSheet = XLSX.utils.aoa_to_sheet([
+    [
+      'Rank',
+      'Barangay',
+      'Hotspot Level',
+      'Hotspot Score',
+      'Nearby Barangay Effect',
+      'Map Status',
+      'Recommended Map Action',
+    ],
+    ...(hotspotRows.length > 0
+      ? hotspotRows.map((row, index) => [
+          index + 1,
+          row.barangay || 'Unknown barangay',
+          getHotspotLevelLabel(row.hotspot_level),
+          Number(row.hotspot_score || 0),
+          Number(row.neighbor_influence_score || 0),
+          row.has_map_boundary === false ? 'Map name needs review' : 'Map area matched',
+          row.recommended_map_action || 'Continue routine monitoring.',
+        ])
+      : [['-', 'No hotspot analysis available', '-', '-', '-', '-', '-']]),
+  ])
+
+  hotspotSheet['!cols'] = [
+    { wch: 8 },
+    { wch: 30 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 24 },
+    { wch: 24 },
+    { wch: 80 },
+  ]
+
+  XLSX.utils.book_append_sheet(workbook, hotspotSheet, 'Hotspot Summary')
+
   const sourceRows = Object.entries(sourceStatus || {}).map(([key, item = {}]) => [
     key,
     item.uploadedName || 'No file uploaded',
@@ -1574,7 +2151,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   ])
 
   const sourceSheet = XLSX.utils.aoa_to_sheet([
-    ['Dataset', 'Source/File', 'Status', 'Valid Records', 'Total Records'],
+    ['Dataset', 'File', 'Status', 'Valid Records', 'Total Records'],
     ...sourceRows,
   ])
 
@@ -1586,27 +2163,34 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 16 },
   ]
 
-  XLSX.utils.book_append_sheet(workbook, sourceSheet, 'Source Readiness')
+  XLSX.utils.book_append_sheet(workbook, sourceSheet, 'Uploaded Data')
 
-  XLSX.writeFile(workbook, 'weekly-dengue-decision-support-report.xlsx')
+  XLSX.writeFile(workbook, 'weekly-dengue-response planning-report.xlsx')
 }
 
-async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt }) {
+async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
+  const hotspotCounts = getHotspotCounts(hotspotRows)
+  const topHotspot = hotspotRows[0] || null
   const topBarangays = sortedRiskRows.slice(0, 5)
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
   const sources = Object.entries(sourceStatus || {}).slice(0, 8)
+  const officialMetadata = reportMetadata || getOfficialReportMetadata({
+    sourceStatus,
+    generatedAt,
+    sortedRiskRows,
+  })
 
   const pptx = new pptxgen()
 
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Barangay-Level Dengue Outbreak Prevention System'
-  pptx.subject = 'Weekly Dengue Decision Support Report'
-  pptx.title = 'Weekly Dengue Decision Support Report'
+  pptx.subject = 'Weekly Dengue Response Planning Report'
+  pptx.title = 'Weekly Dengue Response Planning Report'
   pptx.company = 'Caraga State University'
   pptx.theme = {
     headFontFace: 'Aptos Display',
@@ -1838,7 +2422,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     line: { color: COLORS.paleBlue },
   })
 
-  titleSlide.addText('DSS\nReport', {
+  titleSlide.addText('Response\nReport', {
     x: 10.1,
     y: 2.35,
     w: 1.95,
@@ -1851,11 +2435,36 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     fit: 'shrink',
   })
 
+  const metadataSlide = pptx.addSlide()
+  addSlideTitle(
+    metadataSlide,
+    'Official Report Details',
+    'Report metadata, source record counts, forecast method, thresholds, and forecast window.'
+  )
+
+  metadataSlide.addTable(
+    [
+      ['Field', 'Details'],
+      ...getOfficialMetadataRows(officialMetadata),
+    ],
+    {
+      x: 0.65,
+      y: 1.28,
+      w: 12,
+      h: 5.45,
+      fontSize: 7.4,
+      color: COLORS.navy,
+      border: { color: COLORS.line, pt: 1 },
+      fill: { color: COLORS.white },
+      margin: 0.05,
+    }
+  )
+
   const summarySlide = pptx.addSlide()
   addSlideTitle(
     summarySlide,
-    'Decision Summary',
-    'Key monitoring and decision-support indicators from the current workspace.'
+    'Response Summary',
+    'Key monitoring and response planning indicators from the current workspace.'
   )
 
   addMetricCard(
@@ -1870,7 +2479,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   addMetricCard(
     summarySlide,
-    'DSS alerts',
+    'Urgent alerts',
     formatNumber(decisionCounts.urgent),
     3.55,
     1.45,
@@ -1929,7 +2538,34 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     }
   )
 
-  summarySlide.addText('Decision Guidance', {
+  summarySlide.addText('Hotspot Summary', {
+    x: 0.72,
+    y: 5.55,
+    w: 4.8,
+    h: 0.28,
+    fontSize: 14,
+    bold: true,
+    color: COLORS.navy,
+    margin: 0,
+  })
+
+  summarySlide.addText(
+    `Confirmed: ${formatNumber(hotspotCounts.confirmed)} • Emerging: ${formatNumber(hotspotCounts.emerging)} • Needs map name review: ${formatNumber(hotspotCounts.needsReview)}`,
+    {
+      x: 0.72,
+      y: 5.92,
+      w: 5.4,
+      h: 0.46,
+      fontSize: 10.5,
+      color: COLORS.slate,
+      margin: 0.08,
+      fill: { color: COLORS.white },
+      line: { color: COLORS.line },
+      fit: 'shrink',
+    }
+  )
+
+  summarySlide.addText('Response Guidance', {
     x: 6.72,
     y: 3.18,
     w: 4.5,
@@ -1960,13 +2596,13 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const prioritySlide = pptx.addSlide()
   addSlideTitle(
     prioritySlide,
-    'DSS Priority Barangays',
-    'Top barangays ranked by DSS priority, decision score, risk level, and projected dengue cases.'
+    'Response Priority Barangays',
+    'Top barangays ranked by Response priority, decision score, risk level, and projected dengue cases.'
   )
 
   prioritySlide.addTable(
     [
-      ['Rank', 'Barangay', 'Risk', 'DSS Priority', 'Score', 'Projected'],
+      ['Rank', 'Barangay', 'Risk', 'Response Priority', 'Score', 'Projected'],
       ...(topBarangays.length > 0
         ? topBarangays.map((row, index) => {
             const decision = getDecisionSupport(row)
@@ -1980,7 +2616,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
               formatNumber(row.forecast),
             ]
           })
-        : [['-', 'No barangay DSS data available', '-', '-', '-', '-']]),
+        : [['-', 'No barangay Response data available', '-', '-', '-', '-']]),
     ],
     {
       x: 0.65,
@@ -2058,13 +2694,13 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const factorSlide = pptx.addSlide()
   addSlideTitle(
     factorSlide,
-    'Multi-Source Risk Factors',
-    'Environmental, population, density, and forecast factors used by the DSS ranking.'
+    'Combined data Risk Factors',
+    'Environmental, population, density, and forecast factors used by the Response ranking.'
   )
 
   factorSlide.addTable(
     [
-      ['Barangay', 'MS Score', 'Environment', 'Rainfall', 'Temperature', 'Humidity'],
+      ['Barangay', 'Combined Score', 'Environment', 'Rainfall', 'Temperature', 'Humidity'],
       ...(topBarangays.length > 0
         ? topBarangays.map((row) => {
             const profile = getMultiSourceProfile(row)
@@ -2078,7 +2714,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
               profile.humiditySuitability,
             ]
           })
-        : [['No barangay DSS data available', '-', '-', '-', '-', '-']]),
+        : [['No barangay Response data available', '-', '-', '-', '-', '-']]),
     ],
     {
       x: 0.65,
@@ -2095,8 +2731,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   factorSlide.addText(
     topBarangay
-      ? `${topBarangay.barangay} currently has a multi-source score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
-      : 'Multi-source factors will appear after dengue, weather, population, and boundary records are available.',
+      ? `${topBarangay.barangay} currently has a combined data score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
+      : 'Combined data factors will appear after dengue, weather, population, and boundary records are available.',
     {
       x: 0.75,
       y: 4.95,
@@ -2117,11 +2753,11 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     actionSlide,
     'Top Response Plan',
     topBarangay
-      ? `${topBarangay.barangay} is currently the top DSS priority.`
+      ? `${topBarangay.barangay} is currently the top Response priority.`
       : 'No top response plan is available yet.'
   )
 
-  actionSlide.addText(topDecision.summary || 'No DSS recommendation available yet.', {
+  actionSlide.addText(topDecision.summary || 'No Recommended response available yet.', {
     x: 0.78,
     y: 1.25,
     w: 11.85,
@@ -2172,36 +2808,38 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const sourceSlide = pptx.addSlide()
   addSlideTitle(
     sourceSlide,
-    'Data Source Readiness',
+    'Uploaded Data Readiness',
     'Validation status of uploaded or available datasets.'
   )
 
   sourceSlide.addTable(
     [
-      ['Dataset', 'Source/File', 'Status', 'Valid Records'],
-      ...(sources.length > 0
-        ? sources.map(([key, item = {}]) => [
-            key,
-            item.uploadedName || 'No file uploaded',
-            item.badge || 'No status',
-            `${formatNumber(item.validCount || 0)} / ${formatNumber(item.recordCount || 0)}`,
+      ['Dataset', 'Filename', 'Upload Date/Time', 'Total', 'Valid', 'Invalid'],
+      ...(officialMetadata.sourceRows?.length > 0
+        ? officialMetadata.sourceRows.map((row) => [
+            row.dataset,
+            row.filename,
+            row.uploadedAt,
+            formatNumber(row.totalRecords),
+            formatNumber(row.validRecords),
+            formatNumber(row.invalidRecords),
           ])
-        : [['-', 'No source status available', '-', '-']]),
+        : [['-', 'No uploaded source details available', '-', '-', '-', '-']]),
     ],
     {
       x: 0.65,
       y: 1.35,
       w: 12,
       h: 4.4,
-      fontSize: 10,
+      fontSize: 8.4,
       color: COLORS.navy,
       border: { color: COLORS.line, pt: 1 },
       fill: { color: COLORS.white },
-      margin: 0.08,
+      margin: 0.06,
     }
   )
 
-  sourceSlide.addText('DSS Priority Distribution', {
+  sourceSlide.addText('Response Priority Distribution', {
     x: 0.65,
     y: 6.04,
     w: 3.5,
@@ -2217,7 +2855,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
       ? priorityDistribution
           .map((item) => `${item.priority}: ${item.count}`)
           .join('  •  ')
-      : 'No DSS priority data available yet.',
+      : 'No Response priority data available yet.',
     {
       x: 4.05,
       y: 5.96,
@@ -2232,8 +2870,50 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     }
   )
 
+  const limitationsSlide = pptx.addSlide()
+  addSlideTitle(
+    limitationsSlide,
+    'Limitations and Assumptions',
+    'Important notes for interpreting the report before field implementation.'
+  )
+
+  limitationsSlide.addTable(
+    [
+      ['No.', 'Limitation / Assumption'],
+      ...(officialMetadata.limitations || []).map((item, index) => [index + 1, item]),
+    ],
+    {
+      x: 0.75,
+      y: 1.45,
+      w: 11.8,
+      h: 3.2,
+      fontSize: 11,
+      color: COLORS.navy,
+      border: { color: COLORS.line, pt: 1 },
+      fill: { color: COLORS.white },
+      margin: 0.08,
+    }
+  )
+
+  limitationsSlide.addText(
+    `Top high-risk barangays: ${officialMetadata.topHighRiskBarangays}`,
+    {
+      x: 0.75,
+      y: 5.12,
+      w: 11.8,
+      h: 0.72,
+      fontSize: 13,
+      bold: true,
+      color: COLORS.navy,
+      margin: 0.14,
+      fill: { color: COLORS.yellow },
+      line: { color: 'FDE68A' },
+      fit: 'shrink',
+    }
+  )
+
   await pptx.writeFile({
-    fileName: 'weekly-dengue-decision-support-report.pptx',
+    fileName: 'weekly-dengue-response-planning-report.pptx',
   })
 }
 
@@ -2344,6 +3024,9 @@ export default function ReportsPage() {
   const [format, setFormat] = useState('pdf')
   const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
   const [expandedPriorityBarangay, setExpandedPriorityBarangay] = useState(null)
+  const [hotspotResult, setHotspotResult] = useState(null)
+  const [hotspotError, setHotspotError] = useState('')
+  const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
 
   const {
     dashboardStats = {},
@@ -2359,15 +3042,15 @@ export default function ReportsPage() {
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
   const displayRiskRows = useMemo(() => {
-    if (Array.isArray(riskRows) && riskRows.length > 0) {
-      return riskRows
-    }
-
     if (usingBackendForecast) {
       return buildBackendRiskRows(backendForecastResult)
     }
 
-    return riskRows
+    if (Array.isArray(riskRows) && riskRows.length > 0) {
+      return riskRows
+    }
+
+    return []
   }, [usingBackendForecast, backendForecastResult, riskRows])
 
   const displayDashboardStats = useMemo(() => {
@@ -2387,6 +3070,63 @@ export default function ReportsPage() {
     return getSortedRiskRows(displayRiskRows)
   }, [displayRiskRows])
 
+  useEffect(() => {
+    let active = true
+
+    async function loadReportHotspots() {
+      if (!usingBackendForecast && !Number(sourceStatus?.boundary?.validCount || 0)) {
+        return
+      }
+
+      setIsLoadingHotspotReport(true)
+
+      try {
+        const result = await getGeospatialHotspots()
+
+        if (!active) return
+
+        setHotspotResult(result)
+        setHotspotError('')
+      } catch (error) {
+        if (!active) return
+
+        setHotspotError(
+          error?.message ||
+            'Hotspot summary is not available yet. Upload the map file and generate the dengue forecast first.'
+        )
+      } finally {
+        if (active) {
+          setIsLoadingHotspotReport(false)
+        }
+      }
+    }
+
+    loadReportHotspots()
+
+    return () => {
+      active = false
+    }
+  }, [usingBackendForecast, sourceStatus?.boundary?.validCount, backendForecastResult])
+
+
+  const hotspotRows = useMemo(() => {
+    return Array.isArray(hotspotResult?.hotspots) ? hotspotResult.hotspots : []
+  }, [hotspotResult])
+
+  const hotspotSummary = hotspotResult?.summary || null
+  const hotspotCounts = getHotspotCounts(hotspotRows)
+  const hotspotPriorityCount = hotspotCounts.confirmed + hotspotCounts.emerging
+  const reportDataSourceLabel = getReportDataSourceLabel(usingBackendForecast)
+  const officialReportMetadata = useMemo(() => {
+    return getOfficialReportMetadata({
+      sourceStatus,
+      backendForecastResult,
+      generatedAt,
+      sortedRiskRows,
+      usingBackendForecast,
+    })
+  }, [sourceStatus, backendForecastResult, generatedAt, sortedRiskRows, usingBackendForecast])
+  const officialSourceRows = officialReportMetadata.sourceRows || []
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const topBarangays = sortedRiskRows.slice(0, 5)
@@ -2414,7 +3154,7 @@ export default function ReportsPage() {
     try {
       await createBackendNotificationEvent({
         title: 'Report generated',
-        message: `${formatLabel} decision-support report was generated at ${exportedAt}.`,
+        message: `${formatLabel} response planning report was generated at ${exportedAt}.`,
         severity: 'success',
         category: 'report_generated',
         to: '/reports',
@@ -2423,6 +3163,11 @@ export default function ReportsPage() {
           format: formatLabel,
           generatedAt: exportedAt,
           priorityBarangayCount: sortedRiskRows.length,
+          hotspotCount: hotspotPriorityCount,
+          reportDataSource: reportDataSourceLabel,
+          reportId: officialReportMetadata.reportId,
+          generatedBy: officialReportMetadata.generatedBy,
+          role: officialReportMetadata.role,
         },
       })
     } catch {
@@ -2431,47 +3176,44 @@ export default function ReportsPage() {
   }
 
   async function handleExport() {
-    const title = 'Weekly Dengue Decision Support Report'
+    const title = 'Weekly Dengue Response Planning Report'
     const exportedAt = getCurrentDateTime()
+    const exportPayload = {
+      dashboardStats: displayDashboardStats,
+      riskRows: sortedRiskRows,
+      sourceStatus,
+      generatedAt: exportedAt,
+      hotspotRows,
+      hotspotSummary,
+      dataSourceLabel: reportDataSourceLabel,
+      reportMetadata: officialReportMetadata,
+    }
 
     if (format === 'pdf') {
       downloadPdfReport({
-        dashboardStats: displayDashboardStats,
-        riskRows: sortedRiskRows,
-        sourceStatus,
-        generatedAt: exportedAt,
+        ...exportPayload,
         title,
       })
 
-      addActivityLog?.('Report exported', 'PDF decision-support report downloaded directly.')
+      addActivityLog?.('Report exported', 'PDF response planning report downloaded directly.')
       await recordReportGenerated('PDF', exportedAt)
       return
     }
 
     if (format === 'excel') {
-      downloadExcelWorkbook({
-        dashboardStats: displayDashboardStats,
-        riskRows: sortedRiskRows,
-        sourceStatus,
-        generatedAt: exportedAt,
-      })
+      downloadExcelWorkbook(exportPayload)
 
-      addActivityLog?.('Report exported', 'Excel decision-support workbook downloaded as an XLSX file.')
+      addActivityLog?.('Report exported', 'Excel response planning workbook downloaded as an XLSX file.')
       await recordReportGenerated('Excel', exportedAt)
       return
     }
 
     if (format === 'powerpoint') {
-      await downloadPowerPointDeck({
-        dashboardStats: displayDashboardStats,
-        riskRows: sortedRiskRows,
-        sourceStatus,
-        generatedAt: exportedAt,
-      })
+      await downloadPowerPointDeck(exportPayload)
 
       addActivityLog?.(
         'Report exported',
-        'PowerPoint decision-support briefing deck generated and downloaded as a PPTX file.'
+        'PowerPoint response planning briefing deck generated and downloaded as a PPTX file.'
       )
       await recordReportGenerated('PowerPoint', exportedAt)
 
@@ -2479,14 +3221,11 @@ export default function ReportsPage() {
     }
 
     openPrintableReport({
-      dashboardStats: displayDashboardStats,
-      riskRows: sortedRiskRows,
-      sourceStatus,
-      generatedAt: exportedAt,
+      ...exportPayload,
       title,
     })
 
-    addActivityLog?.('Print view opened', 'Printable decision-support report opened for manual printing.')
+    addActivityLog?.('Print view opened', 'Printable response planning report opened for manual printing.')
     await recordReportGenerated('Printable', exportedAt)
   }
 
@@ -2504,17 +3243,17 @@ export default function ReportsPage() {
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
                 <Sparkles className="h-3.5 w-3.5" />
-                Decision reporting center
+                Report center
               </div>
 
               <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
-                Reports and Export
+                Reports and Exports
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
                 {usingBackendForecast
-                  ? 'Decision-ready outputs generated from backend forecast, DSS priority ranking, and response recommendations.'
-                  : 'Decision-ready outputs for CHO review, barangay coordination, and weekly dengue response planning.'}
+                  ? 'Ready-to-use reports generated from saved forecast, Response priority ranking, and response recommendations.'
+                  : 'Ready-to-use reports for CHO review, barangay coordination, and weekly dengue response planning.'}
               </p>
             </div>
 
@@ -2526,7 +3265,7 @@ export default function ReportsPage() {
               />
 
               <HeroMetric
-                label="DSS alerts"
+                label="Urgent alerts"
                 value={formatNumber(decisionCounts.urgent)}
                 helper="Urgent response priorities"
               />
@@ -2579,7 +3318,7 @@ export default function ReportsPage() {
                 </span>
 
                 <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-                  {sortedRiskRows.length > 0 ? 'DSS data ready' : 'Waiting for DSS data'}
+                  {sortedRiskRows.length > 0 ? 'Report data ready' : 'Waiting for report data'}
                 </span>
               </div>
             </div>
@@ -2611,7 +3350,7 @@ export default function ReportsPage() {
                     style={{ color: '#64748b' }}
                     className="mt-1 text-xs font-semibold leading-5"
                   >
-                    Export the current DSS report.
+                    Export the current Response report.
                   </p>
                 </div>
               </div>
@@ -2640,7 +3379,7 @@ export default function ReportsPage() {
         />
 
         <StatCard
-          label="DSS alerts"
+          label="Urgent alerts"
           value={formatNumber(decisionCounts.urgent)}
           helper="Immediate, high, or escalated priorities"
           icon={ShieldAlert}
@@ -2656,9 +3395,9 @@ export default function ReportsPage() {
         />
 
         <StatCard
-          label="Avg MS score"
+          label="Avg Combined score"
           value={`${formatNumber(averageMultiSourceScore)}/100`}
-          helper="Average multi-source risk"
+          helper="Average combined data risk"
           icon={Gauge}
           tone="blue"
         />
@@ -2698,22 +3437,156 @@ export default function ReportsPage() {
         </div>
       )}
 
+
+      <div className={`relative overflow-hidden rounded-[28px] border px-5 py-4 text-sm leading-6 shadow-[0_18px_40px_rgba(15,23,42,0.07)] ${
+        hotspotRows.length > 0
+          ? 'border-violet-100 bg-violet-50/80 text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300'
+          : 'border-amber-100 bg-amber-50/80 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+      }`}>
+        <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/60 blur-2xl dark:bg-white/5" />
+
+        <div className="relative flex items-start gap-3">
+          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm ring-1 ring-white/70 dark:bg-white/10 dark:ring-white/10">
+            <MapPin className="h-5 w-5" />
+          </div>
+
+          <div>
+            <p className="font-black">Hotspot summary {isLoadingHotspotReport ? 'is updating' : hotspotRows.length > 0 ? 'ready' : 'not available yet'}</p>
+
+            <p className="mt-1">
+              {hotspotRows.length > 0
+                ? `${formatNumber(hotspotPriorityCount)} barangay${hotspotPriorityCount === 1 ? '' : 's'} are confirmed or emerging hotspots. ${formatNumber(hotspotCounts.needsReview)} barangay${hotspotCounts.needsReview === 1 ? '' : 's'} need map name review before final hotspot interpretation.`
+                : hotspotError || 'Hotspot information will appear after the map file and saved forecast are available.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <PremiumPanel id="official-report-details" className="p-5 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <SectionBadge icon={FileText} tone="slate">
+              Official report details
+            </SectionBadge>
+
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              Report metadata
+            </h2>
+
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+              These details are included in the PDF, Excel, PowerPoint, and print outputs for a more official review-ready report.
+            </p>
+          </div>
+
+          <span className="w-fit rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+            {officialReportMetadata.reportId}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Generated by', officialReportMetadata.generatedBy],
+            ['Role', officialReportMetadata.role],
+            ['Generated date/time', officialReportMetadata.generatedAt],
+            ['Forecast window', officialReportMetadata.forecastWindow],
+            ['Forecast method', officialReportMetadata.forecastMethod],
+            ['Model version', officialReportMetadata.modelVersion],
+            ['Risk thresholds', officialReportMetadata.riskThresholds],
+            ['Top high-risk barangays', officialReportMetadata.topHighRiskBarangays],
+          ].map(([label, value]) => (
+            <div
+              key={`metadata-${label}`}
+              className="rounded-[22px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                {label}
+              </p>
+
+              <p className="mt-2 break-words text-sm font-black leading-6 text-brand-text dark:text-slate-100">
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+            <p className="text-sm font-black text-brand-text dark:text-slate-100">
+              Uploaded file record counts
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm dark:divide-slate-800">
+              <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:bg-slate-950 dark:text-slate-400">
+                <tr>
+                  <th className="px-4 py-3">Dataset</th>
+                  <th className="px-4 py-3">Filename</th>
+                  <th className="px-4 py-3">Upload date/time</th>
+                  <th className="px-4 py-3">Total</th>
+                  <th className="px-4 py-3">Valid</th>
+                  <th className="px-4 py-3">Invalid</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {officialSourceRows.length > 0 ? (
+                  officialSourceRows.map((row) => (
+                    <tr key={`official-source-${row.dataset}`} className="text-brand-muted dark:text-slate-400">
+                      <td className="px-4 py-3 font-black text-brand-text dark:text-slate-100">{row.dataset}</td>
+                      <td className="max-w-[280px] break-all px-4 py-3">{row.filename}</td>
+                      <td className="px-4 py-3">{row.uploadedAt}</td>
+                      <td className="px-4 py-3 font-bold">{formatNumber(row.totalRecords)}</td>
+                      <td className="px-4 py-3 font-bold text-brand-green dark:text-emerald-300">{formatNumber(row.validRecords)}</td>
+                      <td className="px-4 py-3 font-bold text-brand-orange dark:text-amber-300">{formatNumber(row.invalidRecords)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-4 py-4 text-brand-muted dark:text-slate-400" colSpan={6}>
+                      No uploaded file metadata available yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/80 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10">
+          <p className="text-sm font-black text-brand-orange dark:text-amber-300">
+            Limitations and assumptions
+          </p>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {officialReportMetadata.limitations.map((item, index) => (
+              <div key={`limitation-${index}`} className="flex gap-2 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-sm leading-6 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                  {index + 1}
+                </span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </PremiumPanel>
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
         <PremiumPanel id="decision-brief" className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <SectionBadge icon={Sparkles} tone="blue">
-                Decision brief
+                Response brief
               </SectionBadge>
 
               <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                Weekly decision-support brief
+                Weekly response planning brief
               </h2>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {usingBackendForecast
-                  ? 'Planning-ready report based on backend forecast, risk level, DSS priority, and recommended actions.'
-                  : 'Planning-ready report based on forecast, risk level, DSS priority, and recommended actions.'}
+                  ? 'Planning-ready report based on saved forecast, risk level, Response priority, and recommended actions.'
+                  : 'Planning-ready report based on forecast, risk level, Response priority, and recommended actions.'}
               </p>
             </div>
 
@@ -2726,7 +3599,7 @@ export default function ReportsPage() {
           <div className="mt-5 rounded-[26px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-5 shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
             <h3 className="flex items-center gap-2 text-lg font-black text-brand-text dark:text-slate-100">
               <ClipboardList className="h-5 w-5 text-brand-blue" />
-              Executive decision summary
+              Main response summary
             </h3>
 
             <div className="mt-4 space-y-3">
@@ -2755,7 +3628,7 @@ export default function ReportsPage() {
   <div className="min-w-0">
     <div className="inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
       <MapPin className="h-3.5 w-3.5" />
-      DSS priority list
+      Response priority list
     </div>
 
     <h3 className="mt-3 text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
@@ -2763,7 +3636,7 @@ export default function ReportsPage() {
     </h3>
 
     <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-      Showing the highest-ranked barangays based on DSS score, risk level, forecasted cases, and recommended response priority.
+      Showing the highest-ranked barangays based on Response score, risk level, forecasted cases, and recommended response priority.
     </p>
   </div>
 
@@ -2828,7 +3701,7 @@ export default function ReportsPage() {
                         <div className="mt-3 grid gap-2 sm:grid-cols-4">
                           <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              MS score
+                              Combined score
                             </p>
                             <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                               {formatNumber(profile.score)}/100
@@ -2846,7 +3719,7 @@ export default function ReportsPage() {
 
                           <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              DSS score
+                              Response score
                             </p>
                             <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                               {formatNumber(decision.score)} pts
@@ -2884,7 +3757,7 @@ export default function ReportsPage() {
                           <div className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
                             <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/80">
                               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                                Multi-source risk factors
+                                Combined data risk factors
                               </p>
 
                               <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -2895,6 +3768,7 @@ export default function ReportsPage() {
                                   ['Population exposure', decision.populationExposure, Users],
                                   ['Density level', decision.densityLevel, Gauge],
                                   ['Forecast pressure', decision.forecastPressure, BarChart3],
+                                  ['Hotspot level', getHotspotLevelLabel(getHotspotForBarangay(row, hotspotRows)?.hotspot_level), MapPin],
                                 ].map(([label, value, Icon]) => (
                                   <div
                                     key={`${row.barangay}-${label}`}
@@ -2918,7 +3792,7 @@ export default function ReportsPage() {
 
                             <div className="mt-3 rounded-[20px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
                               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
-                                DSS recommendation
+                                Recommended response
                               </p>
 
                               <p className="mt-1 text-sm leading-6 text-brand-text dark:text-slate-300">
@@ -3014,7 +3888,7 @@ export default function ReportsPage() {
           </h2>
 
           <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Select the output format, then generate the decision-support report.
+            Select the output format, then generate the response planning report.
           </p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -3087,14 +3961,14 @@ export default function ReportsPage() {
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {usingBackendForecast
-                ? 'PDF, Excel, PowerPoint, and print reports now include backend forecast totals, DSS priority, recommended action plan, decision rationale, and multi-source environmental risk factors.'
-                : 'PDF, Excel, PowerPoint, and print reports now include DSS priority, multi-source risk score, rainfall, temperature, humidity, population exposure, density, action plan, and decision rationale.'}
+                ? 'PDF, Excel, PowerPoint, and print reports now include saved forecast totals, response priority, recommended actions, reasons for the recommendation, and hotspot summary when available.'
+                : 'PDF, Excel, PowerPoint, and print reports include response priority, combined risk score, rainfall, temperature, humidity, population, density, action plan, and reasons for the recommendation.'}
             </p>
           </div>
 
           <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <p className="text-sm font-black text-brand-text dark:text-slate-100">
-              DSS priority distribution
+              Response priority distribution
             </p>
 
             <div className="mt-3 space-y-2">
@@ -3115,7 +3989,7 @@ export default function ReportsPage() {
                 ))
               ) : (
                 <p className="text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  DSS priority distribution will appear after dengue records are loaded.
+                  Response priority distribution will appear after dengue records are loaded.
                 </p>
               )}
             </div>
@@ -3141,12 +4015,12 @@ export default function ReportsPage() {
 
                 <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                    Multi-source factors
+                    Combined data factors
                   </p>
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {[
-                      ['MS score', `${formatNumber(topProfile.score)}/100`],
+                      ['Combined score', `${formatNumber(topProfile.score)}/100`],
                       ['Environment', topProfile.environmentalSuitability],
                       ['Rainfall', topProfile.rainfallPressure],
                       ['Temperature', topProfile.temperatureSuitability],
@@ -3261,11 +4135,11 @@ export default function ReportsPage() {
 
         <PremiumPanel className="p-5 sm:p-6">
           <SectionBadge icon={Database} tone="slate">
-            Source readiness
+            Uploaded data readiness
           </SectionBadge>
 
           <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-            Data source readiness
+            Uploaded data readiness
           </h2>
 
           <div className="mt-5 grid gap-3 lg:grid-cols-2">

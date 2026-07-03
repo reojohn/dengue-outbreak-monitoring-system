@@ -4,6 +4,7 @@ import {
   buildBackendIntegrationDataset,
   getBackendIntegrationStatus,
   getLatestBackendIntegrationDataset,
+  getUploadDatabaseStatus,
   getLatestSavedBoundaryGeoJson,
   getLatestSavedForecast,
   resetBackendIntegrationWorkspace,
@@ -19,24 +20,56 @@ const emptySourceStatus = {
     badge: 'Not loaded',
     recordCount: 0,
     validCount: 0,
+    invalidCount: 0,
+    uploadId: '',
+    datasetType: 'dengue',
+    uploadedAt: '',
+    uploaded_at: '',
+    uploadDateTime: '',
+    fileType: '',
+    status: '',
   },
   weather: {
     uploadedName: '',
     badge: 'Not loaded',
     recordCount: 0,
     validCount: 0,
+    invalidCount: 0,
+    uploadId: '',
+    datasetType: 'weather',
+    uploadedAt: '',
+    uploaded_at: '',
+    uploadDateTime: '',
+    fileType: '',
+    status: '',
   },
   population: {
     uploadedName: '',
     badge: 'Not loaded',
     recordCount: 0,
     validCount: 0,
+    invalidCount: 0,
+    uploadId: '',
+    datasetType: 'population',
+    uploadedAt: '',
+    uploaded_at: '',
+    uploadDateTime: '',
+    fileType: '',
+    status: '',
   },
   boundary: {
     uploadedName: '',
     badge: 'Not loaded',
     recordCount: 0,
     validCount: 0,
+    invalidCount: 0,
+    uploadId: '',
+    datasetType: 'boundary',
+    uploadedAt: '',
+    uploaded_at: '',
+    uploadDateTime: '',
+    fileType: '',
+    status: '',
   },
 }
 
@@ -137,6 +170,82 @@ function normalizeSourceStatus(sourceStatus = {}) {
       ...emptySourceStatus.boundary,
       ...(sourceStatus.boundary || {}),
     },
+  }
+}
+
+function getUploadTimestamp(upload = {}) {
+  return (
+    upload.uploaded_at ||
+    upload.uploadedAt ||
+    upload.uploadDateTime ||
+    upload.created_at ||
+    upload.createdAt ||
+    ''
+  )
+}
+
+function getUploadBadge(status = '') {
+  const value = String(status || '').toLowerCase()
+
+  if (
+    value.includes('valid') ||
+    value.includes('saved') ||
+    value.includes('upload') ||
+    value.includes('complete')
+  ) {
+    return 'Saved Online'
+  }
+
+  if (value.includes('review') || value.includes('pending')) {
+    return 'Needs Review'
+  }
+
+  if (value.includes('fail') || value.includes('error')) {
+    return 'Upload Issue'
+  }
+
+  return status ? 'Saved Online' : 'Not loaded'
+}
+
+function normalizeDatabaseUploadStatus(upload = {}, fallback = {}, datasetType = '') {
+  const uploadedAt = getUploadTimestamp(upload) || getUploadTimestamp(fallback)
+  const originalRowCount = Number(
+    upload.original_row_count ??
+      upload.originalRowCount ??
+      fallback.recordCount ??
+      0
+  )
+  const validRowCount = Number(
+    upload.valid_row_count ??
+      upload.validRowCount ??
+      fallback.validCount ??
+      0
+  )
+  const invalidRowCount = Number(
+    upload.invalid_row_count ??
+      upload.invalidRowCount ??
+      fallback.invalidCount ??
+      0
+  )
+
+  return {
+    ...fallback,
+    uploadedName:
+      upload.original_filename ||
+      upload.originalFilename ||
+      fallback.uploadedName ||
+      '',
+    badge: getUploadBadge(upload.status || fallback.status || fallback.badge),
+    recordCount: Number.isFinite(originalRowCount) ? originalRowCount : 0,
+    validCount: Number.isFinite(validRowCount) ? validRowCount : 0,
+    invalidCount: Number.isFinite(invalidRowCount) ? invalidRowCount : 0,
+    uploadId: String(upload.upload_id || upload.uploadId || fallback.uploadId || ''),
+    datasetType: upload.dataset_type || upload.datasetType || fallback.datasetType || datasetType,
+    fileType: upload.file_type || upload.fileType || fallback.fileType || '',
+    status: upload.status || fallback.status || '',
+    uploadedAt,
+    uploaded_at: uploadedAt,
+    uploadDateTime: uploadedAt,
   }
 }
 
@@ -1461,6 +1570,51 @@ export function DataProvider({ children }) {
     setWorkspace(normalizeWorkspace(emptyWorkspace))
   }
 
+  async function loadLatestUploadDatabaseStatus({ silent = false } = {}) {
+    try {
+      const result = await getUploadDatabaseStatus()
+      const uploads = result?.uploads || {}
+      const requiredTypes = Array.isArray(result?.required_types)
+        ? result.required_types
+        : ['dengue', 'weather', 'population', 'boundary']
+
+      updateWorkspace((current) => {
+        const currentSourceStatus = normalizeSourceStatus(current.sourceStatus)
+        const nextSourceStatus = {
+          ...currentSourceStatus,
+        }
+
+        requiredTypes.forEach((datasetType) => {
+          const upload = uploads[datasetType]
+
+          if (!upload) return
+
+          nextSourceStatus[datasetType] = normalizeDatabaseUploadStatus(
+            upload,
+            currentSourceStatus[datasetType] || {},
+            datasetType
+          )
+        })
+
+        return {
+          ...current,
+          sourceStatus: normalizeSourceStatus(nextSourceStatus),
+        }
+      })
+
+      return result
+    } catch (error) {
+      if (!silent) {
+        addActivityLog(
+          'Saved upload details unavailable',
+          error?.message || 'The app could not load the latest uploaded file details.'
+        )
+      }
+
+      return null
+    }
+  }
+
   async function syncBackendIntegrationStatus({ silent = false } = {}) {
     try {
       const status = await getBackendIntegrationStatus()
@@ -1639,12 +1793,18 @@ export function DataProvider({ children }) {
         boundaryRecords: [boundaryGeoJson],
         sourceStatus: normalizeSourceStatus({
           ...(current.sourceStatus || {}),
-          boundary: {
-            uploadedName,
-            badge: 'Saved Online',
-            recordCount: Number(result.feature_count || features.length),
-            validCount: Number(result.feature_count || features.length),
-          },
+          boundary: normalizeDatabaseUploadStatus(
+            result.upload || {},
+            {
+              ...(current.sourceStatus?.boundary || {}),
+              uploadedName,
+              badge: 'Saved Online',
+              recordCount: Number(result.feature_count || features.length),
+              validCount: Number(result.feature_count || features.length),
+              invalidCount: Number(current.sourceStatus?.boundary?.invalidCount || 0),
+            },
+            'boundary'
+          ),
         }),
       }))
 
@@ -1680,6 +1840,7 @@ export function DataProvider({ children }) {
   }
 
   useEffect(() => {
+    loadLatestUploadDatabaseStatus({ silent: true })
     syncBackendIntegrationStatus({ silent: true })
     loadLatestSavedBoundaryGeoJson({ silent: true })
     loadLatestBackendIntegrationDataset({ silent: true })
@@ -1758,6 +1919,7 @@ export function DataProvider({ children }) {
     loadMockDengueData,
     clearMockDengueData,
 
+    loadLatestUploadDatabaseStatus,
     syncBackendIntegrationStatus,
     buildBackendIntegrationWorkspace,
     loadLatestBackendIntegrationDataset,
