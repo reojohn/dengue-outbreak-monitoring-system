@@ -853,8 +853,55 @@ function buildBackendRiskRows(backendForecastResult = null) {
       const actions = getBackendActionPlan(row)
       const rationale = getBackendRationale(row)
 
+      const combinedRiskScore = Number(
+        row.multi_source_risk_score ??
+          row.combined_risk_score ??
+          row.risk_score ??
+          0
+      )
+
+      const environmentalScore = Number(row.environmental_score || 0)
+
+      const environmentalSuitability =
+        row.environmental_suitability ||
+        row.environmentalSuitability ||
+        'Environmental data unavailable'
+
+      const rainfallPressure =
+        row.rainfall_pressure ||
+        row.rainfallPressure ||
+        'Rainfall pressure unavailable'
+
+      const temperatureSuitability =
+        row.temperature_suitability ||
+        row.temperatureSuitability ||
+        'Temperature suitability unavailable'
+
+      const humiditySuitability =
+        row.humidity_suitability ||
+        row.humiditySuitability ||
+        'Humidity suitability unavailable'
+
+      const populationExposure =
+        row.population_exposure ||
+        row.populationExposure ||
+        'Population exposure unavailable'
+
+      const densityLevel =
+        row.density_level ||
+        row.densityLevel ||
+        'Density unavailable'
+
+      const averageRainfall = Number(row.average_rainfall || row.averageRainfall || 0)
+      const averageTemperature = Number(row.average_temperature || row.averageTemperature || 0)
+      const averageHumidity = Number(row.average_humidity || row.averageHumidity || 0)
+      const population = Number(row.population || 0)
+      const density = Number(row.density || 0)
+      const riskComponents = row.risk_components || row.riskComponents || {}
+
       return {
         barangay: row.barangay || 'Unspecified barangay',
+        barangayKey: row.barangay_key || '',
         risk: row.risk_level || 'Low',
         forecast: Number(row.forecast_next_4_periods || 0),
         forecastedCases: Number(row.forecast_next_4_periods || 0),
@@ -875,6 +922,28 @@ function buildBackendRiskRows(backendForecastResult = null) {
         primaryAction: recommendation,
         recommendedActions: actions,
         recommendationRationale: rationale,
+
+        multiSourceRiskScore: combinedRiskScore,
+        multiSourceScore: combinedRiskScore,
+        riskScore: combinedRiskScore,
+        environmentalScore,
+        environmentalSuitability,
+        environmentalSuitabilityLabel: environmentalSuitability,
+        rainfallPressure,
+        rainfallPressureLabel: rainfallPressure,
+        temperatureSuitability,
+        temperatureSuitabilityLabel: temperatureSuitability,
+        humiditySuitability,
+        humiditySuitabilityLabel: humiditySuitability,
+        populationExposure,
+        densityLevel,
+        averageRainfall,
+        averageTemperature,
+        averageHumidity,
+        population,
+        density,
+        riskComponents,
+
         decisionSupport: {
           priority,
           score,
@@ -883,9 +952,17 @@ function buildBackendRiskRows(backendForecastResult = null) {
           actions,
           rationale,
           trendDirection: row.trend_direction || 'Stable',
-          densityLevel: 'Density unavailable',
-          populationExposure: 'Population exposure unavailable',
+          densityLevel,
+          populationExposure,
           forecastPressure: `${row.risk_level || 'Low'} forecast pressure`,
+          environmentalSuitability,
+          environmentalScore,
+          rainfallPressure,
+          temperatureSuitability,
+          humiditySuitability,
+          multiSourceRiskScore: combinedRiskScore,
+          riskScore: combinedRiskScore,
+          riskComponents,
         },
       }
     })
