@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import decision_actions, forecasts, geospatial, integration, notifications, uploads
+from app.routers import decision_actions, forecasts, geospatial, integration, notifications, reports, uploads
 from sqlalchemy import text
 from app.database import engine, test_database_connection
+
 app = FastAPI(
     title="Dengue Predictive Analytics API",
     description="Backend API for dengue data ingestion, forecasting, risk scoring, and reporting.",
@@ -29,6 +30,7 @@ app.include_router(forecasts.router)
 app.include_router(geospatial.router)
 app.include_router(notifications.router)
 app.include_router(decision_actions.router)
+app.include_router(reports.router)
 
 
 @app.get("/")
@@ -46,6 +48,7 @@ def health_check():
         "backend": "running",
     }
 
+
 @app.get("/health/database")
 def database_health_check():
     connected_at = test_database_connection()
@@ -55,6 +58,7 @@ def database_health_check():
         "database": "supabase_postgresql",
         "connected_at": connected_at,
     }
+
 
 @app.post("/health/database/test-insert")
 def database_test_insert():

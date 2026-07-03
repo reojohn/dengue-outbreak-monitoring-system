@@ -229,4 +229,28 @@ export async function getLatestSavedBoundaryGeoJson() {
   return handleApiResponse(response)
 }
 
+
+export async function saveGeneratedReport(payload) {
+  const response = await fetch(`${API_BASE_URL}/reports/generated`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function getGeneratedReports({ limit = 20 } = {}) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+  })
+
+  const response = await fetch(`${API_BASE_URL}/reports/generated?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+
+
 export { API_BASE_URL }

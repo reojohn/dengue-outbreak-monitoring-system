@@ -30,7 +30,7 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getGeospatialHotspots } from '../services/api'
+import { createBackendNotificationEvent, getGeospatialHotspots, saveGeneratedReport } from '../services/api'
 
 const exportFormats = [
   {
@@ -3150,7 +3150,85 @@ export default function ReportsPage() {
   }, [sortedRiskRows, displayDashboardStats])
 
 
-  async function recordReportGenerated(formatLabel, exportedAt) {
+  function getReportFilePath(formatLabel) {
+    if (formatLabel === 'PDF') {
+      return 'local_download:weekly-dengue-response-planning-report.pdf'
+    }
+
+    if (formatLabel === 'Excel') {
+      return 'local_download:weekly-dengue-response-planning-report.xlsx'
+    }
+
+    if (formatLabel === 'PowerPoint') {
+      return 'local_download:weekly-dengue-response-planning-report.pptx'
+    }
+
+    return 'browser_print_view'
+  }
+
+  function getForecastRunId() {
+    return (
+      backendForecastResult?.database_forecast_run_id ||
+      backendForecastResult?.forecast_run?.forecast_run_id ||
+      backendForecastResult?.forecast_run_id ||
+      null
+    )
+  }
+
+  function buildReportStorageSummary(reportMetadataForExport = {}) {
+    const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
+
+    return {
+      totalCases: Number(displayDashboardStats.totalCases || 0),
+      forecastTotal: Number(displayDashboardStats.fourWeekForecast || 0),
+      dataQuality: Number(displayDashboardStats.dataQuality || 0),
+      priorityBarangayCount: sortedRiskRows.length,
+      urgentAlertCount: decisionCounts.urgent,
+      highRiskBarangayCount: highRiskCount,
+      moderateRiskBarangayCount: moderateRiskCount,
+      lowRiskBarangayCount: lowRiskCount,
+      confirmedHotspotCount: hotspotCounts.confirmed,
+      emergingHotspotCount: hotspotCounts.emerging,
+      mapReviewCount: hotspotCounts.needsReview,
+      hotspotPriorityCount,
+      topBarangay: topBarangay?.barangay || '',
+      topPriority: topDecision?.priority || '',
+      reportDataSource: reportDataSourceLabel,
+      topHighRiskBarangays: reportMetadataForExport.topHighRiskBarangays || '',
+    }
+  }
+
+  async function recordReportGenerated(formatLabel, exportedAt, exportedAtIso, reportMetadataForExport) {
+    const metadataForStorage = {
+      ...reportMetadataForExport,
+      generatedAtDisplay: exportedAt,
+      generatedAtIso: exportedAtIso,
+      reportDataSource: reportDataSourceLabel,
+      hotspotSummary,
+      hotspotCounts,
+    }
+
+    try {
+      await saveGeneratedReport({
+        report_code: reportMetadataForExport.reportId,
+        report_type: formatLabel,
+        report_title: 'Weekly Dengue Response Planning Report',
+        generated_by: reportMetadataForExport.generatedBy,
+        generated_role: reportMetadataForExport.role,
+        generated_at: exportedAtIso,
+        forecast_run_id: getForecastRunId(),
+        file_path: getReportFilePath(formatLabel),
+        export_status: 'generated',
+        metadata: metadataForStorage,
+        summary: buildReportStorageSummary(reportMetadataForExport),
+      })
+    } catch (error) {
+      addActivityLog?.(
+        'Report record not saved',
+        error?.message || 'The report was exported, but its database record could not be saved.'
+      )
+    }
+
     try {
       await createBackendNotificationEvent({
         title: 'Report generated',
@@ -3165,9 +3243,9 @@ export default function ReportsPage() {
           priorityBarangayCount: sortedRiskRows.length,
           hotspotCount: hotspotPriorityCount,
           reportDataSource: reportDataSourceLabel,
-          reportId: officialReportMetadata.reportId,
-          generatedBy: officialReportMetadata.generatedBy,
-          role: officialReportMetadata.role,
+          reportId: reportMetadataForExport.reportId,
+          generatedBy: reportMetadataForExport.generatedBy,
+          role: reportMetadataForExport.role,
         },
       })
     } catch {
@@ -3175,9 +3253,19 @@ export default function ReportsPage() {
     }
   }
 
+
   async function handleExport() {
     const title = 'Weekly Dengue Response Planning Report'
     const exportedAt = getCurrentDateTime()
+    const exportedAtIso = new Date().toISOString()
+    const reportMetadataForExport = getOfficialReportMetadata({
+      sourceStatus,
+      backendForecastResult,
+      generatedAt: exportedAt,
+      sortedRiskRows,
+      usingBackendForecast,
+    })
+
     const exportPayload = {
       dashboardStats: displayDashboardStats,
       riskRows: sortedRiskRows,
@@ -3186,7 +3274,7 @@ export default function ReportsPage() {
       hotspotRows,
       hotspotSummary,
       dataSourceLabel: reportDataSourceLabel,
-      reportMetadata: officialReportMetadata,
+      reportMetadata: reportMetadataForExport,
     }
 
     if (format === 'pdf') {
@@ -3196,7 +3284,7 @@ export default function ReportsPage() {
       })
 
       addActivityLog?.('Report exported', 'PDF response planning report downloaded directly.')
-      await recordReportGenerated('PDF', exportedAt)
+      await recordReportGenerated('PDF', exportedAt, exportedAtIso, reportMetadataForExport)
       return
     }
 
@@ -3204,7 +3292,7 @@ export default function ReportsPage() {
       downloadExcelWorkbook(exportPayload)
 
       addActivityLog?.('Report exported', 'Excel response planning workbook downloaded as an XLSX file.')
-      await recordReportGenerated('Excel', exportedAt)
+      await recordReportGenerated('Excel', exportedAt, exportedAtIso, reportMetadataForExport)
       return
     }
 
@@ -3215,7 +3303,7 @@ export default function ReportsPage() {
         'Report exported',
         'PowerPoint response planning briefing deck generated and downloaded as a PPTX file.'
       )
-      await recordReportGenerated('PowerPoint', exportedAt)
+      await recordReportGenerated('PowerPoint', exportedAt, exportedAtIso, reportMetadataForExport)
 
       return
     }
@@ -3226,8 +3314,9 @@ export default function ReportsPage() {
     })
 
     addActivityLog?.('Print view opened', 'Printable response planning report opened for manual printing.')
-    await recordReportGenerated('Printable', exportedAt)
+    await recordReportGenerated('Printable', exportedAt, exportedAtIso, reportMetadataForExport)
   }
+
 
   return (
     <div className="relative space-y-6 pb-10">
