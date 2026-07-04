@@ -62,6 +62,16 @@ function formatDecimal(value, decimals = 2) {
   }).format(number)
 }
 
+
+function formatModelName(value = '') {
+  if (!value) return 'Auto-selected model'
+
+  return String(value)
+    .replace(/^auto_selected_/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 function formatOptionalNumber(value, suffix = '') {
   const number = Number(value)
 
@@ -1320,6 +1330,26 @@ export default function ForecastPage() {
   const selectedMode = modeMeta[mode]
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
+  const selectedModelName = formatModelName(
+    backendForecastResult?.model_display_name ||
+      backendForecastResult?.model_name ||
+      backendForecastResult?.forecast_run?.model_name ||
+      backendForecastResult?.forecastRun?.model_name ||
+      ''
+  )
+
+  const selectedModelVersion =
+    backendForecastResult?.model_version ||
+    backendForecastResult?.forecast_run?.model_version ||
+    backendForecastResult?.forecastRun?.model_version ||
+    'v1'
+
+  const isMachineLearningForecast = Boolean(
+    backendForecastResult?.is_machine_learning ||
+      backendForecastResult?.forecast_run?.is_machine_learning ||
+      backendForecastResult?.forecastRun?.is_machine_learning
+  )
+
   const {
     forecastRows,
     weeklyTotals,
@@ -1794,7 +1824,7 @@ export default function ForecastPage() {
             </span>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
                 Latest case total
@@ -1821,6 +1851,18 @@ export default function ForecastPage() {
                 {formatDecimal(selectedMode.multiplier, 2)}x
               </p>
             </div>
+
+            <div className="rounded-[22px] border border-emerald-100 bg-emerald-50/80 px-4 py-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+              <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-green dark:text-emerald-300">
+                Model used
+              </p>
+              <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
+                {selectedModelName}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-400">
+                {isMachineLearningForecast ? `Machine learning • ${selectedModelVersion}` : 'Baseline forecast'}
+              </p>
+            </div>
           </div>
 
           <div className="mt-5 rounded-[26px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/50 px-4 py-4 text-sm leading-6 text-brand-text shadow-inner dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:text-slate-300">
@@ -1828,7 +1870,7 @@ export default function ForecastPage() {
               How the forecast was prepared:
             </span>{' '}
             {usingBackendForecast
-              ? 'The latest forecast, recent case changes, weather, population, crowding level, and selected forecast setting are used to show priority recommendations.'
+              ? `The system automatically selected ${selectedModelName} for this forecast. Recent case changes, weather, population, crowding level, and the selected forecast setting are used to show priority recommendations.`
               : 'Recent case averages, case changes, rainfall, temperature, humidity, population, crowding level, and barangay map details are used to estimate risk and rank barangays by priority.'}
           </div>
 

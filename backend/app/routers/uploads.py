@@ -2,11 +2,11 @@ from io import BytesIO
 
 from fastapi import APIRouter, File, UploadFile
 
-from app.services.baseline_forecast import generate_baseline_dengue_forecast
+from app.services.auto_ml_forecast import generate_auto_ml_dengue_forecast
 from app.services.boundary_inspector import validate_boundary_file
 from app.services.database_boundaries import get_latest_boundary_geojson, save_boundary_geojson
 from app.services.database_forecasts import save_forecast_result
-from app.services.database_uploads import get_latest_dataset_uploads, save_dataset_upload
+from app.services.database_uploads import get_latest_dataset_previews, get_latest_dataset_uploads, save_dataset_upload
 from app.services.file_inspector import (
     clean_dengue_file,
     inspect_tabular_file,
@@ -25,6 +25,11 @@ router = APIRouter(
 @router.get("/database-status")
 async def get_upload_database_status():
     return get_latest_dataset_uploads()
+
+
+@router.get("/database-preview")
+async def get_upload_database_preview(limit: int = 300):
+    return get_latest_dataset_previews(limit=limit)
 
 
 @router.get("/latest-boundary-geojson")
@@ -200,7 +205,7 @@ async def forecast_dengue_upload(file: UploadFile = File(...)):
     filename = file.filename or "dengue_dataset"
 
     clean_result = await clean_dengue_file(_upload_from_bytes(filename, content))
-    result = await generate_baseline_dengue_forecast(_upload_from_bytes(filename, content))
+    result = await generate_auto_ml_dengue_forecast(_upload_from_bytes(filename, content))
 
     _store_dengue_result(clean_result)
     set_latest_forecast_result(result)
@@ -271,7 +276,7 @@ async def upload_dengue_source(file: UploadFile = File(...)):
     inspect_result = await inspect_tabular_file(_upload_from_bytes(filename, content))
     clean_result = await clean_dengue_file(_upload_from_bytes(filename, content))
     summary_result = await summarize_dengue_file(_upload_from_bytes(filename, content))
-    forecast_result = await generate_baseline_dengue_forecast(_upload_from_bytes(filename, content))
+    forecast_result = await generate_auto_ml_dengue_forecast(_upload_from_bytes(filename, content))
 
     _store_dengue_result(clean_result)
     set_latest_forecast_result(forecast_result)

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   ArrowRight,
+  Bot,
   CheckCircle2,
   ClipboardCheck,
   CloudRain,
@@ -25,6 +26,7 @@ import {
   cleanDengueFile,
   forecastDengueFile,
   getBackendAlignmentReport,
+  getUploadDatabasePreview,
   getUploadDatabaseStatus,
   inspectUploadedFile,
   summarizeDengueFile,
@@ -1578,6 +1580,93 @@ function selectFullPreviewRows(primaryRows = [], fallbackRows = []) {
   return fallback.length > primary.length ? fallback : primary
 }
 
+
+function shouldBuildLocalPreview(file) {
+  return Boolean(file && Number(file.size || 0) <= LARGE_FILE_LOCAL_PREVIEW_LIMIT_BYTES)
+}
+
+function getVisibleTableRows(rows = [], page = 1) {
+  if (!Array.isArray(rows)) return []
+
+  const safePage = Math.max(1, Number(page || 1))
+  const start = (safePage - 1) * TABLE_PAGE_SIZE
+
+  return rows.slice(start, start + TABLE_PAGE_SIZE)
+}
+
+function getPageCount(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return 1
+  return Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE))
+}
+
+function getPageRangeLabel(rows = [], page = 1) {
+  if (!Array.isArray(rows) || rows.length === 0) return '0 of 0'
+
+  const safePage = Math.max(1, Number(page || 1))
+  const start = (safePage - 1) * TABLE_PAGE_SIZE + 1
+  const end = Math.min(rows.length, safePage * TABLE_PAGE_SIZE)
+
+  return `${start}-${end} of ${rows.length}`
+}
+
+function TablePagination({ rows = [], page = 1, onPageChange }) {
+  const pageCount = getPageCount(rows)
+
+  if (!Array.isArray(rows) || rows.length <= TABLE_PAGE_SIZE) return null
+
+  const safePage = Math.min(Math.max(1, Number(page || 1)), pageCount)
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/80 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs font-bold text-brand-muted dark:text-slate-400">
+        Showing {getPageRangeLabel(rows, safePage)} rows
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange?.(1)}
+          disabled={safePage <= 1}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-brand-muted transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          First
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onPageChange?.(safePage - 1)}
+          disabled={safePage <= 1}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-brand-muted transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Previous
+        </button>
+
+        <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+          Page {safePage} of {pageCount}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => onPageChange?.(safePage + 1)}
+          disabled={safePage >= pageCount}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-brand-muted transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Next
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onPageChange?.(pageCount)}
+          disabled={safePage >= pageCount}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-brand-muted transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Last
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function getMergedDatasetHeaders(rows = []) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return [
@@ -1860,6 +1949,8 @@ function withTimeout(promise, milliseconds, message) {
 
 
 const AUTO_PREPARATION_STORAGE_KEY = 'dengue-auto-prepared-source-signature'
+const LARGE_FILE_LOCAL_PREVIEW_LIMIT_BYTES = 1024 * 1024
+const TABLE_PAGE_SIZE = 300
 
 function getStoredAutoPreparationKey() {
   try {
@@ -1888,6 +1979,55 @@ function clearAutoPreparationKey() {
 }
 
 
+function wait(milliseconds = 0) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds)
+  })
+}
+
+function formatModelName(value = '') {
+  if (!value) return 'Not selected yet'
+
+  return String(value)
+    .replace(/^auto_selected_/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function getForecastModelMeta(forecastResult = null) {
+  const forecastRun =
+    forecastResult?.forecast_run ||
+    forecastResult?.forecastRun ||
+    forecastResult?.run ||
+    {}
+
+  const rawModelName =
+    forecastResult?.model_display_name ||
+    forecastResult?.model_name ||
+    forecastRun?.model_name ||
+    ''
+
+  const modelVersion =
+    forecastResult?.model_version ||
+    forecastRun?.model_version ||
+    'v1'
+
+  const isMachineLearning = Boolean(
+    forecastResult?.is_machine_learning ||
+      forecastRun?.is_machine_learning ||
+      String(rawModelName).toLowerCase().startsWith('auto_selected_')
+  )
+
+  return {
+    rawModelName,
+    displayName: formatModelName(rawModelName),
+    modelVersion,
+    isMachineLearning,
+    hasModel: Boolean(rawModelName),
+  }
+}
+
+
 function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
   if (!visible) return null
 
@@ -1903,6 +2043,12 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
       label: 'Checking barangay names',
       message: 'Making sure dengue barangays match the population file and map boundary file.',
       icon: ClipboardCheck,
+    },
+    {
+      id: 'model',
+      label: 'Selecting model',
+      message: 'The system is checking the forecast model selected for this dataset.',
+      icon: Bot,
     },
     {
       id: 'done',
@@ -1954,7 +2100,7 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
             </p>
           </div>
 
-          <div className="mt-6 grid gap-2 sm:grid-cols-3">
+          <div className="mt-6 grid gap-2 sm:grid-cols-4">
             {steps.map((item, index) => {
               const StepIcon = item.icon
               const isDone = index < activeIndex || step === 'done'
@@ -1992,7 +2138,7 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
           <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-blue-400 to-emerald-300 shadow-[0_0_20px_rgba(34,211,238,0.55)] transition-all duration-500"
-              style={{ width: `${step === 'done' ? 100 : activeIndex === 0 ? 42 : 76}%` }}
+              style={{ width: `${step === 'done' ? 100 : activeIndex === 0 ? 32 : activeIndex === 1 ? 62 : 84}%` }}
             />
           </div>
         </div>
@@ -2014,6 +2160,45 @@ function getBadgeFromDatabaseUpload(upload = {}) {
   if (status.includes('failed')) return 'Needs Review'
 
   return validCount > 0 ? 'Saved online' : 'Needs Review'
+}
+
+
+function mapSavedDenguePreviewRows(rows = []) {
+  return rows.map((row, index) => ({
+    id: row.id || `saved-dengue-${index}`,
+    barangay: row.barangay || '',
+    reportingDate: row.date || row.period || '',
+    period: row.period || row.date || '',
+    date: row.date || '',
+    year: row.year ?? '',
+    month: row.month ?? '',
+    week: row.week ?? '',
+    cases: Number(row.cases || 0),
+    deaths: Number(row.deaths || 0),
+    status: 'Saved online',
+  }))
+}
+
+function mapSavedWeatherPreviewRows(rows = []) {
+  return rows.map((row, index) => ({
+    id: row.id || `saved-weather-${index}`,
+    reportingDate: row.reporting_date || row.date || row.period || '',
+    rainfall: row.rainfall ?? '',
+    temperature: row.temperature ?? '',
+    humidity: row.humidity ?? '',
+    status: 'Saved online',
+  }))
+}
+
+function mapSavedPopulationPreviewRows(rows = []) {
+  return rows.map((row, index) => ({
+    id: row.id || `saved-population-${index}`,
+    barangay: row.barangay || '',
+    population: row.population ?? '',
+    year: row.population_year ?? row.year ?? '',
+    psgc: row.psgc || row.geometry_id || '',
+    status: 'Saved online',
+  }))
 }
 
 function buildSourceStatusFromDatabaseUploads(uploads = {}) {
@@ -2151,6 +2336,7 @@ export default function UploadPage() {
     backendIntegrationStatus = null,
     backendIntegrationResult = null,
     backendMergedDataset = [],
+    backendForecastResult = null,
     syncBackendIntegrationStatus,
     buildBackendIntegrationWorkspace,
     resetBackendIntegration,
@@ -2166,6 +2352,8 @@ export default function UploadPage() {
   const [alignmentReport, setAlignmentReport] = useState(null)
   const [isCheckingAlignment, setIsCheckingAlignment] = useState(false)
   const [databaseUploadStatus, setDatabaseUploadStatus] = useState(null)
+  const [previewPage, setPreviewPage] = useState(1)
+  const [backendMergedPage, setBackendMergedPage] = useState(1)
   const [autoProcessing, setAutoProcessing] = useState({
     visible: false,
     step: 'combine',
@@ -2195,9 +2383,34 @@ export default function UploadPage() {
         setDatabaseUploadStatus(status)
 
         const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(status.uploads || {})
+        let preview = null
+
+        try {
+          preview = await withTimeout(
+            getUploadDatabasePreview(300),
+            45000,
+            'Loading saved preview rows is taking too long.'
+          )
+        } catch {
+          preview = null
+        }
+
+        const previewRows = preview?.previews || {}
 
         updateWorkspace((current) => ({
           ...current,
+          dengueRecords:
+            previewRows.dengue?.length > 0
+              ? mapSavedDenguePreviewRows(previewRows.dengue)
+              : current.dengueRecords || [],
+          weatherRecords:
+            previewRows.weather?.length > 0
+              ? mapSavedWeatherPreviewRows(previewRows.weather)
+              : current.weatherRecords || [],
+          populationRecords:
+            previewRows.population?.length > 0
+              ? mapSavedPopulationPreviewRows(previewRows.population)
+              : current.populationRecords || [],
           sourceStatus: {
             ...(current.sourceStatus || {}),
             ...databaseSourceStatus,
@@ -2234,7 +2447,12 @@ export default function UploadPage() {
     return storedRecords
   }, [validationResult, selected, storedRecords])
 
+  const visiblePreviewRows = useMemo(() => getVisibleTableRows(previewRows, previewPage), [previewRows, previewPage])
   const previewHeaders = getPreviewHeaders(selected)
+
+  useEffect(() => {
+    setPreviewPage(1)
+  }, [selected, previewRows.length])
 
   const checklist = [
     {
@@ -2322,6 +2540,14 @@ export default function UploadPage() {
       backendLoadedSourceCount >= backendRequiredSourceCount
   )
   const backendMergedRows = Array.isArray(backendMergedDataset) ? backendMergedDataset : []
+  const latestForecastResult = backendForecastResult || validationResult?.forecastResult || null
+  const forecastModelMeta = getForecastModelMeta(latestForecastResult)
+
+  useEffect(() => {
+    setBackendMergedPage(1)
+  }, [backendMergedRows.length])
+
+  const visibleBackendMergedRows = useMemo(() => getVisibleTableRows(backendMergedRows, backendMergedPage), [backendMergedRows, backendMergedPage])
   const backendMergedHeaders = useMemo(() => {
     return getMergedDatasetHeaders(backendMergedRows)
   }, [backendMergedRows])
@@ -2478,7 +2704,7 @@ export default function UploadPage() {
     try {
       const result = await withTimeout(
         buildBackendIntegrationWorkspace?.(),
-        45000,
+        180000,
         'Combining the uploaded files is taking too long. Make sure the system server is running.'
       )
 
@@ -2491,7 +2717,7 @@ export default function UploadPage() {
       try {
         const alignmentResult = await withTimeout(
           getBackendAlignmentReport(),
-          30000,
+          90000,
           'Barangay name checking is taking too long. Please try again.'
         )
         setAlignmentReport(alignmentResult)
@@ -2569,7 +2795,7 @@ export default function UploadPage() {
     try {
       const result = await withTimeout(
         getBackendAlignmentReport(),
-        30000,
+        90000,
         'Barangay name checking is taking too long. Please try again.'
       )
 
@@ -2626,7 +2852,7 @@ export default function UploadPage() {
       try {
         const result = await withTimeout(
           getBackendAlignmentReport(),
-          30000,
+          90000,
           'Barangay name checking is taking too long. The saved combined data will still be shown.'
         )
 
@@ -2710,10 +2936,10 @@ export default function UploadPage() {
 
       try {
         const result = await withTimeout(
-          buildBackendIntegrationWorkspace?.(),
-          45000,
-          'Combining the uploaded files is taking too long. Please make sure the system server is running, then click “Run again”.'
-        )
+  buildBackendIntegrationWorkspace?.(),
+  180000,
+  'Combining the uploaded files is taking too long. Please make sure the system server is running, then click “Run again”.'
+)
 
         if (!result) {
           throw new Error('The system did not return combined data. Please try again.')
@@ -2729,7 +2955,7 @@ export default function UploadPage() {
 
         const alignmentResult = await withTimeout(
           getBackendAlignmentReport(),
-          30000,
+          90000,
           'Barangay name checking is taking too long. The combined data was prepared, but the name check did not finish. You can click “Check again” later.'
         )
 
@@ -2742,6 +2968,20 @@ export default function UploadPage() {
           15000,
           'The files were prepared, but refreshing the status took too long.'
         )
+
+        if (!isCurrentRun()) return
+
+        const modelMeta = getForecastModelMeta(data.backendForecastResult || validationResult?.forecastResult || null)
+
+        setAutoProcessing({
+          visible: true,
+          step: 'model',
+          detail: modelMeta.hasModel
+            ? `Forecast model selected: ${modelMeta.displayName}. The system will use this model for the latest dengue forecast.`
+            : 'The system will show the selected forecast model after the dengue forecast is available.',
+        })
+
+        await wait(900)
 
         if (!isCurrentRun()) return
 
@@ -2771,10 +3011,14 @@ export default function UploadPage() {
           `The system automatically combined uploaded files and checked barangay names. Rows: ${rowCount}. Barangay name match: ${score}%. Items to review: ${warnings}.`
         )
 
+        const finalModelMeta = getForecastModelMeta(data.backendForecastResult || validationResult?.forecastResult || null)
+
         setAutoProcessing({
           visible: true,
           step: 'done',
-          detail: 'The uploaded files were combined and barangay names were checked automatically.',
+          detail: finalModelMeta.hasModel
+            ? `The uploaded files were combined, barangay names were checked, and the selected model is ${finalModelMeta.displayName}.`
+            : 'The uploaded files were combined and barangay names were checked automatically.',
         })
 
         closeTimer = window.setTimeout(() => {
@@ -2940,10 +3184,12 @@ export default function UploadPage() {
 
       let localValidationResult = null
 
-      try {
-        localValidationResult = await buildLocalValidationResultForSource(file, selected)
-      } catch {
-        localValidationResult = null
+      if (shouldBuildLocalPreview(file)) {
+        try {
+          localValidationResult = await buildLocalValidationResultForSource(file, selected)
+        } catch {
+          localValidationResult = null
+        }
       }
 
       if (selected === 'historical' && (isCsv || isExcel)) {
@@ -3960,8 +4206,8 @@ export default function UploadPage() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
-                    {backendMergedRows.length > 0 ? (
-                      backendMergedRows.map((row, index) => (
+                    {visibleBackendMergedRows.length > 0 ? (
+                      visibleBackendMergedRows.map((row, index) => (
                         <tr key={`backend-merged-${index}`} className="transition hover:bg-slate-50 dark:hover:bg-slate-800/60">
                           {backendMergedHeaders.map((header) => {
                             const cell = row?.[header]
@@ -3997,10 +4243,16 @@ export default function UploadPage() {
                   </tbody>
                 </table>
               </div>
+
+              <TablePagination
+                rows={backendMergedRows}
+                page={backendMergedPage}
+                onPageChange={setBackendMergedPage}
+              />
             </div>
 
             <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
-              This table shows what the system created after combining the uploaded files. Review rows marked “Needs Review” before using the forecast or map.
+              This table shows what the system created after combining the uploaded files. Rows are shown by page to keep the Upload page smooth. Review rows marked “Needs Review” before using the forecast or map.
             </p>
           </div>
 
@@ -4179,12 +4431,12 @@ export default function UploadPage() {
                   Checked records preview
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Review the rows after the system checks and organizes the file.
+                 Review the rows after the system checks and organizes the file. The table shows all available rows. Scroll inside the table to review more records.
                 </p>
               </div>
 
               <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                Showing {previewRows.length} row{previewRows.length === 1 ? '' : 's'}
+                Showing {getPageRangeLabel(previewRows, previewPage)} row{previewRows.length === 1 ? '' : 's'}
               </span>
             </div>
 
@@ -4202,8 +4454,8 @@ export default function UploadPage() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
-                    {previewRows.length > 0 ? (
-                      previewRows.map((row, index) => {
+                    {visiblePreviewRows.length > 0 ? (
+                      visiblePreviewRows.map((row, index) => {
                         const cells = renderPreviewCells(selected, row)
 
                         return (
@@ -4242,10 +4494,16 @@ export default function UploadPage() {
                   </tbody>
                 </table>
               </div>
+
+              <TablePagination
+                rows={previewRows}
+                page={previewPage}
+                onPageChange={setPreviewPage}
+              />
             </div>
 
             <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
-              Showing all checked records. Scroll inside the table to review more rows, and swipe sideways on smaller screens to view all columns.
+              Records are shown by page to avoid lag. Use Previous and Next to review more rows, and swipe sideways on smaller screens to view all columns.
             </p>
           </div>
         </div>
@@ -4306,45 +4564,57 @@ export default function UploadPage() {
           </div>
 
           <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-              <UploadCloud className="h-3.5 w-3.5" />
-              Upload help
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300">
+              <Bot className="h-3.5 w-3.5" />
+              AI forecast model
             </div>
 
             <h3 className="text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Selected file summary
+              Model selected by the system
             </h3>
 
-            <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                Selected source
-              </p>
-              <div className="mt-3 flex items-start gap-3">
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${selectedSource.color}`}>
-                  <ActiveSourceIcon className="h-5 w-5" />
+            <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+              After the dengue file is checked, the system compares available forecasting models and keeps the best-performing one for the latest forecast.
+            </p>
+
+            <div className="mt-4 overflow-hidden rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-blue-50 p-4 shadow-sm dark:border-violet-500/20 dark:from-violet-500/10 dark:via-slate-950 dark:to-blue-950/20">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border border-violet-200 bg-white text-violet-700 shadow-sm dark:border-violet-500/20 dark:bg-white/10 dark:text-violet-300">
+                  <Bot className="h-6 w-6" strokeWidth={2.3} />
                 </div>
-                <div>
-                  <p className="font-black text-brand-text dark:text-slate-100">
-                    {selectedSource.title}
+
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
+                    Model used
                   </p>
-                  <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                    {selectedSource.desc}
+
+                  <p className="mt-1 break-words text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                    {forecastModelMeta.displayName}
+                  </p>
+
+                  <p className="mt-1 text-xs font-bold leading-5 text-brand-muted dark:text-slate-400">
+                    {forecastModelMeta.hasModel
+                      ? forecastModelMeta.isMachineLearning
+                        ? `Machine learning • ${forecastModelMeta.modelVersion}`
+                        : `Baseline forecast • ${forecastModelMeta.modelVersion}`
+                      : 'Upload a dengue case file to generate a model selection.'}
                   </p>
                 </div>
               </div>
 
-              <p className="mt-4 break-words text-xs leading-5 text-brand-muted dark:text-slate-500">
-                Current source file: {selectedFileName}
-              </p>
+              <div className="mt-4 rounded-[22px] border border-white/80 bg-white/75 px-4 py-3 text-sm leading-6 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400">
+                {forecastModelMeta.hasModel
+                  ? `The selected model will also appear on the Forecast page. The user does not need to choose an algorithm manually.`
+                  : 'The selected model will appear here after the first valid dengue forecast is generated.'}
+              </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/75 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:shadow-none">
-              <p className="text-sm font-black text-brand-orange dark:text-amber-300">
-                Supported file types
+            <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                Current source file
               </p>
-
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                CSV, Excel, JSON, and GeoJSON are supported. The map boundary file must be GeoJSON or JSON.
+              <p className="mt-2 break-words text-sm font-bold leading-6 text-brand-text dark:text-slate-200">
+                {selectedFileName}
               </p>
             </div>
 

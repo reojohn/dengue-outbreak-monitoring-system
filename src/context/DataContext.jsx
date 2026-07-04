@@ -5,9 +5,13 @@ import {
   getBackendIntegrationStatus,
   getLatestBackendIntegrationDataset,
   getUploadDatabaseStatus,
+  getUploadDatabasePreview,
   getLatestSavedBoundaryGeoJson,
   getLatestSavedForecast,
   resetBackendIntegrationWorkspace,
+  getSavedWorkspaceState,
+  saveWorkspaceState,
+  clearSavedWorkspaceState,
 } from '../services/api'
 
 const DataContext = createContext(null)
@@ -85,6 +89,44 @@ const emptyWorkspace = {
   backendMergedDataset: [],
   sourceStatus: emptySourceStatus,
   activityLogs: [],
+}
+
+function mapSavedDenguePreviewRows(rows = []) {
+  return rows.map((row, index) => ({
+    id: row.id || `saved-dengue-${index}`,
+    barangay: row.barangay || '',
+    reportingDate: row.date || row.period || '',
+    period: row.period || row.date || '',
+    date: row.date || '',
+    year: row.year ?? '',
+    month: row.month ?? '',
+    week: row.week ?? '',
+    cases: Number(row.cases || 0),
+    deaths: Number(row.deaths || 0),
+    status: 'Saved online',
+  }))
+}
+
+function mapSavedWeatherPreviewRows(rows = []) {
+  return rows.map((row, index) => ({
+    id: row.id || `saved-weather-${index}`,
+    reportingDate: row.reporting_date || row.date || row.period || '',
+    rainfall: row.rainfall ?? '',
+    temperature: row.temperature ?? '',
+    humidity: row.humidity ?? '',
+    status: 'Saved online',
+  }))
+}
+
+function mapSavedPopulationPreviewRows(rows = []) {
+  return rows.map((row, index) => ({
+    id: row.id || `saved-population-${index}`,
+    barangay: row.barangay || '',
+    population: row.population ?? '',
+    year: row.population_year ?? row.year ?? '',
+    psgc: row.psgc || row.geometry_id || '',
+    status: 'Saved online',
+  }))
 }
 
 const mockDengueRecords = [
@@ -305,8 +347,37 @@ function loadWorkspace() {
   }
 }
 
+
+function compactWorkspaceForPersistence(workspace = {}) {
+  const normalized = normalizeWorkspace(workspace)
+
+  return {
+    ...normalized,
+    dengueRecords: [],
+    weatherRecords: [],
+    populationRecords: [],
+    boundaryRecords: [],
+    backendMergedDataset: [],
+    backendIntegrationResult: normalized.backendIntegrationResult
+      ? {
+          message: normalized.backendIntegrationResult.message,
+          row_count: normalized.backendIntegrationResult.row_count,
+          summary: normalized.backendIntegrationResult.summary,
+          integration_run: normalized.backendIntegrationResult.integration_run,
+          databaseBacked: normalized.backendIntegrationResult.databaseBacked,
+        }
+      : null,
+    activityLogs: normalized.activityLogs.slice(0, 20),
+  }
+}
+
 function saveWorkspace(workspace) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
+  // Keep browser storage light. Large uploaded rows are already saved by the backend upload tables.
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(compactWorkspaceForPersistence(workspace)))
+  } catch {
+    // Ignore storage failures so the app can continue running.
+  }
 }
 
 function normalizeFieldKey(key = '') {
@@ -1457,6 +1528,46 @@ function buildIntegrationReadiness(workspace = {}, riskRows = []) {
 
 export function DataProvider({ children }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
+  const [workspaceHydrated, setWorkspaceHydrated] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSavedWorkspace() {
+      try {
+        const result = await getSavedWorkspaceState()
+        const savedWorkspace = result?.workspace
+
+        if (!cancelled && savedWorkspace && typeof savedWorkspace === 'object') {
+          setWorkspace(normalizeWorkspace(savedWorkspace))
+        }
+      } catch {
+        // Keep the local fallback workspace if Supabase is temporarily unavailable.
+      } finally {
+        if (!cancelled) {
+          setWorkspaceHydrated(true)
+        }
+      }
+    }
+
+    loadSavedWorkspace()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!workspaceHydrated) return undefined
+
+    const saveTimer = window.setTimeout(() => {
+      saveWorkspaceState(compactWorkspaceForPersistence(workspace)).catch(() => {
+        saveWorkspace(workspace)
+      })
+    }, 650)
+
+    return () => window.clearTimeout(saveTimer)
+  }, [workspace, workspaceHydrated])
 
   function updateWorkspace(updater) {
     setWorkspace((current) => {
@@ -1567,6 +1678,7 @@ export function DataProvider({ children }) {
     resetBackendIntegrationWorkspace().catch(() => {})
 
     localStorage.removeItem(STORAGE_KEY)
+    clearSavedWorkspaceState().catch(() => {})
     setWorkspace(normalizeWorkspace(emptyWorkspace))
   }
 
@@ -1577,6 +1689,16 @@ export function DataProvider({ children }) {
       const requiredTypes = Array.isArray(result?.required_types)
         ? result.required_types
         : ['dengue', 'weather', 'population', 'boundary']
+
+      let previewResult = null
+
+      try {
+        previewResult = await getUploadDatabasePreview(300)
+      } catch {
+        previewResult = null
+      }
+
+      const previewRows = previewResult?.previews || {}
 
       updateWorkspace((current) => {
         const currentSourceStatus = normalizeSourceStatus(current.sourceStatus)
@@ -1596,8 +1718,23 @@ export function DataProvider({ children }) {
           )
         })
 
+        const savedDengueRows = Array.isArray(previewRows.dengue)
+          ? mapSavedDenguePreviewRows(previewRows.dengue)
+          : []
+
+        const savedWeatherRows = Array.isArray(previewRows.weather)
+          ? mapSavedWeatherPreviewRows(previewRows.weather)
+          : []
+
+        const savedPopulationRows = Array.isArray(previewRows.population)
+          ? mapSavedPopulationPreviewRows(previewRows.population)
+          : []
+
         return {
           ...current,
+          dengueRecords: savedDengueRows.length > 0 ? savedDengueRows : current.dengueRecords,
+          weatherRecords: savedWeatherRows.length > 0 ? savedWeatherRows : current.weatherRecords,
+          populationRecords: savedPopulationRows.length > 0 ? savedPopulationRows : current.populationRecords,
           sourceStatus: normalizeSourceStatus(nextSourceStatus),
         }
       })

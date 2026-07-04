@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
+import { createDemoSession } from '../services/api'
 
 const items = [
   {
@@ -292,6 +293,20 @@ export default function LoginPage() {
       }
 
       await wait(850)
+
+      try {
+        const savedSession = await createDemoSession({
+          user_key: 'default_user',
+          user_name: matchedAccount.label,
+          user_role: matchedAccount.role,
+          label: matchedAccount.label,
+          email: matchedAccount.email,
+        })
+
+        session.session_id = savedSession?.session?.session_id || ''
+      } catch {
+        session.session_id = ''
+      }
 
       localStorage.setItem('dengue-auth-session', JSON.stringify(session))
 

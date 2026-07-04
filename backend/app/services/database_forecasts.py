@@ -417,9 +417,9 @@ def save_forecast_result(
             {
                 "integration_run_id": integration_run_id,
                 "dengue_upload_id": dengue_upload_id,
-                "model_name": "baseline_rule_forecast",
-                "model_version": "v1",
-                "is_machine_learning": False,
+                "model_name": forecast_result.get("model_name", "baseline_rule_forecast"),
+                "model_version": forecast_result.get("model_version", "v1"),
+                "is_machine_learning": bool(forecast_result.get("is_machine_learning", False)),
                 "status": "completed",
                 "total_forecast_next_4_periods": _to_float(
                     forecast_result.get("total_forecast_next_4_periods"),
@@ -789,7 +789,7 @@ def get_latest_forecast_result_from_database() -> dict:
             "completed_at": str(forecast_run["completed_at"]) if forecast_run["completed_at"] else None,
             "created_by": forecast_run["created_by"],
         },
-        "forecast_method": "Saved baseline trend forecast using uploaded dengue, weather, population, and barangay map records.",
+        "forecast_method": "Saved auto-selected machine learning forecast using uploaded dengue, weather, population, and barangay map records.",
         "model_version": forecast_run["model_version"] or "v1",
         "risk_thresholds": "High risk: 70 and above; Moderate risk: 45 to 69; Low risk: below 45.",
         "forecast_window": "Next 4 reporting periods",

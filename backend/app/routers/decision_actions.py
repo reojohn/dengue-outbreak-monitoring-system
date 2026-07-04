@@ -55,7 +55,7 @@ def get_decision_actions(
 
     return {
         "message": "Decision support action records loaded.",
-        "persistence": "in-memory prototype storage; ready for PostgreSQL later",
+        "persistence": "supabase_postgresql",
         "summary": summarize_decision_actions(actions),
         "actions": actions,
     }

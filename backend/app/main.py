@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import decision_actions, forecasts, geospatial, integration, notifications, reports, uploads
+from app.routers import decision_actions, forecasts, geospatial, integration, notifications, reports, uploads, workspace, sessions
 from sqlalchemy import text
 from app.database import engine, test_database_connection
 
@@ -31,6 +31,8 @@ app.include_router(geospatial.router)
 app.include_router(notifications.router)
 app.include_router(decision_actions.router)
 app.include_router(reports.router)
+app.include_router(workspace.router)
+app.include_router(sessions.router)
 
 
 @app.get("/")

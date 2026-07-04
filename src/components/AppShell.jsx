@@ -31,7 +31,13 @@ import {
 } from 'lucide-react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
-import { getBackendNotifications } from '../services/api'
+import {
+  getBackendNotifications,
+  getNotificationReads,
+  markNotificationRead as saveNotificationRead,
+  markNotificationsRead as saveNotificationsRead,
+  deleteDemoSession,
+} from '../services/api'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -1606,6 +1612,18 @@ export default function AppShell({ children }) {
   }, [textScale, comfortableControls, highContrast, reduceMotion])
 
   useEffect(() => {
+    getNotificationReads()
+      .then((result) => {
+        const ids = Array.isArray(result?.read_notification_ids)
+          ? result.read_notification_ids
+          : []
+
+        setReadNotificationIds((current) => Array.from(new Set([...current, ...ids])).slice(-150))
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     localStorage.setItem(
       'dengue-read-notifications',
       JSON.stringify(readNotificationIds.slice(-150))
@@ -1631,6 +1649,8 @@ export default function AppShell({ children }) {
   }
 
   function markNotificationAsRead(notificationId) {
+    saveNotificationRead(notificationId).catch(() => {})
+
     setReadNotificationIds((current) => {
       if (current.includes(notificationId)) {
         return current
@@ -1641,11 +1661,14 @@ export default function AppShell({ children }) {
   }
 
   function markAllNotificationsAsRead() {
+    const notificationIds = notifications.map((item) => item.id).filter(Boolean)
+    saveNotificationsRead(notificationIds).catch(() => {})
+
     setReadNotificationIds((current) => {
       const merged = new Set(current)
 
-      notifications.forEach((item) => {
-        merged.add(item.id)
+      notificationIds.forEach((notificationId) => {
+        merged.add(notificationId)
       })
 
       return Array.from(merged).slice(-150)
@@ -1696,6 +1719,15 @@ export default function AppShell({ children }) {
     )
 
     setTimeout(() => {
+      try {
+        const savedSession = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
+        if (savedSession?.session_id) {
+          deleteDemoSession(savedSession.session_id).catch(() => {})
+        }
+      } catch {
+        // Continue logout even if the saved session cannot be parsed.
+      }
+
       localStorage.removeItem('dengue-auth-session')
       navigate('/', { replace: true })
     }, 800)

@@ -16,6 +16,20 @@ async function handleApiResponse(response) {
   return data
 }
 
+
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 60000) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  return fetch(url, {
+    ...options,
+    signal: controller.signal,
+  }).finally(() => {
+    window.clearTimeout(timer)
+  })
+}
+
 function buildFileFormData(file) {
   const formData = new FormData()
   formData.append('file', file)
@@ -95,15 +109,22 @@ export async function getUploadDatabaseStatus() {
   return handleApiResponse(response)
 }
 
+export async function getUploadDatabasePreview(limit = 300) {
+  const response = await fetch(`${API_BASE_URL}/uploads/database-preview?limit=${limit}`)
+  return handleApiResponse(response)
+}
+
 export async function getBackendIntegrationStatus() {
   const response = await fetch(`${API_BASE_URL}/integration/status`)
   return handleApiResponse(response)
 }
 
 export async function buildBackendIntegrationDataset() {
-  const response = await fetch(`${API_BASE_URL}/integration/build-dataset`, {
-    method: 'POST',
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/integration/build-dataset`,
+    { method: 'POST' },
+    180000
+  )
 
   return handleApiResponse(response)
 }
@@ -123,7 +144,11 @@ export async function getLatestBackendIntegrationDataset() {
 
 
 export async function getBackendAlignmentReport() {
-  const response = await fetch(`${API_BASE_URL}/integration/alignment-report`)
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/integration/alignment-report`,
+    {},
+    90000
+  )
   return handleApiResponse(response)
 }
 
@@ -251,6 +276,82 @@ export async function getGeneratedReports({ limit = 20 } = {}) {
   return handleApiResponse(response)
 }
 
+
+
+export async function getSavedWorkspaceState({ userKey = 'default_user' } = {}) {
+  const params = new URLSearchParams({ user_key: userKey })
+  const response = await fetch(`${API_BASE_URL}/workspace?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+export async function saveWorkspaceState(workspace, { userKey = 'default_user' } = {}) {
+  const response = await fetch(`${API_BASE_URL}/workspace`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      user_key: userKey,
+      workspace,
+    }),
+  })
+
+  return handleApiResponse(response)
+}
+
+export async function clearSavedWorkspaceState({ userKey = 'default_user' } = {}) {
+  const params = new URLSearchParams({ user_key: userKey })
+  const response = await fetch(`${API_BASE_URL}/workspace?${params.toString()}`, {
+    method: 'DELETE',
+  })
+  return handleApiResponse(response)
+}
+
+export async function getNotificationReads({ userKey = 'default_user' } = {}) {
+  const params = new URLSearchParams({ user_key: userKey })
+  const response = await fetch(`${API_BASE_URL}/notifications/reads?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+export async function markNotificationRead(notificationId, { userKey = 'default_user' } = {}) {
+  const params = new URLSearchParams({ user_key: userKey })
+  const response = await fetch(`${API_BASE_URL}/notifications/reads/${encodeURIComponent(notificationId)}?${params.toString()}`, {
+    method: 'POST',
+  })
+  return handleApiResponse(response)
+}
+
+export async function markNotificationsRead(notificationIds, { userKey = 'default_user' } = {}) {
+  const response = await fetch(`${API_BASE_URL}/notifications/reads`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      user_key: userKey,
+      notification_ids: notificationIds,
+    }),
+  })
+  return handleApiResponse(response)
+}
+
+export async function createDemoSession(payload) {
+  const response = await fetch(`${API_BASE_URL}/sessions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return handleApiResponse(response)
+}
+
+export async function deleteDemoSession(sessionId) {
+  const response = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  })
+  return handleApiResponse(response)
+}
 
 
 export { API_BASE_URL }

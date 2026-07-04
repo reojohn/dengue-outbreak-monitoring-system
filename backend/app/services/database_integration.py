@@ -294,8 +294,9 @@ def get_latest_integration_dataset() -> dict:
                     weather_match_status
                 from public.integrated_dataset_rows
                 where integration_run_id = :integration_run_id
-                order by barangay, period
-            """),
+               order by period, barangay
+limit 300
+"""),
             {
                 "integration_run_id": latest_run["integration_run_id"],
             },
@@ -350,8 +351,10 @@ def get_latest_integration_dataset() -> dict:
             "created_by": latest_run["created_by"],
             "created_at": str(latest_run["created_at"]),
         },
-        "row_count": len(merged_dataset),
+        "row_count": latest_run["row_count"] or len(merged_dataset),
         "summary": summary.get("match_summary", summary) if isinstance(summary, dict) else {},
+        # Only return a small preview to the browser. The complete combined dataset
+        # remains saved in public.integrated_dataset_rows.
         "merged_dataset": merged_dataset,
         "merged_preview": merged_dataset[:25],
     }

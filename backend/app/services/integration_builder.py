@@ -126,6 +126,37 @@ def _record_key(record):
     )
 
 
+def _resolve_cache_key(record):
+    record = record or {}
+    return (
+        _safe_text(record.get("psgc") or record.get("PSGC") or record.get("adm4_pcode") or record.get("ADM4_PCODE")),
+        normalize_barangay_key(record.get("barangay_key") or ""),
+        normalize_barangay_key(
+            record.get("barangay")
+            or record.get("barangay_raw")
+            or record.get("barangay_name")
+            or record.get("name")
+            or record.get("adm4_name")
+            or record.get("adm4_ref_name")
+            or record.get("BARANGAY")
+            or record.get("ADM4_NAME")
+            or record.get("ADM4_EN")
+            or ""
+        ),
+    )
+
+
+def _resolve_barangay_cached(record, barangay_reference, cache):
+    cache_key = _resolve_cache_key(record)
+
+    if cache_key in cache:
+        return cache[cache_key]
+
+    resolved = resolve_barangay_name(record, barangay_reference)
+    cache[cache_key] = resolved
+    return resolved
+
+
 def _safe_date(value):
     if value is None:
         return ""
@@ -235,11 +266,12 @@ def _geometry_area_sq_km(geometry):
     return 0
 
 
-def _build_population_lookup(population_records, barangay_reference):
+def _build_population_lookup(population_records, barangay_reference, resolve_cache=None):
     lookup = {}
+    resolve_cache = resolve_cache if resolve_cache is not None else {}
 
     for record in population_records:
-        resolved = resolve_barangay_name(record, barangay_reference)
+        resolved = _resolve_barangay_cached(record, barangay_reference, resolve_cache)
         key = resolved.get("barangay_key") or _record_key(record)
 
         if not key:
@@ -471,14 +503,15 @@ def build_model_ready_dataset():
         boundary_geojson=boundary_geojson,
         population_records=population_records,
     )
-    population_lookup = _build_population_lookup(population_records, barangay_reference)
+    resolve_cache = {}
+    population_lookup = _build_population_lookup(population_records, barangay_reference, resolve_cache)
     boundary_lookup = _build_boundary_lookup(boundary_geojson)
     weather_context = _build_weather_context(weather_records)
 
     merged_rows = []
 
     for record in dengue_records:
-        resolved_barangay = resolve_barangay_name(record, barangay_reference)
+        resolved_barangay = _resolve_barangay_cached(record, barangay_reference, resolve_cache)
         barangay = resolved_barangay.get("barangay") or get_record_barangay_name(record)
         barangay_key = resolved_barangay.get("barangay_key") or _record_key(record)
         period = _period_from_record(record)
@@ -542,8 +575,11 @@ def build_model_ready_dataset():
         "row_count": int(len(merged_df)),
         "summary": summary,
         "barangay_reference_count": len(barangay_reference.get("items", [])),
-        "merged_dataset": merged_dataset,
-        "merged_preview": merged_preview,
+        # Keep the full dataset saved in Supabase, but avoid sending thousands of rows
+        # back to the browser. This makes the Upload page much faster and prevents
+        # crashes on large historical files.
+      "merged_dataset": merged_preview,
+"merged_preview": merged_preview,
         "database_integration": database_result,
         "database_integration_run_id": database_result.get("integration_run_id"),
         "database_saved_row_count": database_result.get("saved_row_count"),
