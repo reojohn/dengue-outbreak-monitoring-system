@@ -575,7 +575,9 @@ function getHotspotCounts(hotspotRows = []) {
 }
 
 function getReportDataSourceLabel(usingSavedForecast) {
-  return usingSavedForecast ? 'Saved forecast and uploaded map data' : 'Current workspace data'
+  return usingSavedForecast
+    ? 'Saved forecast with uploaded dengue, weather, population, and map data'
+    : 'Current workspace data'
 }
 
 
@@ -699,11 +701,11 @@ function getOfficialReportMetadata({
     validRecords,
     invalidRecords,
     forecastMethod:
-      backendForecastResult?.forecast_method ||
-      backendForecastResult?.method ||
-      (usingBackendForecast
-        ? 'Saved baseline trend forecast using uploaded dengue case records.'
-        : 'Current workspace forecast and response ranking.'),
+  backendForecastResult?.forecast_method ||
+  backendForecastResult?.method ||
+  (usingBackendForecast
+    ? 'Saved baseline trend forecast using uploaded dengue, weather, population, and barangay map records.'
+    : 'Current workspace forecast and response ranking.'),
     modelVersion:
       backendForecastResult?.model_version ||
       backendForecastResult?.modelVersion ||
@@ -1018,7 +1020,7 @@ function getTopDecisionText(topBarangay) {
   const decision = getDecisionSupport(topBarangay)
   const profile = getMultiSourceProfile(topBarangay)
 
-  return `${topBarangay.barangay} is the top Response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a Response score of ${formatNumber(decision.score)}, and a combined data risk score of ${formatNumber(profile.score)}/100.`
+  return `${topBarangay.barangay} is the top response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a Response score of ${formatNumber(decision.score)}, and a Combined Data risk score of ${formatNumber(profile.score)}/100.`
 }
 
 function getReportSummary({ sortedRiskRows, dashboardStats }) {
@@ -1041,7 +1043,7 @@ function getReportSummary({ sortedRiskRows, dashboardStats }) {
       ? `${decisionCounts.urgent} barangay${decisionCounts.urgent === 1 ? '' : 's'} require immediate, high-priority, or escalated response planning.`
       : 'No barangay currently requires immediate or escalated response planning.',
     topBarangay
-      ? `${topBarangay.barangay} is the highest Response priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a combined data risk score of ${formatNumber(topProfile.score)}/100.`
+      ? `${topBarangay.barangay} is the highest Response priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a Combined Data risk score of ${formatNumber(topProfile.score)}/100.`
       : 'No top priority barangay is available.',
     `Environmental context used in the report includes ${topProfile.rainfallPressure}, ${topProfile.temperatureSuitability}, and ${topProfile.humiditySuitability}.`,
     `The current workspace has a data quality score of ${dashboardStats?.dataQuality || 0}%.`,
@@ -1362,7 +1364,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
               <th>Barangay</th>
               <th>Risk</th>
               <th>Response Priority</th>
-              <th>Combined data Score</th>
+              <th>Combined Data Score</th>
               <th>Response Score</th>
               <th>Forecast</th>
               <th>Hotspot</th>
@@ -1502,7 +1504,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       ['Four-week forecast total', formatNumber(dashboardStats.fourWeekForecast)],
       ['Data quality score', `${dashboardStats.dataQuality}%`],
       ['Top priority barangay', topBarangay?.barangay || 'No data'],
-      ['Top Response priority', topDecision.priority || 'No data'],
+      ['Top response priority', topDecision.priority || 'No data'],
     ],
     theme: 'grid',
     styles: {
@@ -1630,7 +1632,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   autoTable(doc, {
     startY: 100,
-    head: [['Combined data Factor', 'Value']],
+    head: [['Combined Data Factor', 'Value']],
     body: [
       ['Combined risk score', `${formatNumber(topProfile.score)}/100`],
       ['Environmental suitability', topProfile.environmentalSuitability],
@@ -1896,8 +1898,8 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Four-week forecast total', Number(dashboardStats.fourWeekForecast || 0)],
     ['Data quality score', `${dashboardStats.dataQuality}%`],
     ['Top priority barangay', topBarangay?.barangay || 'No data'],
-    ['Top Response priority', topDecision.priority || 'No data'],
-    ['Top combined data risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
+    ['top response priority', topDecision.priority || 'No data'],
+    ['Top Combined Data risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
     ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
     ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
     ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
@@ -1955,7 +1957,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       'Barangay',
       'Risk Level',
       'Response Priority',
-      'Combined data Risk Score',
+      'Combined Data Risk Score',
       'Decision Score',
       'Projected Cases',
       'Historical Total Cases',
@@ -2038,7 +2040,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   const factorSheet = XLSX.utils.aoa_to_sheet([
     [
       'Barangay',
-      'Combined data Risk Score',
+      'Combined Data Risk Score',
       'Environmental Suitability',
       'Rainfall Pressure',
       'Average Rainfall',
@@ -2089,7 +2091,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 18 },
   ]
 
-  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Combined data Factors')
+  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Combined Data Factors')
 
   const actionRows = []
 
@@ -2242,7 +2244,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   XLSX.utils.book_append_sheet(workbook, sourceSheet, 'Uploaded Data')
 
-  XLSX.writeFile(workbook, 'weekly-dengue-response planning-report.xlsx')
+  XLSX.writeFile(workbook, 'weekly-dengue-response-planning-report.xlsx')
 }
 
 async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
@@ -2771,7 +2773,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const factorSlide = pptx.addSlide()
   addSlideTitle(
     factorSlide,
-    'Combined data Risk Factors',
+    'Combined Data Risk Factors',
     'Environmental, population, density, and forecast factors used by the Response ranking.'
   )
 
@@ -2808,8 +2810,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   factorSlide.addText(
     topBarangay
-      ? `${topBarangay.barangay} currently has a combined data score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
-      : 'Combined data factors will appear after dengue, weather, population, and boundary records are available.',
+      ? `${topBarangay.barangay} currently has a Combined Data score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
+      : 'Combined Data factors will appear after dengue, weather, population, and boundary records are available.',
     {
       x: 0.75,
       y: 4.95,
@@ -2830,7 +2832,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     actionSlide,
     'Top Response Plan',
     topBarangay
-      ? `${topBarangay.barangay} is currently the top Response priority.`
+      ? `${topBarangay.barangay} is currently the top response priority.`
       : 'No top response plan is available yet.'
   )
 
@@ -3343,16 +3345,30 @@ export default function ReportsPage() {
       usingBackendForecast,
     })
 
-    const exportPayload = {
-      dashboardStats: displayDashboardStats,
-      riskRows: sortedRiskRows,
-      sourceStatus,
-      generatedAt: exportedAt,
-      hotspotRows,
-      hotspotSummary,
-      dataSourceLabel: reportDataSourceLabel,
-      reportMetadata: reportMetadataForExport,
-    }
+    let exportHotspotRows = hotspotRows
+let exportHotspotSummary = hotspotSummary
+
+try {
+  const latestHotspotResult = await getGeospatialHotspots()
+  exportHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
+    ? latestHotspotResult.hotspots
+    : hotspotRows
+  exportHotspotSummary = latestHotspotResult?.summary || hotspotSummary
+} catch {
+  exportHotspotRows = hotspotRows
+  exportHotspotSummary = hotspotSummary
+}
+
+const exportPayload = {
+  dashboardStats: displayDashboardStats,
+  riskRows: sortedRiskRows,
+  sourceStatus,
+  generatedAt: exportedAt,
+  hotspotRows: exportHotspotRows,
+  hotspotSummary: exportHotspotSummary,
+  dataSourceLabel: reportDataSourceLabel,
+  reportMetadata: reportMetadataForExport,
+}
 
     if (format === 'pdf') {
       downloadPdfReport({
@@ -3563,7 +3579,7 @@ export default function ReportsPage() {
         <StatCard
           label="Avg Combined score"
           value={`${formatNumber(averageMultiSourceScore)}/100`}
-          helper="Average combined data risk"
+          helper="Average Combined Data risk"
           icon={Gauge}
           tone="blue"
         />
@@ -3590,7 +3606,7 @@ export default function ReportsPage() {
               <p className="font-black">Reports ready</p>
 
               <p className="mt-1">
-                The latest dengue analysis is ready for review. Reports, exports, priority ranking, and response recommendations now use the uploaded dengue records. The system identified{' '}
+               The latest dengue risk analysis is ready for review. Reports, exports, priority ranking, and response recommendations now use the uploaded dengue, weather, population, and barangay map records.
                 {formatNumber(Number(backendForecastResult?.risk_counts?.High || 0))} high-risk barangay
                 {Number(backendForecastResult?.risk_counts?.High || 0) === 1 ? '' : 's'},{' '}
                 {formatNumber(Number(backendForecastResult?.risk_counts?.Moderate || 0))} moderate-risk barangay
@@ -3923,7 +3939,7 @@ export default function ReportsPage() {
                           <div className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
                             <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/80">
                               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                                Combined data risk factors
+                                Combined Data risk factors
                               </p>
 
                               <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -4127,7 +4143,7 @@ export default function ReportsPage() {
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {usingBackendForecast
-                ? 'PDF, Excel, PowerPoint, and print reports now include saved forecast totals, response priority, recommended actions, reasons for the recommendation, and hotspot summary when available.'
+               ? 'PDF, Excel, PowerPoint, and print reports now include forecast totals, response priorities, Combined Data score, rainfall, temperature, humidity, population exposure, density level, hotspot summary, recommended actions, and reasons for the recommendation.'
                 : 'PDF, Excel, PowerPoint, and print reports include response priority, combined risk score, rainfall, temperature, humidity, population, density, action plan, and reasons for the recommendation.'}
             </p>
           </div>
@@ -4181,7 +4197,7 @@ export default function ReportsPage() {
 
                 <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                    Combined data factors
+                    Combined Data factors
                   </p>
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">

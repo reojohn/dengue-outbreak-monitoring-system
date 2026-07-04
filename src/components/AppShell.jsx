@@ -809,7 +809,7 @@ function SidebarNavItem({ to, label, Icon, onClick }) {
     <NavLink key={to} to={to} onClick={onClick} className="block outline-none">
       {({ isActive }) => (
         <div
-          className={`group/navitem relative p-[6px] transition duration-300 ${
+         className={`group/navitem relative p-[4px] transition duration-300 ${
             isActive ? 'scale-[1.01]' : 'hover:scale-[1.01]'
           }`}
         >
@@ -1822,7 +1822,7 @@ export default function AppShell({ children }) {
           </button>
         </div>
 
-        <nav className="dengue-premium-scrollbar relative space-y-1">
+        <nav className="relative space-y-0.5 pr-1 overflow-hidden"> 
           {navItems.map(({ to, label, icon: Icon }) => (
             <SidebarNavItem
               key={to}
@@ -1910,7 +1910,7 @@ export default function AppShell({ children }) {
             </div>
           </div>
 
-          <div className="relative mb-5 overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur">
+         <div className="relative mb-4 overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur">
   <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-300/20 blur-2xl" />
   <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
@@ -1957,7 +1957,7 @@ export default function AppShell({ children }) {
   </div>
 </div>
 
-          <nav className="dengue-premium-scrollbar relative space-y-1 overflow-y-auto pr-2">
+          <nav className="relative space-y-1 overflow-hidden pr-0">
             <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
               Navigation
             </p>
@@ -1967,7 +1967,7 @@ export default function AppShell({ children }) {
             ))}
           </nav>
 
-          <div className="relative mt-auto shrink-0 space-y-3 pt-6">
+          <div className="relative mt-auto shrink-0 space-y-3 pt-5">
             <ThemeModeSwitch isDark={isDark} onToggle={handleThemeToggle} />
 
             
@@ -1975,7 +1975,7 @@ export default function AppShell({ children }) {
             <button
   type="button"
   onClick={handleOpenActionCommandCenter}
-  className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-gradient-to-br from-white/18 via-white/10 to-sky-400/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_40px_rgba(15,23,42,0.22)] backdrop-blur transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/15 hover:shadow-[0_22px_48px_rgba(14,165,233,0.22)]"
+ className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-gradient-to-br from-white/18 via-white/10 to-sky-400/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_40px_rgba(15,23,42,0.22)] backdrop-blur transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/15 hover:shadow-[0_22px_48px_rgba(14,165,233,0.22)]"
 >
   <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-sky-300/25 blur-2xl transition group-hover:bg-sky-300/35" />
   <div className="pointer-events-none absolute -bottom-10 left-4 h-24 w-24 rounded-full bg-emerald-300/15 blur-2xl" />

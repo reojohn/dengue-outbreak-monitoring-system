@@ -2161,6 +2161,7 @@ export default function UploadPage() {
   const [uploadMessage, setUploadMessage] = useState('')
   const [uploadError, setUploadError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [sourceUploadStates, setSourceUploadStates] = useState({})
   const [isBuildingBackendDataset, setIsBuildingBackendDataset] = useState(false)
   const [alignmentReport, setAlignmentReport] = useState(null)
   const [isCheckingAlignment, setIsCheckingAlignment] = useState(false)
@@ -2431,6 +2432,7 @@ export default function UploadPage() {
     setAlignmentReport(null)
     setSelected('historical')
     setValidationResult(null)
+    setSourceUploadStates({})
     setUploadError('')
     setUploadMessage('Workspace reset. Uploaded files, checking results, forecast results, and combined data were cleared.')
 
@@ -2685,16 +2687,11 @@ export default function UploadPage() {
     const preparationKey = backendSourceSignature
 
     if (autoPreparationKeyRef.current === preparationKey) return
-    if (getStoredAutoPreparationKey() === preparationKey) {
-      autoPreparationKeyRef.current = preparationKey
-      return
-    }
 
     const runId = autoPreparationRunIdRef.current + 1
     autoPreparationRunIdRef.current = runId
     autoPreparationKeyRef.current = preparationKey
     autoPreparationRunningRef.current = true
-    saveAutoPreparationKey(preparationKey)
 
     let closeTimer = null
 
@@ -2748,6 +2745,11 @@ export default function UploadPage() {
 
         if (!isCurrentRun()) return
 
+        if (preparationKey) {
+          autoPreparationKeyRef.current = preparationKey
+          saveAutoPreparationKey(preparationKey)
+        }
+
         const rowCount = Number(
           result?.row_count ||
             result?.summary?.row_count ||
@@ -2786,6 +2788,9 @@ export default function UploadPage() {
       } catch (error) {
         if (!isCurrentRun()) return
 
+        autoPreparationKeyRef.current = ''
+        clearAutoPreparationKey()
+
         setUploadError(
           error?.message ||
             'Automatic preparation failed. Check that all four files are uploaded and the system server is running.'
@@ -2823,6 +2828,77 @@ export default function UploadPage() {
     isProcessing,
   ])
 
+
+  function getSourceUploadErrorMessage(error, sourceTitle = 'selected file type') {
+    const fallbackMessage =
+      `This file does not match the selected upload type. Please upload the correct ${sourceTitle.toLowerCase()} file.`
+
+    const rawMessage = String(error?.message || '').trim()
+
+    if (!rawMessage) return fallbackMessage
+
+    const lower = rawMessage.toLowerCase()
+
+    if (
+      lower.includes('missing') ||
+      lower.includes('required') ||
+      lower.includes('not valid') ||
+      lower.includes('invalid') ||
+      lower.includes('unable to validate') ||
+      lower.includes('does not contain') ||
+      lower.includes('must contain') ||
+      lower.includes('featurecollection') ||
+      lower.includes('cannot be used') ||
+      lower.includes('expected') ||
+      lower.includes('column') ||
+      lower.includes('field')
+    ) {
+      return fallbackMessage
+    }
+
+    return rawMessage
+  }
+
+  function setSourceUploadProcessing(sourceId, sourceTitle) {
+    setSourceUploadStates((current) => ({
+      ...current,
+      [sourceId]: {
+        status: 'processing',
+        message: `Processing and checking ${sourceTitle.toLowerCase()}...`,
+      },
+    }))
+  }
+
+  function setSourceUploadSuccess(sourceId) {
+    setSourceUploadStates((current) => ({
+      ...current,
+      [sourceId]: {
+        status: 'success',
+        message: 'File checked successfully.',
+      },
+    }))
+  }
+
+  function setSourceUploadError(sourceId, sourceTitle, error) {
+    setSourceUploadStates((current) => ({
+      ...current,
+      [sourceId]: {
+        status: 'error',
+        message: getSourceUploadErrorMessage(error, sourceTitle),
+      },
+    }))
+  }
+
+  function clearStaleCombinedData() {
+    setAlignmentReport(null)
+
+    updateWorkspace((current) => ({
+      ...current,
+      backendIntegrationResult: null,
+      backendMergedDataset: [],
+    }))
+  }
+
   async function refreshBackendStatusAfterUpload() {
     try {
       await withTimeout(
@@ -2852,6 +2928,7 @@ export default function UploadPage() {
     })
 
     setIsProcessing(true)
+    setSourceUploadProcessing(selected, selectedSource.title)
     setUploadMessage('')
     setUploadError('')
 
@@ -2886,6 +2963,12 @@ export default function UploadPage() {
         const backendResult = {
           ...rawBackendResult,
           previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
+
+        if (Number(backendResult.validCount || 0) <= 0) {
+          throw new Error(
+            `This file does not match the selected upload type. Please upload the correct ${selectedSource.title.toLowerCase()} file.`
+          )
         }
 
         updateWorkspace((current) => ({
@@ -2924,8 +3007,9 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
+        setSourceUploadSuccess(selected)
         await refreshBackendStatusAfterUpload()
-        setAlignmentReport(null)
+        clearStaleCombinedData()
 
         return
       }
@@ -2941,6 +3025,12 @@ export default function UploadPage() {
         const backendResult = {
           ...rawBackendResult,
           previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
+
+        if (Number(backendResult.validCount || 0) <= 0) {
+          throw new Error(
+            `This file does not match the selected upload type. Please upload the correct ${selectedSource.title.toLowerCase()} file.`
+          )
         }
 
         updateWorkspace((current) => ({
@@ -2973,8 +3063,9 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
+        setSourceUploadSuccess(selected)
         await refreshBackendStatusAfterUpload()
-        setAlignmentReport(null)
+        clearStaleCombinedData()
 
         return
       }
@@ -2990,6 +3081,12 @@ export default function UploadPage() {
         const backendResult = {
           ...rawBackendResult,
           previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
+
+        if (Number(backendResult.validCount || 0) <= 0) {
+          throw new Error(
+            `This file does not match the selected upload type. Please upload the correct ${selectedSource.title.toLowerCase()} file.`
+          )
         }
 
         updateWorkspace((current) => ({
@@ -3022,8 +3119,9 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid records: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
+        setSourceUploadSuccess(selected)
         await refreshBackendStatusAfterUpload()
-        setAlignmentReport(null)
+        clearStaleCombinedData()
 
         return
       }
@@ -3039,6 +3137,12 @@ export default function UploadPage() {
         const backendResult = {
           ...rawBackendResult,
           previewRows: selectFullPreviewRows(rawBackendResult.previewRows, localValidationResult?.previewRows),
+        }
+
+        if (Number(backendResult.validCount || 0) <= 0) {
+          throw new Error(
+            `This file does not match the selected upload type. Please upload the correct ${selectedSource.title.toLowerCase()} file.`
+          )
         }
 
         updateWorkspace((current) => ({
@@ -3071,8 +3175,9 @@ export default function UploadPage() {
           `${selectedSource.title} uploaded from ${file.name}. Valid map areas: ${backendResult.validCount}/${backendResult.recordCount}.`
         )
 
+        setSourceUploadSuccess(selected)
         await refreshBackendStatusAfterUpload()
-        setAlignmentReport(null)
+        clearStaleCombinedData()
 
         return
       }
@@ -3129,6 +3234,12 @@ export default function UploadPage() {
         throw new Error(result.error)
       }
 
+      if (Number(result.validCount || 0) <= 0) {
+        throw new Error(
+          `This file does not match the selected upload type. Please upload the correct ${selectedSource.title.toLowerCase()} file.`
+        )
+      }
+
       const finalMappingSummary = usedSheetName
         ? `${result.mappingSummary || ''}${result.mappingSummary ? ', ' : ''}Excel sheet → ${usedSheetName}`
         : result.mappingSummary
@@ -3166,16 +3277,21 @@ export default function UploadPage() {
         `${file.name} was uploaded, auto-cleaned, and validated. ${result.validCount} of ${result.recordCount} records are valid.${mappingNote}`
       )
 
+      setSourceUploadSuccess(selected)
+
       addActivityLog(
         'Dataset uploaded',
         `${selectedSource.title} uploaded from ${file.name}. Valid records: ${result.validCount}/${result.recordCount}.`
       )
     } catch (error) {
-      setUploadError(error.message || 'Upload failed. Please check the file and try again.')
+      const friendlyError = getSourceUploadErrorMessage(error, selectedSource.title)
+
+      setUploadError(friendlyError)
+      setSourceUploadError(selected, selectedSource.title, error)
 
       addActivityLog(
         'Dataset upload failed',
-        `${selectedSource.title} upload failed.`
+        `${selectedSource.title} upload failed. ${friendlyError}`
       )
     } finally {
       setIsProcessing(false)
@@ -3335,6 +3451,10 @@ export default function UploadPage() {
                 const validCount = Number(status.validCount || 0)
                 const recordCount = Number(status.recordCount || 0)
                 const sourcePercent = recordCount > 0 ? Math.round((validCount / recordCount) * 100) : 0
+                const uploadState = sourceUploadStates[source.id]
+                const isSourceProcessing = uploadState?.status === 'processing'
+                const hasSourceError = uploadState?.status === 'error'
+                const hasSourceSuccess = uploadState?.status === 'success'
 
                 return (
                   <button
@@ -3347,9 +3467,13 @@ export default function UploadPage() {
                       setUploadError('')
                     }}
                     className={`group relative overflow-hidden rounded-[30px] border p-5 text-left shadow-[0_18px_42px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] dark:shadow-none ${
-                      isActive
-                        ? 'border-brand-blue bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_36%),linear-gradient(135deg,#eff6ff,#ffffff_54%,#ecfeff)] ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.22),transparent_38%),linear-gradient(135deg,#0f172a,#111827_58%,#082f49)] dark:ring-blue-500/20'
-                        : 'border-brand-line/70 bg-gradient-to-br from-white via-white to-slate-50 hover:border-brand-blue/40 hover:shadow-[0_24px_54px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:hover:border-blue-500/30 dark:hover:shadow-none'
+                      isSourceProcessing
+                        ? 'border-cyan-300 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.28),transparent_38%),linear-gradient(135deg,#ecfeff,#ffffff_54%,#eff6ff)] ring-4 ring-cyan-300/30 shadow-[0_24px_58px_rgba(14,165,233,0.22)] dark:border-cyan-400/60 dark:bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.24),transparent_40%),linear-gradient(135deg,#082f49,#0f172a_58%,#111827)] dark:ring-cyan-400/20'
+                        : isActive
+                          ? 'border-brand-blue bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_36%),linear-gradient(135deg,#eff6ff,#ffffff_54%,#ecfeff)] ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.22),transparent_38%),linear-gradient(135deg,#0f172a,#111827_58%,#082f49)] dark:ring-blue-500/20'
+                          : hasSourceError
+                            ? 'border-rose-300 bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.12),transparent_36%),linear-gradient(135deg,#fff1f2,#ffffff_54%,#fff7ed)] ring-2 ring-rose-200/60 dark:border-rose-500/40 dark:bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.18),transparent_38%),linear-gradient(135deg,#1e1b4b,#111827_58%,#450a0a)] dark:ring-rose-500/20'
+                            : 'border-brand-line/70 bg-gradient-to-br from-white via-white to-slate-50 hover:border-brand-blue/40 hover:shadow-[0_24px_54px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:hover:border-blue-500/30 dark:hover:shadow-none'
                     }`}
                   >
                     <div className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${source.glow} blur-2xl opacity-70 transition group-hover:opacity-100`} />
@@ -3358,17 +3482,34 @@ export default function UploadPage() {
                       <div className="pointer-events-none absolute inset-y-5 left-0 w-1 rounded-r-full bg-brand-blue shadow-[0_0_24px_rgba(37,95,143,0.55)]" />
                     )}
 
-                    <div className="relative flex items-start justify-between gap-3">
+                    {isSourceProcessing && (
+                      <>
+                        <div className="pointer-events-none absolute inset-0 z-10 bg-cyan-400/5" />
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 bg-gradient-to-r from-cyan-300 via-blue-400 to-emerald-300 upload-card-processing-bar" />
+                      </>
+                    )}
+
+                    <div className="relative z-20 flex items-start justify-between gap-3">
                       <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border shadow-sm ${source.color}`}>
                         <SourceIcon className="h-6 w-6" strokeWidth={2.3} />
                       </div>
 
-                      <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(badge)}`}>
-                        {badge}
+                      <span
+                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${
+                          isSourceProcessing
+                            ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
+                            : hasSourceError
+                              ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+                              : hasSourceSuccess
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                : getStatusStyle(badge)
+                        }`}
+                      >
+                        {isSourceProcessing ? 'Checking file...' : hasSourceError ? 'Wrong file' : hasSourceSuccess ? 'Checked' : badge}
                       </span>
                     </div>
 
-                    <div className="relative mt-4">
+                    <div className="relative z-20 mt-4">
                       <h3 className="text-lg font-black tracking-tight text-brand-text dark:text-slate-100">
                         {source.title}
                       </h3>
@@ -3394,6 +3535,37 @@ export default function UploadPage() {
                           <p className="mt-1 truncate text-xs font-bold text-brand-text dark:text-slate-300">
                             {status.uploadedName}
                           </p>
+                        </div>
+                      )}
+
+                      {uploadState?.message && (
+                        <div
+                          className={`mt-3 flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-bold ${
+                            isSourceProcessing
+                              ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
+                              : hasSourceError
+                                ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          }`}
+                        >
+                          {isSourceProcessing ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : hasSourceError ? (
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+
+                          <span>{uploadState.message}</span>
+                        </div>
+                      )}
+
+                      {isSourceProcessing && (
+                        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[2px] dark:bg-slate-950/50">
+                          <div className="flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-4 py-2 text-xs font-black text-cyan-700 shadow-[0_16px_34px_rgba(14,165,233,0.18)] dark:border-cyan-500/20 dark:bg-slate-950 dark:text-cyan-300">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Processing file
+                          </div>
                         </div>
                       )}
 
@@ -4189,6 +4361,28 @@ export default function UploadPage() {
       </div>
 
       <style>{`
+        .upload-card-processing-bar {
+          animation: upload-card-processing-shimmer 1.15s ease-in-out infinite;
+          background-size: 220% 100%;
+        }
+
+        @keyframes upload-card-processing-shimmer {
+          0% {
+            background-position: 0% 50%;
+            opacity: 0.72;
+          }
+
+          50% {
+            background-position: 100% 50%;
+            opacity: 1;
+          }
+
+          100% {
+            background-position: 0% 50%;
+            opacity: 0.72;
+          }
+        }
+
         .records-preview-scroll {
           scrollbar-width: thin;
           scrollbar-color: rgba(37, 95, 143, 0.75) rgba(226, 232, 240, 0.7);
