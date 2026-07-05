@@ -23,11 +23,13 @@ import {
 import * as XLSX from 'xlsx'
 import { useData } from '../context/DataContext'
 import {
+  autoRunModel,
   cleanDengueFile,
   forecastDengueFile,
   getBackendAlignmentReport,
   getUploadDatabasePreview,
   getUploadDatabaseStatus,
+  getUploadJobStatus,
   inspectUploadedFile,
   summarizeDengueFile,
   validateBoundaryFile,
@@ -1580,6 +1582,79 @@ function selectFullPreviewRows(primaryRows = [], fallbackRows = []) {
   return fallback.length > primary.length ? fallback : primary
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function getCompletedUploadJobResult(job = {}, initialResult = {}) {
+  const result =
+    job.result ||
+    job.output ||
+    job.data ||
+    job.payload ||
+    job.response ||
+    null
+
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    return {
+      ...initialResult,
+      ...result,
+      processing: false,
+      upload_job_id: initialResult.upload_job_id || job.upload_job_id || job.job_id || job.id,
+      upload_id: result.upload_id || job.upload_id || initialResult.upload_id,
+    }
+  }
+
+  return {
+    ...initialResult,
+    ...job,
+    processing: false,
+    upload_job_id: initialResult.upload_job_id || job.upload_job_id || job.job_id || job.id,
+    upload_id: job.upload_id || initialResult.upload_id,
+  }
+}
+
+async function waitForUploadJobResult(initialResult, onProgress) {
+  if (!initialResult?.processing || !initialResult?.upload_job_id) {
+    return initialResult
+  }
+
+  const jobId = initialResult.upload_job_id
+  const startedAt = Date.now()
+  const timeoutMs = 180000
+
+  onProgress?.({
+    ...initialResult,
+    status: 'processing',
+    message: initialResult.message || 'File accepted. Background processing is running.',
+  })
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await sleep(1200)
+
+    const job = await getUploadJobStatus(jobId)
+
+    if (job?.status === 'completed') {
+      const completedResult = getCompletedUploadJobResult(job, initialResult)
+      window.dispatchEvent(new CustomEvent('dengue-upload-job-completed', { detail: job }))
+      return completedResult
+    }
+
+    if (job?.status === 'failed') {
+      window.dispatchEvent(new CustomEvent('dengue-upload-job-failed', { detail: job }))
+      throw new Error(job?.error || job?.message || 'Background processing failed.')
+    }
+
+    onProgress?.(job || {
+      ...initialResult,
+      status: 'processing',
+      message: 'Background processing is still running.',
+    })
+  }
+
+  throw new Error('Background processing is taking too long. Please keep the server running and try refreshing the status.')
+}
+
 
 function shouldBuildLocalPreview(file) {
   return Boolean(file && Number(file.size || 0) <= LARGE_FILE_LOCAL_PREVIEW_LIMIT_BYTES)
@@ -2046,9 +2121,15 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
     },
     {
       id: 'model',
-      label: 'Selecting model',
-      message: 'The system is checking the forecast model selected for this dataset.',
+      label: 'Training and evaluating model',
+      message: 'The system is training or loading the best model and checking model accuracy.',
       icon: Bot,
+    },
+    {
+      id: 'forecast',
+      label: 'Generating forecast',
+      message: 'The system is creating and saving the latest barangay-level dengue forecast.',
+      icon: Sparkles,
     },
     {
       id: 'done',
@@ -2138,7 +2219,7 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
           <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-blue-400 to-emerald-300 shadow-[0_0_20px_rgba(34,211,238,0.55)] transition-all duration-500"
-              style={{ width: `${step === 'done' ? 100 : activeIndex === 0 ? 32 : activeIndex === 1 ? 62 : 84}%` }}
+              style={{ width: `${step === 'done' ? 100 : activeIndex === 0 ? 25 : activeIndex === 1 ? 50 : activeIndex === 2 ? 75 : 90}%` }}
             />
           </div>
         </div>
@@ -2365,6 +2446,53 @@ export default function UploadPage() {
   const databaseUploadStatusLoadedRef = useRef(false)
 
   useEffect(() => {
+    function getSourceIdFromDatasetType(datasetType = '') {
+      if (datasetType === 'dengue') return 'historical'
+      if (datasetType === 'weather') return 'meteorological'
+      if (datasetType === 'population') return 'demographic'
+      if (datasetType === 'boundary') return 'boundary'
+      return selected
+    }
+
+    async function handleUploadJobCompleted(event) {
+      const job = event.detail || {}
+      const sourceId = getSourceIdFromDatasetType(job.dataset_type)
+
+      setSourceUploadStates((current) => ({
+        ...current,
+        [sourceId]: {
+          status: 'success',
+          message: 'Background processing completed. Saved online.',
+        },
+      }))
+
+      setUploadMessage('Background processing completed. The latest saved data is now available.')
+      await refreshBackendStatusAfterUpload()
+    }
+
+    function handleUploadJobFailed(event) {
+      const job = event.detail || {}
+      const sourceId = getSourceIdFromDatasetType(job.dataset_type)
+
+      setSourceUploadStates((current) => ({
+        ...current,
+        [sourceId]: {
+          status: 'error',
+          message: job.error || 'Background processing failed.',
+        },
+      }))
+    }
+
+    window.addEventListener('dengue-upload-job-completed', handleUploadJobCompleted)
+    window.addEventListener('dengue-upload-job-failed', handleUploadJobFailed)
+
+    return () => {
+      window.removeEventListener('dengue-upload-job-completed', handleUploadJobCompleted)
+      window.removeEventListener('dengue-upload-job-failed', handleUploadJobFailed)
+    }
+  }, [selected])
+
+  useEffect(() => {
     if (databaseUploadStatusLoadedRef.current) return undefined
 
     databaseUploadStatusLoadedRef.current = true
@@ -2387,7 +2515,7 @@ export default function UploadPage() {
 
         try {
           preview = await withTimeout(
-            getUploadDatabasePreview(300),
+            getUploadDatabasePreview(100),
             45000,
             'Loading saved preview rows is taking too long.'
           )
@@ -2971,17 +3099,35 @@ export default function UploadPage() {
 
         if (!isCurrentRun()) return
 
-        const modelMeta = getForecastModelMeta(data.backendForecastResult || validationResult?.forecastResult || null)
-
         setAutoProcessing({
           visible: true,
           step: 'model',
-          detail: modelMeta.hasModel
-            ? `Forecast model selected: ${modelMeta.displayName}. The system will use this model for the latest dengue forecast.`
-            : 'The system will show the selected forecast model after the dengue forecast is available.',
+          detail: 'The system is now training or loading the best machine learning model, evaluating it, and generating the dengue forecast automatically.',
         })
 
-        await wait(900)
+        const autoRunResult = await withTimeout(
+          autoRunModel(),
+          180000,
+          'Automatic model training and forecasting is taking too long. Please make sure the system server is running, then try again.'
+        )
+
+        if (!isCurrentRun()) return
+
+        updateWorkspace((current) => ({
+          ...current,
+          backendForecastResult: autoRunResult,
+          riskRows: Array.isArray(autoRunResult?.forecast_results)
+            ? autoRunResult.forecast_results
+            : current.riskRows || [],
+        }))
+
+        setAutoProcessing({
+          visible: true,
+          step: 'forecast',
+          detail: `${autoRunResult?.model_display_name || 'The selected machine learning model'} generated the latest dengue forecast and saved ${Number(autoRunResult?.barangay_count || 0)} barangay result${Number(autoRunResult?.barangay_count || 0) === 1 ? '' : 's'}.`,
+        })
+
+        await wait(700)
 
         if (!isCurrentRun()) return
 
@@ -3003,22 +3149,22 @@ export default function UploadPage() {
           : 0
 
         setUploadMessage(
-          `Automatic preparation completed. ${rowCount} dengue row${rowCount === 1 ? '' : 's'} were combined, and the barangay name check finished with ${score}% matched and ${warnings} item${warnings === 1 ? '' : 's'} to review.`
+          `Automatic preparation completed. ${rowCount} dengue row${rowCount === 1 ? '' : 's'} were combined, barangay names were checked with ${score}% matched and ${warnings} item${warnings === 1 ? '' : 's'} to review, and the machine learning forecast was generated successfully.`
         )
 
         addActivityLog(
           'Automatic data preparation completed',
-          `The system automatically combined uploaded files and checked barangay names. Rows: ${rowCount}. Barangay name match: ${score}%. Items to review: ${warnings}.`
+          `The system automatically combined uploaded files, checked barangay names, and generated the machine learning forecast. Rows: ${rowCount}. Barangay name match: ${score}%. Items to review: ${warnings}. Forecasted cases: ${Number(autoRunResult?.total_forecast_next_4_periods || 0)}.`
         )
 
-        const finalModelMeta = getForecastModelMeta(data.backendForecastResult || validationResult?.forecastResult || null)
+        const finalModelMeta = getForecastModelMeta(autoRunResult)
 
         setAutoProcessing({
           visible: true,
           step: 'done',
           detail: finalModelMeta.hasModel
-            ? `The uploaded files were combined, barangay names were checked, and the selected model is ${finalModelMeta.displayName}.`
-            : 'The uploaded files were combined and barangay names were checked automatically.',
+            ? `The uploaded files were combined, barangay names were checked, and the latest forecast was generated using ${finalModelMeta.displayName}. You can continue explaining this page before opening the Forecast page.`
+            : 'The uploaded files were combined, barangay names were checked, and the latest forecast was generated automatically. You can continue explaining this page before opening the Forecast page.',
         })
 
         closeTimer = window.setTimeout(() => {
@@ -3070,6 +3216,8 @@ export default function UploadPage() {
     hasCombinedBackendData,
     backendSourceSignature,
     isProcessing,
+    updateWorkspace,
+    addActivityLog,
   ])
 
 
@@ -3193,10 +3341,19 @@ export default function UploadPage() {
       }
 
       if (selected === 'historical' && (isCsv || isExcel)) {
-        const inspectResult = await inspectUploadedFile(file)
-        const cleanResult = await cleanDengueFile(file)
-        const summaryResult = await summarizeDengueFile(file)
-        const forecastResult = await forecastDengueFile(file)
+        const forecastInitialResult = await forecastDengueFile(file)
+        const forecastResult = await waitForUploadJobResult(forecastInitialResult, () => {
+          setSourceUploadStates((current) => ({
+            ...current,
+            [selected]: {
+              status: 'processing',
+              message: 'File accepted. Saving and generating forecast in the background...',
+            },
+          }))
+        })
+        const inspectResult = null
+        const cleanResult = forecastResult
+        const summaryResult = null
 
         const rawBackendResult = buildBackendDengueValidationResult({
           fileName: file.name,
@@ -3261,7 +3418,16 @@ export default function UploadPage() {
       }
 
       if (selected === 'demographic' && (isCsv || isExcel || fileName.endsWith('.json'))) {
-        const validateResult = await validatePopulationFile(file)
+        const populationInitialResult = await validatePopulationFile(file)
+        const validateResult = await waitForUploadJobResult(populationInitialResult, () => {
+          setSourceUploadStates((current) => ({
+            ...current,
+            [selected]: {
+              status: 'processing',
+              message: 'File accepted. Saving population records in the background...',
+            },
+          }))
+        })
 
         const rawBackendResult = buildBackendPopulationValidationResult({
           fileName: file.name,
@@ -3317,7 +3483,16 @@ export default function UploadPage() {
       }
 
       if (selected === 'meteorological' && (isCsv || isExcel || fileName.endsWith('.json'))) {
-        const validateResult = await validateWeatherFile(file)
+        const weatherInitialResult = await validateWeatherFile(file)
+        const validateResult = await waitForUploadJobResult(weatherInitialResult, () => {
+          setSourceUploadStates((current) => ({
+            ...current,
+            [selected]: {
+              status: 'processing',
+              message: 'File accepted. Saving weather records in the background...',
+            },
+          }))
+        })
 
         const rawBackendResult = buildBackendWeatherValidationResult({
           fileName: file.name,
@@ -3373,7 +3548,16 @@ export default function UploadPage() {
       }
 
       if (selected === 'boundary' && isJson) {
-        const validateResult = await validateBoundaryFile(file)
+        const boundaryInitialResult = await validateBoundaryFile(file)
+        const validateResult = await waitForUploadJobResult(boundaryInitialResult, () => {
+          setSourceUploadStates((current) => ({
+            ...current,
+            [selected]: {
+              status: 'processing',
+              message: 'File accepted. Saving boundary map in the background...',
+            },
+          }))
+        })
 
         const rawBackendResult = buildBackendBoundaryValidationResult({
           fileName: file.name,

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import decision_actions, forecasts, geospatial, integration, notifications, reports, uploads, workspace, sessions
+from app.routers import decision_actions, forecasts, geospatial, integration, models, notifications, reports, uploads, workspace, sessions
 from sqlalchemy import text
 from app.database import engine, test_database_connection
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(uploads.router)
 app.include_router(integration.router)
 app.include_router(forecasts.router)
+app.include_router(models.router)
 app.include_router(geospatial.router)
 app.include_router(notifications.router)
 app.include_router(decision_actions.router)

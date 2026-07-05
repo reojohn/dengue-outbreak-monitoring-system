@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -31,6 +31,11 @@ import {
   computeRiskLevel,
   riskStyles,
 } from '../utils/analytics'
+
+import {
+  getLatestModelMetrics,
+} from '../services/api'
+import aiGif from '../assets/ai.gif'
 
 const modeMeta = {
   caution: {
@@ -80,6 +85,59 @@ function formatOptionalNumber(value, suffix = '') {
   }
 
   return `${formatDecimal(number)}${suffix}`
+}
+
+function formatMetricPercent(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) return 'N/A'
+
+  return `${formatDecimal(number * 100)}%`
+}
+
+function getModelRankStyle(index = 0) {
+  if (index === 0) {
+    return {
+      badge: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      card: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-cyan-950/20',
+      icon: CheckCircle2,
+      label: 'Selected',
+    }
+  }
+
+  if (index === 1) {
+    return {
+      badge: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      card: 'border-blue-100 bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-slate-900',
+      icon: BarChart3,
+      label: 'Runner-up',
+    }
+  }
+
+  if (index === 2) {
+    return {
+      badge: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+      card: 'border-amber-100 bg-gradient-to-br from-amber-50 via-white to-slate-50 dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-950 dark:to-slate-900',
+      icon: Gauge,
+      label: 'Compared',
+    }
+  }
+
+  return {
+    badge: 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    card: 'border-slate-200 bg-gradient-to-br from-white to-slate-50 dark:border-slate-800 dark:from-slate-950 dark:to-slate-900',
+    icon: Activity,
+    label: 'Compared',
+  }
+}
+
+function getModelScoreLabel(model = {}) {
+  const rmse = Number(model.rmse)
+  const mae = Number(model.mae)
+
+  if (!Number.isFinite(rmse) && !Number.isFinite(mae)) return 'No score available'
+
+  return `RMSE ${formatDecimal(rmse)} • MAE ${formatDecimal(mae)}`
 }
 
 function normalizeFieldKey(key = '') {
@@ -1324,11 +1382,12 @@ export default function ForecastPage() {
     weatherRecords = [],
     sourceStatus,
     backendForecastResult = null,
-    addActivityLog,
   } = useData()
 
   const selectedMode = modeMeta[mode]
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
+  const [latestModelMetrics, setLatestModelMetrics] = useState(null)
+  const [showModelDetails, setShowModelDetails] = useState(false)
 
   const selectedModelName = formatModelName(
     backendForecastResult?.model_display_name ||
@@ -1540,12 +1599,31 @@ export default function ForecastPage() {
     highestRiskBarangay,
   ])
 
-  function handleRunForecast() {
-    addActivityLog(
-      usingBackendForecast ? 'Forecast saved' : 'Forecast generated',
-      `${selectedMode.label} forecast prepared from ${formatNumber(loadedRecordCount)} dengue records with ${formatNumber(projectedTotal)} expected cases.`
-    )
+  useEffect(() => {
+  async function loadMetrics() {
+    try {
+      const result = await getLatestModelMetrics()
+
+      if (result?.has_metrics) {
+        setLatestModelMetrics(result)
+      }
+    } catch {
+      setLatestModelMetrics(null)
+    }
   }
+
+  loadMetrics()
+}, [])
+
+const activeModelMetrics =
+  backendForecastResult?.model_metrics ||
+  latestModelMetrics?.metrics ||
+  null
+
+const activeModelComparison =
+  backendForecastResult?.model_comparison ||
+  latestModelMetrics?.model_comparison ||
+  []
 
   return (
     <div className="relative space-y-6 pb-10">
@@ -1710,6 +1788,237 @@ export default function ForecastPage() {
           </div>
         </div>
       </div>
+
+<PremiumPanel id="machine-learning-controls" className="p-5 sm:p-6">
+  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <SectionBadge icon={Sparkles} tone="blue">
+        Machine learning forecast
+      </SectionBadge>
+
+      <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+        Selected forecasting model
+      </h2>
+
+      <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+        The system automatically trains, evaluates, selects, and applies the best model after the uploaded datasets are prepared. Users only need to review the forecast results.
+      </p>
+    </div>
+
+    <div className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-black text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+      {isMachineLearningForecast ? 'Automatic ML forecast' : 'Forecast available'}
+    </div>
+  </div>
+
+  <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="relative overflow-hidden rounded-[28px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-emerald-950/20">
+      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-400/20 blur-3xl" />
+
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-[32px] border border-blue-200 bg-slate-950 shadow-[0_0_38px_rgba(56,189,248,0.35)] dark:border-blue-500/30 sm:h-40 sm:w-40">
+  <img
+    src={aiGif}
+    alt="AI model"
+    className="h-full w-full object-cover"
+  />
+</div>
+
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
+              Model used
+            </p>
+
+            <h3 className="mt-2 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+              {activeModelMetrics?.model_name || latestModelMetrics?.best_model_name || selectedModelName}
+            </h3>
+
+            <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+              Version {selectedModelVersion}. This model was selected from the model comparison because it produced the best forecast performance for the latest integrated dataset.
+            </p>
+          </div>
+        </div>
+
+        <span className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          Best model
+        </span>
+      </div>
+
+      <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+            Forecast error
+          </p>
+          <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
+            {activeModelMetrics?.rmse ? formatDecimal(activeModelMetrics.rmse) : 'N/A'}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+            RMSE, lower is better
+          </p>
+        </div>
+
+        <div className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+            Risk accuracy
+          </p>
+          <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
+            {formatMetricPercent(activeModelMetrics?.accuracy)}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+            Correct risk classification
+          </p>
+        </div>
+
+        <div className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+            F1-score
+          </p>
+          <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
+            {formatMetricPercent(activeModelMetrics?.f1_score)}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+            Balanced classification score
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div className="rounded-[28px] border border-slate-200 bg-slate-50/90 p-5 dark:border-slate-800 dark:bg-slate-900/70">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <CheckCircle2 className="h-5 w-5" />
+        </div>
+
+        <div>
+          <p className="text-sm font-black text-brand-text dark:text-slate-100">
+            No manual action needed
+          </p>
+
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            Training, evaluation, and forecasting are triggered automatically after data preparation. This page focuses on results for health workers.
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowModelDetails((current) => !current)}
+        className="mt-5 flex w-full items-center justify-between rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-left text-sm font-black text-brand-text shadow-sm transition hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-blue-300"
+      >
+        <span>{showModelDetails ? 'Hide technical metrics' : 'Show technical metrics'}</span>
+        {showModelDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+    </div>
+  </div>
+
+  {showModelDetails && (
+    <div className="mt-5 space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        {[
+          ['MAE', activeModelMetrics?.mae],
+          ['RMSE', activeModelMetrics?.rmse],
+          ['Accuracy', formatMetricPercent(activeModelMetrics?.accuracy)],
+          ['Precision', formatMetricPercent(activeModelMetrics?.precision)],
+          ['Recall', formatMetricPercent(activeModelMetrics?.recall)],
+          ['F1-score', formatMetricPercent(activeModelMetrics?.f1_score)],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+            <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
+              {label}
+            </p>
+            <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
+              {value || 'N/A'}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {activeModelComparison.length > 0 && (
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+          <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+            <p className="text-sm font-black text-brand-text dark:text-slate-100">
+              Model ranking
+            </p>
+            <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+              Models are ranked by RMSE and MAE. The selected model appears first.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.14em] text-brand-muted dark:bg-slate-900 dark:text-slate-400">
+                <tr>
+                  <th className="px-5 py-3">Rank</th>
+                  <th className="px-5 py-3">Model</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">RMSE</th>
+                  <th className="px-5 py-3">MAE</th>
+                  <th className="px-5 py-3">Accuracy</th>
+                  <th className="px-5 py-3">Precision</th>
+                  <th className="px-5 py-3">Recall</th>
+                  <th className="px-5 py-3">F1-score</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {activeModelComparison.map((model, index) => {
+                  const isSelected = index === 0
+
+                  return (
+                    <tr
+                      key={model.model_key || model.model_name}
+                      className={isSelected ? 'bg-emerald-50/70 dark:bg-emerald-500/10' : ''}
+                    >
+                      <td className="px-5 py-4">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-black text-brand-text dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                          #{index + 1}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 font-black text-brand-text dark:text-slate-100">
+                        {model.model_name}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${
+                          isSelected
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                            : 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                        }`}>
+                          {isSelected ? 'Selected' : 'Compared'}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 font-bold text-brand-muted dark:text-slate-400">
+                        {formatDecimal(model.rmse)}
+                      </td>
+                      <td className="px-5 py-4 font-bold text-brand-muted dark:text-slate-400">
+                        {formatDecimal(model.mae)}
+                      </td>
+                      <td className="px-5 py-4 font-bold text-brand-muted dark:text-slate-400">
+                        {formatMetricPercent(model.accuracy)}
+                      </td>
+                      <td className="px-5 py-4 font-bold text-brand-muted dark:text-slate-400">
+                        {formatMetricPercent(model.precision)}
+                      </td>
+                      <td className="px-5 py-4 font-bold text-brand-muted dark:text-slate-400">
+                        {formatMetricPercent(model.recall)}
+                      </td>
+                      <td className="px-5 py-4 font-bold text-brand-muted dark:text-slate-400">
+                        {formatMetricPercent(model.f1_score)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+</PremiumPanel>
+
 
       <PremiumPanel id="multi-source-risk-factors" className="p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1924,30 +2233,25 @@ export default function ForecastPage() {
     </div>
   </div>
 
-  <button
-    type="button"
-    onClick={handleRunForecast}
-    className="group relative flex min-h-[96px] w-full overflow-hidden rounded-[24px] border border-blue-400/30 bg-gradient-to-br from-brand-blue via-blue-600 to-sky-500 px-5 py-4 text-left text-white shadow-[0_18px_38px_rgba(37,95,143,0.30)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(37,95,143,0.38)]"
-  >
-    <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/20 blur-2xl transition group-hover:bg-white/30" />
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-white/30" />
+  <div className="relative flex min-h-[96px] w-full overflow-hidden rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-blue-50 px-5 py-4 text-left shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-blue-950/20">
+    <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-emerald-400/20 blur-2xl" />
 
     <div className="relative flex w-full items-center gap-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 shadow-inner ring-1 ring-white/30">
-        <BarChart3 className="h-5 w-5" />
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-white/10 dark:text-emerald-300">
+        <CheckCircle2 className="h-5 w-5" />
       </div>
 
       <div className="min-w-0">
-        <p className="text-sm font-black leading-5">
-          Save forecast result
+        <p className="text-sm font-black leading-5 text-brand-text dark:text-slate-100">
+          Forecast saved automatically
         </p>
 
-        <p className="mt-1 text-xs leading-5 text-white/80">
-          Add this forecast result to the activity log.
+        <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+          The latest ML forecast is saved after the Upload page finishes automatic preparation.
         </p>
       </div>
     </div>
-  </button>
+  </div>
 </div>
         </PremiumPanel>
 

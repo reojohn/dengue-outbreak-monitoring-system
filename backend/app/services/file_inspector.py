@@ -439,10 +439,21 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
     }
 
 
-async def clean_dengue_file(file: UploadFile):
-    df, file_type, filename = await read_tabular_file(file)
+def build_clean_dengue_result_from_dataframe(
+    df: pd.DataFrame,
+    *,
+    file_type: str = "",
+    filename: str = "dengue_dataset",
+    prepared: dict | None = None,
+):
+    """Build the cleaned dengue payload from an already-read dataframe.
 
-    prepared = prepare_clean_dengue_dataframe(df)
+    This lets the upload endpoint read and clean a large historical file once,
+    then reuse the same cleaned dataframe for forecasting. Previously the
+    dengue upload path read and cleaned the same large file twice, which made
+    defense demos feel slow.
+    """
+    prepared = prepared or prepare_clean_dengue_dataframe(df)
 
     dengue_detection = prepared["dengue_detection"]
     valid_df = prepared["valid_df"]
@@ -468,6 +479,15 @@ async def clean_dengue_file(file: UploadFile):
         "cleaned_preview": cleaned_preview,
         "invalid_preview": invalid_preview,
     }
+
+
+async def clean_dengue_file(file: UploadFile):
+    df, file_type, filename = await read_tabular_file(file)
+    return build_clean_dengue_result_from_dataframe(
+        df,
+        file_type=file_type,
+        filename=filename,
+    )
 
 
 async def summarize_dengue_file(file: UploadFile):

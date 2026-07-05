@@ -70,13 +70,13 @@ def _build_ml_dataset(valid_df: pd.DataFrame) -> pd.DataFrame:
 def _candidate_models():
     return {
         "random_forest": RandomForestRegressor(
-            n_estimators=120,
+            n_estimators=45,
             random_state=42,
             n_jobs=-1,
             max_depth=12,
         ),
         "extra_trees": ExtraTreesRegressor(
-            n_estimators=120,
+            n_estimators=45,
             random_state=42,
             n_jobs=-1,
             max_depth=12,
@@ -211,9 +211,20 @@ def _fallback_forecast(valid_df: pd.DataFrame):
     return forecast_rows
 
 
-async def generate_auto_ml_dengue_forecast(file: UploadFile):
-    df, file_type, filename = await read_tabular_file(file)
-    prepared = prepare_clean_dengue_dataframe(df)
+def generate_auto_ml_dengue_forecast_from_dataframe(
+    df: pd.DataFrame,
+    *,
+    file_type: str = "",
+    filename: str = "dengue_dataset",
+    prepared: dict | None = None,
+):
+    """Generate a forecast from an already-read dengue dataframe.
+
+    The upload route uses this to avoid reading and cleaning the same large
+    historical file twice. This keeps the model behavior the same, but cuts a
+    large amount of request time during live uploads.
+    """
+    prepared = prepared or prepare_clean_dengue_dataframe(df)
 
     valid_df = prepared["valid_df"]
     invalid_preview_df = prepared["invalid_preview_df"]
@@ -372,6 +383,7 @@ async def generate_auto_ml_dengue_forecast(file: UploadFile):
         "risk_counts": risk_counts,
         "validation_summary": validation_summary,
         "dengue_detection": dengue_detection,
+        "cleaned_preview": make_json_safe_records(valid_df.head(25)),
         "forecast_results": forecast_rows,
         "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
         "model_name": f"auto_selected_{selected_model_key}",
@@ -381,3 +393,11 @@ async def generate_auto_ml_dengue_forecast(file: UploadFile):
         "model_metrics": model_metrics,
         "model_comparison": model_comparison,
     }
+
+async def generate_auto_ml_dengue_forecast(file: UploadFile):
+    df, file_type, filename = await read_tabular_file(file)
+    return generate_auto_ml_dengue_forecast_from_dataframe(
+        df,
+        file_type=file_type,
+        filename=filename,
+    )

@@ -42,65 +42,99 @@ export async function checkBackendHealth() {
 }
 
 export async function inspectUploadedFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/inspect`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/inspect`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
   return handleApiResponse(response)
 }
 
 export async function cleanDengueFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/clean-dengue`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/clean-dengue`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
   return handleApiResponse(response)
 }
 
 export async function summarizeDengueFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/summarize-dengue`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/summarize-dengue`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
   return handleApiResponse(response)
 }
 
 export async function forecastDengueFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/forecast-dengue`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/forecast-dengue`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
   return handleApiResponse(response)
 }
 
 export async function validatePopulationFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/validate-population`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/validate-population`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
   return handleApiResponse(response)
 }
 
 export async function validateWeatherFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/validate-weather`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/validate-weather`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
   return handleApiResponse(response)
 }
 
 export async function validateBoundaryFile(file) {
-  const response = await fetch(`${API_BASE_URL}/uploads/validate-boundary`, {
-    method: 'POST',
-    body: buildFileFormData(file),
-  })
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/uploads/validate-boundary`,
+    {
+      method: 'POST',
+      body: buildFileFormData(file),
+    },
+    180000
+  )
 
+  return handleApiResponse(response)
+}
+
+
+export async function getUploadJobStatus(jobId) {
+  const response = await fetch(`${API_BASE_URL}/uploads/jobs/${jobId}`)
   return handleApiResponse(response)
 }
 
@@ -109,7 +143,7 @@ export async function getUploadDatabaseStatus() {
   return handleApiResponse(response)
 }
 
-export async function getUploadDatabasePreview(limit = 300) {
+export async function getUploadDatabasePreview(limit = 100) {
   const response = await fetch(`${API_BASE_URL}/uploads/database-preview?limit=${limit}`)
   return handleApiResponse(response)
 }
@@ -355,3 +389,47 @@ export async function deleteDemoSession(sessionId) {
 
 
 export { API_BASE_URL }
+export async function trainModel() {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/models/train`,
+    { method: 'POST' },
+    180000
+  )
+
+  return handleApiResponse(response)
+}
+
+export async function evaluateModel() {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/models/evaluate`,
+    { method: 'POST' },
+    180000
+  )
+
+  return handleApiResponse(response)
+}
+
+export async function forecastModel() {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/models/forecast`,
+    { method: 'POST' },
+    180000
+  )
+
+  return handleApiResponse(response)
+}
+
+export async function getLatestModelMetrics() {
+  const response = await fetch(`${API_BASE_URL}/models/latest-metrics`)
+  return handleApiResponse(response)
+}
+
+export async function autoRunModel() {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/models/auto-run`,
+    { method: 'POST' },
+    180000
+  )
+
+  return handleApiResponse(response)
+}

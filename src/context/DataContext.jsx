@@ -1539,7 +1539,27 @@ export function DataProvider({ children }) {
         const savedWorkspace = result?.workspace
 
         if (!cancelled && savedWorkspace && typeof savedWorkspace === 'object') {
-          setWorkspace(normalizeWorkspace(savedWorkspace))
+          setWorkspace((current) =>
+            normalizeWorkspace({
+              ...current,
+              ...savedWorkspace,
+              dengueRecords: current.dengueRecords?.length
+                ? current.dengueRecords
+                : savedWorkspace.dengueRecords || [],
+              weatherRecords: current.weatherRecords?.length
+                ? current.weatherRecords
+                : savedWorkspace.weatherRecords || [],
+              populationRecords: current.populationRecords?.length
+                ? current.populationRecords
+                : savedWorkspace.populationRecords || [],
+              boundaryRecords: current.boundaryRecords?.length
+                ? current.boundaryRecords
+                : savedWorkspace.boundaryRecords || [],
+              backendMergedDataset: current.backendMergedDataset?.length
+                ? current.backendMergedDataset
+                : savedWorkspace.backendMergedDataset || [],
+            })
+          )
         }
       } catch {
         // Keep the local fallback workspace if Supabase is temporarily unavailable.
@@ -1693,7 +1713,7 @@ export function DataProvider({ children }) {
       let previewResult = null
 
       try {
-        previewResult = await getUploadDatabasePreview(300)
+        previewResult = await getUploadDatabasePreview(100)
       } catch {
         previewResult = null
       }
@@ -1977,12 +1997,14 @@ export function DataProvider({ children }) {
   }
 
   useEffect(() => {
+    if (!workspaceHydrated) return
+
     loadLatestUploadDatabaseStatus({ silent: true })
     syncBackendIntegrationStatus({ silent: true })
     loadLatestSavedBoundaryGeoJson({ silent: true })
     loadLatestBackendIntegrationDataset({ silent: true })
     loadLatestSavedForecast({ silent: true })
-  }, [])
+  }, [workspaceHydrated])
 
   const riskRows = useMemo(() => {
     return buildRiskRows(
