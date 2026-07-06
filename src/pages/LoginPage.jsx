@@ -19,9 +19,10 @@ import {
   Moon,
   Building2,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { createDemoSession } from '../services/api'
+import { getAuthSession, getRoleHome } from '../utils/auth'
 
 const items = [
   {
@@ -47,21 +48,22 @@ const demoAccounts = [
     label: 'City Health Office',
     email: 'cityhealth@butuan.gov.ph',
     password: 'demo1234',
-    description: 'Can review dashboard, forecasts, map outputs, and reports.',
+    description: 'Can upload datasets, review dashboards, run forecasts, view maps, and generate reports.',
   },
   {
     role: 'bhw',
     label: 'Barangay Health Worker',
     email: 'bhw@butuan.gov.ph',
     password: 'demo1234',
-    description: 'Can review barangay records, alerts, and monitoring summaries.',
+    assignedBarangay: 'Baan KM 3',
+    description: 'Can review assigned barangay alerts, hotspot status, and monitoring summaries.',
   },
   {
-    role: 'admin',
-    label: 'System Administrator',
-    email: 'admin@dengue.local',
-    password: 'admin1234',
-    description: 'Can access administrative prototype functions.',
+    role: 'supervisor',
+    label: 'Supervisor',
+    email: 'supervisor@butuan.gov.ph',
+    password: 'demo1234',
+    description: 'Can review city-wide risk rankings, forecasts, maps, and reports for planning.',
   },
 ]
 
@@ -128,6 +130,16 @@ const roleVisuals = {
     bg: 'bg-emerald-500/10',
     badge: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200',
   },
+  supervisor: {
+    label: 'Supervisor',
+    shortLabel: 'SUPERVISOR',
+    icon: ShieldCheck,
+    glow: 'from-blue-500 via-indigo-600 to-violet-700',
+    iconColor: 'text-blue-300',
+    ring: 'border-blue-400/30',
+    bg: 'bg-blue-500/10',
+    badge: 'border-blue-400/40 bg-blue-500/15 text-blue-200',
+  },
   admin: {
     label: 'System Administrator',
     shortLabel: 'ADMIN',
@@ -159,7 +171,7 @@ function wait(milliseconds) {
 function detectRoleFromUsername(value) {
   const key = String(value || '').trim().toLowerCase()
 
-  if (key.includes('admin')) return 'admin'
+  if (key.includes('supervisor') || key.includes('coordinator')) return 'supervisor'
   if (key.includes('bhw') || key.includes('barangay')) return 'bhw'
 
   if (
@@ -187,6 +199,7 @@ function getRoleVisual(role) {
 }
 
 export default function LoginPage() {
+  const existingSession = getAuthSession()
   const navigate = useNavigate()
   const { addActivityLog } = useData()
 
@@ -211,6 +224,10 @@ export default function LoginPage() {
   const currentScan = scanStages[scanStage] || scanStages[0]
   const currentRoleVisual = getRoleVisual(roleHint || selectedRole)
   const RoleIcon = currentRoleVisual.icon
+
+  if (existingSession) {
+    return <Navigate to={getRoleHome(existingSession.role)} replace />
+  }
 
   const displayIcon =
     scanStage === 4
@@ -289,6 +306,7 @@ export default function LoginPage() {
         role: matchedAccount.role,
         label: matchedAccount.label,
         email: matchedAccount.email,
+        assignedBarangay: matchedAccount.assignedBarangay || '',
         loginTime: new Date().toISOString(),
       }
 
@@ -315,7 +333,7 @@ export default function LoginPage() {
         `${matchedAccount.label} accessed the prototype system.`
       )
 
-      navigate('/dashboard', { replace: true })
+      navigate(getRoleHome(matchedAccount.role), { replace: true })
     } catch (loginError) {
       setError(loginError.message || 'Login failed. Please try again.')
       setScanStage(0)
@@ -713,7 +731,7 @@ export default function LoginPage() {
               </p>
 
               <p className="mt-2 text-sm leading-6 text-slate-400">
-                Role-based access helps separate City Health Office, Barangay Health Worker, and System Administrator workflows within the dengue monitoring system.
+                Role-based access helps separate City Health Office, Barangay Health Worker, and Supervisor workflows within the dengue monitoring system.
               </p>
             </div>
           </form>

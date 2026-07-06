@@ -35,4 +35,4 @@ def latest_metrics():
 
 @router.post("/auto-run")
 def auto_run_model():
-    return auto_run_latest_model()
+    return auto_run_latest_model()  

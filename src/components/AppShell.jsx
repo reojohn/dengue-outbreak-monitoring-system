@@ -30,6 +30,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { getAuthSession, getRoleHome } from '../utils/auth'
 import { useData } from '../context/DataContext'
 import {
   getBackendNotifications,
@@ -40,11 +41,13 @@ import {
 } from '../services/api'
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/upload', label: 'Upload', icon: Upload },
-  { to: '/forecast', label: 'Forecast', icon: BarChart3 },
-  { to: '/map', label: 'Map', icon: Map },
-  { to: '/reports', label: 'Reports', icon: FileText },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['cho', 'supervisor', 'admin', 'viewer'] },
+  { to: '/upload', label: 'Upload', icon: Upload, roles: ['cho', 'admin'] },
+  { to: '/forecast', label: 'Forecast', icon: BarChart3, roles: ['cho', 'supervisor', 'admin'] },
+  { to: '/map', label: 'Map', icon: Map, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
+  { to: '/bhw', label: 'BHW View', icon: ClipboardCheck, roles: ['bhw', 'cho', 'admin'] },
+  { to: '/supervisor', label: 'Supervisor', icon: ShieldAlert, roles: ['supervisor', 'cho', 'admin'] },
+  { to: '/reports', label: 'Reports', icon: FileText, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
 ]
 
 const TEXT_SCALE_MIN = 90
@@ -910,6 +913,18 @@ export default function AppShell({ children }) {
 
   const isDark = theme === 'dark'
 
+  const session = getAuthSession()
+  const currentRole = session?.role || 'viewer'
+  const filteredNavItems = navItems.filter((item) => {
+    return !item.roles?.length || item.roles.includes(currentRole)
+  })
+  const roleLabel = session?.label || 'Prototype User'
+  const workspaceLabel = currentRole === 'bhw'
+    ? `${session?.assignedBarangay || 'Assigned Barangay'} BHW workspace`
+    : currentRole === 'supervisor'
+      ? 'CHO supervisor review workspace'
+      : 'Butuan City CHO monitoring workspace'
+
   const title =
     navItems.find((item) => item.to === location.pathname)?.label || 'Dashboard'
 
@@ -1715,7 +1730,7 @@ export default function AppShell({ children }) {
 
     addActivityLog?.(
       'User signed out',
-      'The current user signed out of the CHO prototype.'
+      'The current user signed out of the dengue monitoring prototype.'
     )
 
     setTimeout(() => {
@@ -1729,12 +1744,12 @@ export default function AppShell({ children }) {
       }
 
       localStorage.removeItem('dengue-auth-session')
-      navigate('/', { replace: true })
+      navigate('/login', { replace: true })
     }, 800)
   }
   function handleOpenActionCommandCenter() {
   setMobileNavOpen(false)
-  navigate('/forecast#decision-action-tracking')
+  navigate(currentRole === 'bhw' ? '/bhw' : '/forecast#decision-action-tracking')
 
   window.setTimeout(() => {
     const targetElement = document.getElementById('decision-action-tracking')
@@ -1839,7 +1854,7 @@ export default function AppShell({ children }) {
               <p className="text-lg font-black">Butuan City</p>
 
               <p className="text-sm font-medium text-white/60">
-                CHO Prototype
+                {roleLabel}
               </p>
             </div>
           </div>
@@ -1855,7 +1870,7 @@ export default function AppShell({ children }) {
         </div>
 
         <nav className="relative space-y-0.5 pr-1 overflow-hidden"> 
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {filteredNavItems.map(({ to, label, icon: Icon }) => (
             <SidebarNavItem
               key={to}
               to={to}
@@ -1910,13 +1925,13 @@ export default function AppShell({ children }) {
       </p>
 
       <p className="mt-1 text-xs leading-5 text-white/60">
-        Go to the action command center.
+        Go to your response workspace.
       </p>
     </div>
   </div>
 
   <span className="relative mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-[#0f2742]">
-    Open action tracker
+    Open response workspace
   </span>
 </button>
         </div>
@@ -1937,7 +1952,7 @@ export default function AppShell({ children }) {
               <p className="text-lg font-black">Butuan City</p>
 
               <p className="text-sm font-medium text-white/60">
-                CHO Prototype
+                {roleLabel}
               </p>
             </div>
           </div>
@@ -1946,27 +1961,7 @@ export default function AppShell({ children }) {
   <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-300/20 blur-2xl" />
   <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
-  <div className="relative flex items-start gap-3">
-    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-inner">
-      <LayoutDashboard className="h-5 w-5" />
-    </div>
-
-    <div className="min-w-0 flex-1">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
-        Workspace
-      </p>
-
-      <p className="mt-2 text-sm font-black leading-5 text-white">
-        Dengue Outbreak Prevention
-      </p>
-
-      <p className="mt-1 text-xs leading-5 text-white/60">
-        Butuan City CHO monitoring workspace
-      </p>
-    </div>
-  </div>
-
-  <div className="relative mt-4 grid grid-cols-2 gap-2">
+  <div className="relative grid grid-cols-2 gap-2">
     <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2">
       <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">
         Status
@@ -1994,7 +1989,7 @@ export default function AppShell({ children }) {
               Navigation
             </p>
 
-            {navItems.map(({ to, label, icon: Icon }) => (
+            {filteredNavItems.map(({ to, label, icon: Icon }) => (
               <SidebarNavItem key={to} to={to} label={label} Icon={Icon} />
             ))}
           </nav>
