@@ -9,7 +9,17 @@ export const ROLE_HOME = {
 export function getAuthSession() {
   try {
     const session = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
-    return session && session.isAuthenticated ? session : null
+
+    if (!session || !session.isAuthenticated || !session.accessToken) {
+      return null
+    }
+
+    if (session.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
+      localStorage.removeItem('dengue-auth-session')
+      return null
+    }
+
+    return session
   } catch {
     return null
   }

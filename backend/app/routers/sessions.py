@@ -2,15 +2,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.database import engine
+from app.auth_security import require_roles
 
 router = APIRouter(
     prefix="/sessions",
-    tags=["demo sessions"],
+    tags=["legacy demo sessions"],
+    dependencies=[Depends(require_roles("admin"))],
 )
 
 DEFAULT_USER_KEY = "default_user"
@@ -62,7 +64,7 @@ def create_demo_session(payload: DemoSessionCreateRequest):
         ).mappings().first()
 
     return {
-        "message": "Demo session saved to Supabase.",
+        "message": "Legacy demo session saved to Supabase. Admin access required.",
         "session": {
             "session_id": row["session_id"],
             "user_key": row["user_key"],
@@ -93,7 +95,7 @@ def get_demo_session(session_id: str):
         raise HTTPException(status_code=404, detail="Demo session not found.")
 
     return {
-        "message": "Demo session loaded from Supabase.",
+        "message": "Legacy demo session loaded from Supabase. Admin access required.",
         "session": {
             "session_id": row["session_id"],
             "user_key": row["user_key"],
@@ -113,4 +115,4 @@ def delete_demo_session(session_id: str):
             {"session_id": session_id},
         )
 
-    return {"message": "Demo session removed from Supabase."}
+    return {"message": "Legacy demo session removed from Supabase. Admin access required."}

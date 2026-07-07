@@ -7,6 +7,7 @@ import MapPage from './pages/MapPage'
 import ReportsPage from './pages/ReportsPage'
 import BHWPage from './pages/BHWPage'
 import SupervisorPage from './pages/SupervisorPage'
+import UserManagementPage from './pages/UserManagementPage'
 import AppShell from './components/AppShell'
 import { canAccessRole, getAuthSession, getRoleHome } from './utils/auth'
 
@@ -88,6 +89,15 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={['cho', 'supervisor', 'bhw', 'admin', 'viewer']}>
             <MapPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute allowedRoles={['cho', 'admin']}>
+            <UserManagementPage />
           </ProtectedRoute>
         }
       />

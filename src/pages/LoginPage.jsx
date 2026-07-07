@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
-import { createDemoSession } from '../services/api'
+import { loginUser } from '../services/api'
 import { getAuthSession, getRoleHome } from '../utils/auth'
 
 const items = [
@@ -47,14 +47,12 @@ const demoAccounts = [
     role: 'cho',
     label: 'City Health Office',
     email: 'cityhealth@butuan.gov.ph',
-    password: 'demo1234',
     description: 'Can upload datasets, review dashboards, run forecasts, view maps, and generate reports.',
   },
   {
     role: 'bhw',
     label: 'Barangay Health Worker',
     email: 'bhw@butuan.gov.ph',
-    password: 'demo1234',
     assignedBarangay: 'Baan KM 3',
     description: 'Can review assigned barangay alerts, hotspot status, and monitoring summaries.',
   },
@@ -62,7 +60,6 @@ const demoAccounts = [
     role: 'supervisor',
     label: 'Supervisor',
     email: 'supervisor@butuan.gov.ph',
-    password: 'demo1234',
     description: 'Can review city-wide risk rankings, forecasts, maps, and reports for planning.',
   },
 ]
@@ -70,7 +67,7 @@ const demoAccounts = [
 const scanStages = {
   0: {
     title: 'Secure Access Ready',
-    message: 'Select a prototype account or enter demo credentials.',
+    message: 'Select an account or enter registered credentials.',
   },
   1: {
     title: 'Initializing Scan...',
@@ -205,7 +202,7 @@ export default function LoginPage() {
 
   const [selectedRole, setSelectedRole] = useState('cho')
   const [email, setEmail] = useState('cityhealth@butuan.gov.ph')
-  const [password, setPassword] = useState('demo1234')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isSigningIn, setIsSigningIn] = useState(false)
@@ -247,7 +244,7 @@ export default function LoginPage() {
     setSelectedRole(account.role)
     setRoleHint(account.role)
     setEmail(account.email)
-    setPassword(account.password)
+    setPassword('')
     setError('')
     setScanStage(0)
   }
@@ -266,80 +263,75 @@ export default function LoginPage() {
   }
 
   async function handleSubmit(event) {
-    event.preventDefault()
+  event.preventDefault()
 
-    if (isSigningIn) return
+  if (isSigningIn) return
 
-    setError('')
-    setIsSigningIn(true)
-    setScanStage(1)
+  setError('')
+  setIsSigningIn(true)
+  setScanStage(1)
 
-    try {
-      await wait(650)
+  try {
+    const detected = detectRoleFromUsername(email)
+    setRoleHint(detected)
 
-      setScanStage(2)
-      await wait(650)
+    await wait(350)
 
-      const detected = detectRoleFromUsername(email)
-      setRoleHint(detected)
+    setScanStage(2)
 
-      setScanStage(3)
-      await wait(700)
+    const loginResult = await loginUser({
+      email: email.trim(),
+      password,
+    })
 
-      const matchedAccount = demoAccounts.find((account) => {
-        return (
-          account.email.toLowerCase() === email.trim().toLowerCase() &&
-          account.password === password
-        )
-      })
+    await wait(350)
 
-      if (!matchedAccount) {
-        throw new Error('Invalid demo credentials. Please use one of the prototype accounts.')
-      }
+    setScanStage(3)
+    await wait(350)
 
-      setSelectedRole(matchedAccount.role)
-      setRoleHint(matchedAccount.role)
-      setScanStage(4)
+    const authenticatedUser = loginResult?.user
 
-      const session = {
-        isAuthenticated: true,
-        role: matchedAccount.role,
-        label: matchedAccount.label,
-        email: matchedAccount.email,
-        assignedBarangay: matchedAccount.assignedBarangay || '',
-        loginTime: new Date().toISOString(),
-      }
-
-      await wait(850)
-
-      try {
-        const savedSession = await createDemoSession({
-          user_key: 'default_user',
-          user_name: matchedAccount.label,
-          user_role: matchedAccount.role,
-          label: matchedAccount.label,
-          email: matchedAccount.email,
-        })
-
-        session.session_id = savedSession?.session?.session_id || ''
-      } catch {
-        session.session_id = ''
-      }
-
-      localStorage.setItem('dengue-auth-session', JSON.stringify(session))
-
-      addActivityLog(
-        'User signed in',
-        `${matchedAccount.label} accessed the prototype system.`
-      )
-
-      navigate(getRoleHome(matchedAccount.role), { replace: true })
-    } catch (loginError) {
-      setError(loginError.message || 'Login failed. Please try again.')
-      setScanStage(0)
-      setIsSigningIn(false)
+    if (!authenticatedUser?.role || !loginResult?.access_token) {
+      throw new Error('Login succeeded, but the server did not return a complete session.')
     }
+
+    const matchedAccount = demoAccounts.find((account) => account.role === authenticatedUser.role)
+    const displayName = authenticatedUser.full_name || matchedAccount?.label || authenticatedUser.email
+
+    setSelectedRole(authenticatedUser.role)
+    setRoleHint(authenticatedUser.role)
+    setScanStage(4)
+
+    const session = {
+      isAuthenticated: true,
+      userId: authenticatedUser.id,
+      role: authenticatedUser.role,
+      label: displayName,
+      email: authenticatedUser.email,
+      assignedBarangay: authenticatedUser.assigned_barangay || authenticatedUser.assignedBarangay || '',
+      accessToken: loginResult.access_token,
+      tokenType: loginResult.token_type || 'bearer',
+      expiresAt: loginResult.expires_at || '',
+      session_id: loginResult.session_id || '',
+      loginTime: new Date().toISOString(),
+    }
+
+    await wait(450)
+
+    localStorage.setItem('dengue-auth-session', JSON.stringify(session))
+
+    addActivityLog(
+      'User signed in',
+      `${displayName} accessed the dengue monitoring system.`
+    )
+
+    navigate(getRoleHome(authenticatedUser.role), { replace: true })
+  } catch (loginError) {
+    setError(loginError.message || 'Login failed. Please try again.')
+    setScanStage(0)
+    setIsSigningIn(false)
   }
+}
 
   return (
     <div
@@ -713,15 +705,11 @@ export default function LoginPage() {
 
             <div className="mt-5 rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Demo Credentials
+                Account Access
               </p>
 
-              <p className="mt-2 break-words text-xs text-slate-400">
-                Email: {selectedAccount?.email}
-              </p>
-
-              <p className="text-xs text-slate-400">
-                Password: {selectedAccount?.password}
+              <p className="mt-2 break-words text-xs leading-5 text-slate-400">
+                Use an account created in User Management. Role cards only help fill the expected email format. Passwords are not stored or shown in the browser.
               </p>
             </div>
 

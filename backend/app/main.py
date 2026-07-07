@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import decision_actions, forecasts, geospatial, integration, models, notifications, reports, uploads, workspace, sessions
+from app.routers import auth, decision_actions, forecasts, geospatial, integration, models, notifications, reports, uploads, workspace, sessions
 from sqlalchemy import text
 from app.database import engine, test_database_connection
+from app.auth_security import require_roles
+from app.routers.auth import ensure_auth_tables
 
 app = FastAPI(
     title="Dengue Predictive Analytics API",
@@ -24,16 +26,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(uploads.router)
-app.include_router(integration.router)
-app.include_router(forecasts.router)
-app.include_router(models.router)
-app.include_router(geospatial.router)
-app.include_router(notifications.router)
-app.include_router(decision_actions.router)
-app.include_router(reports.router)
-app.include_router(workspace.router)
+app.include_router(auth.router)
+app.include_router(uploads.router, dependencies=[Depends(require_roles("cho", "admin"))])
+app.include_router(integration.router, dependencies=[Depends(require_roles("cho", "admin"))])
+app.include_router(forecasts.router, dependencies=[Depends(require_roles("cho", "supervisor", "admin"))])
+app.include_router(models.router, dependencies=[Depends(require_roles("cho", "admin"))])
+app.include_router(geospatial.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
+app.include_router(notifications.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
+app.include_router(decision_actions.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin"))])
+app.include_router(reports.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
+app.include_router(workspace.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(sessions.router)
+
+
+@app.on_event("startup")
+def startup_auth_setup():
+    ensure_auth_tables()
 
 
 @app.get("/")
@@ -63,7 +71,7 @@ def database_health_check():
     }
 
 
-@app.post("/health/database/test-insert")
+@app.post("/health/database/test-insert", dependencies=[Depends(require_roles("admin", "cho"))])
 def database_test_insert():
     with engine.begin() as connection:
         connection.execute(

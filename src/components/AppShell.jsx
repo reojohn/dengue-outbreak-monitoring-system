@@ -21,6 +21,7 @@ import {
   Sun,
   Menu,
   X,
+  UsersRound,
   Settings,
   Type,
   Eye,
@@ -37,7 +38,7 @@ import {
   getNotificationReads,
   markNotificationRead as saveNotificationRead,
   markNotificationsRead as saveNotificationsRead,
-  deleteDemoSession,
+  logoutUser,
 } from '../services/api'
 
 const navItems = [
@@ -47,6 +48,7 @@ const navItems = [
   { to: '/map', label: 'Map', icon: Map, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
   { to: '/bhw', label: 'BHW View', icon: ClipboardCheck, roles: ['bhw', 'cho', 'admin'] },
   { to: '/supervisor', label: 'Supervisor', icon: ShieldAlert, roles: ['supervisor', 'cho', 'admin'] },
+  { to: '/users', label: 'Users', icon: UsersRound, roles: ['cho', 'admin'] },
   { to: '/reports', label: 'Reports', icon: FileText, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
 ]
 
@@ -1737,7 +1739,7 @@ export default function AppShell({ children }) {
       try {
         const savedSession = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
         if (savedSession?.session_id) {
-          deleteDemoSession(savedSession.session_id).catch(() => {})
+          logoutUser().catch(() => {})
         }
       } catch {
         // Continue logout even if the saved session cannot be parsed.
@@ -1906,33 +1908,29 @@ export default function AppShell({ children }) {
           <button
   type="button"
   onClick={handleOpenActionCommandCenter}
-  className="group relative w-full overflow-hidden rounded-[28px] border border-white/15 bg-white/10 p-4 text-left shadow-inner backdrop-blur transition hover:bg-white/15"
+  className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/15"
 >
   <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-sky-300/20 blur-2xl" />
 
-  <div className="relative flex items-start gap-3">
+  <div className="relative grid grid-cols-[auto_1fr] gap-3">
     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/15 bg-white/10 text-white">
       <ClipboardCheck className="h-5 w-5" />
     </div>
 
     <div className="min-w-0">
-      <p className="text-xs font-black uppercase tracking-[0.18em] text-white/50">
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
         Quick action
       </p>
 
-      <p className="mt-2 text-sm font-black text-white">
-        Create response action
+      <p className="mt-1 text-sm font-black leading-5 text-white">
+        Response action
       </p>
 
-      <p className="mt-1 text-xs leading-5 text-white/60">
-        Go to your response workspace.
-      </p>
+      <span className="mt-2 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
+        Open
+      </span>
     </div>
   </div>
-
-  <span className="relative mt-4 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-[#0f2742]">
-    Open response workspace
-  </span>
 </button>
         </div>
       </aside>
@@ -1984,7 +1982,7 @@ export default function AppShell({ children }) {
   </div>
 </div>
 
-          <nav className="relative space-y-1 overflow-hidden pr-0">
+          <nav className="relative min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 dengue-premium-scrollbar">
             <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
               Navigation
             </p>
@@ -2002,40 +2000,25 @@ export default function AppShell({ children }) {
             <button
   type="button"
   onClick={handleOpenActionCommandCenter}
- className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-gradient-to-br from-white/18 via-white/10 to-sky-400/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_40px_rgba(15,23,42,0.22)] backdrop-blur transition hover:-translate-y-0.5 hover:border-white/35 hover:bg-white/15 hover:shadow-[0_22px_48px_rgba(14,165,233,0.22)]"
+  className="group relative w-full overflow-hidden rounded-[24px] border border-white/20 bg-white/10 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/15"
 >
-  <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-sky-300/25 blur-2xl transition group-hover:bg-sky-300/35" />
-  <div className="pointer-events-none absolute -bottom-10 left-4 h-24 w-24 rounded-full bg-emerald-300/15 blur-2xl" />
-  <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
-
-  <div className="relative flex items-start gap-3">
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/15 bg-white/12 text-white shadow-inner transition group-hover:bg-white/18">
+  <div className="relative grid grid-cols-[auto_1fr_auto] items-center gap-3">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white">
       <ClipboardCheck className="h-5 w-5" />
     </div>
 
-    <div className="min-w-0 flex-1">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">
+    <div className="min-w-0">
+      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/45">
         Quick action
       </p>
 
-      <p className="mt-2 text-sm font-black leading-5 text-white">
-        Create response action
-      </p>
-
-      <p className="mt-1 text-xs leading-5 text-white/65">
-        Open the action command center and assign barangay response tasks.
+      <p className="truncate text-sm font-black text-white">
+        Response action
       </p>
     </div>
-  </div>
 
-  <div className="relative mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/10 px-3 py-2.5">
-    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
-      Forecast page
-    </span>
-
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-[#0f2742] shadow-sm">
+    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
       Open
-      <Plus className="h-3 w-3" />
     </span>
   </div>
 </button>
