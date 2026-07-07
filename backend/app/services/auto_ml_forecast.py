@@ -1,12 +1,29 @@
 from fastapi import HTTPException, UploadFile
+from datetime import datetime
+import time
 
 import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, mean_squared_error, precision_score, recall_score, r2_score
 from sklearn.tree import DecisionTreeRegressor
+
+try:
+    from xgboost import XGBRegressor
+except Exception:  # Optional advanced model. The system still runs without it.
+    XGBRegressor = None
+
+try:
+    from lightgbm import LGBMRegressor
+except Exception:  # Optional advanced model. The system still runs without it.
+    LGBMRegressor = None
+
+try:
+    from catboost import CatBoostRegressor
+except Exception:  # Optional advanced model. The system still runs without it.
+    CatBoostRegressor = None
 
 from app.services.baseline_forecast import (
     classify_forecast_risk,
@@ -67,27 +84,174 @@ def _build_ml_dataset(valid_df: pd.DataFrame) -> pd.DataFrame:
     return ml_df
 
 
+RANDOM_STATE = 42
+TRAIN_TEST_SPLIT_LABEL = "80% / 20%"
+TRAIN_RATIO = 0.8
+TEST_RATIO = 0.2
+
+MODEL_DISPLAY_NAMES = {
+    "random_forest": "Random Forest",
+    "extra_trees": "Extra Trees",
+    "gradient_boosting": "Gradient Boosting",
+    "decision_tree": "Decision Tree",
+    "ridge_regression": "Ridge Regression",
+    "xgboost": "XGBoost",
+    "lightgbm": "LightGBM",
+    "catboost": "CatBoost",
+}
+
+
 def _candidate_models():
-    return {
+    """Return baseline and optional advanced forecasting models.
+
+    The advanced packages are optional so local demos and deployment do not fail
+    when XGBoost, LightGBM, or CatBoost is not installed yet.
+    """
+    models = {
         "random_forest": RandomForestRegressor(
             n_estimators=45,
-            random_state=42,
+            random_state=RANDOM_STATE,
             n_jobs=-1,
             max_depth=12,
         ),
         "extra_trees": ExtraTreesRegressor(
             n_estimators=45,
-            random_state=42,
+            random_state=RANDOM_STATE,
             n_jobs=-1,
             max_depth=12,
         ),
-        "gradient_boosting": GradientBoostingRegressor(random_state=42),
-        "decision_tree": DecisionTreeRegressor(random_state=42, max_depth=10),
+        "gradient_boosting": GradientBoostingRegressor(random_state=RANDOM_STATE),
+        "decision_tree": DecisionTreeRegressor(random_state=RANDOM_STATE, max_depth=10),
         "ridge_regression": Ridge(),
     }
 
+    if XGBRegressor is not None:
+        models["xgboost"] = XGBRegressor(
+            n_estimators=90,
+            max_depth=4,
+            learning_rate=0.07,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            objective="reg:squarederror",
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+        )
+
+    if LGBMRegressor is not None:
+        models["lightgbm"] = LGBMRegressor(
+            n_estimators=90,
+            learning_rate=0.07,
+            num_leaves=24,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+            verbose=-1,
+        )
+
+    if CatBoostRegressor is not None:
+        models["catboost"] = CatBoostRegressor(
+            iterations=90,
+            depth=5,
+            learning_rate=0.07,
+            loss_function="RMSE",
+            random_seed=RANDOM_STATE,
+            verbose=False,
+            allow_writing_files=False,
+        )
+
+    return models
+
+
+def _model_display_name(model_key: str) -> str:
+    return MODEL_DISPLAY_NAMES.get(model_key, model_key.replace("_", " ").title())
+
+
+def _risk_class_from_cases(cases):
+    return classify_forecast_risk(int(round(max(float(cases), 0))) * 4)
+
+
+def _evaluate_regression_as_risk(y_true, y_pred):
+    actual_classes = [_risk_class_from_cases(value) for value in y_true]
+    predicted_classes = [_risk_class_from_cases(value) for value in y_pred]
+
+    return {
+        "accuracy": round(float(accuracy_score(actual_classes, predicted_classes)), 4),
+        "precision": round(float(precision_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
+        "recall": round(float(recall_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
+        "f1_score": round(float(f1_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
+    }
+
+
+
+def _feature_label(feature: str) -> str:
+    labels = {
+        "sort_year": "Year",
+        "sort_month": "Month",
+        "sort_week": "Epidemiological Week",
+        "lag_1": "Previous Period Cases",
+        "lag_2": "Two-Period Case Lag",
+        "lag_3": "Three-Period Case Lag",
+        "rolling_mean_3": "3-Period Moving Average",
+        "rolling_sum_3": "3-Period Rolling Sum",
+    }
+    return labels.get(feature, feature.replace("_", " ").title())
+
+
+def _extract_feature_importance(model, feature_columns):
+    raw_values = None
+    if hasattr(model, "feature_importances_"):
+        raw_values = getattr(model, "feature_importances_", None)
+    elif hasattr(model, "coef_"):
+        raw_values = np.abs(np.ravel(getattr(model, "coef_", [])))
+
+    if raw_values is None:
+        return []
+
+    values = np.nan_to_num(np.array(raw_values, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
+    if values.size != len(feature_columns):
+        return []
+
+    total = float(np.sum(np.abs(values)))
+    if total <= 0:
+        return []
+
+    return sorted(
+        [
+            {"feature": feature, "label": _feature_label(feature), "importance": round((abs(float(value)) / total) * 100, 4)}
+            for feature, value in zip(feature_columns, values)
+        ],
+        key=lambda item: item["importance"],
+        reverse=True,
+    )
+
+
+def _selection_confidence(comparison):
+    if not comparison:
+        return {"score": 0, "label": "Unavailable", "margin_percent": 0}
+    best = comparison[0]
+    runner = comparison[1] if len(comparison) > 1 else None
+    best_rmse = float(best.get("rmse") or 0)
+    runner_rmse = float(runner.get("rmse") or best_rmse or 0) if runner else best_rmse
+    margin = max(0, (runner_rmse - best_rmse) / runner_rmse) if runner_rmse > 0 and best_rmse > 0 else 0
+    f1_component = max(0, min(float(best.get("f1_score") or 0), 1))
+    score = int(round(min(98, max(50, 62 + (margin * 180) + (f1_component * 22)))))
+    label = "High confidence" if score >= 85 else "Moderate confidence" if score >= 70 else "Review recommended"
+    return {"score": score, "label": label, "margin_percent": round(margin * 100, 2)}
+
+
+def _selection_explanation(comparison):
+    if not comparison:
+        return "No model comparison was available."
+    best = comparison[0]
+    return (
+        f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest RMSE "
+        f"({best.get('rmse', 'N/A')}) and MAE ({best.get('mae', 'N/A')}) among the evaluated machine learning models."
+    )
 
 def _evaluate_models(ml_df: pd.DataFrame):
+    evaluated_at = datetime.utcnow().isoformat() if 'datetime' in globals() else ''
+    total_started = time.perf_counter()
     feature_columns = [
         "sort_year",
         "sort_month",
@@ -100,7 +264,7 @@ def _evaluate_models(ml_df: pd.DataFrame):
     ]
 
     ml_df = ml_df.sort_values(by=["sort_year", "sort_month", "sort_week", "barangay"])
-    split_index = max(int(len(ml_df) * 0.8), 1)
+    split_index = max(int(len(ml_df) * TRAIN_RATIO), 1)
 
     train_df = ml_df.iloc[:split_index]
     test_df = ml_df.iloc[split_index:]
@@ -120,8 +284,10 @@ def _evaluate_models(ml_df: pd.DataFrame):
     results = []
 
     for model_key, model in _candidate_models().items():
+        started = time.perf_counter()
         model.fit(x_train, y_train)
         predictions = np.maximum(model.predict(x_test), 0)
+        duration = time.perf_counter() - started
 
         mae = mean_absolute_error(y_test, predictions)
         rmse = mean_squared_error(y_test, predictions) ** 0.5
@@ -134,11 +300,22 @@ def _evaluate_models(ml_df: pd.DataFrame):
         results.append(
             {
                 "model_key": model_key,
-                "model_name": model_key.replace("_", " ").title(),
+                "model_name": _model_display_name(model_key),
                 "model": model,
                 "mae": round(float(mae), 4),
                 "rmse": round(float(rmse), 4),
                 "r2": round(float(r2), 4),
+                **_evaluate_regression_as_risk(y_test, predictions),
+                "status": "evaluated",
+                "random_state": RANDOM_STATE,
+                "train_test_split": TRAIN_TEST_SPLIT_LABEL,
+                "train_ratio": TRAIN_RATIO,
+                "test_ratio": TEST_RATIO,
+                "training_row_count": int(len(train_df)),
+                "testing_row_count": int(len(test_df)),
+                "training_duration_seconds": round(float(duration), 4),
+                "evaluated_at": evaluated_at,
+                "feature_importance": _extract_feature_importance(model, feature_columns),
             }
         )
 
@@ -147,9 +324,12 @@ def _evaluate_models(ml_df: pd.DataFrame):
 
     final_model = _candidate_models()[best["model_key"]]
     final_model.fit(ml_df[feature_columns], ml_df["target_next_cases"])
+    best["feature_importance"] = _extract_feature_importance(final_model, feature_columns) or best.get("feature_importance", [])
+    best["selection_confidence"] = _selection_confidence(results)
+    best["selection_explanation"] = _selection_explanation(results)
+    best["total_model_training_duration_seconds"] = round(float(time.perf_counter() - total_started), 4)
 
     return best, results, final_model, feature_columns
-
 
 def _fallback_forecast(valid_df: pd.DataFrame):
     forecast_rows = []
@@ -256,16 +436,36 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
             selected_model_name = best["model_name"]
             selected_model_key = best["model_key"]
             model_metrics = {
-                "mae": best["mae"],
-                "rmse": best["rmse"],
-                "r2": best["r2"],
+                "model_key": best.get("model_key"),
+                "model_name": best.get("model_name"),
+                "mae": best.get("mae", 0),
+                "rmse": best.get("rmse", 0),
+                "r2": best.get("r2", 0),
+                "accuracy": best.get("accuracy", 0),
+                "precision": best.get("precision", 0),
+                "recall": best.get("recall", 0),
+                "f1_score": best.get("f1_score", 0),
             }
             model_comparison = [
                 {
+                    "model_key": item["model_key"],
+                    "model_name": item["model_name"],
                     "model": item["model_name"],
                     "mae": item["mae"],
                     "rmse": item["rmse"],
                     "r2": item["r2"],
+                    "accuracy": item.get("accuracy", 0),
+                    "precision": item.get("precision", 0),
+                    "recall": item.get("recall", 0),
+                    "f1_score": item.get("f1_score", 0),
+                    "status": item.get("status", "evaluated"),
+                    "random_state": item.get("random_state", RANDOM_STATE),
+                    "train_test_split": item.get("train_test_split", TRAIN_TEST_SPLIT_LABEL),
+                    "training_row_count": item.get("training_row_count", 0),
+                    "testing_row_count": item.get("testing_row_count", 0),
+                    "training_duration_seconds": item.get("training_duration_seconds", 0),
+                    "evaluated_at": item.get("evaluated_at"),
+                    "feature_importance": item.get("feature_importance", []),
                 }
                 for item in comparison
             ]
@@ -392,6 +592,11 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
         "is_machine_learning": bool(used_machine_learning),
         "model_metrics": model_metrics,
         "model_comparison": model_comparison,
+        "feature_importance": model_metrics.get("feature_importance", []),
+        "selection_explanation": model_metrics.get("selection_explanation"),
+        "selection_confidence": model_metrics.get("selection_confidence"),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
     }
 
 async def generate_auto_ml_dengue_forecast(file: UploadFile):

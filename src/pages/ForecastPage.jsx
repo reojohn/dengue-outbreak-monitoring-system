@@ -22,6 +22,7 @@ import {
   TrendingUp,
   Users,
   Medal,
+  CalendarDays,
 } from 'lucide-react'
 import DecisionActionTracker from '../components/DecisionActionTracker'
 import SparkChart from '../components/SparkChart'
@@ -42,6 +43,9 @@ import ai2 from '../assets/ai2.png'
 import ai3 from '../assets/ai3.png'
 import ai4 from '../assets/ai4.png'
 import ai5 from '../assets/ai5.png'
+import ai6 from '../assets/ai6.png'
+import ai7 from '../assets/ai7.png'
+import ai8 from '../assets/ai8.png'
 
 const modeMeta = {
   caution: {
@@ -61,10 +65,146 @@ const modeMeta = {
   },
 }
 
-const modelIcons = [ai1, ai2, ai3, ai4, ai5]
+const modelIcons = [ai1, ai2, ai3, ai4, ai5, ai6, ai7, ai8]
 
-function getModelIcon(index = 0) {
-  return modelIcons[index % modelIcons.length]
+const modelIconMap = {
+  random_forest: ai1,
+  extra_trees: ai2,
+  gradient_boosting: ai3,
+  decision_tree: ai4,
+  ridge_regression: ai5,
+  xgboost: ai6,
+  lightgbm: ai7,
+  catboost: ai8,
+}
+
+
+const modelCatalog = [
+  { model_key: 'gradient_boosting', model_name: 'Gradient Boosting' },
+  { model_key: 'extra_trees', model_name: 'Extra Trees' },
+  { model_key: 'random_forest', model_name: 'Random Forest' },
+  { model_key: 'ridge_regression', model_name: 'Ridge Regression' },
+  { model_key: 'decision_tree', model_name: 'Decision Tree' },
+  { model_key: 'xgboost', model_name: 'XGBoost' },
+  { model_key: 'lightgbm', model_name: 'LightGBM' },
+  { model_key: 'catboost', model_name: 'CatBoost' },
+]
+
+function hasMetricValue(value) {
+  const number = Number(value)
+  return Number.isFinite(number)
+}
+
+function getComparableMetric(model = {}, key = 'rmse') {
+  const value = Number(model[key])
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY
+}
+
+function normalizeModelKey(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function getModelIcon(model = {}, index = 0) {
+  const key = normalizeModelKey(model.model_key || model.model_name || model.model || '')
+  return modelIconMap[key] || modelIcons[index % modelIcons.length]
+}
+
+
+function getModelCharacteristics(modelKey = '') {
+  const key = normalizeModelKey(modelKey)
+
+  const characteristics = {
+    catboost: [
+      'Strong for structured tabular datasets.',
+      'Handles complex nonlinear relationships well.',
+      'Often performs strongly with mixed health and environmental indicators.',
+    ],
+    xgboost: [
+      'High-performance gradient boosting model.',
+      'Good at reducing prediction error through sequential tree learning.',
+      'Useful when many predictors interact with each other.',
+    ],
+    lightgbm: [
+      'Fast gradient boosting model for larger datasets.',
+      'Efficient when many rows and features are available.',
+      'Balances speed and predictive performance.',
+    ],
+    random_forest: [
+      'Robust ensemble model using many decision trees.',
+      'Handles noisy records and nonlinear patterns well.',
+      'Stable for public health forecasting prototypes.',
+    ],
+    extra_trees: [
+      'Tree ensemble model with additional randomization.',
+      'Useful for comparing stable and randomized tree-based behavior.',
+      'Often performs well on structured datasets.',
+    ],
+    gradient_boosting: [
+      'Sequential boosting model that improves errors step by step.',
+      'Strong baseline for tabular forecasting tasks.',
+      'Useful when prediction error must be minimized.',
+    ],
+    decision_tree: [
+      'Simple and interpretable tree-based model.',
+      'Useful as a transparent comparison baseline.',
+      'Can be less stable than ensemble models.',
+    ],
+    ridge_regression: [
+      'Linear model with regularization.',
+      'Useful as a simple statistical baseline.',
+      'Works best when relationships are mostly linear.',
+    ],
+  }
+
+  return characteristics[key] || [
+    'Evaluated as part of the automatic model comparison pipeline.',
+    'Used to determine whether it can reduce dengue forecast error.',
+  ]
+}
+
+function getModelFeatureImportance(model = {}, fallback = []) {
+  const ownImportance = Array.isArray(model.feature_importance) ? model.feature_importance : []
+  return ownImportance.length ? ownImportance : fallback
+}
+
+function formatDateTime(value) {
+  if (!value) return 'N/A'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return String(value)
+
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function formatSeconds(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number <= 0) return 'N/A'
+
+  return `${formatDecimal(number, 2)} sec`
+}
+
+function getMetricBarWidth(value, type = 'percent') {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) return '0%'
+
+  if (type === 'error') {
+    return `${Math.max(8, Math.min(100, 100 - number * 4))}%`
+  }
+
+  return `${Math.max(6, Math.min(100, number * 100))}%`
 }
 
 function formatNumber(value) {
@@ -73,6 +213,17 @@ function formatNumber(value) {
 
 function formatDecimal(value, decimals = 2) {
   const number = Number(value || 0)
+
+  return new Intl.NumberFormat('en-PH', {
+    maximumFractionDigits: decimals,
+  }).format(number)
+}
+
+
+function formatOptionalDecimal(value, decimals = 2) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) return 'N/A'
 
   return new Intl.NumberFormat('en-PH', {
     maximumFractionDigits: decimals,
@@ -1382,10 +1533,80 @@ function HeroMetric({ label, value, helper }) {
   )
 }
 
+
+function getModelTypeBadges(modelKey = '') {
+  const key = normalizeModelKey(modelKey)
+
+  if (['catboost', 'xgboost', 'lightgbm', 'gradient_boosting'].includes(key)) {
+    return ['Boosting', 'Tree ensemble', 'Supervised ML']
+  }
+
+  if (['random_forest', 'extra_trees'].includes(key)) {
+    return ['Tree ensemble', 'Bagging', 'Robust baseline']
+  }
+
+  if (key === 'decision_tree') {
+    return ['Tree-based', 'Interpretable', 'Baseline']
+  }
+
+  if (key === 'ridge_regression') {
+    return ['Linear model', 'Regularized', 'Baseline']
+  }
+
+  return ['AI model', 'Compared', 'Forecasting']
+}
+
+function getModelCardAccent(index = 0, isSelected = false) {
+  if (isSelected) {
+    return {
+      card: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-cyan-950/20',
+      rankBadge: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+      bar: 'from-emerald-500 to-cyan-400',
+    }
+  }
+
+  if (index === 1) {
+    return {
+      card: 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/20',
+      rankBadge: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+      bar: 'from-slate-400 to-blue-400',
+    }
+  }
+
+  if (index === 2) {
+    return {
+      card: 'border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 dark:border-orange-500/20 dark:from-orange-500/10 dark:via-slate-950 dark:to-amber-950/20',
+      rankBadge: 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
+      bar: 'from-orange-500 to-amber-400',
+    }
+  }
+
+  return {
+    card: 'border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950',
+    rankBadge: 'border-slate-200 bg-white text-brand-text dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
+    bar: 'from-brand-blue to-cyan-400',
+  }
+}
+
+function getFeatureIcon(feature = '') {
+  const value = String(feature).toLowerCase()
+
+  if (value.includes('rain')) return CloudRain
+  if (value.includes('temp')) return Thermometer
+  if (value.includes('humid')) return Droplets
+  if (value.includes('pop')) return Users
+  if (value.includes('month') || value.includes('period') || value.includes('week')) return CalendarDays
+  if (value.includes('case') || value.includes('moving') || value.includes('rolling')) return TrendingUp
+
+  return Sparkles
+}
+
+
 export default function ForecastPage() {
   const [mode, setMode] = useState('baseline')
   const [showAllTopBarangays, setShowAllTopBarangays] = useState(false)
   const [expandedBarangay, setExpandedBarangay] = useState(null)
+  const [expandedModelKey, setExpandedModelKey] = useState(null)
 
   const {
     dengueRecords = [],
@@ -1632,10 +1853,101 @@ const activeModelMetrics =
   latestModelMetrics?.metrics ||
   null
 
-const activeModelComparison =
-  backendForecastResult?.model_comparison ||
-  latestModelMetrics?.model_comparison ||
+const activeTrainingSummary =
+  backendForecastResult?.training_summary ||
+  latestModelMetrics?.training_summary ||
+  null
+
+const activeSelectionConfidence =
+  backendForecastResult?.selection_confidence ||
+  latestModelMetrics?.selection_confidence ||
+  activeTrainingSummary?.selection_confidence ||
+  activeModelMetrics?.selection_confidence ||
+  null
+
+const activeSelectionExplanation =
+  backendForecastResult?.selection_explanation ||
+  latestModelMetrics?.selection_explanation ||
+  activeTrainingSummary?.selection_explanation ||
+  activeModelMetrics?.selection_explanation ||
+  ''
+
+const activeFeatureImportance =
+  backendForecastResult?.feature_importance ||
+  latestModelMetrics?.feature_importance ||
+  activeModelMetrics?.feature_importance ||
   []
+
+const selectedModelKey = normalizeModelKey(
+  activeModelMetrics?.model_key ||
+    backendForecastResult?.best_model_key ||
+    latestModelMetrics?.best_model_key ||
+    backendForecastResult?.model_name ||
+    selectedModelName
+)
+
+const activeModelComparison = (() => {
+  const rawComparison =
+    backendForecastResult?.model_comparison ||
+    latestModelMetrics?.model_comparison ||
+    []
+
+  const comparisonMap = new Map()
+
+  rawComparison.forEach((model) => {
+    const rawName = model.model_name || model.model || model.name || 'Auto-selected model'
+    const normalizedKey = normalizeModelKey(model.model_key || rawName)
+
+    comparisonMap.set(normalizedKey, {
+      ...model,
+      model_key: normalizedKey,
+      model_name: formatModelName(rawName),
+      random_state: model.random_state ?? activeTrainingSummary?.random_state ?? backendForecastResult?.random_state ?? latestModelMetrics?.random_state,
+      train_test_split: model.train_test_split || activeTrainingSummary?.train_test_split || backendForecastResult?.train_test_split || latestModelMetrics?.train_test_split || '80% / 20%',
+      training_row_count: model.training_row_count ?? activeTrainingSummary?.training_row_count ?? latestModelMetrics?.training_row_count,
+      testing_row_count: model.testing_row_count ?? activeTrainingSummary?.testing_row_count ?? latestModelMetrics?.testing_row_count,
+      feature_importance: Array.isArray(model.feature_importance) && model.feature_importance.length
+        ? model.feature_importance
+        : normalizedKey === selectedModelKey
+          ? activeFeatureImportance
+          : [],
+      is_available: true,
+    })
+  })
+
+  modelCatalog.forEach((catalogModel) => {
+    if (!comparisonMap.has(catalogModel.model_key)) {
+      comparisonMap.set(catalogModel.model_key, {
+        ...catalogModel,
+        rmse: null,
+        mae: null,
+        accuracy: null,
+        precision: null,
+        recall: null,
+        f1_score: null,
+        random_state: activeTrainingSummary?.random_state || backendForecastResult?.random_state || latestModelMetrics?.random_state || 42,
+        train_test_split: activeTrainingSummary?.train_test_split || backendForecastResult?.train_test_split || latestModelMetrics?.train_test_split || '80% / 20%',
+        feature_importance: [],
+        is_available: false,
+      })
+    }
+  })
+
+  return Array.from(comparisonMap.values()).sort((a, b) => {
+    const rmseDifference = getComparableMetric(a, 'rmse') - getComparableMetric(b, 'rmse')
+
+    if (rmseDifference !== 0) return rmseDifference
+
+    const maeDifference = getComparableMetric(a, 'mae') - getComparableMetric(b, 'mae')
+
+    if (maeDifference !== 0) return maeDifference
+
+    const aCatalogIndex = modelCatalog.findIndex((item) => item.model_key === a.model_key)
+    const bCatalogIndex = modelCatalog.findIndex((item) => item.model_key === b.model_key)
+
+    return (aCatalogIndex === -1 ? 99 : aCatalogIndex) - (bCatalogIndex === -1 ? 99 : bCatalogIndex)
+  })
+})()
 
   return (
     <div className="relative space-y-6 pb-10">
@@ -1805,283 +2117,406 @@ const activeModelComparison =
   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
     <div>
       <SectionBadge icon={Sparkles} tone="blue">
-        Machine learning forecast
+        Explainable AI forecast
       </SectionBadge>
 
       <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-        Selected forecasting model
+        AI forecasting dashboard
       </h2>
 
       <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-        Review the selected forecasting model and its performance ranking before checking the dengue case prediction results.
+        The system automatically compares all available machine learning models, selects the model with the lowest forecast error, and explains the training setup, metrics, confidence, and important predictors.
       </p>
     </div>
 
     <div className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-black text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-      {isMachineLearningForecast ? 'Automatic ML forecast' : 'Forecast available'}
+      {isMachineLearningForecast ? 'AutoML selection active' : 'Forecast available'}
     </div>
   </div>
 
-  <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-    <div className="relative overflow-hidden rounded-[28px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-emerald-950/20">
-      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-400/20 blur-3xl" />
+  <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+    {[
+      ['Selected model', activeModelMetrics?.model_name || latestModelMetrics?.best_model_name || selectedModelName, 'Best evaluated algorithm'],
+      ['Models compared', activeTrainingSummary?.models_evaluated || activeModelComparison.filter((model) => model.is_available !== false).length, 'Candidate models evaluated'],
+      ['Train/test split', activeTrainingSummary?.train_test_split || '80% / 20%', 'Documented methodology'],
+      ['Random state', activeTrainingSummary?.random_state ?? backendForecastResult?.random_state ?? latestModelMetrics?.random_state ?? 42, 'Reproducible results'],
+      ['Best RMSE', activeModelMetrics?.rmse ? formatDecimal(activeModelMetrics.rmse) : 'N/A', 'Lower error is better'],
+      ['AI confidence', activeSelectionConfidence?.score ? `${activeSelectionConfidence.score}%` : 'N/A', activeSelectionConfidence?.label || 'Selection confidence'],
+    ].map(([label, value, helper], index) => (
+      <div
+        key={label}
+        className={`group relative overflow-hidden rounded-[24px] border px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${index === 0 ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-cyan-950/20' : 'border-blue-100 bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-slate-900'}`}
+      >
+        <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-cyan-400/10 blur-2xl" />
+        <p className="relative text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+          {label}
+        </p>
+        <p className="relative mt-2 truncate text-xl font-black text-brand-text dark:text-slate-100">
+          {value || 'N/A'}
+        </p>
+        <p className="relative mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+          {helper}
+        </p>
+      </div>
+    ))}
+  </div>
 
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="relative overflow-hidden rounded-[32px] border border-emerald-100 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 text-white shadow-[0_24px_70px_rgba(15,23,42,0.20)] dark:border-emerald-500/20">
+      <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 left-8 h-56 w-56 rounded-full bg-emerald-300/20 blur-3xl" />
+
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-[32px] border border-blue-200 bg-slate-950 shadow-[0_0_38px_rgba(56,189,248,0.35)] dark:border-blue-500/30 sm:h-40 sm:w-40">
-            <img
-              src={aiGif}
-              alt="AI model"
-              className="h-full w-full object-cover"
-            />
+          <div className="relative flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[32px] border border-white/20 bg-black/25 shadow-[0_0_40px_rgba(34,211,238,0.35)] sm:h-36 sm:w-36">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/20 to-transparent" />
+            <img src={aiGif} alt="AI model" className="h-full w-full object-cover" />
           </div>
 
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
-              Model used
-            </p>
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Auto-selected model
+            </div>
 
-            <h3 className="mt-2 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+            <h3 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
               {activeModelMetrics?.model_name || latestModelMetrics?.best_model_name || selectedModelName}
             </h3>
 
-            <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Version {selectedModelVersion}. This model was selected from the model comparison because it produced the best forecast performance for the latest integrated dataset.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/75">
+              Version {selectedModelVersion}. This model was selected after comparing all available machine learning candidates using RMSE, MAE, and classification metrics from the latest integrated dataset.
             </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {getModelTypeBadges(selectedModelKey).map((badge) => (
+                <span key={badge} className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
+                  {badge}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
-        <span className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-          Best model
-        </span>
-      </div>
+        <div className="grid min-w-[220px] gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div className="rounded-[24px] border border-white/15 bg-white/10 p-4 backdrop-blur">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">RMSE</p>
+            <p className="mt-2 text-3xl font-black">{activeModelMetrics?.rmse ? formatDecimal(activeModelMetrics.rmse) : 'N/A'}</p>
+            <p className="mt-1 text-xs font-semibold text-white/70">Lower is better</p>
+          </div>
 
-      <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-            Forecast error
-          </p>
-          <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
-            {activeModelMetrics?.rmse ? formatDecimal(activeModelMetrics.rmse) : 'N/A'}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-            RMSE, lower is better
-          </p>
-        </div>
-
-        <div className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-            Risk accuracy
-          </p>
-          <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
-            {formatMetricPercent(activeModelMetrics?.accuracy)}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-            Correct risk classification
-          </p>
-        </div>
-
-        <div className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-            F1-score
-          </p>
-          <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
-            {formatMetricPercent(activeModelMetrics?.f1_score)}
-          </p>
-          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-            Balanced classification score
-          </p>
+          <div className="rounded-[24px] border border-white/15 bg-white/10 p-4 backdrop-blur">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">F1-score</p>
+            <p className="mt-2 text-3xl font-black">{formatMetricPercent(activeModelMetrics?.f1_score)}</p>
+            <p className="mt-1 text-xs font-semibold text-white/70">Balanced classification</p>
+          </div>
         </div>
       </div>
     </div>
 
-    <div className="relative overflow-hidden rounded-[28px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-5 shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-blue-950/20">
-  <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-emerald-400/20 blur-3xl" />
-  <div className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-400/10 blur-3xl" />
+    <div className="relative overflow-hidden rounded-[32px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-5 shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-blue-950/20">
+      <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-emerald-400/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-12 -left-12 h-32 w-32 rounded-full bg-blue-400/10 blur-3xl" />
 
-  <div className="relative flex items-start gap-4">
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border border-emerald-100 bg-white text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-white/10 dark:text-emerald-300">
-      <CheckCircle2 className="h-5 w-5" />
-    </div>
+      <div className="relative flex items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border border-emerald-100 bg-white text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-white/10 dark:text-emerald-300">
+          <Sparkles className="h-5 w-5" />
+        </div>
 
-    <div className="min-w-0">
-      <p className="text-base font-black text-brand-text dark:text-slate-100">
-        Forecast results are ready
-      </p>
+        <div className="min-w-0">
+          <p className="text-base font-black text-brand-text dark:text-slate-100">
+            Explainable AI enabled
+          </p>
 
-      <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-        Review the selected model, ranking, and forecast metrics for the latest dengue case prediction.
-      </p>
-    </div>
-  </div>
+          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+            Shows reproducibility settings, model comparison, confidence, metrics, and feature importance for the selected forecast.
+          </p>
+        </div>
+      </div>
 
-  <button
-    type="button"
-    onClick={() => setShowModelDetails((current) => !current)}
-    className="relative mt-5 flex w-full items-center justify-between rounded-[22px] border border-white/80 bg-white/90 px-4 py-3.5 text-left text-sm font-black text-brand-text shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-300 dark:hover:text-blue-300"
-  >
-    <span>{showModelDetails ? 'Hide model ranking' : 'View model ranking'}</span>
-    {showModelDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-  </button>
-</div>
-  </div>
-
-  {showModelDetails && (
-    <div className="mt-5 space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="relative mt-5 grid gap-2">
         {[
-          ['MAE', activeModelMetrics?.mae],
-          ['RMSE', activeModelMetrics?.rmse],
-          ['Accuracy', formatMetricPercent(activeModelMetrics?.accuracy)],
-          ['Precision', formatMetricPercent(activeModelMetrics?.precision)],
-          ['Recall', formatMetricPercent(activeModelMetrics?.recall)],
-          ['F1-score', formatMetricPercent(activeModelMetrics?.f1_score)],
-        ].map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70"
-          >
-            <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
-              {label}
-            </p>
-            <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
-              {value || 'N/A'}
-            </p>
+          ['80/20 validation', 'Hold-out evaluation'],
+          [`Random state ${activeTrainingSummary?.random_state ?? backendForecastResult?.random_state ?? latestModelMetrics?.random_state ?? 42}`, 'Reproducible training'],
+          ['Feature importance', activeFeatureImportance?.length ? 'Available' : 'Retrain to populate'],
+        ].map(([label, helper]) => (
+          <div key={label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-3 py-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+            <span className="text-xs font-black text-brand-text dark:text-slate-200">{label}</span>
+            <span className="text-[11px] font-bold text-brand-muted dark:text-slate-500">{helper}</span>
           </div>
         ))}
       </div>
 
-      {activeModelComparison.length > 0 && (
-        <div className="overflow-hidden rounded-[32px] border border-slate-200/80 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
-          <div className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50 px-5 py-5 dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
-            <p className="text-base font-black text-brand-text dark:text-slate-100">
-              Model ranking
-            </p>
-            <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-              Models are ranked by RMSE and MAE. The selected model appears first.
-            </p>
-          </div>
+      <button
+        type="button"
+        onClick={() => setShowModelDetails((current) => !current)}
+        className="relative mt-5 flex w-full items-center justify-between rounded-[22px] border border-white/80 bg-white/90 px-4 py-3.5 text-left text-sm font-black text-brand-text shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-300 dark:hover:text-blue-300"
+      >
+        <span>{showModelDetails ? 'Hide AI dashboard' : 'Open AI dashboard'}</span>
+        {showModelDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+    </div>
+  </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-sm">
-              <thead>
-                <tr className="bg-slate-950 text-[11px] uppercase tracking-[0.16em] text-slate-300 dark:bg-slate-900">
-                  <th className="px-5 py-4">Rank</th>
-                  <th className="px-5 py-4">Model</th>
-                  <th className="px-5 py-4">Status</th>
-                  <th className="px-5 py-4">RMSE</th>
-                  <th className="px-5 py-4">MAE</th>
-                  <th className="px-5 py-4">Accuracy</th>
-                  <th className="px-5 py-4">Precision</th>
-                  <th className="px-5 py-4">Recall</th>
-                  <th className="px-5 py-4">F1-score</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {activeModelComparison.map((model, index) => {
-                  const isSelected = index === 0
-
-                  const rankStyle = [
-                    {
-                      medal: 'text-amber-400',
-                      badge: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
-                    },
-                    {
-                      medal: 'text-slate-300',
-                      badge: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
-                    },
-                    {
-                      medal: 'text-orange-500',
-                      badge: 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
-                    },
-                  ][index]
-
-                  return (
-                    <tr
-                      key={model.model_key || model.model_name}
-                      className={`group transition ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-emerald-500/15 via-cyan-500/10 to-transparent'
-                          : 'bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-slate-900/70'
-                      }`}
-                    >
-                      <td className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-                        {rankStyle ? (
-                          <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 shadow-sm ${rankStyle.badge}`}>
-                            <Medal className={`h-5 w-5 ${rankStyle.medal}`} strokeWidth={2.6} />
-                            <span className="text-xs font-black">#{index + 1}</span>
-                          </div>
-                        ) : (
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-black text-brand-text shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                            #{index + 1}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-                        <div className="flex items-center gap-4">
-                          <img
-                            src={getModelIcon(index)}
-                            alt={`${model.model_name} AI icon`}
-                            className="h-20 w-20 shrink-0 object-contain drop-shadow-[0_12px_22px_rgba(15,23,42,0.22)]"
-                          />
-
-                          <div className="min-w-0">
-                            <p className="font-black text-brand-text dark:text-slate-100">
-                              {model.model_name}
-                            </p>
-
-                            <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">
-                              AI forecasting model
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-                        <span
-                          className={`inline-flex rounded-full border px-3 py-1.5 text-[11px] font-black shadow-sm ${
-                            isSelected
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-                              : 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-                          }`}
-                        >
-                          {isSelected ? 'Selected' : 'Compared'}
-                        </span>
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 font-black text-brand-text dark:border-slate-800 dark:text-slate-200">
-                        {formatDecimal(model.rmse)}
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 font-bold text-brand-muted dark:border-slate-800 dark:text-slate-400">
-                        {formatDecimal(model.mae)}
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 font-bold text-brand-muted dark:border-slate-800 dark:text-slate-400">
-                        {formatMetricPercent(model.accuracy)}
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 font-bold text-brand-muted dark:border-slate-800 dark:text-slate-400">
-                        {formatMetricPercent(model.precision)}
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 font-bold text-brand-muted dark:border-slate-800 dark:text-slate-400">
-                        {formatMetricPercent(model.recall)}
-                      </td>
-
-                      <td className="border-b border-slate-100 px-5 py-4 font-bold text-brand-muted dark:border-slate-800 dark:text-slate-400">
-                        {formatMetricPercent(model.f1_score)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+  {showModelDetails && (
+    <div className="mt-5 space-y-5">
+      {activeSelectionExplanation && (
+        <div className="relative overflow-hidden rounded-[32px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 p-5 shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-cyan-950/20">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />
+          <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-center">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border border-emerald-100 bg-white text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-white/10 dark:text-emerald-300">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-base font-black text-brand-text dark:text-slate-100">
+                  Why {activeModelMetrics?.model_name || selectedModelName} was selected
+                </p>
+                <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  {activeSelectionExplanation}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+      {activeModelComparison.length > 0 && (
+        <div className="rounded-[32px] border border-slate-200/80 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-base font-black text-brand-text dark:text-slate-100">
+                Model comparison board
+              </p>
+              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                Models are ranked by RMSE and MAE. Open a card to review reproducibility, metrics, model characteristics, and feature importance.
+              </p>
+            </div>
+            <span className="w-fit rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-[11px] font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+              {activeModelComparison.filter((model) => model.is_available !== false && hasMetricValue(model.rmse)).length} evaluated models
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            {activeModelComparison.map((model, index) => {
+              const isAvailable = model.is_available !== false && hasMetricValue(model.rmse)
+              const isSelected = index === 0 && isAvailable
+              const isExpandedModel = expandedModelKey === model.model_key
+              const importanceItems = getModelFeatureImportance(model, isSelected ? activeFeatureImportance : []).slice(0, 6)
+              const modelCharacteristics = getModelCharacteristics(model.model_key)
+              const accent = getModelCardAccent(index, isSelected)
+
+              return (
+                <div
+                  key={model.model_key || model.model_name}
+                  className={`overflow-hidden rounded-[30px] border shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${accent.card}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedModelKey(isExpandedModel ? null : model.model_key)}
+                    className="block w-full p-4 text-left"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-black shadow-sm ${accent.rankBadge}`}>
+                          {index < 3 ? (
+  <Medal className="h-5 w-5" strokeWidth={2.6} />
+) : (
+  `#${index + 1}`
+)}
+                        </div>
+
+                        <img
+                          src={getModelIcon(model, index)}
+                          alt={`${model.model_name} AI icon`}
+                          className="h-32 w-32 shrink-0 object-contain drop-shadow-[0_16px_28px_rgba(15,23,42,0.30)]"
+                        />
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-black text-brand-text dark:text-slate-100">
+                              {model.model_name}
+                            </p>
+                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${isSelected ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300' : isAvailable ? 'border-slate-200 bg-white text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'}`}>
+                              {isSelected ? 'Selected' : isAvailable ? 'Compared' : 'Not evaluated'}
+                            </span>
+                          </div>
+
+                          <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
+                            {getModelScoreLabel(model)}
+                          </p>
+
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {getModelTypeBadges(model.model_key).map((badge) => (
+                              <span key={badge} className="rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 text-[10px] font-bold text-brand-muted dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
+                                {badge}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 sm:min-w-[300px]">
+                        {[
+                          ['RMSE', formatOptionalDecimal(model.rmse)],
+                          ['Accuracy', formatMetricPercent(model.accuracy)],
+                          ['F1', formatMetricPercent(model.f1_score)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-[18px] border border-white/70 bg-white/80 px-3 py-2 text-center shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                            <p className="text-[9px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">{label}</p>
+                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-end text-xs font-black text-brand-muted dark:text-slate-400">
+                      <span className="inline-flex items-center gap-1.5">
+                        {isExpandedModel ? 'Hide details' : 'View details'}
+                        {isExpandedModel ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </span>
+                    </div>
+                  </button>
+
+                  {isExpandedModel && (
+                    <div className="border-t border-white/70 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-950/65">
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+                        <div className="space-y-4">
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            {[
+                              ['Train/Test', model.train_test_split || '80% / 20%'],
+                              ['Random State', model.random_state ?? 'N/A'],
+                              ['Training Samples', formatNumber(model.training_row_count)],
+                              ['Testing Samples', formatNumber(model.testing_row_count)],
+                              ['Training Time', formatSeconds(model.training_duration_seconds)],
+                              ['Evaluated', formatDateTime(model.evaluated_at || activeTrainingSummary?.evaluated_at)],
+                              ['RMSE', formatOptionalDecimal(model.rmse)],
+                              ['MAE', formatOptionalDecimal(model.mae)],
+                            ].map(([label, value]) => (
+                              <div key={label} className="rounded-[20px] border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">{label}</p>
+                                <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{value || 'N/A'}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-[24px] border border-blue-100 bg-blue-50/70 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
+                              <p className="text-sm font-black text-brand-blue dark:text-blue-300">Performance profile</p>
+                              <div className="mt-3 space-y-3">
+                                {[
+                                  ['RMSE', model.rmse, 'error'],
+                                  ['MAE', model.mae, 'error'],
+                                  ['Accuracy', model.accuracy, 'percent'],
+                                  ['Precision', model.precision, 'percent'],
+                                  ['Recall', model.recall, 'percent'],
+                                  ['F1-score', model.f1_score, 'percent'],
+                                ].map(([label, value, type]) => (
+                                  <div key={label}>
+                                    <div className="flex items-center justify-between gap-3 text-xs font-bold text-brand-muted dark:text-slate-400">
+                                      <span>{label}</span>
+                                      <span>{type === 'percent' ? formatMetricPercent(value) : formatOptionalDecimal(value)}</span>
+                                    </div>
+                                    <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white dark:bg-slate-800">
+                                      <div
+                                        className={`h-full rounded-full bg-gradient-to-r ${accent.bar}`}
+                                        style={{ width: getMetricBarWidth(value, type) }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                              <p className="text-sm font-black text-brand-green dark:text-emerald-300">Model characteristics</p>
+                              <div className="mt-3 space-y-2">
+                                {modelCharacteristics.map((item) => (
+                                  <div key={item} className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-green dark:text-emerald-300" />
+                                    <span>{item}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                          <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                            Feature importance
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                            Inputs that influenced this model most during forecasting.
+                          </p>
+
+                          <div className="mt-4 space-y-3">
+                            {importanceItems.length > 0 ? (
+                              importanceItems.map((item) => (
+                                <div key={`${model.model_key}-${item.feature}`} className="rounded-[18px] border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+                                  <div className="flex items-center justify-between gap-3 text-xs font-bold text-brand-muted dark:text-slate-400">
+                                    <span className="flex min-w-0 items-center gap-2 truncate">
+                                      {(() => {
+  const FeatureIcon = getFeatureIcon(item.feature || item.label)
+
+  return (
+    <FeatureIcon className="h-4 w-4 shrink-0 text-brand-blue dark:text-blue-300" />
+  )
+})()}
+                                      <span className="truncate">{item.label || formatModelName(item.feature)}</span>
+                                    </span>
+                                    <span>{formatDecimal(item.importance)}%</span>
+                                  </div>
+                                  <div className="mt-2 h-3 overflow-hidden rounded-full bg-white dark:bg-slate-800">
+                                    <div
+                                      className={`h-full rounded-full bg-gradient-to-r ${accent.bar}`}
+                                      style={{ width: `${Math.max(4, Math.min(100, Number(item.importance || 0)))}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                                Feature importance is not available for this model yet. Retraining with the latest backend upgrade will populate this section.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-[32px] border border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
+        <p className="text-base font-black text-brand-text dark:text-slate-100">
+          Model pipeline
+        </p>
+        <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+          The AI process follows the uploaded data from integration to model selection and forecast generation.
+        </p>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-5">
+          {[
+            ['Dataset', 'Integrated dengue, weather, population, and boundary data'],
+            ['Training', '80/20 split with reproducible random state'],
+            ['8 Models', 'Tree, ensemble, boosting, and linear algorithms'],
+            ['Evaluation', 'RMSE, MAE, Accuracy, Precision, Recall, and F1'],
+            ['Forecast', 'Best model generates barangay priority results'],
+          ].map(([title, body], index) => (
+            <div key={title} className="relative rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+              <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950 text-xs font-black text-white dark:bg-white dark:text-slate-950">
+                {index + 1}
+              </div>
+              <p className="mt-3 text-sm font-black text-brand-text dark:text-slate-100">{title}</p>
+              <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">{body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )}
 </PremiumPanel>

@@ -30,7 +30,7 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getGeospatialHotspots, saveGeneratedReport } from '../services/api'
+import { createBackendNotificationEvent, getGeospatialHotspots, getLatestModelMetrics, saveGeneratedReport } from '../services/api'
 
 const exportFormats = [
   {
@@ -669,9 +669,173 @@ function getTopHighRiskBarangays(rows = []) {
   return names.length ? names.join(', ') : 'No high-risk barangay in the current report.'
 }
 
+
+function formatModelNameForReport(value = '') {
+  if (!value) return 'Not recorded'
+
+  return String(value)
+    .replace(/^auto_selected_/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+
+function getActiveModelPayload(backendForecastResult = null, latestModelMetrics = null) {
+  const trainingSummary =
+    backendForecastResult?.training_summary ||
+    latestModelMetrics?.training_summary ||
+    {}
+
+  const modelMetrics =
+    backendForecastResult?.model_metrics ||
+    latestModelMetrics?.metrics ||
+    {}
+
+  const modelComparison = Array.isArray(backendForecastResult?.model_comparison)
+    ? backendForecastResult.model_comparison
+    : Array.isArray(latestModelMetrics?.model_comparison)
+      ? latestModelMetrics.model_comparison
+      : []
+
+  const selectionConfidence =
+    backendForecastResult?.selection_confidence ||
+    latestModelMetrics?.selection_confidence ||
+    trainingSummary?.selection_confidence ||
+    modelMetrics?.selection_confidence ||
+    null
+
+  const selectionExplanation =
+    backendForecastResult?.selection_explanation ||
+    latestModelMetrics?.selection_explanation ||
+    trainingSummary?.selection_explanation ||
+    modelMetrics?.selection_explanation ||
+    ''
+
+  const featureImportance =
+    backendForecastResult?.feature_importance ||
+    latestModelMetrics?.feature_importance ||
+    modelMetrics?.feature_importance ||
+    []
+
+  const selectedModel =
+    backendForecastResult?.model_display_name ||
+    modelMetrics?.model_name ||
+    latestModelMetrics?.best_model_name ||
+    trainingSummary?.selected_model_name ||
+    backendForecastResult?.best_model_name ||
+    backendForecastResult?.model_name ||
+    backendForecastResult?.forecast_run?.model_name ||
+    backendForecastResult?.forecastRun?.model_name ||
+    ''
+
+  const selectedModelKey =
+    modelMetrics?.model_key ||
+    latestModelMetrics?.best_model_key ||
+    backendForecastResult?.best_model_key ||
+    backendForecastResult?.model_key ||
+    backendForecastResult?.model_name ||
+    selectedModel ||
+    ''
+
+  const modelVersion =
+    modelMetrics?.model_version ||
+    backendForecastResult?.model_version ||
+    backendForecastResult?.forecast_run?.model_version ||
+    backendForecastResult?.forecastRun?.model_version ||
+    latestModelMetrics?.model_version ||
+    'v1'
+
+  const hasMachineLearningMetadata = Boolean(
+    selectedModel ||
+      modelComparison.length ||
+      featureImportance.length ||
+      backendForecastResult?.is_machine_learning ||
+      backendForecastResult?.forecast_run?.is_machine_learning ||
+      backendForecastResult?.forecastRun?.is_machine_learning ||
+      latestModelMetrics?.has_metrics
+  )
+
+  return {
+    trainingSummary,
+    modelMetrics,
+    modelComparison,
+    selectionConfidence,
+    selectionExplanation,
+    featureImportance,
+    selectedModel,
+    selectedModelKey,
+    modelVersion,
+    hasMachineLearningMetadata,
+  }
+}
+
+function formatMetricForReport(value, suffix = '') {
+  const number = Number(value)
+
+  if (!Number.isFinite(number)) return 'Not recorded'
+
+  return `${number.toFixed(2)}${suffix}`
+}
+
+function getModelMetricsSummaryForReport(modelMetrics = {}) {
+  const metrics = [
+    ['RMSE', modelMetrics?.rmse],
+    ['MAE', modelMetrics?.mae],
+    ['Accuracy', modelMetrics?.accuracy, '%'],
+    ['Precision', modelMetrics?.precision, '%'],
+    ['Recall', modelMetrics?.recall, '%'],
+    ['F1-score', modelMetrics?.f1_score, '%'],
+  ]
+    .map(([label, value, type]) => {
+      const number = Number(value)
+
+      if (!Number.isFinite(number)) return null
+
+      return type === '%'
+        ? `${label}: ${(number * 100).toFixed(2)}%`
+        : `${label}: ${number.toFixed(2)}`
+    })
+    .filter(Boolean)
+
+  return metrics.length ? metrics.join('; ') : 'Not recorded'
+}
+
+function getModelComparisonSummaryForReport(modelComparison = []) {
+  if (!Array.isArray(modelComparison) || !modelComparison.length) {
+    return 'Not recorded'
+  }
+
+  return modelComparison
+    .slice(0, 8)
+    .map((model, index) => {
+      const name = formatModelNameForReport(model.model_name || model.model || model.name || model.model_key || `Model ${index + 1}`)
+      const rmse = Number(model.rmse)
+      const mae = Number(model.mae)
+      const rmseLabel = Number.isFinite(rmse) ? rmse.toFixed(2) : 'N/A'
+      const maeLabel = Number.isFinite(mae) ? mae.toFixed(2) : 'N/A'
+
+      return `#${index + 1} ${name} (RMSE ${rmseLabel}, MAE ${maeLabel})`
+    })
+    .join('; ')
+}
+
+function getFeatureImportanceSummaryForReport(backendForecastResult = null, latestModelMetrics = null) {
+  const { featureImportance } = getActiveModelPayload(backendForecastResult, latestModelMetrics)
+
+  if (!Array.isArray(featureImportance) || !featureImportance.length) {
+    return 'Not available yet'
+  }
+
+  return featureImportance
+    .slice(0, 5)
+    .map((item) => `${item.label || formatModelNameForReport(item.feature)} (${Number(item.importance || 0).toFixed(2)}%)`)
+    .join('; ')
+}
+
 function getOfficialReportMetadata({
   sourceStatus = {},
   backendForecastResult = null,
+  latestModelMetrics = null,
   generatedAt = '',
   sortedRiskRows = [],
   usingBackendForecast = false,
@@ -690,6 +854,17 @@ function getOfficialReportMetadata({
     .map((row) => row.uploadedAt)
     .filter((value) => value && value !== 'Not recorded')
 
+  const {
+    trainingSummary,
+    modelMetrics,
+    modelComparison,
+    selectionConfidence,
+    selectionExplanation,
+    selectedModel,
+    modelVersion,
+    hasMachineLearningMetadata,
+  } = getActiveModelPayload(backendForecastResult, latestModelMetrics)
+
   return {
     reportId: `DR-${new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}`,
     generatedAt,
@@ -701,15 +876,23 @@ function getOfficialReportMetadata({
     validRecords,
     invalidRecords,
     forecastMethod:
-  backendForecastResult?.forecast_method ||
-  backendForecastResult?.method ||
-  (usingBackendForecast
-    ? 'Saved baseline trend forecast using uploaded dengue, weather, population, and barangay map records.'
-    : 'Current workspace forecast and response ranking.'),
-    modelVersion:
-      backendForecastResult?.model_version ||
-      backendForecastResult?.modelVersion ||
-      'Prototype baseline model v1.0',
+      backendForecastResult?.forecast_method ||
+      backendForecastResult?.method ||
+      (hasMachineLearningMetadata
+        ? 'Saved machine learning forecast using uploaded dengue, weather, population, and barangay map records. The system evaluated multiple algorithms and automatically selected the best model based on forecast error.'
+        : usingBackendForecast
+          ? 'Saved baseline trend forecast using uploaded dengue, weather, population, and barangay map records.'
+          : 'Current workspace forecast and response ranking.'),
+    modelVersion,
+    selectedModel: selectedModel ? formatModelNameForReport(selectedModel) : 'Not recorded',
+    trainTestSplit: trainingSummary?.train_test_split || backendForecastResult?.train_test_split || latestModelMetrics?.train_test_split || '80% / 20%',
+    randomState: trainingSummary?.random_state ?? backendForecastResult?.random_state ?? latestModelMetrics?.random_state ?? '42',
+    modelsEvaluated: trainingSummary?.models_evaluated || modelComparison.length || latestModelMetrics?.models_evaluated || 'Not recorded',
+    aiConfidence: selectionConfidence?.score ? `${selectionConfidence.score}% · ${selectionConfidence.label || 'Selection confidence'}` : 'Not available yet',
+    featureImportanceSummary: getFeatureImportanceSummaryForReport(backendForecastResult, latestModelMetrics),
+    selectedModelMetrics: getModelMetricsSummaryForReport(modelMetrics),
+    modelComparisonSummary: getModelComparisonSummaryForReport(modelComparison),
+    selectionExplanation: selectionExplanation || 'Not recorded',
     riskThresholds: formatThresholds(
       backendForecastResult?.risk_thresholds || backendForecastResult?.riskThresholds
     ),
@@ -742,6 +925,15 @@ function getOfficialMetadataRows(metadata = {}) {
     ['Invalid records', formatNumber(metadata.invalidRecords || 0)],
     ['Forecast method', metadata.forecastMethod || 'Not recorded'],
     ['Model version', metadata.modelVersion || 'Not recorded'],
+    ['Selected model', metadata.selectedModel || 'Not recorded'],
+    ['Train/test split', metadata.trainTestSplit || '80% / 20%'],
+    ['Random state', metadata.randomState || '42'],
+    ['Models evaluated', metadata.modelsEvaluated || 'Not recorded'],
+    ['AI confidence', metadata.aiConfidence || 'Not available yet'],
+    ['Top feature importance', metadata.featureImportanceSummary || 'Not available yet'],
+    ['Selected model metrics', metadata.selectedModelMetrics || 'Not recorded'],
+    ['Model ranking summary', metadata.modelComparisonSummary || 'Not recorded'],
+    ['AI selection explanation', metadata.selectionExplanation || 'Not recorded'],
     ['Risk thresholds', metadata.riskThresholds || 'Not recorded'],
     ['Forecast period/window', metadata.forecastWindow || 'Not recorded'],
     ['Top high-risk barangays', metadata.topHighRiskBarangays || 'No high-risk barangay in the current report.'],
@@ -1879,6 +2071,15 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Role', officialMetadata.role],
     ['Forecast method', officialMetadata.forecastMethod],
     ['Model version', officialMetadata.modelVersion],
+    ['Selected model', officialMetadata.selectedModel],
+    ['Train/test split', officialMetadata.trainTestSplit],
+    ['Random state', officialMetadata.randomState],
+    ['Models evaluated', officialMetadata.modelsEvaluated],
+    ['AI confidence', officialMetadata.aiConfidence],
+    ['Top feature importance', officialMetadata.featureImportanceSummary],
+    ['Selected model metrics', officialMetadata.selectedModelMetrics],
+    ['Model ranking summary', officialMetadata.modelComparisonSummary],
+    ['AI selection explanation', officialMetadata.selectionExplanation],
     ['Forecast period/window', officialMetadata.forecastWindow],
     [],
     ['Metric', 'Value'],
@@ -3106,6 +3307,7 @@ export default function ReportsPage() {
   const [hotspotResult, setHotspotResult] = useState(null)
   const [hotspotError, setHotspotError] = useState('')
   const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
+  const [latestModelMetrics, setLatestModelMetrics] = useState(null)
 
   const {
     dashboardStats = {},
@@ -3116,6 +3318,30 @@ export default function ReportsPage() {
     backendDengueSummary = null,
     addActivityLog,
   } = useData()
+
+  useEffect(() => {
+    let active = true
+
+    async function loadLatestModelMetrics() {
+      try {
+        const result = await getLatestModelMetrics()
+
+        if (!active) return
+
+        setLatestModelMetrics(result?.has_metrics ? result : null)
+      } catch {
+        if (active) {
+          setLatestModelMetrics(null)
+        }
+      }
+    }
+
+    loadLatestModelMetrics()
+
+    return () => {
+      active = false
+    }
+  }, [backendForecastResult])
 
   const generatedAt = getCurrentDateTime()
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
@@ -3200,11 +3426,12 @@ export default function ReportsPage() {
     return getOfficialReportMetadata({
       sourceStatus,
       backendForecastResult,
+      latestModelMetrics,
       generatedAt,
       sortedRiskRows,
       usingBackendForecast,
     })
-  }, [sourceStatus, backendForecastResult, generatedAt, sortedRiskRows, usingBackendForecast])
+  }, [sourceStatus, backendForecastResult, latestModelMetrics, generatedAt, sortedRiskRows, usingBackendForecast])
   const officialSourceRows = officialReportMetadata.sourceRows || []
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
@@ -3340,6 +3567,7 @@ export default function ReportsPage() {
     const reportMetadataForExport = getOfficialReportMetadata({
       sourceStatus,
       backendForecastResult,
+      latestModelMetrics,
       generatedAt: exportedAt,
       sortedRiskRows,
       usingBackendForecast,
@@ -3673,6 +3901,13 @@ const exportPayload = {
             ['Forecast window', officialReportMetadata.forecastWindow],
             ['Forecast method', officialReportMetadata.forecastMethod],
             ['Model version', officialReportMetadata.modelVersion],
+            ['Selected model', officialReportMetadata.selectedModel],
+            ['Train/test split', officialReportMetadata.trainTestSplit],
+            ['Random state', officialReportMetadata.randomState],
+            ['Models evaluated', officialReportMetadata.modelsEvaluated],
+            ['AI confidence', officialReportMetadata.aiConfidence],
+            ['Top feature importance', officialReportMetadata.featureImportanceSummary],
+            ['Selected model metrics', officialReportMetadata.selectedModelMetrics],
             ['Risk thresholds', officialReportMetadata.riskThresholds],
             ['Top high-risk barangays', officialReportMetadata.topHighRiskBarangays],
           ].map(([label, value]) => (

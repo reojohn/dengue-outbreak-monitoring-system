@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,21 @@ from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, Ran
 from sklearn.linear_model import Ridge
 from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, mean_squared_error, precision_score, recall_score, r2_score
 from sklearn.tree import DecisionTreeRegressor
+
+try:
+    from xgboost import XGBRegressor
+except Exception:  # Optional advanced model. The system still runs without it.
+    XGBRegressor = None
+
+try:
+    from lightgbm import LGBMRegressor
+except Exception:  # Optional advanced model. The system still runs without it.
+    LGBMRegressor = None
+
+try:
+    from catboost import CatBoostRegressor
+except Exception:  # Optional advanced model. The system still runs without it.
+    CatBoostRegressor = None
 
 from app.database import engine
 from app.services.baseline_forecast import classify_forecast_risk, get_recommendation, get_trend_direction
@@ -29,6 +45,11 @@ FEATURE_COLUMNS = [
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "trained_models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+RANDOM_STATE = 42
+TRAIN_RATIO = 0.8
+TEST_RATIO = 0.2
+TRAIN_TEST_SPLIT_LABEL = "80% / 20%"
 
 
 def _to_json(value: Any) -> str:
@@ -100,6 +121,9 @@ def _get_saved_model_run(integration_run_id: str):
     if not model_file.exists():
         return None
 
+    if not _is_saved_model_complete(row):
+        return None
+
     return row
 
 
@@ -115,6 +139,17 @@ def _saved_model_response(row):
         "feature_importance": row["feature_importance"] or [],
         "training_row_count": row["training_row_count"],
         "testing_row_count": row["testing_row_count"],
+        "training_summary": _training_summary({
+            "best": row["metrics"] or {},
+            "comparison": row["model_comparison"] or [],
+            "train_count": row["training_row_count"],
+            "test_count": row["testing_row_count"],
+            "evaluated_at": str(row["created_at"]),
+        }, str(row["model_run_id"]), str(row["integration_run_id"]) if row["integration_run_id"] else None),
+        "selection_explanation": _selection_explanation(row["model_comparison"] or []),
+        "selection_confidence": _selection_confidence(row["model_comparison"] or []),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "used_cached_model": True,
     }
 
@@ -144,14 +179,128 @@ def _load_integrated_dataframe(integration_run_id=None):
     return pd.DataFrame([dict(row) for row in rows]), str(integration_run_id)
 
 
+MODEL_DISPLAY_NAMES = {
+    "random_forest": "Random Forest",
+    "extra_trees": "Extra Trees",
+    "gradient_boosting": "Gradient Boosting",
+    "decision_tree": "Decision Tree",
+    "ridge_regression": "Ridge Regression",
+    "xgboost": "XGBoost",
+    "lightgbm": "LightGBM",
+    "catboost": "CatBoost",
+}
+
+
 def _candidate_models():
-    return {
-        "random_forest": RandomForestRegressor(n_estimators=120, random_state=42, n_jobs=-1, max_depth=14),
-        "extra_trees": ExtraTreesRegressor(n_estimators=120, random_state=42, n_jobs=-1, max_depth=14),
-        "gradient_boosting": GradientBoostingRegressor(random_state=42),
-        "decision_tree": DecisionTreeRegressor(random_state=42, max_depth=10),
+    """Return all usable forecasting models.
+
+    XGBoost, LightGBM, and CatBoost are treated as optional advanced models.
+    If one package is not installed on a machine, it is skipped instead of
+    breaking the backend during a demo or deployment.
+    """
+    models = {
+        "random_forest": RandomForestRegressor(n_estimators=120, random_state=RANDOM_STATE, n_jobs=-1, max_depth=14),
+        "extra_trees": ExtraTreesRegressor(n_estimators=120, random_state=RANDOM_STATE, n_jobs=-1, max_depth=14),
+        "gradient_boosting": GradientBoostingRegressor(random_state=RANDOM_STATE),
+        "decision_tree": DecisionTreeRegressor(random_state=RANDOM_STATE, max_depth=10),
         "ridge_regression": Ridge(),
     }
+
+    if XGBRegressor is not None:
+        models["xgboost"] = XGBRegressor(
+            n_estimators=160,
+            max_depth=4,
+            learning_rate=0.06,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            objective="reg:squarederror",
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+        )
+
+    if LGBMRegressor is not None:
+        models["lightgbm"] = LGBMRegressor(
+            n_estimators=160,
+            max_depth=-1,
+            learning_rate=0.06,
+            num_leaves=24,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+            verbose=-1,
+        )
+
+    if CatBoostRegressor is not None:
+        models["catboost"] = CatBoostRegressor(
+            iterations=160,
+            depth=5,
+            learning_rate=0.06,
+            loss_function="RMSE",
+            random_seed=RANDOM_STATE,
+            verbose=False,
+            allow_writing_files=False,
+        )
+
+    return models
+
+
+def _model_display_name(model_key: str) -> str:
+    return MODEL_DISPLAY_NAMES.get(model_key, model_key.replace("_", " ").title())
+
+
+def _available_model_keys():
+    return set(_candidate_models().keys())
+
+
+def _comparison_keys(comparison):
+    if not isinstance(comparison, list):
+        return set()
+
+    keys = set()
+
+    for item in comparison:
+        if not isinstance(item, dict):
+            continue
+
+        raw_key = item.get("model_key") or item.get("model_name") or item.get("model") or ""
+        normalized_key = str(raw_key).strip().lower().replace(" ", "_").replace("-", "_")
+
+        if normalized_key:
+            keys.add(normalized_key)
+
+    return keys
+
+
+def _is_saved_model_complete(row) -> bool:
+    if not row:
+        return False
+
+    available_keys = _available_model_keys()
+    comparison_keys = _comparison_keys(row.get("model_comparison") or [])
+
+    if not available_keys:
+        return False
+
+    if not available_keys.issubset(comparison_keys):
+        return False
+
+    # Runs created before the explainability upgrade do not contain per-model
+    # feature importance, reproducibility fields, or training metadata. Mark
+    # those cached rows as stale so the next automatic forecast writes complete
+    # Explainable AI details.
+    for item in row.get("model_comparison") or []:
+        if not isinstance(item, dict):
+            return False
+        if item.get("model_key") in available_keys and (
+            "feature_importance" not in item or
+            "random_state" not in item or
+            "train_test_split" not in item or
+            "training_duration_seconds" not in item
+        ):
+            return False
+
+    return True
 
 
 def _prepare_ml_dataframe(df: pd.DataFrame):
@@ -205,10 +354,151 @@ def _evaluate_regression_as_risk(y_true, y_pred):
     }
 
 
+
+def _feature_label(feature: str) -> str:
+    labels = {
+        "year": "Year",
+        "month": "Month",
+        "week": "Epidemiological Week",
+        "lag_1": "Previous Period Cases",
+        "lag_2": "Two-Period Case Lag",
+        "lag_3": "Three-Period Case Lag",
+        "moving_average_3": "3-Period Moving Average",
+        "moving_average_6": "6-Period Moving Average",
+        "rolling_sum_3": "3-Period Rolling Sum",
+        "rainfall": "Rainfall",
+        "temperature": "Temperature",
+        "humidity": "Humidity",
+        "population": "Population",
+        "density": "Population Density",
+    }
+    return labels.get(feature, feature.replace("_", " ").title())
+
+
+def _extract_feature_importance(model, feature_columns):
+    raw_values = None
+
+    if hasattr(model, "feature_importances_"):
+        raw_values = getattr(model, "feature_importances_", None)
+    elif hasattr(model, "coef_"):
+        raw_values = np.abs(np.ravel(getattr(model, "coef_", [])))
+
+    if raw_values is None:
+        return []
+
+    values = np.nan_to_num(np.array(raw_values, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
+
+    if values.size != len(feature_columns):
+        return []
+
+    total = float(np.sum(np.abs(values)))
+    if total <= 0:
+        return []
+
+    items = []
+    for feature, value in zip(feature_columns, values):
+        percentage = (abs(float(value)) / total) * 100
+        items.append({
+            "feature": feature,
+            "label": _feature_label(feature),
+            "importance": round(float(percentage), 4),
+        })
+
+    return sorted(items, key=lambda item: item["importance"], reverse=True)
+
+
+def _selection_confidence(comparison):
+    if not comparison:
+        return {
+            "score": 0,
+            "label": "Unavailable",
+            "margin_percent": 0,
+            "summary": "Model confidence is unavailable because no comparison results were produced.",
+        }
+
+    best = comparison[0]
+    runner_up = comparison[1] if len(comparison) > 1 else None
+    best_rmse = float(best.get("rmse") or 0)
+    runner_rmse = float(runner_up.get("rmse") or best_rmse or 0) if runner_up else best_rmse
+
+    margin = 0
+    if runner_rmse > 0 and best_rmse > 0:
+        margin = max(0, (runner_rmse - best_rmse) / runner_rmse)
+
+    f1_component = max(0, min(float(best.get("f1_score") or 0), 1))
+    score = int(round(min(98, max(50, 62 + (margin * 180) + (f1_component * 22)))))
+
+    if score >= 85:
+        label = "High confidence"
+    elif score >= 70:
+        label = "Moderate confidence"
+    else:
+        label = "Review recommended"
+
+    summary = (
+        f"{best.get('model_name', 'The selected model')} was selected because it produced the lowest RMSE"
+        f" and MAE among the evaluated algorithms."
+    )
+
+    return {
+        "score": score,
+        "label": label,
+        "margin_percent": round(float(margin * 100), 2),
+        "summary": summary,
+    }
+
+
+def _selection_explanation(comparison):
+    if not comparison:
+        return "No model comparison was available."
+
+    best = comparison[0]
+    runner_up = comparison[1] if len(comparison) > 1 else None
+
+    explanation = (
+        f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest RMSE "
+        f"({best.get('rmse', 'N/A')}) and MAE ({best.get('mae', 'N/A')}) among the evaluated machine learning models. "
+        "Lower RMSE and MAE indicate smaller forecasting errors, so the system automatically used this model for the dengue forecast."
+    )
+
+    if runner_up:
+        explanation += (
+            f" The next closest model was {runner_up.get('model_name', 'the runner-up model')} "
+            f"with RMSE {runner_up.get('rmse', 'N/A')} and MAE {runner_up.get('mae', 'N/A')}."
+        )
+
+    return explanation
+
+
+def _training_summary(training_result: dict, model_run_id: str | None = None, integration_run_id: str | None = None):
+    comparison = training_result.get("comparison") or []
+    best = training_result.get("best") or (comparison[0] if comparison else {})
+    confidence = _selection_confidence(comparison)
+
+    return {
+        "model_run_id": model_run_id,
+        "integration_run_id": integration_run_id,
+        "models_evaluated": len(comparison),
+        "selected_model_key": best.get("model_key"),
+        "selected_model_name": best.get("model_name"),
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
+        "train_ratio": TRAIN_RATIO,
+        "test_ratio": TEST_RATIO,
+        "random_state": RANDOM_STATE,
+        "training_row_count": int(training_result.get("train_count") or 0),
+        "testing_row_count": int(training_result.get("test_count") or 0),
+        "total_model_training_duration_seconds": round(float(training_result.get("total_duration_seconds") or 0), 4),
+        "evaluated_at": training_result.get("evaluated_at"),
+        "selection_confidence": confidence,
+        "selection_explanation": _selection_explanation(comparison),
+    }
+
 def _train_and_select_model(ml_df: pd.DataFrame):
+    evaluated_at = datetime.utcnow().isoformat()
+    training_started = time.perf_counter()
     ml_df = ml_df.sort_values(["year", "month", "week", "barangay"])
 
-    split_index = max(int(len(ml_df) * 0.8), 1)
+    split_index = max(int(len(ml_df) * TRAIN_RATIO), 1)
     train_df = ml_df.iloc[:split_index].copy()
     test_df = ml_df.iloc[split_index:].copy()
 
@@ -223,10 +513,13 @@ def _train_and_select_model(ml_df: pd.DataFrame):
     y_test = test_df["target_next_cases"]
 
     comparison = []
+    trained_models = {}
 
     for model_key, model in _candidate_models().items():
+        model_started = time.perf_counter()
         model.fit(x_train, y_train)
         predictions = np.maximum(model.predict(x_test), 0)
+        model_duration = time.perf_counter() - model_started
 
         mae = mean_absolute_error(y_test, predictions)
         rmse = mean_squared_error(y_test, predictions) ** 0.5
@@ -236,31 +529,45 @@ def _train_and_select_model(ml_df: pd.DataFrame):
         except Exception:
             r2 = 0
 
+        feature_importance = _extract_feature_importance(model, FEATURE_COLUMNS)
+
         comparison.append({
             "model_key": model_key,
-            "model_name": model_key.replace("_", " ").title(),
+            "model_name": _model_display_name(model_key),
             "mae": round(float(mae), 4),
             "rmse": round(float(rmse), 4),
             "r2": round(float(r2), 4),
             **_evaluate_regression_as_risk(y_test, predictions),
+            "status": "evaluated",
+            "random_state": RANDOM_STATE,
+            "train_test_split": TRAIN_TEST_SPLIT_LABEL,
+            "train_ratio": TRAIN_RATIO,
+            "test_ratio": TEST_RATIO,
+            "training_row_count": int(len(train_df)),
+            "testing_row_count": int(len(test_df)),
+            "training_duration_seconds": round(float(model_duration), 4),
+            "evaluated_at": evaluated_at,
+            "feature_importance": feature_importance,
         })
+        trained_models[model_key] = model
 
     comparison = sorted(comparison, key=lambda item: (item["rmse"], item["mae"]))
-    best = comparison[0]
+    best = {
+        **comparison[0],
+        "selection_confidence": _selection_confidence(comparison),
+        "selection_explanation": _selection_explanation(comparison),
+    }
 
     final_model = _candidate_models()[best["model_key"]]
+    final_started = time.perf_counter()
     final_model.fit(ml_df[FEATURE_COLUMNS], ml_df["target_next_cases"])
+    final_duration = time.perf_counter() - final_started
 
-    feature_importance = []
-    if hasattr(final_model, "feature_importances_"):
-        feature_importance = sorted(
-            [
-                {"feature": feature, "importance": round(float(importance), 4)}
-                for feature, importance in zip(FEATURE_COLUMNS, final_model.feature_importances_)
-            ],
-            key=lambda item: item["importance"],
-            reverse=True,
-        )
+    final_feature_importance = _extract_feature_importance(final_model, FEATURE_COLUMNS)
+    best["feature_importance"] = final_feature_importance or best.get("feature_importance", [])
+    best["final_training_duration_seconds"] = round(float(final_duration), 4)
+
+    total_duration = time.perf_counter() - training_started
 
     return {
         "best": best,
@@ -268,9 +575,14 @@ def _train_and_select_model(ml_df: pd.DataFrame):
         "model": final_model,
         "train_count": len(train_df),
         "test_count": len(test_df),
-        "feature_importance": feature_importance,
+        "feature_importance": best.get("feature_importance", []),
+        "feature_importance_by_model": {
+            item["model_key"]: item.get("feature_importance", [])
+            for item in comparison
+        },
+        "total_duration_seconds": round(float(total_duration), 4),
+        "evaluated_at": evaluated_at,
     }
-
 
 def _save_model_run(training_result: dict, integration_run_id: str):
     ensure_model_tables()
@@ -314,6 +626,21 @@ def _save_model_run(training_result: dict, integration_run_id: str):
         "integration_run_id": integration_run_id,
         "best_model_key": best["model_key"],
         "best_model_name": best["model_name"],
+        "model_version": "v1",
+        "metrics": best,
+        "model_metrics": best,
+        "model_comparison": training_result["comparison"],
+        "feature_columns": FEATURE_COLUMNS,
+        "feature_importance": training_result["feature_importance"],
+        "feature_importance_by_model": training_result.get("feature_importance_by_model", {}),
+        "training_summary": _training_summary(training_result, model_run_id, integration_run_id),
+        "selection_explanation": _selection_explanation(training_result.get("comparison") or []),
+        "selection_confidence": _selection_confidence(training_result.get("comparison") or []),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
+        "training_row_count": training_result["train_count"],
+        "testing_row_count": training_result["test_count"],
+        "available_model_keys": sorted(_available_model_keys()),
         "trained_at": datetime.utcnow().isoformat(),
     }), encoding="utf-8")
 
@@ -341,6 +668,12 @@ def train_latest_model(force_retrain=False):
         "model_comparison": training_result["comparison"],
         "feature_columns": FEATURE_COLUMNS,
         "feature_importance": training_result["feature_importance"],
+        "feature_importance_by_model": training_result.get("feature_importance_by_model", {}),
+        "training_summary": _training_summary(training_result, model_run_id, integration_run_id),
+        "selection_explanation": _selection_explanation(training_result.get("comparison") or []),
+        "selection_confidence": _selection_confidence(training_result.get("comparison") or []),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "training_row_count": training_result["train_count"],
         "testing_row_count": training_result["test_count"],
         "used_cached_model": False,
@@ -375,6 +708,17 @@ def _load_model_and_metadata(integration_run_id: str):
         "best": saved_row["metrics"] or {},
         "comparison": saved_row["model_comparison"] or [],
         "feature_importance": saved_row["feature_importance"] or [],
+        "training_summary": _training_summary({
+            "best": saved_row["metrics"] or {},
+            "comparison": saved_row["model_comparison"] or [],
+            "train_count": saved_row["training_row_count"],
+            "test_count": saved_row["testing_row_count"],
+            "evaluated_at": str(saved_row["created_at"]),
+        }, str(saved_row["model_run_id"]), str(saved_row["integration_run_id"]) if saved_row["integration_run_id"] else None),
+        "selection_explanation": _selection_explanation(saved_row["model_comparison"] or []),
+        "selection_confidence": _selection_confidence(saved_row["model_comparison"] or []),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "used_cached_model": True,
     }
 
@@ -491,6 +835,11 @@ def forecast_with_latest_model():
         "model_comparison": artifact["comparison"],
         "feature_columns": FEATURE_COLUMNS,
         "feature_importance": artifact["feature_importance"],
+        "training_summary": artifact.get("training_summary"),
+        "selection_explanation": artifact.get("selection_explanation"),
+        "selection_confidence": artifact.get("selection_confidence"),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "model_run_id": model_run_id,
         "used_cached_model": artifact["used_cached_model"],
     }
@@ -551,6 +900,17 @@ def get_latest_metrics():
         "metrics": row["metrics"] or {},
         "model_comparison": row["model_comparison"] or [],
         "feature_importance": row["feature_importance"] or [],
+        "training_summary": _training_summary({
+            "best": row["metrics"] or {},
+            "comparison": row["model_comparison"] or [],
+            "train_count": row["training_row_count"],
+            "test_count": row["testing_row_count"],
+            "evaluated_at": str(row["created_at"]),
+        }, str(row["model_run_id"]), str(row["integration_run_id"]) if row["integration_run_id"] else None),
+        "selection_explanation": _selection_explanation(row["model_comparison"] or []),
+        "selection_confidence": _selection_confidence(row["model_comparison"] or []),
+        "random_state": RANDOM_STATE,
+        "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "created_at": str(row["created_at"]),
         "model_file_available": _model_path(str(row["model_run_id"])).exists(),
     }
