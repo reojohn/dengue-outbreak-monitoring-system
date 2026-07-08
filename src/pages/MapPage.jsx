@@ -299,6 +299,72 @@ function readPositiveNumber(source, keys = []) {
   return 0
 }
 
+function readText(source, keys = [], fallback = '') {
+  if (!source) return fallback
+
+  for (const key of keys) {
+    const value = source[key]
+    const text = String(value ?? '').trim()
+
+    if (text) {
+      return text
+    }
+  }
+
+  return fallback
+}
+
+function getOverallRiskScore(row) {
+  return readNumber(row, [
+    'multiSourceRiskScore',
+    'multi_source_risk_score',
+    'combinedRiskScore',
+    'combined_risk_score',
+    'overallRiskScore',
+    'overall_risk_score',
+    'riskScore',
+    'risk_score',
+  ], 0)
+}
+
+function getEnvironmentalSuitabilityValue(row) {
+  return readText(row, [
+    'environmentalSuitability',
+    'environmental_suitability',
+    'weatherCondition',
+    'weather_condition',
+    'environmentalLabel',
+    'environmental_label',
+  ])
+}
+
+function getRainfallPressureValue(row) {
+  return readText(row, [
+    'rainfallPressure',
+    'rainfall_pressure',
+    'rainfallRisk',
+    'rainfall_risk',
+  ])
+}
+
+function getTemperatureSuitabilityValue(row) {
+  return readText(row, [
+    'temperatureSuitability',
+    'temperature_suitability',
+    'temperatureCondition',
+    'temperature_condition',
+  ])
+}
+
+function getHumiditySuitabilityValue(row) {
+  return readText(row, [
+    'humiditySuitability',
+    'humidity_suitability',
+    'humidityCondition',
+    'humidity_condition',
+  ])
+}
+
 function getRecordName(record) {
   if (!record) return ''
 
@@ -366,8 +432,8 @@ function getAreaValue({ row, feature }) {
   const props = feature?.properties || {}
 
   return (
-    readPositiveNumber(row, ['area_sqkm', 'areaSqKm', 'area', 'areaKm2']) ||
-    readPositiveNumber(props, ['area_sqkm', 'areaSqKm', 'area', 'areaKm2'])
+    readPositiveNumber(row, ['area_sqkm', 'areaSqKm', 'area_sq_km', 'area', 'areaKm2', 'boundary_area_sqkm', 'boundaryAreaSqKm']) ||
+    readPositiveNumber(props, ['area_sqkm', 'areaSqKm', 'area_sq_km', 'area', 'areaKm2', 'boundary_area_sqkm', 'boundaryAreaSqKm'])
   )
 }
 
@@ -868,19 +934,91 @@ function buildBackendRiskRows(backendForecastResult = null) {
 
   return backendRows
     .map((row) => {
-      const barangay = row.barangay || 'Unspecified barangay'
-      const risk = row.risk_level || 'Low'
-      const forecast = Number(row.forecast_next_4_periods || 0)
-      const forecastNextPeriod = Number(row.forecast_next_period || 0)
-      const recentAverage = Number(row.recent_average_cases || 0)
-      const previousAverage = Number(row.previous_average_cases || 0)
-      const historicalTotalCases = Number(row.historical_total_cases || 0)
-      const trendLabel = row.trend_direction || 'Stable'
-      const responsePriority = getBackendResponsePriority(risk)
+      const barangay = row.barangay || row.barangay_name || 'Unspecified barangay'
+      const risk = row.risk_level || row.risk || 'Low'
+      const forecast = Number(row.forecast_next_4_periods || row.forecastedCases || row.forecast || 0)
+      const forecastNextPeriod = Number(row.forecast_next_period || row.currentCases || row.current_cases || 0)
+      const recentAverage = Number(row.recent_average_cases || row.recentAverage || 0)
+      const previousAverage = Number(row.previous_average_cases || row.previousAverage || 0)
+      const historicalTotalCases = Number(row.historical_total_cases || row.totalCases || row.cases || 0)
+      const trendLabel = row.trend_direction || row.trendDirection || row.trend || 'Stable'
+      const responsePriority = row.response_priority || row.responsePriority || getBackendResponsePriority(risk)
       const backendRecommendation = row.recommendation || getGenericRecommendedAction(risk)
       const backendDecisionScore = getBackendDecisionScore(row)
-      const latestPeriod = row.latest_period || ''
-      const recordCount = Number(row.record_count || 0)
+      const latestPeriod = row.latest_period || row.latestPeriod || ''
+      const recordCount = Number(row.record_count || row.recordCount || 0)
+
+      const baseRiskScore = readNumber(row, [
+        'risk_score',
+        'riskScore',
+        'base_risk_score',
+        'baseRiskScore',
+      ], 0)
+      const combinedRiskScore = readNumber(row, [
+        'combined_risk_score',
+        'multi_source_risk_score',
+        'combinedRiskScore',
+        'multiSourceRiskScore',
+        'overallRiskScore',
+        'overall_risk_score',
+      ], baseRiskScore)
+      const environmentalScore = readNumber(row, [
+        'environmental_score',
+        'environmentalScore',
+      ], 0)
+      const environmentalSuitability = getEnvironmentalSuitabilityValue(row)
+      const rainfallPressure = getRainfallPressureValue(row)
+      const temperatureSuitability = getTemperatureSuitabilityValue(row)
+      const humiditySuitability = getHumiditySuitabilityValue(row)
+      const populationExposure = readText(row, [
+        'population_exposure',
+        'populationExposure',
+      ])
+      const densityLevel = readText(row, [
+        'density_level',
+        'densityLevel',
+      ])
+      const averageRainfall = readNumber(row, [
+        'average_rainfall',
+        'averageRainfall',
+        'avgRainfall',
+        'rainfall',
+      ], 0)
+      const averageTemperature = readNumber(row, [
+        'average_temperature',
+        'averageTemperature',
+        'avgTemperature',
+        'temperature',
+      ], 0)
+      const averageHumidity = readNumber(row, [
+        'average_humidity',
+        'averageHumidity',
+        'avgHumidity',
+        'humidity',
+      ], 0)
+      const population = readPositiveNumber(row, [
+        'population',
+        'totalPopulation',
+        'populationCount',
+        'pop',
+        'total_pop',
+        'totalPop',
+      ])
+      const density = readPositiveNumber(row, [
+        'density',
+        'populationDensity',
+        'population_density',
+        'densityPerSqKm',
+      ])
+      const boundaryArea = readPositiveNumber(row, [
+        'boundary_area_sqkm',
+        'boundaryAreaSqKm',
+        'area_sqkm',
+        'areaSqKm',
+        'areaKm2',
+        'area',
+      ])
+      const riskComponents = row.risk_components || row.riskComponents || null
 
       const series = [
         {
@@ -901,6 +1039,7 @@ function buildBackendRiskRows(backendForecastResult = null) {
 
       const rowData = {
         barangay,
+        barangayKey: row.barangay_key || row.barangayKey || '',
         risk,
         forecast,
         forecastedCases: forecast,
@@ -916,6 +1055,45 @@ function buildBackendRiskRows(backendForecastResult = null) {
         trend: trendLabel,
         trendLabel,
         trendDirection: trendLabel,
+
+        riskScore: combinedRiskScore,
+        risk_score: baseRiskScore,
+        baseRiskScore,
+        combinedRiskScore,
+        combined_risk_score: combinedRiskScore,
+        multiSourceRiskScore: combinedRiskScore,
+        multi_source_risk_score: combinedRiskScore,
+        overallRiskScore: combinedRiskScore,
+
+        environmentalScore,
+        environmental_score: environmentalScore,
+        environmentalSuitability,
+        environmental_suitability: environmentalSuitability,
+        rainfallPressure,
+        rainfall_pressure: rainfallPressure,
+        temperatureSuitability,
+        temperature_suitability: temperatureSuitability,
+        humiditySuitability,
+        humidity_suitability: humiditySuitability,
+        populationExposure,
+        population_exposure: populationExposure,
+        densityLevel,
+        density_level: densityLevel,
+
+        averageRainfall,
+        average_rainfall: averageRainfall,
+        averageTemperature,
+        average_temperature: averageTemperature,
+        averageHumidity,
+        average_humidity: averageHumidity,
+        population,
+        density,
+        areaSqKm: boundaryArea,
+        area_sqkm: boundaryArea,
+        boundaryAreaSqKm: boundaryArea,
+        boundary_area_sqkm: boundaryArea,
+        riskComponents,
+        risk_components: riskComponents,
 
         history,
         weeklyCases: history,
@@ -985,7 +1163,7 @@ function buildBackendRiskRows(backendForecastResult = null) {
         decisionScore: decisionSupport.score,
         decisionSupport,
 
-        backendPriorityRank: Number(row.priority_rank || 0),
+        backendPriorityRank: Number(row.priority_rank || row.priorityRank || 0),
       }
     })
     .sort((a, b) => {
@@ -1045,11 +1223,11 @@ export default function MapPage() {
 
   const hasMultiSourceRiskRows = riskRows.some((row) => {
     return (
-      Number(row.multiSourceRiskScore || row.riskScore || 0) > 0 ||
-      Boolean(row.environmentalSuitability) ||
-      Boolean(row.rainfallPressure) ||
-      Boolean(row.temperatureSuitability) ||
-      Boolean(row.humiditySuitability)
+      Number(getOverallRiskScore(row)) > 0 ||
+      Boolean(getEnvironmentalSuitabilityValue(row)) ||
+      Boolean(getRainfallPressureValue(row)) ||
+      Boolean(getTemperatureSuitabilityValue(row)) ||
+      Boolean(getHumiditySuitabilityValue(row))
     )
   })
 
@@ -1266,9 +1444,15 @@ export default function MapPage() {
   })
 
   const selectedDensity =
-    selectedPopulation > 0 && selectedArea > 0
+    readPositiveNumber(details, [
+      'density',
+      'populationDensity',
+      'population_density',
+      'densityPerSqKm',
+    ]) ||
+    (selectedPopulation > 0 && selectedArea > 0
       ? selectedPopulation / selectedArea
-      : 0
+      : 0)
 
   const selectedTrend = getHistoricalTrend(details)
 
@@ -1499,31 +1683,31 @@ export default function MapPage() {
     },
     {
       label: 'Overall risk score',
-      value: details ? formatRiskScore(details.multiSourceRiskScore || details.riskScore) : 'Waiting for data',
+      value: details ? formatRiskScore(getOverallRiskScore(details)) : 'Waiting for data',
       icon: Radar,
       tone: 'text-sky-500 bg-sky-50 border-sky-100 dark:text-sky-300 dark:bg-sky-500/10 dark:border-sky-500/20',
     },
     {
       label: 'Weather condition',
-      value: details ? getLabelValue(details.environmentalSuitability) : 'Pending weather data',
+      value: details ? getLabelValue(getEnvironmentalSuitabilityValue(details)) : 'Pending weather data',
       icon: CloudRain,
       tone: 'text-cyan-500 bg-cyan-50 border-cyan-100 dark:text-cyan-300 dark:bg-cyan-500/10 dark:border-cyan-500/20',
     },
     {
       label: 'Rainfall risk',
-      value: details ? getLabelValue(details.rainfallPressure) : 'Pending weather data',
+      value: details ? getLabelValue(getRainfallPressureValue(details)) : 'Pending weather data',
       icon: CloudRain,
       tone: 'text-blue-500 bg-blue-50 border-blue-100 dark:text-blue-300 dark:bg-blue-500/10 dark:border-blue-500/20',
     },
     {
       label: 'Temperature condition',
-      value: details ? getLabelValue(details.temperatureSuitability) : 'Pending weather data',
+      value: details ? getLabelValue(getTemperatureSuitabilityValue(details)) : 'Pending weather data',
       icon: Thermometer,
       tone: 'text-orange-500 bg-orange-50 border-orange-100 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20',
     },
     {
       label: 'Humidity condition',
-      value: details ? getLabelValue(details.humiditySuitability) : 'Pending weather data',
+      value: details ? getLabelValue(getHumiditySuitabilityValue(details)) : 'Pending weather data',
       icon: Droplets,
       tone: 'text-teal-500 bg-teal-50 border-teal-100 dark:text-teal-300 dark:bg-teal-500/10 dark:border-teal-500/20',
     },
@@ -2453,7 +2637,7 @@ export default function MapPage() {
                         <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">
                           {realHotspotReady
                             ? `Nearby barangay effect: ${formatHotspotScore(row.neighbor_influence_score)}`
-                            : `Overall risk score: ${formatRiskScore(row.multiSourceRiskScore || row.riskScore)}`}
+                            : `Overall risk score: ${formatRiskScore(getOverallRiskScore(row))}`}
                         </p>
 
                         <p className="mt-0.5 text-xs font-semibold text-brand-muted dark:text-slate-500">

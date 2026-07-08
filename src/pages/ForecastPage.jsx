@@ -21,7 +21,6 @@ import {
   TrendingDown,
   TrendingUp,
   Users,
-  Medal,
   CalendarDays,
 } from 'lucide-react'
 import DecisionActionTracker from '../components/DecisionActionTracker'
@@ -46,6 +45,9 @@ import ai5 from '../assets/ai5.png'
 import ai6 from '../assets/ai6.png'
 import ai7 from '../assets/ai7.png'
 import ai8 from '../assets/ai8.png'
+import goldMedal from '../assets/gold.png'
+import silverMedal from '../assets/silver.png'
+import bronzeMedal from '../assets/bronze.png'
 
 const modeMeta = {
   caution: {
@@ -76,6 +78,12 @@ const modelIconMap = {
   xgboost: ai6,
   lightgbm: ai7,
   catboost: ai8,
+}
+
+const rankMedalImages = [goldMedal, silverMedal, bronzeMedal]
+
+function getRankMedalImage(index = 0) {
+  return rankMedalImages[index] || null
 }
 
 
@@ -1557,27 +1565,27 @@ function getModelTypeBadges(modelKey = '') {
 }
 
 function getModelCardAccent(index = 0, isSelected = false) {
-  if (isSelected) {
+  if (isSelected || index === 0) {
     return {
-      card: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-cyan-950/20',
-      rankBadge: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
-      bar: 'from-emerald-500 to-cyan-400',
+      card: 'legendary-model-card legendary-model-card-rank-1 border-emerald-300/80 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 ring-1 ring-emerald-300/60 dark:border-emerald-300/40 dark:from-emerald-500/15 dark:via-slate-950 dark:to-cyan-950/30 dark:ring-emerald-300/20',
+      rankBadge: 'border-yellow-300/80 bg-slate-950 text-yellow-300 shadow-[0_0_28px_rgba(250,204,21,0.78),inset_0_0_18px_rgba(250,204,21,0.18)] ring-2 ring-yellow-300/45 dark:border-yellow-300/80 dark:bg-slate-950 dark:text-yellow-300 dark:ring-yellow-300/45',
+      bar: 'from-emerald-400 via-cyan-300 to-sky-400',
     }
   }
 
   if (index === 1) {
     return {
-      card: 'border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/20',
-      rankBadge: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
-      bar: 'from-slate-400 to-blue-400',
+      card: 'legendary-model-card legendary-model-card-rank-2 border-sky-300/80 bg-gradient-to-br from-sky-50 via-white to-indigo-50 ring-1 ring-sky-300/50 dark:border-sky-300/35 dark:from-sky-500/15 dark:via-slate-950 dark:to-indigo-950/30 dark:ring-sky-300/20',
+      rankBadge: 'border-cyan-300/80 bg-slate-950 text-cyan-300 shadow-[0_0_28px_rgba(56,189,248,0.72),inset_0_0_18px_rgba(56,189,248,0.18)] ring-2 ring-cyan-300/45 dark:border-cyan-300/80 dark:bg-slate-950 dark:text-cyan-300 dark:ring-cyan-300/45',
+      bar: 'from-sky-400 via-cyan-300 to-indigo-400',
     }
   }
 
   if (index === 2) {
     return {
-      card: 'border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 dark:border-orange-500/20 dark:from-orange-500/10 dark:via-slate-950 dark:to-amber-950/20',
-      rankBadge: 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
-      bar: 'from-orange-500 to-amber-400',
+      card: 'legendary-model-card legendary-model-card-rank-3 border-amber-300/80 bg-gradient-to-br from-amber-50 via-white to-orange-50 ring-1 ring-amber-300/55 dark:border-amber-300/40 dark:from-amber-500/15 dark:via-slate-950 dark:to-orange-950/30 dark:ring-amber-300/20',
+      rankBadge: 'border-orange-300/80 bg-slate-950 text-orange-300 shadow-[0_0_28px_rgba(251,146,60,0.74),inset_0_0_18px_rgba(251,146,60,0.18)] ring-2 ring-orange-300/45 dark:border-orange-300/80 dark:bg-slate-950 dark:text-orange-300 dark:ring-orange-300/45',
+      bar: 'from-orange-400 via-amber-300 to-yellow-300',
     }
   }
 
@@ -1599,6 +1607,17 @@ function getFeatureIcon(feature = '') {
   if (value.includes('case') || value.includes('moving') || value.includes('rolling')) return TrendingUp
 
   return Sparkles
+}
+
+function getModelBoardOrder(index = 0, totalModels = 0) {
+  const total = Number(totalModels) || 0
+  const splitPoint = Math.ceil(total / 2)
+
+  if (splitPoint <= 0) return index
+
+  return index < splitPoint
+    ? index * 2
+    : (index - splitPoint) * 2 + 1
 }
 
 
@@ -2308,7 +2327,8 @@ const activeModelComparison = (() => {
               return (
                 <div
                   key={model.model_key || model.model_name}
-                  className={`overflow-hidden rounded-[30px] border shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${accent.card}`}
+                  style={{ '--model-board-order': getModelBoardOrder(index, activeModelComparison.length) }}
+                  className={`model-board-card relative overflow-hidden rounded-[30px] border shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${accent.card}`}
                 >
                   <button
                     type="button"
@@ -2319,10 +2339,14 @@ const activeModelComparison = (() => {
                       <div className="flex items-center gap-4">
                         <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-black shadow-sm ${accent.rankBadge}`}>
                           {index < 3 ? (
-  <Medal className="h-5 w-5" strokeWidth={2.6} />
-) : (
-  `#${index + 1}`
-)}
+                            <img
+                              src={getRankMedalImage(index)}
+                              alt={`${index + 1}${index === 0 ? 'st' : index === 1 ? 'nd' : 'rd'} place medal`}
+                              className="rank-medal-image h-10 w-10 object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.55)]"
+                            />
+                          ) : (
+                            `#${index + 1}`
+                          )}
                         </div>
 
                         <img
@@ -3156,6 +3180,123 @@ const activeModelComparison = (() => {
 
 
       <style>{`
+        .legendary-model-card {
+          isolation: isolate;
+          box-shadow:
+            0 0 0 1px rgba(255, 255, 255, 0.08),
+            0 22px 60px rgba(15, 23, 42, 0.18),
+            0 0 36px rgba(34, 211, 238, 0.22);
+        }
+
+        .legendary-model-card::before {
+          content: '';
+          pointer-events: none;
+          position: absolute;
+          inset: -2px;
+          z-index: 0;
+          border-radius: inherit;
+          opacity: 0.78;
+          animation: dengue-legendary-card-pulse 2.8s ease-in-out infinite;
+        }
+
+        .legendary-model-card::after {
+          content: '';
+          pointer-events: none;
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          border-radius: inherit;
+          background: linear-gradient(115deg, transparent 0%, transparent 32%, rgba(255, 255, 255, 0.24) 45%, transparent 58%, transparent 100%);
+          transform: translateX(-115%);
+          animation: dengue-legendary-card-shine 4.4s ease-in-out infinite;
+        }
+
+        .legendary-model-card > * {
+          position: relative;
+          z-index: 1;
+        }
+
+        .legendary-model-card .h-12.w-12 {
+          filter: saturate(1.2) contrast(1.08);
+        }
+
+        .rank-medal-image {
+          filter: saturate(1.18) contrast(1.08);
+        }
+
+        @media (min-width: 1280px) {
+          .model-board-card {
+            order: var(--model-board-order);
+          }
+        }
+
+        .legendary-model-card-rank-1 {
+          box-shadow:
+            0 0 0 1px rgba(110, 231, 183, 0.34),
+            0 0 32px rgba(45, 212, 191, 0.36),
+            0 0 72px rgba(34, 211, 238, 0.22),
+            0 26px 68px rgba(15, 23, 42, 0.20);
+        }
+
+        .legendary-model-card-rank-1::before {
+          background:
+            radial-gradient(circle at 14% 18%, rgba(250, 204, 21, 0.30), transparent 22%),
+            radial-gradient(circle at 86% 10%, rgba(34, 211, 238, 0.28), transparent 28%),
+            radial-gradient(circle at 50% 110%, rgba(16, 185, 129, 0.28), transparent 34%);
+        }
+
+        .legendary-model-card-rank-2 {
+          box-shadow:
+            0 0 0 1px rgba(125, 211, 252, 0.34),
+            0 0 30px rgba(56, 189, 248, 0.34),
+            0 0 68px rgba(99, 102, 241, 0.22),
+            0 26px 68px rgba(15, 23, 42, 0.18);
+        }
+
+        .legendary-model-card-rank-2::before {
+          background:
+            radial-gradient(circle at 15% 15%, rgba(125, 211, 252, 0.30), transparent 24%),
+            radial-gradient(circle at 88% 12%, rgba(129, 140, 248, 0.24), transparent 30%),
+            radial-gradient(circle at 50% 112%, rgba(14, 165, 233, 0.24), transparent 34%);
+        }
+
+        .legendary-model-card-rank-3 {
+          box-shadow:
+            0 0 0 1px rgba(251, 191, 36, 0.34),
+            0 0 32px rgba(251, 146, 60, 0.34),
+            0 0 68px rgba(245, 158, 11, 0.22),
+            0 26px 68px rgba(15, 23, 42, 0.18);
+        }
+
+        .legendary-model-card-rank-3::before {
+          background:
+            radial-gradient(circle at 14% 18%, rgba(252, 211, 77, 0.34), transparent 24%),
+            radial-gradient(circle at 88% 14%, rgba(251, 113, 133, 0.22), transparent 30%),
+            radial-gradient(circle at 50% 112%, rgba(249, 115, 22, 0.24), transparent 34%);
+        }
+
+        @keyframes dengue-legendary-card-pulse {
+          0%, 100% {
+            opacity: 0.55;
+            filter: saturate(1);
+          }
+
+          50% {
+            opacity: 0.95;
+            filter: saturate(1.35);
+          }
+        }
+
+        @keyframes dengue-legendary-card-shine {
+          0%, 45% {
+            transform: translateX(-115%);
+          }
+
+          72%, 100% {
+            transform: translateX(115%);
+          }
+        }
+
         @media (max-width: 639px) {
           .forecast-mobile-compact,
           .forecast-mobile-compact * {
@@ -3789,6 +3930,11 @@ const activeModelComparison = (() => {
             height: 1.65rem !important;
             border-radius: 10px !important;
             font-size: 0.58rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .rank-medal-image {
+            width: 1.5rem !important;
+            height: 1.5rem !important;
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid img.h-32.w-32 {
