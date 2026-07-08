@@ -45,9 +45,6 @@ import ai5 from '../assets/ai5.png'
 import ai6 from '../assets/ai6.png'
 import ai7 from '../assets/ai7.png'
 import ai8 from '../assets/ai8.png'
-import goldMedal from '../assets/gold.png'
-import silverMedal from '../assets/silver.png'
-import bronzeMedal from '../assets/bronze.png'
 
 const modeMeta = {
   caution: {
@@ -79,13 +76,6 @@ const modelIconMap = {
   lightgbm: ai7,
   catboost: ai8,
 }
-
-const rankMedalImages = [goldMedal, silverMedal, bronzeMedal]
-
-function getRankMedalImage(index = 0) {
-  return rankMedalImages[index] || null
-}
-
 
 const modelCatalog = [
   { model_key: 'gradient_boosting', model_name: 'Gradient Boosting' },
@@ -1576,7 +1566,7 @@ function getModelCardAccent(index = 0, isSelected = false) {
   if (index === 1) {
     return {
       card: 'legendary-model-card legendary-model-card-rank-2 border-sky-300/80 bg-gradient-to-br from-sky-50 via-white to-indigo-50 ring-1 ring-sky-300/50 dark:border-sky-300/35 dark:from-sky-500/15 dark:via-slate-950 dark:to-indigo-950/30 dark:ring-sky-300/20',
-      rankBadge: 'border-cyan-300/80 bg-slate-950 text-cyan-300 shadow-[0_0_28px_rgba(56,189,248,0.72),inset_0_0_18px_rgba(56,189,248,0.18)] ring-2 ring-cyan-300/45 dark:border-cyan-300/80 dark:bg-slate-950 dark:text-cyan-300 dark:ring-cyan-300/45',
+      rankBadge: 'border-slate-300/90 bg-slate-950 text-slate-100 shadow-[0_0_28px_rgba(226,232,240,0.62),inset_0_0_18px_rgba(226,232,240,0.16)] ring-2 ring-slate-200/45 dark:border-slate-300/90 dark:bg-slate-950 dark:text-slate-100 dark:ring-slate-200/45',
       bar: 'from-sky-400 via-cyan-300 to-indigo-400',
     }
   }
@@ -1584,7 +1574,7 @@ function getModelCardAccent(index = 0, isSelected = false) {
   if (index === 2) {
     return {
       card: 'legendary-model-card legendary-model-card-rank-3 border-amber-300/80 bg-gradient-to-br from-amber-50 via-white to-orange-50 ring-1 ring-amber-300/55 dark:border-amber-300/40 dark:from-amber-500/15 dark:via-slate-950 dark:to-orange-950/30 dark:ring-amber-300/20',
-      rankBadge: 'border-orange-300/80 bg-slate-950 text-orange-300 shadow-[0_0_28px_rgba(251,146,60,0.74),inset_0_0_18px_rgba(251,146,60,0.18)] ring-2 ring-orange-300/45 dark:border-orange-300/80 dark:bg-slate-950 dark:text-orange-300 dark:ring-orange-300/45',
+      rankBadge: 'border-orange-400/90 bg-slate-950 text-orange-400 shadow-[0_0_28px_rgba(180,83,9,0.72),inset_0_0_18px_rgba(180,83,9,0.18)] ring-2 ring-orange-500/40 dark:border-orange-400/90 dark:bg-slate-950 dark:text-orange-400 dark:ring-orange-500/40',
       bar: 'from-orange-400 via-amber-300 to-yellow-300',
     }
   }
@@ -2337,16 +2327,8 @@ const activeModelComparison = (() => {
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-4">
-                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-black shadow-sm ${accent.rankBadge}`}>
-                          {index < 3 ? (
-                            <img
-                              src={getRankMedalImage(index)}
-                              alt={`${index + 1}${index === 0 ? 'st' : index === 1 ? 'nd' : 'rd'} place medal`}
-                              className="rank-medal-image h-10 w-10 object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.55)]"
-                            />
-                          ) : (
-                            `#${index + 1}`
-                          )}
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-base font-black shadow-sm ${accent.rankBadge}`}>
+                          #{index + 1}
                         </div>
 
                         <img
@@ -3220,10 +3202,6 @@ const activeModelComparison = (() => {
           filter: saturate(1.2) contrast(1.08);
         }
 
-        .rank-medal-image {
-          filter: saturate(1.18) contrast(1.08);
-        }
-
         @media (min-width: 1280px) {
           .model-board-card {
             order: var(--model-board-order);
@@ -3926,15 +3904,10 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid .h-12.w-12 {
-            width: 1.65rem !important;
-            height: 1.65rem !important;
+            width: 1.75rem !important;
+            height: 1.75rem !important;
             border-radius: 10px !important;
-            font-size: 0.58rem !important;
-          }
-
-          .forecast-mobile-compact .mobile-model-comparison-grid .rank-medal-image {
-            width: 1.5rem !important;
-            height: 1.5rem !important;
+            font-size: 0.66rem !important;
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid img.h-32.w-32 {

@@ -30,7 +30,7 @@ import {
 import LeafletRiskMap from '../components/LeafletRiskMap'
 import { useData } from '../context/DataContext'
 import { getGeospatialHotspots } from '../services/api'
-import { computeDecisionSupport, riskStyles } from '../utils/analytics'
+import { computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 
 const mapStyleOptions = [
@@ -168,10 +168,26 @@ function getFeatureName(feature) {
     props.adm4_name ||
     props.adm4_ref_name ||
     props.name ||
+    props.Name ||
+    props.NAME ||
     props.barangay ||
+    props.barangayName ||
     props.barangay_name ||
+    props.brgy ||
+    props.brgy_name ||
     props.BARANGAY ||
+    props.BRGY ||
+    props.BRGY_NAME ||
+    props.BGY_NAME ||
+    props.BgyName ||
     props.ADM4_EN ||
+    props.NAME_3 ||
+    props.NAME_4 ||
+    props.LOC_NAME ||
+    props.LOCALITY ||
+    props.MUNICIPALITY ||
+    props.detected_barangay_name ||
+    props.standardized_barangay ||
     'Unnamed barangay'
   )
 }
@@ -183,8 +199,21 @@ function getFeatureReferenceName(feature) {
     props.adm4_ref_name ||
     props.adm4_name ||
     props.name ||
+    props.Name ||
+    props.NAME ||
     props.barangay ||
+    props.barangayName ||
     props.barangay_name ||
+    props.brgy ||
+    props.brgy_name ||
+    props.BARANGAY ||
+    props.BRGY_NAME ||
+    props.BgyName ||
+    props.ADM4_EN ||
+    props.NAME_3 ||
+    props.NAME_4 ||
+    props.detected_barangay_name ||
+    props.standardized_barangay ||
     ''
   )
 }
@@ -271,47 +300,68 @@ function countBoundaryFeatures(boundaryRecords) {
   return geoJson?.features?.length || 0
 }
 
-function readNumber(source, keys = [], fallback = 0) {
+function normalizeDataKey(key = '') {
+  return String(key)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function readValue(source, keys = [], fallback = undefined) {
   if (!source) return fallback
 
   for (const key of keys) {
-    const value = Number(source[key])
+    if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+      return source[key]
+    }
+  }
 
-    if (Number.isFinite(value)) {
-      return value
+  const normalizedLookup = Object.keys(source).reduce((acc, key) => {
+    acc[normalizeDataKey(key)] = source[key]
+    return acc
+  }, {})
+
+  for (const key of keys) {
+    const normalizedKey = normalizeDataKey(key)
+
+    if (
+      normalizedLookup[normalizedKey] !== undefined &&
+      normalizedLookup[normalizedKey] !== null &&
+      normalizedLookup[normalizedKey] !== ''
+    ) {
+      return normalizedLookup[normalizedKey]
     }
   }
 
   return fallback
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  if (value === undefined || value === null || value === '') return fallback
+
+  const cleaned = typeof value === 'string'
+    ? value.replace(/,/g, '').replace(/%/g, '').trim()
+    : value
+
+  const number = Number(cleaned)
+
+  return Number.isFinite(number) ? number : fallback
+}
+
+function readNumber(source, keys = [], fallback = 0) {
+  return toFiniteNumber(readValue(source, keys), fallback)
 }
 
 function readPositiveNumber(source, keys = []) {
-  if (!source) return 0
+  const number = readNumber(source, keys, 0)
 
-  for (const key of keys) {
-    const value = Number(source[key])
-
-    if (Number.isFinite(value) && value > 0) {
-      return value
-    }
-  }
-
-  return 0
+  return number > 0 ? number : 0
 }
 
 function readText(source, keys = [], fallback = '') {
-  if (!source) return fallback
+  const value = readValue(source, keys)
+  const text = String(value ?? '').trim()
 
-  for (const key of keys) {
-    const value = source[key]
-    const text = String(value ?? '').trim()
-
-    if (text) {
-      return text
-    }
-  }
-
-  return fallback
+  return text || fallback
 }
 
 function getOverallRiskScore(row) {
@@ -368,15 +418,23 @@ function getHumiditySuitabilityValue(row) {
 function getRecordName(record) {
   if (!record) return ''
 
-  return (
-    record.barangay ||
-    record.name ||
-    record.adm4_name ||
-    record.adm4_ref_name ||
-    record.barangay_name ||
-    record.BARANGAY ||
-    ''
-  )
+  return readText(record, [
+    'barangay',
+    'barangayName',
+    'barangay_name',
+    'barangay_raw',
+    'barangayRaw',
+    'brgy',
+    'brgy_name',
+    'name',
+    'adm4_name',
+    'adm4_ref_name',
+    'location',
+    'area',
+    'BgyName',
+    'BRGY_NAME',
+    'BARANGAY',
+  ])
 }
 
 function getPopulationRowForSelection(selected, feature, populationRecords = []) {
@@ -435,6 +493,210 @@ function getAreaValue({ row, feature }) {
     readPositiveNumber(row, ['area_sqkm', 'areaSqKm', 'area_sq_km', 'area', 'areaKm2', 'boundary_area_sqkm', 'boundaryAreaSqKm']) ||
     readPositiveNumber(props, ['area_sqkm', 'areaSqKm', 'area_sq_km', 'area', 'areaKm2', 'boundary_area_sqkm', 'boundaryAreaSqKm'])
   )
+}
+
+
+function getBoundaryFeatureForBarangay(barangay, boundaryFeatures = []) {
+  if (!barangay || !Array.isArray(boundaryFeatures) || !boundaryFeatures.length) {
+    return null
+  }
+
+  return (
+    boundaryFeatures.find((feature) => {
+      return (
+        namesMatch(barangay, getFeatureName(feature)) ||
+        namesMatch(barangay, getFeatureReferenceName(feature))
+      )
+    }) || null
+  )
+}
+
+function average(values = []) {
+  const validValues = values
+    .map((value) => Number(value || 0))
+    .filter((value) => Number.isFinite(value))
+
+  if (!validValues.length) return 0
+
+  return validValues.reduce((total, value) => total + value, 0) / validValues.length
+}
+
+function sum(values = []) {
+  return values.reduce((total, value) => total + Number(value || 0), 0)
+}
+
+function parseCoverageDate(value) {
+  if (value === undefined || value === null || value === '') return null
+
+  const raw = String(value).trim()
+
+  if (!raw) return null
+
+  const weekMatch = raw.match(/^(\d{4})-?W(\d{1,2})$/i)
+
+  if (weekMatch) {
+    const year = Number(weekMatch[1])
+    const week = Number(weekMatch[2])
+    const date = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7))
+
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const parsed = new Date(raw)
+
+  if (Number.isNaN(parsed.getTime())) return null
+
+  return parsed
+}
+
+function formatCoverageDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'N/A'
+
+  return date.toISOString().slice(0, 10)
+}
+
+function getWeatherDate(record) {
+  const directDate = readValue(record, [
+    'date',
+    'reportingDate',
+    'reporting_date',
+    'weatherDate',
+    'weather_date',
+    'observationDate',
+    'observation_date',
+    'recordDate',
+    'record_date',
+    'period',
+  ])
+
+  const parsedDirectDate = parseCoverageDate(directDate)
+
+  if (parsedDirectDate) return parsedDirectDate
+
+  const year = readNumber(record, ['year', 'weatherYear', 'weather_year'], 0)
+  const month = readNumber(record, ['month', 'weatherMonth', 'weather_month'], 0)
+  const day = readNumber(record, ['day', 'dateDay', 'weatherDay', 'weather_day'], 1)
+  const dayOfYear = readNumber(record, ['dayOfYear', 'day_of_year', 'doy', 'julianDay', 'julian_day'], 0)
+
+  if (year > 0 && dayOfYear > 0) {
+    const date = new Date(Date.UTC(year, 0, dayOfYear))
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  if (year > 0 && month > 0) {
+    const date = new Date(Date.UTC(year, month - 1, day > 0 ? day : 1))
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  return null
+}
+
+function getWeatherNumber(record, keys = []) {
+  return readNumber(record, keys, 0)
+}
+
+function getWeatherContextForPeriods(periods = [], weatherRecords = []) {
+  const emptyContext = {
+    averageRainfall: 0,
+    totalRainfall: 0,
+    averageTemperature: 0,
+    averageHumidity: 0,
+    weatherRecordCount: 0,
+    weatherCoverageLabel: 'Weather data unavailable',
+  }
+
+  if (!Array.isArray(weatherRecords) || !weatherRecords.length) {
+    return emptyContext
+  }
+
+  const weatherItems = weatherRecords
+    .map((record, index) => ({
+      record,
+      index,
+      date: getWeatherDate(record),
+      rainfall: getWeatherNumber(record, [
+        'rainfall',
+        'rainfall_mm',
+        'rainfallMm',
+        'rain',
+        'rain_mm',
+        'precipitation',
+        'precipitation_mm',
+        'precip',
+        'prectotcorr',
+        'precipAmount',
+        'precip_amount',
+      ]),
+      temperature: getWeatherNumber(record, [
+        'temperature',
+        'temperature_c',
+        'temperatureC',
+        'temp',
+        'temp_c',
+        'air_temperature',
+        'airTemperature',
+        't2m',
+      ]),
+      humidity: getWeatherNumber(record, [
+        'humidity',
+        'relative_humidity',
+        'relativeHumidity',
+        'humidity_percent',
+        'rh',
+        'rh2m',
+      ]),
+    }))
+    .filter((item) => item.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+  if (!weatherItems.length) {
+    return emptyContext
+  }
+
+  const periodDates = periods
+    .map((period) => parseCoverageDate(period.period || period))
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  let selectedWeatherItems = []
+
+  if (periodDates.length) {
+    const start = new Date(periodDates[0].getTime())
+    const end = new Date(periodDates[periodDates.length - 1].getTime())
+
+    start.setUTCDate(start.getUTCDate() - 14)
+    end.setUTCDate(end.getUTCDate() + 7)
+
+    selectedWeatherItems = weatherItems.filter((item) => {
+      return item.date.getTime() >= start.getTime() && item.date.getTime() <= end.getTime()
+    })
+  }
+
+  if (!selectedWeatherItems.length) {
+    selectedWeatherItems = weatherItems.slice(-30)
+  }
+
+  const rainfallValues = selectedWeatherItems.map((item) => item.rainfall)
+  const temperatureValues = selectedWeatherItems
+    .map((item) => item.temperature)
+    .filter((value) => value !== 0)
+  const humidityValues = selectedWeatherItems
+    .map((item) => item.humidity)
+    .filter((value) => value !== 0)
+
+  const firstDate = selectedWeatherItems[0]?.date
+  const lastDate = selectedWeatherItems[selectedWeatherItems.length - 1]?.date
+
+  return {
+    averageRainfall: Number(average(rainfallValues).toFixed(2)),
+    totalRainfall: Number(sum(rainfallValues).toFixed(2)),
+    averageTemperature: Number(average(temperatureValues).toFixed(2)),
+    averageHumidity: Number(average(humidityValues).toFixed(2)),
+    weatherRecordCount: selectedWeatherItems.length,
+    weatherCoverageLabel: firstDate && lastDate
+      ? `${formatCoverageDate(firstDate)} to ${formatCoverageDate(lastDate)}`
+      : 'Weather data available',
+  }
 }
 
 function getTrendValues(row) {
@@ -929,96 +1191,87 @@ function buildBackendRationale({
   return Array.from(new Set(rationale.filter(Boolean))).slice(0, 9)
 }
 
-function buildBackendRiskRows(backendForecastResult = null) {
+function buildBackendRiskRows(backendForecastResult = null, context = {}) {
   const backendRows = backendForecastResult?.forecast_results || []
+  const {
+    populationRecords = [],
+    boundaryFeatures = [],
+    weatherRecords = [],
+  } = context
+
+  const backendPeriods = backendRows.map((row, index) => ({
+    period: readText(row, ['latest_period', 'latestPeriod', 'period'], `Forecast period ${index + 1}`),
+    index,
+    sortValue: index,
+  }))
+
+  const sharedWeatherContext = getWeatherContextForPeriods(backendPeriods, weatherRecords)
 
   return backendRows
     .map((row) => {
       const barangay = row.barangay || row.barangay_name || 'Unspecified barangay'
-      const risk = row.risk_level || row.risk || 'Low'
       const forecast = Number(row.forecast_next_4_periods || row.forecastedCases || row.forecast || 0)
       const forecastNextPeriod = Number(row.forecast_next_period || row.currentCases || row.current_cases || 0)
       const recentAverage = Number(row.recent_average_cases || row.recentAverage || 0)
       const previousAverage = Number(row.previous_average_cases || row.previousAverage || 0)
       const historicalTotalCases = Number(row.historical_total_cases || row.totalCases || row.cases || 0)
       const trendLabel = row.trend_direction || row.trendDirection || row.trend || 'Stable'
-      const responsePriority = row.response_priority || row.responsePriority || getBackendResponsePriority(risk)
-      const backendRecommendation = row.recommendation || getGenericRecommendedAction(risk)
+      const responsePriority = row.response_priority || row.responsePriority || getBackendResponsePriority(row.risk_level || row.risk)
+      const backendRecommendation = row.recommendation || getGenericRecommendedAction(row.risk_level || row.risk)
       const backendDecisionScore = getBackendDecisionScore(row)
       const latestPeriod = row.latest_period || row.latestPeriod || ''
       const recordCount = Number(row.record_count || row.recordCount || 0)
 
-      const baseRiskScore = readNumber(row, [
-        'risk_score',
-        'riskScore',
-        'base_risk_score',
-        'baseRiskScore',
-      ], 0)
-      const combinedRiskScore = readNumber(row, [
-        'combined_risk_score',
-        'multi_source_risk_score',
-        'combinedRiskScore',
-        'multiSourceRiskScore',
-        'overallRiskScore',
-        'overall_risk_score',
-      ], baseRiskScore)
-      const environmentalScore = readNumber(row, [
-        'environmental_score',
-        'environmentalScore',
-      ], 0)
-      const environmentalSuitability = getEnvironmentalSuitabilityValue(row)
-      const rainfallPressure = getRainfallPressureValue(row)
-      const temperatureSuitability = getTemperatureSuitabilityValue(row)
-      const humiditySuitability = getHumiditySuitabilityValue(row)
-      const populationExposure = readText(row, [
-        'population_exposure',
-        'populationExposure',
-      ])
-      const densityLevel = readText(row, [
-        'density_level',
-        'densityLevel',
-      ])
-      const averageRainfall = readNumber(row, [
-        'average_rainfall',
-        'averageRainfall',
-        'avgRainfall',
-        'rainfall',
-      ], 0)
-      const averageTemperature = readNumber(row, [
-        'average_temperature',
-        'averageTemperature',
-        'avgTemperature',
-        'temperature',
-      ], 0)
-      const averageHumidity = readNumber(row, [
-        'average_humidity',
-        'averageHumidity',
-        'avgHumidity',
-        'humidity',
-      ], 0)
-      const population = readPositiveNumber(row, [
-        'population',
-        'totalPopulation',
-        'populationCount',
-        'pop',
-        'total_pop',
-        'totalPop',
-      ])
-      const density = readPositiveNumber(row, [
-        'density',
-        'populationDensity',
-        'population_density',
-        'densityPerSqKm',
-      ])
-      const boundaryArea = readPositiveNumber(row, [
-        'boundary_area_sqkm',
-        'boundaryAreaSqKm',
-        'area_sqkm',
-        'areaSqKm',
-        'areaKm2',
-        'area',
-      ])
-      const riskComponents = row.risk_components || row.riskComponents || null
+      const boundaryFeature = getBoundaryFeatureForBarangay(barangay, boundaryFeatures)
+      const populationRow = getPopulationRowForSelection(barangay, boundaryFeature, populationRecords)
+      const boundaryArea = getAreaValue({ row, feature: boundaryFeature })
+      const population = getPopulationValue({ row, feature: boundaryFeature, populationRow })
+      const density =
+        readPositiveNumber(row, [
+          'density',
+          'populationDensity',
+          'population_density',
+          'densityPerSqKm',
+        ]) ||
+        (population > 0 && boundaryArea > 0 ? population / boundaryArea : 0)
+
+      const rowWeatherContext = latestPeriod
+        ? getWeatherContextForPeriods([{ period: latestPeriod }], weatherRecords)
+        : sharedWeatherContext
+
+      const weatherContext = rowWeatherContext.weatherRecordCount > 0
+        ? rowWeatherContext
+        : sharedWeatherContext
+
+      const averageRainfall =
+        readNumber(row, [
+          'average_rainfall',
+          'averageRainfall',
+          'avgRainfall',
+          'rainfall',
+          'rainfall_mm',
+          'rainfallMm',
+        ], 0) || weatherContext.averageRainfall
+
+      const averageTemperature =
+        readNumber(row, [
+          'average_temperature',
+          'averageTemperature',
+          'avgTemperature',
+          'temperature',
+          'temperature_c',
+          'temperatureC',
+        ], 0) || weatherContext.averageTemperature
+
+      const averageHumidity =
+        readNumber(row, [
+          'average_humidity',
+          'averageHumidity',
+          'avgHumidity',
+          'humidity',
+          'relative_humidity',
+          'relativeHumidity',
+        ], 0) || weatherContext.averageHumidity
 
       const series = [
         {
@@ -1037,10 +1290,74 @@ function buildBackendRiskRows(backendForecastResult = null) {
 
       const history = series.map((item) => item.cases)
 
+      const multiSourceRisk = computeMultiSourceRisk({
+        forecast,
+        currentCases: forecastNextPeriod,
+        previousCases: previousAverage,
+        totalCases: historicalTotalCases,
+        trend: trendLabel,
+        recentAverage,
+        previousAverage,
+        history,
+        weeklyCases: history,
+        population,
+        areaSqKm: boundaryArea,
+        density,
+        averageRainfall,
+        totalRainfall: weatherContext.totalRainfall,
+        averageTemperature,
+        averageHumidity,
+      })
+
+      const backendRisk = row.risk_level || row.risk || multiSourceRisk.risk || 'Low'
+      const baseRiskScore = readNumber(row, [
+        'risk_score',
+        'riskScore',
+        'base_risk_score',
+        'baseRiskScore',
+      ], 0)
+      const combinedRiskScore = readNumber(row, [
+        'combined_risk_score',
+        'multi_source_risk_score',
+        'combinedRiskScore',
+        'multiSourceRiskScore',
+        'overallRiskScore',
+        'overall_risk_score',
+      ], multiSourceRisk.score || baseRiskScore)
+      const environmentalScore = readNumber(row, [
+        'environmental_score',
+        'environmentalScore',
+      ], multiSourceRisk.environmentalSuitability?.score || 0)
+      const environmentalSuitability =
+        getEnvironmentalSuitabilityValue(row) ||
+        multiSourceRisk.environmentalSuitability?.label ||
+        ''
+      const rainfallPressure =
+        getRainfallPressureValue(row) ||
+        multiSourceRisk.environmentalSuitability?.rainfallPressure?.label ||
+        ''
+      const temperatureSuitability =
+        getTemperatureSuitabilityValue(row) ||
+        multiSourceRisk.environmentalSuitability?.temperatureSuitability?.label ||
+        ''
+      const humiditySuitability =
+        getHumiditySuitabilityValue(row) ||
+        multiSourceRisk.environmentalSuitability?.humiditySuitability?.label ||
+        ''
+      const populationExposure = readText(row, [
+        'population_exposure',
+        'populationExposure',
+      ])
+      const densityLevel = readText(row, [
+        'density_level',
+        'densityLevel',
+      ])
+      const riskComponents = row.risk_components || row.riskComponents || multiSourceRisk.components || null
+
       const rowData = {
         barangay,
         barangayKey: row.barangay_key || row.barangayKey || '',
-        risk,
+        risk: backendRisk,
         forecast,
         forecastedCases: forecast,
         predictedCases: forecast,
@@ -1082,10 +1399,20 @@ function buildBackendRiskRows(backendForecastResult = null) {
 
         averageRainfall,
         average_rainfall: averageRainfall,
+        avgRainfall: averageRainfall,
+        totalRainfall: weatherContext.totalRainfall,
+        total_rainfall: weatherContext.totalRainfall,
         averageTemperature,
         average_temperature: averageTemperature,
+        avgTemperature: averageTemperature,
         averageHumidity,
         average_humidity: averageHumidity,
+        avgHumidity: averageHumidity,
+        weatherRecordCount: weatherContext.weatherRecordCount,
+        weather_record_count: weatherContext.weatherRecordCount,
+        weatherCoverageLabel: weatherContext.weatherCoverageLabel,
+        weather_coverage_label: weatherContext.weatherCoverageLabel,
+
         population,
         density,
         areaSqKm: boundaryArea,
@@ -1108,7 +1435,7 @@ function buildBackendRiskRows(backendForecastResult = null) {
       const computedDecisionSupport = computeDecisionSupport(rowData)
 
       const actionPlan = buildBackendActionPlan({
-        risk,
+        risk: backendRisk,
         forecast,
         forecastNextPeriod,
         recentAverage,
@@ -1119,7 +1446,7 @@ function buildBackendRiskRows(backendForecastResult = null) {
 
       const rationale = buildBackendRationale({
         barangay,
-        risk,
+        risk: backendRisk,
         forecast,
         forecastNextPeriod,
         recentAverage,
@@ -1135,7 +1462,7 @@ function buildBackendRiskRows(backendForecastResult = null) {
         summary:
           backendRecommendation ||
           computedDecisionSupport.summary ||
-          getGenericRecommendedAction(risk),
+          getGenericRecommendedAction(backendRisk),
         priority:
           computedDecisionSupport.priority ||
           responsePriority,
@@ -1215,11 +1542,52 @@ export default function MapPage() {
     data.populationDataset,
   ])
 
+  const weatherRecords = useMemo(() => {
+    const candidates = [
+      data.weatherRecords,
+      data.weatherRows,
+      data.weatherData,
+      data.weatherDataset,
+      data.meteorologicalRecords,
+      data.meteorologicalRows,
+      data.meteorologicalData,
+      data.meteorologicalDataset,
+    ]
+
+    return candidates.find((candidate) => Array.isArray(candidate)) || []
+  }, [
+    data.weatherRecords,
+    data.weatherRows,
+    data.weatherData,
+    data.weatherDataset,
+    data.meteorologicalRecords,
+    data.meteorologicalRows,
+    data.meteorologicalData,
+    data.meteorologicalDataset,
+  ])
+
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
+  const boundaryGeoJson = useMemo(() => {
+    return getBoundaryGeoJson(boundaryRecords)
+  }, [boundaryRecords])
+
+  const boundaryFeatures = useMemo(() => {
+    return boundaryGeoJson?.features || []
+  }, [boundaryGeoJson])
+
   const backendRiskRows = useMemo(() => {
-    return buildBackendRiskRows(backendForecastResult)
-  }, [backendForecastResult])
+    return buildBackendRiskRows(backendForecastResult, {
+      populationRecords,
+      boundaryFeatures,
+      weatherRecords,
+    })
+  }, [
+    backendForecastResult,
+    populationRecords,
+    boundaryFeatures,
+    weatherRecords,
+  ])
 
   const hasMultiSourceRiskRows = riskRows.some((row) => {
     return (
@@ -1251,14 +1619,6 @@ export default function MapPage() {
   const [hotspotResult, setHotspotResult] = useState(null)
   const [hotspotError, setHotspotError] = useState('')
   const [isLoadingHotspots, setIsLoadingHotspots] = useState(false)
-
-  const boundaryGeoJson = useMemo(() => {
-    return getBoundaryGeoJson(boundaryRecords)
-  }, [boundaryRecords])
-
-  const boundaryFeatures = useMemo(() => {
-    return boundaryGeoJson?.features || []
-  }, [boundaryGeoJson])
 
   const boundaryFeatureCount = countBoundaryFeatures(boundaryRecords)
 
@@ -1683,31 +2043,31 @@ export default function MapPage() {
     },
     {
       label: 'Overall risk score',
-      value: details ? formatRiskScore(getOverallRiskScore(details)) : 'Waiting for data',
+      value: details ? formatRiskScore(getOverallRiskScore(details) || details?.riskScore || details?.multiSourceRiskScore) : 'Waiting for data',
       icon: Radar,
       tone: 'text-sky-500 bg-sky-50 border-sky-100 dark:text-sky-300 dark:bg-sky-500/10 dark:border-sky-500/20',
     },
     {
       label: 'Weather condition',
-      value: details ? getLabelValue(getEnvironmentalSuitabilityValue(details)) : 'Pending weather data',
+      value: details ? getLabelValue(getEnvironmentalSuitabilityValue(details) || details?.environmentalSuitability) : 'Pending weather data',
       icon: CloudRain,
       tone: 'text-cyan-500 bg-cyan-50 border-cyan-100 dark:text-cyan-300 dark:bg-cyan-500/10 dark:border-cyan-500/20',
     },
     {
       label: 'Rainfall risk',
-      value: details ? getLabelValue(getRainfallPressureValue(details)) : 'Pending weather data',
+      value: details ? getLabelValue(getRainfallPressureValue(details) || details?.rainfallPressure) : 'Pending weather data',
       icon: CloudRain,
       tone: 'text-blue-500 bg-blue-50 border-blue-100 dark:text-blue-300 dark:bg-blue-500/10 dark:border-blue-500/20',
     },
     {
       label: 'Temperature condition',
-      value: details ? getLabelValue(getTemperatureSuitabilityValue(details)) : 'Pending weather data',
+      value: details ? getLabelValue(getTemperatureSuitabilityValue(details) || details?.temperatureSuitability) : 'Pending weather data',
       icon: Thermometer,
       tone: 'text-orange-500 bg-orange-50 border-orange-100 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20',
     },
     {
       label: 'Humidity condition',
-      value: details ? getLabelValue(getHumiditySuitabilityValue(details)) : 'Pending weather data',
+      value: details ? getLabelValue(getHumiditySuitabilityValue(details) || details?.humiditySuitability) : 'Pending weather data',
       icon: Droplets,
       tone: 'text-teal-500 bg-teal-50 border-teal-100 dark:text-teal-300 dark:bg-teal-500/10 dark:border-teal-500/20',
     },

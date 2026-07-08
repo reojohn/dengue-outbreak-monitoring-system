@@ -199,18 +199,40 @@ const dengueFieldConfig = {
       'barangay_name',
       'brgy',
       'brgy_name',
+      'bgy',
+      'bgy_name',
+      'name_of_barangay',
+      'barangay_of_residence',
+      'residence_barangay',
+      'residence_brgy',
+      'address_barangay',
+      'address_brgy',
+      'patient_barangay',
+      'patient_brgy',
+      'case_barangay',
+      'case_brgy',
+      'home_barangay',
+      'home_brgy',
       'location',
+      'locality',
       'area',
       'village',
       'adm4_name',
+      'adm4_ref_name',
       'adm4_en',
       'name',
     ],
     fallback: (key) =>
       key.includes('barangay') ||
       key.includes('brgy') ||
+      key.includes('bgy') ||
+      key.includes('residence') ||
+      key.includes('address') ||
+      key.includes('locality') ||
+      key.includes('village') ||
       key.includes('location') ||
-      key.includes('area'),
+      key.includes('adm4') ||
+      (key.includes('area') && !key.includes('area_sq') && !key.includes('sqkm')),
   },
   reportingDate: {
     label: 'reporting date',
@@ -219,58 +241,143 @@ const dengueFieldConfig = {
       'date',
       'reported_date',
       'report_date',
-      'week_start',
+      'case_date',
       'onset_date',
+      'date_of_onset',
+      'date_reported',
+      'date_admitted',
+      'admission_date',
+      'consultation_date',
+      'morbidity_date',
+      'surveillance_date',
+      'notification_date',
       'period',
-      'month',
+      'reporting_period',
+      'week_start',
+      'week_ending',
+      'week_end',
     ],
-    fallback: (key) => key.includes('date') || key.includes('period'),
+    fallback: (key) =>
+      key.includes('date') ||
+      key.includes('period') ||
+      key.includes('onset') ||
+      key.includes('admission') ||
+      key.includes('consultation') ||
+      key.includes('notification'),
   },
   year: {
     label: 'year',
-    aliases: ['year', 'yr'],
-    fallback: (key) => key === 'year' || key === 'yr',
+    aliases: [
+      'year',
+      'yr',
+      'report_year',
+      'reporting_year',
+      'morbidity_year',
+      'epi_year',
+      'epidemiological_year',
+    ],
+    fallback: (key) => key === 'year' || key === 'yr' || key.endsWith('_year') || key.includes('epi_year'),
   },
   month: {
     label: 'month',
-    aliases: ['month', 'mo'],
-    fallback: (key) => key === 'month' || key === 'mo',
+    aliases: [
+      'month',
+      'mo',
+      'mn',
+      'report_month',
+      'reporting_month',
+      'morbidity_month',
+      'case_month',
+    ],
+    fallback: (key) => key === 'month' || key === 'mo' || key === 'mn' || key.endsWith('_month'),
   },
   week: {
     label: 'week',
     aliases: [
       'week',
-      'epi_week',
+      'wk',
+      'week_no',
+      'week_num',
       'week_number',
+      'epi_week',
+      'ep_week',
+      'epidemiological_week',
+      'epidemiologic_week',
       'morbidity_week',
       'mw',
       'reporting_week',
+      'case_week',
     ],
-    fallback: (key) => key.includes('week') || key === 'mw',
+    fallback: (key) =>
+      key.includes('week') ||
+      key === 'mw' ||
+      key.includes('epi') ||
+      key.includes('epidemiologic') ||
+      key.includes('morbidity_week'),
   },
   cases: {
     label: 'cases',
     aliases: [
       'cases',
+      'case',
       'case_count',
       'dengue_cases',
-      'total_cases',
+      'dengue_case_count',
+      'no_of_cases',
+      'no._of_cases',
       'number_of_cases',
+      'num_cases',
+      'total_cases',
+      'total_case_count',
+      'historical_total_cases',
       'confirmed_cases',
+      'confirmed_dengue_cases',
       'reported_cases',
+      'reported_dengue_cases',
+      'suspected_cases',
+      'suspected_dengue_cases',
+      'positive_cases',
+      'morbidity_cases',
+      'admitted_cases',
+      'admissions',
+      'count',
+      'total',
     ],
-    fallback: (key) => key.includes('case'),
+    fallback: (key) =>
+      !key.includes('death') &&
+      !key.includes('fatal') &&
+      !key.includes('mortality') &&
+      (
+        key.includes('case') ||
+        key.includes('confirmed') ||
+        key.includes('reported') ||
+        key.includes('suspected') ||
+        key.includes('positive') ||
+        key.includes('dengue') ||
+        key.includes('admission') ||
+        key.includes('admitted') ||
+        key === 'count' ||
+        key === 'total'
+      ),
   },
   deaths: {
     label: 'deaths',
     aliases: [
       'deaths',
+      'death',
       'dengue_deaths',
       'death_count',
+      'no_of_deaths',
+      'no._of_deaths',
       'total_deaths',
       'number_of_deaths',
+      'num_deaths',
+      'fatalities',
+      'fatality',
+      'mortality',
+      'died',
     ],
-    fallback: (key) => key.includes('death'),
+    fallback: (key) => key.includes('death') || key.includes('fatal') || key.includes('mortality') || key.includes('died'),
   },
 }
 
@@ -324,6 +431,11 @@ const populationFieldConfig = {
 const knownHeaderFragments = [
   'barangay',
   'brgy',
+  'bgy',
+  'residence',
+  'address',
+  'locality',
+  'village',
   'date',
   'year',
   'month',
@@ -331,7 +443,12 @@ const knownHeaderFragments = [
   'doy',
   'week',
   'case',
+  'confirmed',
+  'reported',
+  'suspected',
+  'morbidity',
   'death',
+  'fatal',
   'rain',
   'precip',
   'prectot',
@@ -1538,6 +1655,24 @@ function mapBackendBoundaryGeoJsonRows(cleanedGeojson = null) {
 }
 
 function formatBackendBoundaryMappingSummary(detection = {}) {
+  const matchedFields = detection.matched_fields || {}
+  const labels = {
+    barangay_name_property: 'barangay name property',
+    code_property: 'PSGC/code property',
+    geojson_type: 'GeoJSON type',
+    features: 'features array',
+    geometry: 'geometry field',
+    properties: 'properties object',
+  }
+
+  const entries = Object.entries(matchedFields)
+    .filter(([field]) => !['geojson_type', 'features', 'geometry', 'properties'].includes(field))
+    .map(([field, source]) => `${labels[field] || field} → ${source}`)
+
+  if (entries.length > 0) {
+    return entries.join(', ')
+  }
+
   const readiness = detection.readiness || 'ready_for_mapping'
 
   if (readiness === 'ready_for_mapping') {
@@ -1575,11 +1710,32 @@ function buildBackendBoundaryValidationResult({
   }
 }
 
+function countUsablePreviewRows(rows = []) {
+  return rows.filter((row) => {
+    const status = String(row?.status || '').toLowerCase()
+    return (
+      status.includes('valid') ||
+      status.includes('saved') ||
+      status.includes('checked') ||
+      status.includes('ready') ||
+      status.includes('clean')
+    )
+  }).length
+}
+
 function selectFullPreviewRows(primaryRows = [], fallbackRows = []) {
   const primary = Array.isArray(primaryRows) ? primaryRows : []
   const fallback = Array.isArray(fallbackRows) ? fallbackRows : []
 
-  return fallback.length > primary.length ? fallback : primary
+  const primaryUsableCount = countUsablePreviewRows(primary)
+  const fallbackUsableCount = countUsablePreviewRows(fallback)
+
+  if (!primary.length) return fallback
+  if (!fallback.length) return primary
+
+  return fallback.length > primary.length && fallbackUsableCount >= primaryUsableCount
+    ? fallback
+    : primary
 }
 
 function sleep(ms) {
@@ -1825,9 +1981,15 @@ function formatFriendlyStatusValue(value) {
 
   if (!text || text === 'n/a') return 'N/A'
   if (text === 'matched') return 'Found'
+  if (text === 'psgc_matched') return 'Code Matched'
+  if (text === 'exact_matched') return 'Name Matched'
+  if (text === 'auto_matched') return 'Auto Matched'
+  if (text === 'needs_review') return 'Needs Review'
   if (text === 'unmatched') return 'Needs Review'
   if (text === 'exact_date') return 'Same Date'
+  if (text === 'weekly_average') return 'Weekly Weather Average'
   if (text === 'monthly_average') return 'Monthly Weather Average'
+  if (text === 'calendar_month_average') return 'Calendar Month Weather Average'
   if (text === 'overall_average') return 'Available Weather Average'
   if (text === 'unavailable') return 'Not Available'
 
@@ -3340,7 +3502,7 @@ export default function UploadPage() {
         }
       }
 
-      if (selected === 'historical' && (isCsv || isExcel)) {
+      if (selected === 'historical' && (isCsv || isExcel || fileName.endsWith('.json'))) {
         const forecastInitialResult = await forecastDengueFile(file)
         const forecastResult = await waitForUploadJobResult(forecastInitialResult, () => {
           setSourceUploadStates((current) => ({
@@ -3401,8 +3563,12 @@ export default function UploadPage() {
         const moderateRiskCount = Number(forecastResult?.risk_counts?.Moderate || 0)
         const lowRiskCount = Number(forecastResult?.risk_counts?.Low || 0)
 
+        const adaptiveMappingNote = backendResult.mappingSummary
+          ? ` Detected mapping: ${backendResult.mappingSummary}.`
+          : ''
+
         setUploadMessage(
-          `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.`
+          `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.${adaptiveMappingNote}`
         )
 
         addActivityLog(
@@ -3466,8 +3632,12 @@ export default function UploadPage() {
 
         setValidationResult(backendResult)
 
+        const populationMappingNote = backendResult.mappingSummary
+          ? ` Detected mapping: ${backendResult.mappingSummary}.`
+          : ''
+
         setUploadMessage(
-          `Upload successful. Population records were checked and are ready to use. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
+          `Upload successful. Population records were checked and are ready to use. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.${populationMappingNote}`
         )
 
         addActivityLog(
@@ -3531,8 +3701,12 @@ export default function UploadPage() {
 
         setValidationResult(backendResult)
 
+        const weatherMappingNote = backendResult.mappingSummary
+          ? ` Detected mapping: ${backendResult.mappingSummary}.`
+          : ''
+
         setUploadMessage(
-          `Upload successful. Weather records were checked and are ready to use. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.`
+          `Upload successful. Weather records were checked and are ready to use. ${backendResult.validCount} of ${backendResult.recordCount} records are valid.${weatherMappingNote}`
         )
 
         addActivityLog(
@@ -3596,8 +3770,12 @@ export default function UploadPage() {
 
         setValidationResult(backendResult)
 
+        const boundaryMappingNote = backendResult.mappingSummary
+          ? ` Detected mapping: ${backendResult.mappingSummary}.`
+          : ''
+
         setUploadMessage(
-          `Upload successful. Map boundary file was checked and is ready to use. ${backendResult.validCount} of ${backendResult.recordCount} map areas are valid.`
+          `Upload successful. Map boundary file was checked and is ready to use. ${backendResult.validCount} of ${backendResult.recordCount} map areas are valid.${boundaryMappingNote}`
         )
 
         addActivityLog(
@@ -4354,12 +4532,13 @@ export default function UploadPage() {
             </div>
 
             {backendBuildSummary && (
-              <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <>
+                <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   ['Combined dengue rows', backendBuildSummary.row_count ?? backendMergedRows.length],
-                  ['Rows with weather', backendBuildSummary.weather_matched_rows ?? 0],
-                  ['Rows with population', backendBuildSummary.population_matched_rows ?? 0],
-                  ['Rows found on map', backendBuildSummary.boundary_matched_rows ?? 0],
+                  ['Rows with weather', `${backendBuildSummary.weather_matched_rows ?? 0} (${backendBuildSummary.match_percentages?.weather ?? 0}%)`],
+                  ['Rows with population', `${backendBuildSummary.population_matched_rows ?? 0} (${backendBuildSummary.match_percentages?.population ?? 0}%)`],
+                  ['Rows found on map', `${backendBuildSummary.boundary_matched_rows ?? 0} (${backendBuildSummary.match_percentages?.boundary ?? 0}%)`],
                 ].map(([label, value]) => (
                   <div
                     key={label}
@@ -4373,7 +4552,21 @@ export default function UploadPage() {
                     </p>
                   </div>
                 ))}
-              </div>
+                </div>
+
+                {(backendBuildSummary.integration_quality_label || backendBuildSummary.integration_quality_score !== undefined) && (
+                <div className="mt-3 rounded-[22px] border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm leading-6 text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                  <span className="font-black">Adaptive combination:</span>{' '}
+                  {backendBuildSummary.integration_quality_label || 'Integration review ready'}
+                  {backendBuildSummary.integration_quality_score !== undefined
+                    ? ` • ${backendBuildSummary.integration_quality_score}% quality score`
+                    : ''}
+                  {backendBuildSummary.barangay_needs_review_rows
+                    ? ` • ${backendBuildSummary.barangay_needs_review_rows} barangay row${backendBuildSummary.barangay_needs_review_rows === 1 ? '' : 's'} need name review`
+                    : ''}
+                </div>
+                )}
+              </>
             )}
 
             <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
