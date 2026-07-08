@@ -26,18 +26,18 @@ import { getAuthSession, getRoleHome } from '../utils/auth'
 
 const items = [
   {
-    title: 'Dengue Data Validation',
-    description: 'Upload, clean, and validate dengue records before forecasting.',
+    title: 'Dengue File Check',
+    description: 'Upload dengue records and let the system check them before making a forecast.',
     icon: Database,
   },
   {
-    title: 'Risk Forecasting',
-    description: 'Generate barangay-level dengue risk projections from current records.',
+    title: 'Dengue Forecast',
+    description: 'Show expected dengue risk for each barangay using the latest records.',
     icon: BarChart3,
   },
   {
-    title: 'GIS Hotspot Mapping',
-    description: 'Visualize priority barangays using geospatial hotspot monitoring.',
+    title: 'Hotspot Map',
+    description: 'Show priority barangays on the map so teams can respond faster.',
     icon: MapPinned,
   },
 ]
@@ -47,7 +47,7 @@ const demoAccounts = [
     role: 'cho',
     label: 'City Health Office',
     email: 'cityhealth@butuan.gov.ph',
-    description: 'Can upload datasets, review dashboards, run forecasts, view maps, and generate reports.',
+    description: 'Can upload files, review the dashboard, run forecasts, view maps, and create reports.',
   },
   {
     role: 'bhw',
@@ -60,30 +60,30 @@ const demoAccounts = [
     role: 'supervisor',
     label: 'Supervisor',
     email: 'supervisor@butuan.gov.ph',
-    description: 'Can review city-wide risk rankings, forecasts, maps, and reports for planning.',
+    description: 'Can review city-wide priority barangays, forecasts, maps, and reports for planning.',
   },
 ]
 
 const scanStages = {
   0: {
-    title: 'Secure Access Ready',
+    title: 'Ready to sign in',
     message: 'Select an account or enter registered credentials.',
   },
   1: {
-    title: 'Initializing Scan...',
+    title: 'Preparing sign in...',
     message: 'Preparing the dengue monitoring access workflow.',
   },
   2: {
-    title: 'Reading Credentials...',
+    title: 'Checking account...',
     message: 'Checking submitted email and password.',
   },
   3: {
-    title: 'Verifying User Role...',
-    message: 'Detecting the assigned prototype access level.',
+    title: 'Checking user access...',
+    message: 'Checking which pages this account can open.',
   },
   4: {
     title: 'Verified',
-    message: 'Access approved. Redirecting to the dashboard.',
+    message: 'Access approved. Opening your page.',
   },
 }
 

@@ -44,7 +44,7 @@ const sources = [
     recordKey: 'dengueRecords',
     title: 'Dengue case records',
     desc: 'Dengue cases by barangay and date or month',
-    type: 'CSV / Excel / JSON',
+    type: 'Spreadsheet / CSV / JSON',
     icon: FileText,
     color:
       'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
@@ -58,7 +58,7 @@ const sources = [
     recordKey: 'weatherRecords',
     title: 'Weather records',
     desc: 'Rainfall, temperature, and humidity by date',
-    type: 'CSV / Excel / JSON',
+    type: 'Spreadsheet / CSV / JSON',
     icon: CloudRain,
     color:
       'bg-teal-50 text-brand-teal border-teal-100 dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300',
@@ -72,7 +72,7 @@ const sources = [
     recordKey: 'populationRecords',
     title: 'Population records',
     desc: 'Number of people living in each barangay',
-    type: 'CSV / Excel / JSON',
+    type: 'Spreadsheet / CSV / JSON',
     icon: Users,
     color:
       'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
@@ -86,7 +86,7 @@ const sources = [
     recordKey: 'boundaryRecords',
     title: 'Map boundary file',
     desc: 'Barangay shapes used to display areas on the map',
-    type: 'GeoJSON / JSON',
+    type: 'Map boundary file',
     icon: MapIcon,
     color:
       'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -1101,7 +1101,7 @@ function validateBoundaryData(data) {
       missingCount: 1,
       duplicateCount: 0,
       invalidCount: 0,
-      error: 'Boundary file must be a valid GeoJSON FeatureCollection.',
+      error: 'Boundary file must be a valid barangay map boundary file.',
     }
   }
 
@@ -1134,7 +1134,7 @@ function validateBoundaryData(data) {
     missingCount,
     duplicateCount: 0,
     invalidCount: 0,
-    mappingSummary: 'GeoJSON FeatureCollection → barangay boundary layer',
+    mappingSummary: 'Barangay map boundary loaded',
   }
 }
 
@@ -1541,10 +1541,10 @@ function formatBackendBoundaryMappingSummary(detection = {}) {
   const readiness = detection.readiness || 'ready_for_mapping'
 
   if (readiness === 'ready_for_mapping') {
-    return 'GeoJSON FeatureCollection → barangay boundary layer'
+    return 'Barangay map boundary loaded'
   }
 
-  return 'GeoJSON boundary layer → needs review'
+  return 'Barangay map boundary needs review'
 }
 
 function buildBackendBoundaryValidationResult({
@@ -1958,7 +1958,7 @@ async function buildLocalValidationResultForSource(file, sourceId) {
 
   if (isExcel) {
     if (sourceId === 'boundary') {
-      throw new Error('Excel files cannot be used as barangay boundary layers. Please upload GeoJSON or JSON for boundary data.')
+      throw new Error('Excel files cannot be used for barangay map boundaries. Please upload the barangay boundary JSON/GeoJSON file.')
     }
 
     const arrayBuffer = await readFileAsArrayBuffer(file)
@@ -1988,7 +1988,7 @@ async function buildLocalValidationResultForSource(file, sourceId) {
     const parsed = parseJson(text)
 
     if (!Array.isArray(parsed)) {
-      throw new Error('JSON file must contain an array of records or a records/data array.')
+      throw new Error('JSON file must contain a list of records that the system can read.')
     }
 
     if (sourceId === 'historical') return validateDengueRows(parsed)
@@ -2121,14 +2121,14 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
     },
     {
       id: 'model',
-      label: 'Training and evaluating model',
-      message: 'The system is training or loading the best model and checking model accuracy.',
+      label: 'Choosing the best forecast method',
+      message: 'The system is preparing the forecast method and checking if the result is reliable.',
       icon: Bot,
     },
     {
       id: 'forecast',
-      label: 'Generating forecast',
-      message: 'The system is creating and saving the latest barangay-level dengue forecast.',
+      label: 'Creating dengue forecast',
+      message: 'The system is creating and saving the latest dengue forecast for each barangay.',
       icon: Sparkles,
     },
     {
@@ -3618,7 +3618,7 @@ export default function UploadPage() {
 
       if (isExcel) {
         if (selected === 'boundary') {
-          throw new Error('Excel files cannot be used as barangay boundary layers. Please upload GeoJSON or JSON for boundary data.')
+          throw new Error('Excel files cannot be used for barangay map boundaries. Please upload the barangay boundary JSON/GeoJSON file.')
         }
 
         const preferredSheetKeywords = ['butuan']
@@ -3641,7 +3641,7 @@ export default function UploadPage() {
           parsed = parseJson(text)
 
           if (!Array.isArray(parsed)) {
-            throw new Error('JSON file must contain an array of records or a records/data array.')
+            throw new Error('JSON file must contain a list of records that the system can read.')
           }
 
           if (selected === 'historical') result = validateDengueRows(parsed)
@@ -3729,7 +3729,7 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="relative space-y-6 pb-10">
+    <div className="upload-mobile-compact relative space-y-6 pb-10">
       <AutoProcessingModal
         visible={autoProcessing.visible}
         step={autoProcessing.step}
@@ -3760,7 +3760,7 @@ export default function UploadPage() {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="mobile-grid-3 mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
                   Files uploaded
@@ -3872,7 +3872,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mobile-upload-source-grid mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {sources.map((source) => {
                 const isActive = selected === source.id
                 const status = sourceStatus?.[source.contextKey] || {}
@@ -4083,7 +4083,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 ['Missing values', currentStats.missingCount || 0, AlertTriangle, 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'],
                 ['Invalid values', currentStats.invalidCount || 0, AlertTriangle, 'border-orange-100 bg-orange-50 text-brand-orange dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300'],
@@ -4160,7 +4160,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 ['Barangays connected', integrationSummary.sharedBarangayCount ?? 0, `${integrationSummary.dengueBarangayCount ?? 0} dengue barangays checked`],
                 ['Population barangays', integrationSummary.populationBarangayCount ?? 0, 'Barangays in the population file'],
@@ -4184,7 +4184,7 @@ export default function UploadPage() {
               ))}
             </div>
 
-            <div className="mt-5 grid gap-3">
+            <div className="mobile-grid-6 mt-5 grid gap-3">
               {integrationChecks.map((check) => (
                 <div
                   key={check.id}
@@ -4256,7 +4256,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {sources.map((source) => {
                 const backendSource = backendSources[source.contextKey] || {}
                 const databaseUpload = databaseUploads[source.contextKey] || {}
@@ -4354,7 +4354,7 @@ export default function UploadPage() {
             </div>
 
             {backendBuildSummary && (
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   ['Combined dengue rows', backendBuildSummary.row_count ?? backendMergedRows.length],
                   ['Rows with weather', backendBuildSummary.weather_matched_rows ?? 0],
@@ -4471,7 +4471,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mobile-grid-4 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 ['Overall name match', activeAlignmentReport ? `${Number(activeAlignmentReport.alignment_score || 0)}%` : 'N/A', 'How well the barangay names match across files'],
                 ['Dengue names in population file', activeAlignmentReport ? `${denguePopulationAlignment.matchedCount}/${denguePopulationAlignment.sourceCount}` : 'N/A', `${denguePopulationAlignment.matchRate || 0}% found`],
@@ -4496,7 +4496,7 @@ export default function UploadPage() {
             </div>
 
             {activeAlignmentReport && (
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mobile-grid-3 mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-[22px] border border-brand-line bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                     Names needing review
@@ -4873,6 +4873,885 @@ export default function UploadPage() {
         .dark .records-preview-scroll::-webkit-scrollbar-thumb {
           background: linear-gradient(180deg, rgba(34, 211, 238, 0.9), rgba(37, 99, 235, 0.9));
           border: 2px solid rgba(15, 23, 42, 0.95);
+        }
+
+        @media (max-width: 639px) {
+          .upload-mobile-compact {
+            --upload-mobile-radius: 22px;
+          }
+
+          .upload-mobile-compact.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.85rem !important;
+          }
+
+          .upload-mobile-compact section {
+            border-radius: 24px !important;
+            padding: 1rem !important;
+          }
+
+          .upload-mobile-compact section .relative.grid {
+            gap: 1rem !important;
+          }
+
+          .upload-mobile-compact section h1 {
+            font-size: 1.75rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: -0.04em !important;
+          }
+
+          .upload-mobile-compact section p {
+            font-size: 0.82rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid > div {
+            border-radius: 16px !important;
+            padding: 0.7rem !important;
+            min-height: 88px !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid p:first-child {
+            font-size: 0.52rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.08em !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid p:nth-child(2) {
+            margin-top: 0.45rem !important;
+            font-size: 1.25rem !important;
+            line-height: 1 !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid p:last-child {
+            font-size: 0.64rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] {
+            border-radius: 20px !important;
+            padding: 0.9rem !important;
+          }
+
+          .upload-mobile-compact section .h-14.w-14 {
+            height: 2.65rem !important;
+            width: 2.65rem !important;
+            border-radius: 16px !important;
+          }
+
+          .upload-mobile-compact #data-upload {
+            gap: 0.85rem !important;
+          }
+
+          .upload-mobile-compact #data-upload > div.space-y-5 > :not([hidden]) ~ :not([hidden]),
+          .upload-mobile-compact aside.space-y-5 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.85rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .rounded-\[32px\] {
+            border-radius: 22px !important;
+            padding: 0.95rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .rounded-\[30px\],
+          .upload-mobile-compact #data-upload .rounded-\[28px\],
+          .upload-mobile-compact #data-upload .rounded-\[24px\],
+          .upload-mobile-compact #data-upload .rounded-\[22px\] {
+            border-radius: 17px !important;
+          }
+
+          .upload-mobile-compact #data-upload h3 {
+            font-size: 1.05rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: -0.03em !important;
+          }
+
+          .upload-mobile-compact #data-upload h4 {
+            font-size: 0.95rem !important;
+            line-height: 1.18 !important;
+          }
+
+          .upload-mobile-compact #data-upload p {
+            font-size: 0.78rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .upload-mobile-compact #data-upload .inline-flex {
+            max-width: 100%;
+          }
+
+          .upload-mobile-compact #data-upload [class*="tracking-"] {
+            letter-spacing: 0.08em !important;
+          }
+
+          .upload-mobile-compact #data-upload .mt-5 {
+            margin-top: 0.8rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .mt-4 {
+            margin-top: 0.7rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .mt-3 {
+            margin-top: 0.55rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .gap-5 {
+            gap: 0.8rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .gap-4 {
+            gap: 0.7rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .gap-3 {
+            gap: 0.55rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2.xl\:grid-cols-4,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2.lg\:grid-cols-4,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-3 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2 > button {
+            min-height: 168px !important;
+            padding: 0.75rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button .h-14.w-14,
+          .upload-mobile-compact #data-upload .h-12.w-12,
+          .upload-mobile-compact #data-upload .h-10.w-10,
+          .upload-mobile-compact #data-upload .h-9.w-9 {
+            height: 2.2rem !important;
+            width: 2.2rem !important;
+            border-radius: 13px !important;
+          }
+
+          .upload-mobile-compact #data-upload button svg,
+          .upload-mobile-compact #data-upload label svg {
+            height: 1rem !important;
+            width: 1rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button h3 {
+            font-size: 0.88rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .upload-mobile-compact #data-upload button p {
+            font-size: 0.68rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .upload-mobile-compact #data-upload button span {
+            font-size: 0.58rem !important;
+            line-height: 1.1 !important;
+            padding: 0.28rem 0.48rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button .mt-4.flex.flex-wrap {
+            gap: 0.35rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button .mt-4.h-2 {
+            height: 0.35rem !important;
+          }
+
+          .upload-mobile-compact #data-upload label,
+          .upload-mobile-compact #data-upload button[type="button"] {
+            min-height: 46px !important;
+          }
+
+          .upload-mobile-compact #data-upload .lg\:min-w-\[390px\] {
+            grid-template-columns: 1fr !important;
+          }
+
+          .upload-mobile-compact #data-upload .text-3xl {
+            font-size: 1.45rem !important;
+            line-height: 1 !important;
+          }
+
+          .upload-mobile-compact #data-upload .text-2xl {
+            font-size: 1.25rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .upload-mobile-compact #data-upload .records-preview-scroll {
+            max-height: 340px !important;
+          }
+
+          .upload-mobile-compact #data-upload table {
+            font-size: 0.75rem !important;
+          }
+
+          .upload-mobile-compact #data-upload th,
+          .upload-mobile-compact #data-upload td {
+            padding: 0.65rem 0.75rem !important;
+          }
+
+          .upload-mobile-compact #data-upload thead {
+            font-size: 0.62rem !important;
+          }
+
+          .upload-mobile-compact #data-upload aside {
+            position: static !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .rounded-\[32px\] {
+            padding: 0.9rem !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .mt-5.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.5rem !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .flex.items-center.justify-between {
+            padding: 0.65rem !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .flex.items-center.justify-between span.text-sm {
+            font-size: 0.75rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .upload-mobile-compact .fixed.inset-0 .max-w-\[520px\] {
+            max-width: calc(100vw - 1.5rem) !important;
+            border-radius: 24px !important;
+            padding: 1rem !important;
+          }
+
+          .upload-mobile-compact .fixed.inset-0 .h-24.w-24 {
+            height: 4.5rem !important;
+            width: 4.5rem !important;
+          }
+
+          .upload-mobile-compact .fixed.inset-0 .h-16.w-16 {
+            height: 3.25rem !important;
+            width: 3.25rem !important;
+            border-radius: 20px !important;
+          }
+        }
+
+
+        /* Final mobile-only Upload page fit pass. Desktop is untouched. */
+        @media (max-width: 639px) {
+          .upload-mobile-compact,
+          .upload-mobile-compact * {
+            min-width: 0;
+          }
+
+          .upload-mobile-compact {
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+            padding-bottom: 1.25rem !important;
+          }
+
+          .upload-mobile-compact > .pointer-events-none.absolute {
+            display: none !important;
+          }
+
+          .upload-mobile-compact.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.75rem !important;
+          }
+
+          .upload-mobile-compact section {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 22px !important;
+            padding: 0.85rem !important;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22) !important;
+          }
+
+          .upload-mobile-compact section .relative.grid {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          .upload-mobile-compact section .mb-4.inline-flex {
+            margin-bottom: 0.65rem !important;
+            padding: 0.35rem 0.6rem !important;
+            font-size: 0.58rem !important;
+            letter-spacing: 0.13em !important;
+          }
+
+          .upload-mobile-compact section h1 {
+            max-width: 100% !important;
+            font-size: 1.55rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .upload-mobile-compact section h1 + p {
+            margin-top: 0.55rem !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.78rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid {
+            margin-top: 0.75rem !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid > div {
+            min-height: 76px !important;
+            border-radius: 16px !important;
+            padding: 0.62rem !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid p:first-child {
+            font-size: 0.5rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.08em !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid p:nth-child(2) {
+            margin-top: 0.35rem !important;
+            font-size: 1.22rem !important;
+            line-height: 1 !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid p:last-child {
+            margin-top: 0.2rem !important;
+            font-size: 0.61rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 18px !important;
+            padding: 0.72rem !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] .flex.items-start.gap-4 {
+            gap: 0.65rem !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] .h-14.w-14 {
+            height: 2.2rem !important;
+            width: 2.2rem !important;
+            border-radius: 13px !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] h2 {
+            margin-top: 0.25rem !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            font-size: 0.98rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] p {
+            font-size: 0.68rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] .mt-5 {
+            margin-top: 0.6rem !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] .rounded-\[24px\] {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 14px !important;
+            padding: 0.62rem !important;
+          }
+
+          .upload-mobile-compact section .rounded-\[30px\] .rounded-\[24px\] p:nth-child(2),
+          .upload-mobile-compact section .rounded-\[30px\] .break-words {
+            display: block !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            word-break: normal !important;
+          }
+
+          .upload-mobile-compact #data-upload {
+            max-width: 100% !important;
+            gap: 0.75rem !important;
+            overflow: hidden !important;
+          }
+
+          .upload-mobile-compact #data-upload > div.space-y-5 > :not([hidden]) ~ :not([hidden]),
+          .upload-mobile-compact #data-upload aside.space-y-5 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.75rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .rounded-\[32px\] {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 20px !important;
+            padding: 0.78rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .rounded-\[30px\],
+          .upload-mobile-compact #data-upload .rounded-\[28px\],
+          .upload-mobile-compact #data-upload .rounded-\[24px\],
+          .upload-mobile-compact #data-upload .rounded-\[22px\],
+          .upload-mobile-compact #data-upload .rounded-2xl {
+            border-radius: 15px !important;
+          }
+
+          .upload-mobile-compact #data-upload .inline-flex.items-center.gap-2 {
+            padding: 0.32rem 0.58rem !important;
+            font-size: 0.55rem !important;
+            letter-spacing: 0.1em !important;
+          }
+
+          .upload-mobile-compact #data-upload h3 {
+            font-size: 1rem !important;
+            line-height: 1.12 !important;
+            letter-spacing: -0.035em !important;
+          }
+
+          .upload-mobile-compact #data-upload h4 {
+            font-size: 0.9rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .upload-mobile-compact #data-upload p {
+            font-size: 0.74rem !important;
+            line-height: 1.32 !important;
+          }
+
+          .upload-mobile-compact #data-upload .mt-5 { margin-top: 0.7rem !important; }
+          .upload-mobile-compact #data-upload .mt-4 { margin-top: 0.55rem !important; }
+          .upload-mobile-compact #data-upload .mt-3 { margin-top: 0.45rem !important; }
+          .upload-mobile-compact #data-upload .mt-2 { margin-top: 0.35rem !important; }
+          .upload-mobile-compact #data-upload .gap-5 { gap: 0.7rem !important; }
+          .upload-mobile-compact #data-upload .gap-4 { gap: 0.6rem !important; }
+          .upload-mobile-compact #data-upload .gap-3 { gap: 0.5rem !important; }
+
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2.xl\:grid-cols-4,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2.lg\:grid-cols-4,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-3 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2 > button {
+            min-height: 132px !important;
+            overflow: hidden !important;
+            padding: 0.62rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2 > button .relative.z-20.flex {
+            align-items: center !important;
+            gap: 0.45rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button .h-14.w-14,
+          .upload-mobile-compact #data-upload .h-12.w-12,
+          .upload-mobile-compact #data-upload .h-10.w-10,
+          .upload-mobile-compact #data-upload .h-9.w-9,
+          .upload-mobile-compact #data-upload .h-8.w-8 {
+            height: 1.95rem !important;
+            width: 1.95rem !important;
+            border-radius: 11px !important;
+          }
+
+          .upload-mobile-compact #data-upload button svg,
+          .upload-mobile-compact #data-upload label svg {
+            height: 0.92rem !important;
+            width: 0.92rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button h3 {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.8rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .upload-mobile-compact #data-upload button p {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.62rem !important;
+            line-height: 1.22 !important;
+          }
+
+          .upload-mobile-compact #data-upload button span {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            font-size: 0.52rem !important;
+            line-height: 1.1 !important;
+            padding: 0.24rem 0.42rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button .mt-4.flex.flex-wrap {
+            margin-top: 0.5rem !important;
+            gap: 0.28rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button .mt-4.flex.flex-wrap span:first-child {
+            display: none !important;
+          }
+
+          .upload-mobile-compact #data-upload button .mt-4.rounded-2xl,
+          .upload-mobile-compact #data-upload button .mt-3.flex.items-center.gap-2 {
+            display: none !important;
+          }
+
+          .upload-mobile-compact #data-upload button .mt-4.h-2 {
+            height: 0.3rem !important;
+            margin-top: 0.5rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .flex.min-w-0.items-start.gap-3 .break-words,
+          .upload-mobile-compact #data-upload .flex.min-w-0.items-start.gap-3 span.font-bold,
+          .upload-mobile-compact #data-upload aside .break-words {
+            display: block !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            word-break: normal !important;
+          }
+
+          .upload-mobile-compact #data-upload .grid.gap-3.sm\:grid-cols-2.lg\:min-w-\[390px\] {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.5rem !important;
+            min-width: 0 !important;
+          }
+
+          .upload-mobile-compact #data-upload label,
+          .upload-mobile-compact #data-upload button[type="button"] {
+            min-height: 42px !important;
+            padding: 0.62rem 0.75rem !important;
+            font-size: 0.76rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .upload-mobile-compact #data-upload .text-3xl {
+            font-size: 1.35rem !important;
+            line-height: 1 !important;
+          }
+
+          .upload-mobile-compact #data-upload .text-2xl {
+            font-size: 1.16rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2.xl\:grid-cols-4 > div,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2.lg\:grid-cols-4 > div,
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-3 > div {
+            min-height: 92px !important;
+            padding: 0.62rem !important;
+          }
+
+          .upload-mobile-compact #data-upload .records-preview-scroll {
+            max-height: 300px !important;
+            max-width: 100% !important;
+            overflow: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .upload-mobile-compact #data-upload table {
+            width: max-content !important;
+            font-size: 0.72rem !important;
+          }
+
+          .upload-mobile-compact #data-upload table.min-w-\[980px\] { min-width: 760px !important; }
+          .upload-mobile-compact #data-upload table.min-w-\[920px\] { min-width: 720px !important; }
+          .upload-mobile-compact #data-upload table.min-w-\[720px\] { min-width: 620px !important; }
+
+          .upload-mobile-compact #data-upload th,
+          .upload-mobile-compact #data-upload td {
+            padding: 0.55rem 0.65rem !important;
+            white-space: nowrap;
+          }
+
+          .upload-mobile-compact #data-upload thead {
+            font-size: 0.58rem !important;
+            letter-spacing: 0.08em !important;
+          }
+
+          .upload-mobile-compact #data-upload aside {
+            position: static !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .mt-5.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.45rem !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .flex.items-center.justify-between {
+            padding: 0.55rem !important;
+          }
+
+          .upload-mobile-compact #data-upload aside .flex.items-center.justify-between span.text-sm {
+            font-size: 0.7rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .upload-mobile-compact .fixed.inset-0 .max-w-\[520px\] {
+            max-width: calc(100vw - 1.25rem) !important;
+            border-radius: 22px !important;
+            padding: 0.9rem !important;
+          }
+        }
+
+        @media (max-width: 639px) {
+
+          /* Upload source cards: fixed 2 by 2 mobile grid only */
+          .upload-mobile-compact .mobile-upload-source-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 132px !important;
+            padding: 0.62rem !important;
+            border-radius: 18px !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button > .relative.z-20.flex {
+            align-items: center !important;
+            gap: 0.42rem !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button .h-14.w-14 {
+            height: 1.95rem !important;
+            width: 1.95rem !important;
+            border-radius: 12px !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button h3 {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.78rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button p {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.62rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button span {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            font-size: 0.52rem !important;
+            line-height: 1.1 !important;
+            padding: 0.24rem 0.42rem !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button .mt-4.flex.flex-wrap span:first-child,
+          .upload-mobile-compact .mobile-upload-source-grid > button .mt-4.rounded-2xl,
+          .upload-mobile-compact .mobile-upload-source-grid > button .mt-3.flex.items-center.gap-2 {
+            display: none !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button .mt-4.h-2 {
+            height: 0.3rem !important;
+            margin-top: 0.48rem !important;
+          }
+
+        }
+
+
+        /* Phase 2 final mobile card grids only. Desktop remains untouched. */
+        @media (max-width: 639px) {
+          .upload-mobile-compact .mobile-grid-4 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-3 {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 > div,
+          .upload-mobile-compact .mobile-grid-6 > div,
+          .upload-mobile-compact .mobile-grid-3 > div {
+            min-width: 0 !important;
+            min-height: 76px !important;
+            overflow: hidden !important;
+            border-radius: 15px !important;
+            padding: 0.55rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 > div {
+            min-height: 92px !important;
+            padding: 0.48rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 .h-10.w-10,
+          .upload-mobile-compact .mobile-grid-4 .h-9.w-9,
+          .upload-mobile-compact .mobile-grid-6 .h-10.w-10,
+          .upload-mobile-compact .mobile-grid-6 .h-9.w-9,
+          .upload-mobile-compact .mobile-grid-3 .h-10.w-10,
+          .upload-mobile-compact .mobile-grid-3 .h-9.w-9 {
+            height: 1.72rem !important;
+            width: 1.72rem !important;
+            border-radius: 10px !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 svg,
+          .upload-mobile-compact .mobile-grid-6 svg,
+          .upload-mobile-compact .mobile-grid-3 svg {
+            height: 0.82rem !important;
+            width: 0.82rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 p,
+          .upload-mobile-compact .mobile-grid-6 p,
+          .upload-mobile-compact .mobile-grid-3 p {
+            min-width: 0 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 p[class*="uppercase"],
+          .upload-mobile-compact .mobile-grid-6 p[class*="uppercase"],
+          .upload-mobile-compact .mobile-grid-3 p[class*="uppercase"] {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.5rem !important;
+            line-height: 1.08 !important;
+            letter-spacing: 0.07em !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 .text-3xl,
+          .upload-mobile-compact .mobile-grid-4 .text-2xl,
+          .upload-mobile-compact .mobile-grid-3 .text-3xl,
+          .upload-mobile-compact .mobile-grid-3 .text-2xl {
+            margin-top: 0.35rem !important;
+            font-size: 1.15rem !important;
+            line-height: 1 !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 .text-3xl,
+          .upload-mobile-compact .mobile-grid-6 .text-2xl {
+            margin-top: 0.25rem !important;
+            font-size: 0.95rem !important;
+            line-height: 1 !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-4 p[class*="leading-5"],
+          .upload-mobile-compact .mobile-grid-6 p[class*="leading-5"],
+          .upload-mobile-compact .mobile-grid-3 p[class*="leading-5"],
+          .upload-mobile-compact .mobile-grid-4 p[class*="leading-6"],
+          .upload-mobile-compact .mobile-grid-6 p[class*="leading-6"],
+          .upload-mobile-compact .mobile-grid-3 p[class*="leading-6"] {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.58rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 > div > .flex,
+          .upload-mobile-compact .mobile-grid-3 > div > .flex {
+            gap: 0.35rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 span,
+          .upload-mobile-compact .mobile-grid-3 span {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            font-size: 0.5rem !important;
+            line-height: 1.05 !important;
+            padding: 0.22rem 0.36rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 .flex.flex-col.gap-3,
+          .upload-mobile-compact .mobile-grid-6 .flex.gap-3 {
+            gap: 0.35rem !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 .flex.flex-col.gap-3.sm\:flex-row {
+            flex-direction: column !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 .flex.gap-3 > div:last-child {
+            min-width: 0 !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 .flex.gap-3 > div:last-child p:first-child {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.58rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .upload-mobile-compact .mobile-grid-6 .flex.gap-3 > div:last-child p:not(:first-child) {
+            display: none !important;
+          }
+        }
+
+        @media (max-width: 374px) {
+          .upload-mobile-compact #data-upload .grid.grid-cols-1.gap-3.sm\:grid-cols-2 > button {
+            min-height: 124px !important;
+            padding: 0.55rem !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .upload-mobile-compact .mobile-upload-source-grid > button {
+            min-height: 124px !important;
+            padding: 0.55rem !important;
+          }
+
+          .upload-mobile-compact #data-upload button h3 {
+            font-size: 0.72rem !important;
+          }
+
+          .upload-mobile-compact section .mt-6.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
         }
       `}</style>
     </div>

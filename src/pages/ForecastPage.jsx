@@ -119,7 +119,7 @@ function getModelCharacteristics(modelKey = '') {
 
   const characteristics = {
     catboost: [
-      'Strong for structured tabular datasets.',
+      'Works well with organized spreadsheet-style records.',
       'Handles complex nonlinear relationships well.',
       'Often performs strongly with mixed health and environmental indicators.',
     ],
@@ -129,7 +129,7 @@ function getModelCharacteristics(modelKey = '') {
       'Useful when many predictors interact with each other.',
     ],
     lightgbm: [
-      'Fast gradient boosting model for larger datasets.',
+      'Fast forecast method for larger uploaded files.',
       'Efficient when many rows and features are available.',
       'Balances speed and predictive performance.',
     ],
@@ -141,7 +141,7 @@ function getModelCharacteristics(modelKey = '') {
     extra_trees: [
       'Tree ensemble model with additional randomization.',
       'Useful for comparing stable and randomized tree-based behavior.',
-      'Often performs well on structured datasets.',
+      'Often works well with organized spreadsheet-style records.',
     ],
     gradient_boosting: [
       'Sequential boosting model that improves errors step by step.',
@@ -1950,7 +1950,7 @@ const activeModelComparison = (() => {
 })()
 
   return (
-    <div className="relative space-y-6 pb-10">
+    <div className="forecast-mobile-compact relative space-y-6 pb-10">
       <div className="pointer-events-none absolute inset-x-0 -top-10 -z-10 h-72 rounded-full bg-blue-100/60 blur-3xl dark:bg-blue-500/10" />
 
       <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.22)] sm:p-6 lg:p-7">
@@ -2060,7 +2060,7 @@ const activeModelComparison = (() => {
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mobile-field-grid-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Expected total cases"
           value={formatNumber(projectedTotal)}
@@ -2134,7 +2134,7 @@ const activeModelComparison = (() => {
     </div>
   </div>
 
-  <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+  <div className="mobile-field-grid-6 mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
     {[
       ['Selected model', activeModelMetrics?.model_name || latestModelMetrics?.best_model_name || selectedModelName, 'Best evaluated algorithm'],
       ['Models compared', activeTrainingSummary?.models_evaluated || activeModelComparison.filter((model) => model.is_available !== false).length, 'Candidate models evaluated'],
@@ -2184,7 +2184,7 @@ const activeModelComparison = (() => {
             </h3>
 
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/75">
-              Version {selectedModelVersion}. This model was selected after comparing all available machine learning candidates using RMSE, MAE, and classification metrics from the latest integrated dataset.
+              Version {selectedModelVersion}. This forecast method was selected after comparing all available methods using reliability checks from the latest combined files.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -2296,7 +2296,7 @@ const activeModelComparison = (() => {
             </span>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          <div className="mobile-model-comparison-grid mt-5 grid gap-4 xl:grid-cols-2">
             {activeModelComparison.map((model, index) => {
               const isAvailable = model.is_available !== false && hasMetricValue(model.rmse)
               const isSelected = index === 0 && isAvailable
@@ -2543,7 +2543,7 @@ const activeModelComparison = (() => {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mobile-field-grid-4 mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {multiSourceFactorCards.map((item) => (
             <StatCard
               key={item.label}
@@ -2562,7 +2562,7 @@ const activeModelComparison = (() => {
               What affected the score
             </p>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mobile-field-grid-6 mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 ['Expected cases', topRiskComponents.forecast || 0],
                 ['Current cases', topRiskComponents.currentCases || 0],
@@ -2635,7 +2635,7 @@ const activeModelComparison = (() => {
             </span>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mobile-field-grid-4 mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
                 Latest case total
@@ -2899,7 +2899,7 @@ const activeModelComparison = (() => {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="mobile-field-grid-4 mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                             Priority points
@@ -3153,7 +3153,870 @@ const activeModelComparison = (() => {
         </PremiumPanel>
       </div>
 
-      <DecisionActionTracker priorityRows={topBarangays} />
+
+
+      <style>{`
+        @media (max-width: 639px) {
+          .forecast-mobile-compact,
+          .forecast-mobile-compact * {
+            min-width: 0;
+          }
+
+          .forecast-mobile-compact {
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+            padding-bottom: 1.25rem !important;
+          }
+
+          .forecast-mobile-compact > .pointer-events-none.absolute {
+            display: none !important;
+          }
+
+          .forecast-mobile-compact.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.82rem !important;
+          }
+
+          .forecast-mobile-compact section,
+          .forecast-mobile-compact [id="machine-learning-controls"],
+          .forecast-mobile-compact [id="multi-source-risk-factors"],
+          .forecast-mobile-compact [id="forecast-model"],
+          .forecast-mobile-compact [id="risk-summary"],
+          .forecast-mobile-compact [id="top-barangays"] {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 22px !important;
+            padding: 0.85rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type {
+            border-radius: 22px !important;
+            padding: 0.9rem !important;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22) !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .relative.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type h1 {
+            font-size: 1.55rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type h1 + p {
+            margin-top: 0.55rem !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.78rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .mb-4.inline-flex,
+          .forecast-mobile-compact .inline-flex.items-center.gap-2.rounded-full.border {
+            padding: 0.32rem 0.58rem !important;
+            font-size: 0.55rem !important;
+            letter-spacing: 0.1em !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .mt-6.grid {
+            margin-top: 0.75rem !important;
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .mt-6.grid > div {
+            min-height: 76px !important;
+            border-radius: 16px !important;
+            padding: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .mt-6.grid p:first-child {
+            font-size: 0.48rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.075em !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .mt-6.grid p:nth-child(2) {
+            margin-top: 0.35rem !important;
+            font-size: 1.15rem !important;
+            line-height: 1 !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .mt-6.grid p:last-child {
+            margin-top: 0.2rem !important;
+            font-size: 0.58rem !important;
+            line-height: 1.18 !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] {
+            border-radius: 18px !important;
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] .mt-3.grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.38rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] button {
+            min-height: 42px !important;
+            border-radius: 13px !important;
+            padding: 0.48rem !important;
+            font-size: 0.62rem !important;
+            line-height: 1.15 !important;
+            justify-content: center !important;
+            text-align: center !important;
+            flex-direction: column !important;
+            gap: 0.25rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] button span:last-child {
+            padding: 0.2rem 0.38rem !important;
+            font-size: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] .mt-4.rounded-2xl {
+            display: none !important;
+          }
+
+          .forecast-mobile-compact > .grid.gap-4.sm\:grid-cols-2.xl\:grid-cols-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] {
+            border-radius: 18px !important;
+            padding: 0.68rem !important;
+            min-height: 112px !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] .relative.flex {
+            align-items: flex-start !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] p:first-child {
+            font-size: 0.5rem !important;
+            line-height: 1.12 !important;
+            letter-spacing: 0.08em !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] h3 {
+            margin-top: 0.45rem !important;
+            font-size: 1.12rem !important;
+            line-height: 1.05 !important;
+            word-break: break-word !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] p:last-child {
+            font-size: 0.62rem !important;
+            line-height: 1.2 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] .h-12.w-12 {
+            height: 1.9rem !important;
+            width: 1.9rem !important;
+            border-radius: 11px !important;
+          }
+
+          .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] svg {
+            height: 0.9rem !important;
+            width: 0.9rem !important;
+          }
+
+          .forecast-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border {
+            border-radius: 18px !important;
+            padding: 0.72rem !important;
+          }
+
+          .forecast-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border .h-11.w-11 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border p {
+            font-size: 0.74rem !important;
+            line-height: 1.32 !important;
+          }
+
+          .forecast-mobile-compact h2,
+          .forecast-mobile-compact .text-2xl.font-black.tracking-tight {
+            margin-top: 0.6rem !important;
+            font-size: 1.08rem !important;
+            line-height: 1.14 !important;
+            letter-spacing: -0.035em !important;
+          }
+
+          .forecast-mobile-compact h3,
+          .forecast-mobile-compact .text-3xl.font-black,
+          .forecast-mobile-compact .sm\:text-4xl {
+            font-size: 1.08rem !important;
+            line-height: 1.12 !important;
+            letter-spacing: -0.03em !important;
+          }
+
+          .forecast-mobile-compact p {
+            font-size: 0.74rem !important;
+            line-height: 1.32 !important;
+          }
+
+          .forecast-mobile-compact .mt-6 { margin-top: 0.9rem !important; }
+          .forecast-mobile-compact .mt-5 { margin-top: 0.75rem !important; }
+          .forecast-mobile-compact .mt-4 { margin-top: 0.6rem !important; }
+          .forecast-mobile-compact .mt-3 { margin-top: 0.48rem !important; }
+          .forecast-mobile-compact .gap-6 { gap: 0.8rem !important; }
+          .forecast-mobile-compact .gap-5 { gap: 0.75rem !important; }
+          .forecast-mobile-compact .gap-4 { gap: 0.6rem !important; }
+          .forecast-mobile-compact .gap-3 { gap: 0.5rem !important; }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 > div {
+            min-height: 72px !important;
+            border-radius: 15px !important;
+            padding: 0.52rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 p:first-of-type {
+            font-size: 0.46rem !important;
+            letter-spacing: 0.07em !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 p:nth-of-type(2) {
+            font-size: 0.84rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 p:nth-of-type(3) {
+            font-size: 0.56rem !important;
+            line-height: 1.14 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .relative.overflow-hidden.rounded-\[32px\] {
+            border-radius: 18px !important;
+            padding: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .h-28.w-28 {
+            height: 4.4rem !important;
+            width: 4.4rem !important;
+            border-radius: 18px !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .relative.flex.flex-col.gap-5.lg\:flex-row {
+            gap: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .flex.items-start.gap-4 {
+            gap: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .grid.min-w-\[220px\] {
+            min-width: 0 !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .grid.min-w-\[220px\] > div {
+            border-radius: 14px !important;
+            padding: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .grid.min-w-\[220px\] p:nth-child(2) {
+            font-size: 1.05rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .relative.mt-5.grid.gap-2 > div {
+            padding: 0.48rem 0.55rem !important;
+            border-radius: 13px !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] button.relative.mt-5 {
+            min-height: 42px !important;
+            border-radius: 16px !important;
+            padding: 0.65rem 0.8rem !important;
+            font-size: 0.76rem !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] .mt-5.space-y-5 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.75rem !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 {
+            gap: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 > div {
+            border-radius: 18px !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 > div > button {
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 img.h-32.w-32 {
+            height: 3.6rem !important;
+            width: 3.6rem !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 .h-12.w-12 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 .grid.grid-cols-3.gap-2 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
+            min-width: 0 !important;
+          }
+
+          .forecast-mobile-compact .mt-5.grid.gap-4.xl\:grid-cols-2 .grid.grid-cols-3.gap-2 > div {
+            border-radius: 12px !important;
+            padding: 0.42rem !important;
+          }
+
+          .forecast-mobile-compact .border-t.border-white\/70.bg-white\/70.p-4 {
+            padding: 0.62rem !important;
+          }
+
+          .forecast-mobile-compact .border-t .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact .border-t .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-4 > div,
+          .forecast-mobile-compact .border-t .rounded-\[24px\] {
+            border-radius: 15px !important;
+            padding: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .rounded-\[32px\].border.border-slate-200\/80.bg-gradient-to-br .mt-5.grid.gap-3.md\:grid-cols-5 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .rounded-\[32px\].border.border-slate-200\/80.bg-gradient-to-br .mt-5.grid.gap-3.md\:grid-cols-5 > div {
+            min-height: 92px !important;
+            border-radius: 15px !important;
+            padding: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact [id="multi-source-risk-factors"] .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-4,
+          .forecast-mobile-compact [id="forecast-model"] .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact [id="multi-source-risk-factors"] .mt-4.grid.gap-2.sm\:grid-cols-2.lg\:grid-cols-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+          }
+
+          .forecast-mobile-compact [id="multi-source-risk-factors"] .mt-4.grid.gap-2.sm\:grid-cols-2.lg\:grid-cols-3 > div {
+            min-height: 70px !important;
+            border-radius: 13px !important;
+            padding: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .h-\[300px\] {
+            height: 220px !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .overflow-hidden.rounded-\[30px\] {
+            border-radius: 18px !important;
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .mt-5.grid.gap-3.xl\:grid-cols-\[minmax\(0\,1fr\)_260px\] {
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .mt-5.grid.gap-3.xl\:grid-cols-\[minmax\(0\,1fr\)_260px\] .grid.gap-3.sm\:grid-cols-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .relative.flex.min-h-\[96px\] {
+            min-height: 78px !important;
+            border-radius: 16px !important;
+            padding: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact [id="risk-summary"] .mt-5.space-y-4 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact [id="risk-summary"] .rounded-\[26px\] {
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact [id="risk-summary"] .h-11.w-11 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact [id="risk-summary"] .mt-4.h-3\.5 {
+            height: 0.45rem !important;
+            margin-top: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .mt-5.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .group.rounded-\[26px\] {
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .h-12.w-12 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+            font-size: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .mt-4.grid.gap-2.sm\:grid-cols-2.xl\:grid-cols-4 {
+            margin-top: 0.55rem !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .mt-4.grid.gap-2.sm\:grid-cols-2.xl\:grid-cols-4 > div,
+          .forecast-mobile-compact [id="top-barangays"] .mt-4.grid.gap-2.sm\:grid-cols-3 > div,
+          .forecast-mobile-compact [id="top-barangays"] .mt-4.grid.gap-2.sm\:grid-cols-3 > span {
+            border-radius: 12px !important;
+            padding: 0.48rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .mt-4.grid.gap-2.sm\:grid-cols-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .mt-4.rounded-\[22px\] {
+            border-radius: 15px !important;
+            padding: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .flex.flex-wrap.items-center.gap-2 span,
+          .forecast-mobile-compact [id="top-barangays"] button.inline-flex {
+            font-size: 0.62rem !important;
+            padding: 0.38rem 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .xl\:sticky {
+            position: static !important;
+          }
+
+          .forecast-mobile-compact .grid.gap-6.xl\:grid-cols-\[minmax\(0\,1\.24fr\)_minmax\(360px\,0\.76fr\)\],
+          .forecast-mobile-compact .grid.gap-6.xl\:grid-cols-\[minmax\(0\,0\.94fr\)_minmax\(380px\,1\.06fr\)\] {
+            gap: 0.82rem !important;
+          }
+
+          .forecast-mobile-compact .grid.gap-3.md\:grid-cols-3.xl\:grid-cols-1 {
+            grid-template-columns: 1fr !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .grid.gap-3.md\:grid-cols-3.xl\:grid-cols-1 > div,
+          .forecast-mobile-compact .rounded-\[28px\].border.border-amber-100 {
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .rounded-\[20px\] {
+            border-radius: 13px !important;
+          }
+
+          .forecast-mobile-compact .px-4.py-3,
+          .forecast-mobile-compact .px-4.py-3\.5,
+          .forecast-mobile-compact .px-5.py-4,
+          .forecast-mobile-compact .p-4,
+          .forecast-mobile-compact .p-5 {
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .text-xl { font-size: 0.98rem !important; line-height: 1.12 !important; }
+          .forecast-mobile-compact .text-lg { font-size: 0.9rem !important; line-height: 1.12 !important; }
+          .forecast-mobile-compact .text-base { font-size: 0.82rem !important; line-height: 1.18 !important; }
+          .forecast-mobile-compact .text-sm { font-size: 0.72rem !important; line-height: 1.3 !important; }
+          .forecast-mobile-compact .text-xs { font-size: 0.62rem !important; line-height: 1.25 !important; }
+          .forecast-mobile-compact .text-\[11px\] { font-size: 0.56rem !important; line-height: 1.12 !important; }
+          .forecast-mobile-compact .text-\[10px\] { font-size: 0.52rem !important; line-height: 1.12 !important; }
+
+
+          .forecast-mobile-compact .mobile-field-grid-4 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.48rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 > *,
+          .forecast-mobile-compact .mobile-field-grid-6 > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 > div,
+          .forecast-mobile-compact .mobile-field-grid-4 > section,
+          .forecast-mobile-compact .mobile-field-grid-6 > div,
+          .forecast-mobile-compact .mobile-field-grid-6 > section {
+            border-radius: 14px !important;
+            padding: 0.5rem !important;
+            min-height: 68px !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 p,
+          .forecast-mobile-compact .mobile-field-grid-6 p,
+          .forecast-mobile-compact .mobile-field-grid-4 span,
+          .forecast-mobile-compact .mobile-field-grid-6 span {
+            overflow-wrap: anywhere !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 h3,
+          .forecast-mobile-compact .mobile-field-grid-4 .text-2xl,
+          .forecast-mobile-compact .mobile-field-grid-4 .text-xl {
+            font-size: 1rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 h3,
+          .forecast-mobile-compact .mobile-field-grid-6 .text-2xl,
+          .forecast-mobile-compact .mobile-field-grid-6 .text-xl,
+          .forecast-mobile-compact .mobile-field-grid-6 .text-sm {
+            font-size: 0.72rem !important;
+            line-height: 1.1 !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 p:first-child,
+          .forecast-mobile-compact .mobile-field-grid-6 .text-\[11px\],
+          .forecast-mobile-compact .mobile-field-grid-6 .text-\[10px\] {
+            font-size: 0.48rem !important;
+            letter-spacing: 0.055em !important;
+            line-height: 1.1 !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 p:first-child,
+          .forecast-mobile-compact .mobile-field-grid-4 .text-\[11px\],
+          .forecast-mobile-compact .mobile-field-grid-4 .text-\[10px\] {
+            font-size: 0.52rem !important;
+            letter-spacing: 0.065em !important;
+            line-height: 1.1 !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 p:last-child,
+          .forecast-mobile-compact .mobile-field-grid-6 p:last-child {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+
+          .forecast-mobile-compact [id="forecast-model"] .h-\[300px\],
+          .forecast-mobile-compact [id="forecast-model"] .sm\:h-\[340px\] {
+            height: 220px !important;
+            min-height: 220px !important;
+            max-height: 220px !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .h-\[300px\] svg,
+          .forecast-mobile-compact [id="forecast-model"] .sm\:h-\[340px\] svg {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            display: block !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid > div {
+            min-width: 0 !important;
+            border-radius: 15px !important;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid > div > button {
+            padding: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid > div > button > .flex {
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .flex.items-center.gap-4 {
+            align-items: flex-start !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .h-12.w-12 {
+            width: 1.65rem !important;
+            height: 1.65rem !important;
+            border-radius: 10px !important;
+            font-size: 0.58rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid img.h-32.w-32 {
+            width: 2.5rem !important;
+            height: 2.5rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid p.text-lg {
+            font-size: 0.72rem !important;
+            line-height: 1.08 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .mt-2.flex.flex-wrap {
+            display: none !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.25rem !important;
+            min-width: 0 !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 > div {
+            border-radius: 9px !important;
+            padding: 0.28rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 p:first-child {
+            font-size: 0.42rem !important;
+            line-height: 1 !important;
+            letter-spacing: 0.04em !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 p:last-child {
+            font-size: 0.58rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .mt-4.flex.items-center.justify-end {
+            margin-top: 0.35rem !important;
+            justify-content: flex-start !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .border-t {
+            grid-column: 1 / -1 !important;
+          }
+
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker {
+            margin-top: 0.82rem !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker section,
+          .forecast-mobile-compact .forecast-mobile-action-tracker > div,
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="rounded-[32px]"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="rounded-[30px]"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="rounded-[28px]"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="rounded-[26px]"] {
+            max-width: 100% !important;
+            border-radius: 18px !important;
+            padding: 0.7rem !important;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker h1,
+          .forecast-mobile-compact .forecast-mobile-action-tracker h2,
+          .forecast-mobile-compact .forecast-mobile-action-tracker h3,
+          .forecast-mobile-compact .forecast-mobile-action-tracker .text-2xl,
+          .forecast-mobile-compact .forecast-mobile-action-tracker .text-3xl {
+            font-size: 1rem !important;
+            line-height: 1.12 !important;
+            letter-spacing: -0.03em !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker p,
+          .forecast-mobile-compact .forecast-mobile-action-tracker span,
+          .forecast-mobile-compact .forecast-mobile-action-tracker button,
+          .forecast-mobile-compact .forecast-mobile-action-tracker li {
+            font-size: 0.68rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .text-sm {
+            font-size: 0.68rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .text-xs,
+          .forecast-mobile-compact .forecast-mobile-action-tracker .text-[11px],
+          .forecast-mobile-compact .forecast-mobile-action-tracker .text-[10px] {
+            font-size: 0.55rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid,
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="grid-cols-"] {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="gap-6"] {
+            gap: 0.75rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="gap-5"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="gap-4"] {
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="mt-6"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="mt-5"] {
+            margin-top: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="mt-4"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="mt-3"] {
+            margin-top: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="p-6"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="p-5"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="p-4"] {
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="px-5"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="px-4"] {
+            padding-left: 0.65rem !important;
+            padding-right: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="py-4"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="py-3"] {
+            padding-top: 0.55rem !important;
+            padding-bottom: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker svg {
+            width: 0.9rem !important;
+            height: 0.9rem !important;
+            max-width: 0.9rem !important;
+            max-height: 0.9rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="h-12"][class*="w-12"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="h-11"][class*="w-11"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="h-10"][class*="w-10"] {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker table {
+            min-width: 560px !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="overflow-x-auto"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker [class*="overflow-auto"] {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > :first-child {
+            grid-column: 1 / -1 !important;
+            min-height: 74px !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > :not(:first-child) {
+            min-height: 82px !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * {
+            border-radius: 16px !important;
+            padding: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * p:first-child,
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * span:first-child {
+            font-size: 0.58rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.08em !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * .text-2xl,
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * .text-3xl,
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * h3 {
+            font-size: 1.05rem !important;
+            line-height: 1.05 !important;
+            margin-top: 0.3rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * p:last-child {
+            font-size: 0.62rem !important;
+            line-height: 1.15 !important;
+            margin-top: 0.25rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * [class*="h-11"][class*="w-11"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * [class*="h-10"][class*="w-10"],
+          .forecast-mobile-compact .forecast-mobile-action-tracker .grid:has(> :nth-child(5):last-child) > * [class*="h-9"][class*="w-9"] {
+            height: 1.8rem !important;
+            width: 1.8rem !important;
+            border-radius: 11px !important;
+          }
+
+          .forecast-mobile-compact .truncate {
+            max-width: 100% !important;
+          }
+        }
+      `}</style>
+
+      <div className="forecast-mobile-action-tracker">
+        <DecisionActionTracker priorityRows={topBarangays} />
+      </div>
 
     </div>
   )

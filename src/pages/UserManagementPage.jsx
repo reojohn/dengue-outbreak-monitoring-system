@@ -44,7 +44,7 @@ const roleOptions = [
     short: 'CHO',
     icon: Building2,
     tone: 'cyan',
-    description: 'Upload datasets, run forecasts, view maps, and generate reports.',
+    description: 'Upload needed files, run forecasts, view maps, and create reports.',
   },
   {
     value: 'bhw',
@@ -60,7 +60,7 @@ const roleOptions = [
     short: 'SUP',
     icon: ShieldCheck,
     tone: 'blue',
-    description: 'Review city-wide forecasts, maps, reports, and planning outputs.',
+    description: 'Review city-wide forecasts, maps, reports, and planning summaries.',
   },
   {
     value: 'admin',
@@ -143,7 +143,7 @@ function StatusMessage({ type, children }) {
 
   return (
     <div
-      className={`relative overflow-hidden rounded-[24px] border px-4 py-3 text-sm leading-6 shadow-sm ${
+      className={`relative overflow-hidden rounded-[18px] border px-3 py-2.5 text-xs sm:rounded-[24px] sm:px-4 sm:py-3 sm:text-sm leading-6 shadow-sm ${
         isError
           ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-100'
           : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-500/10 dark:text-emerald-100'
@@ -160,12 +160,12 @@ function StatusMessage({ type, children }) {
 function StatCard({ icon: Icon, label, value, helper, className = '' }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[28px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/60 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/70 dark:ring-white/5 ${className}`}
+      className={`relative overflow-hidden rounded-[20px] border border-white/70 bg-white/80 p-3 sm:rounded-[28px] sm:p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/60 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/70 dark:ring-white/5 ${className}`}
     >
       <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-cyan-300/20 blur-2xl dark:bg-cyan-500/10" />
 
       <div className="relative flex items-start gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br from-cyan-400 to-blue-500 text-white shadow-[0_14px_30px_rgba(14,165,233,0.24)]">
+        <div className="flex h-9 w-9 shrink-0 sm:h-12 sm:w-12 items-center justify-center rounded-[14px] bg-gradient-to-br from-cyan-400 sm:rounded-[20px] to-blue-500 text-white shadow-[0_14px_30px_rgba(14,165,233,0.24)]">
           <Icon className="h-5 w-5" />
         </div>
 
@@ -173,7 +173,7 @@ function StatCard({ icon: Icon, label, value, helper, className = '' }) {
           <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
             {label}
           </p>
-          <p className="mt-1 text-2xl font-black text-slate-950 dark:text-white">
+          <p className="mt-1 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
             {value}
           </p>
           {helper && (
@@ -746,8 +746,8 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[36px] border border-white/70 bg-gradient-to-br from-slate-950 via-[#0f2d4f] to-[#0ea5e9] p-6 text-white shadow-[0_28px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/20 sm:p-8">
+    <div className="user-mobile-compact space-y-6">
+      <section className="relative overflow-hidden rounded-[24px] border border-white/70 bg-gradient-to-br from-slate-950 via-[#0f2d4f] to-[#0ea5e9] p-4 text-white sm:rounded-[36px] sm:p-6 shadow-[0_28px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/20 sm:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/30 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 left-12 h-72 w-72 rounded-full bg-emerald-300/20 blur-3xl" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.07)_1px,transparent_1px)] bg-[size:22px_22px] opacity-25" />
@@ -759,11 +759,11 @@ export default function UserManagementPage() {
               Secure Administration
             </div>
 
-            <h1 className="mt-5 text-4xl font-black tracking-tight sm:text-5xl">
+            <h1 className="mt-5 text-2xl font-black tracking-tight sm:text-5xl">
               User Management
             </h1>
 
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-cyan-50/85 sm:text-base">
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-cyan-50/85 sm:mt-4 sm:text-base sm:leading-7">
               Create Supabase-backed user accounts, assign access levels, connect BHW users to barangays, reset passwords, and control active access for the dengue monitoring system.
             </p>
           </div>
@@ -772,7 +772,7 @@ export default function UserManagementPage() {
             type="button"
             onClick={loadAll}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-[22px] border border-white/20 bg-white/12 px-5 py-3 text-sm font-black text-white shadow-[0_18px_40px_rgba(0,0,0,0.16)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-white/20 bg-white/12 px-4 py-2.5 text-xs sm:rounded-[22px] sm:px-5 sm:py-3 sm:text-sm font-black text-white shadow-[0_18px_40px_rgba(0,0,0,0.16)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
             Refresh records
@@ -780,7 +780,7 @@ export default function UserManagementPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={UsersRound} label="Total users" value={users.length} helper="All registered accounts" />
         <StatCard icon={CheckCircle2} label="Active" value={activeCount} helper="Can sign in" />
         <StatCard icon={UserCheck} label="BHW accounts" value={bhwCount} helper="Barangay-assigned users" />
@@ -790,21 +790,21 @@ export default function UserManagementPage() {
       <div className="relative z-[50] grid gap-6 xl:grid-cols-[0.85fr_1.45fr]">
         <form
           onSubmit={handleSubmit}
-          className="relative z-[80] overflow-visible rounded-[34px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5"
+          className="relative z-[80] overflow-visible rounded-[22px] border border-white/70 bg-white/90 p-4 sm:rounded-[34px] sm:p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5"
         >
           <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
 
-          <div className="relative mb-5 flex items-center justify-between gap-3">
+          <div className="relative mb-3 flex items-center justify-between gap-3 sm:mb-5">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
                 {editingUserId ? 'Edit Account' : 'Create Account'}
               </p>
 
-              <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
+              <h2 className="mt-2 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
                 {editingUserId ? 'Update user details' : 'New system user'}
               </h2>
 
-              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6 dark:text-slate-400">
                 {editingUserId ? 'Modify account information and access status.' : 'Issue credentials for authorized system access.'}
               </p>
             </div>
@@ -820,7 +820,7 @@ export default function UserManagementPage() {
             )}
           </div>
 
-          <div className="relative space-y-4">
+          <div className="relative space-y-3 sm:space-y-4">
             <StatusMessage type="error">{error}</StatusMessage>
             <StatusMessage>{success}</StatusMessage>
 
@@ -829,7 +829,7 @@ export default function UserManagementPage() {
                 required
                 value={form.full_name}
                 onChange={(event) => updateForm('full_name', event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm sm:px-4 sm:py-3.5 font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
                 placeholder="Example: BHW Ampayon"
               />
             </Field>
@@ -840,7 +840,7 @@ export default function UserManagementPage() {
                 type="email"
                 value={form.email}
                 onChange={(event) => updateForm('email', event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm sm:px-4 sm:py-3.5 font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
                 placeholder="user@butuan.gov.ph"
               />
             </Field>
@@ -889,14 +889,14 @@ export default function UserManagementPage() {
                     required
                     value={form.assigned_barangay}
                     onChange={(event) => updateForm('assigned_barangay', event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm sm:px-4 sm:py-3.5 font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
                     placeholder="Type barangay name"
                   />
                 )}
               </Field>
             )}
 
-            <label className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:to-slate-950">
+            <label className="flex items-center justify-between gap-4 rounded-[18px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-3 py-2.5 sm:rounded-[24px] sm:px-4 sm:py-3.5 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:to-slate-950">
               <span>
                 <span className="block text-sm font-black text-slate-900 dark:text-white">
                   Active Account
@@ -925,7 +925,7 @@ export default function UserManagementPage() {
 
             <button
               disabled={saving}
-              className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-4 text-sm font-black text-slate-950 shadow-[0_18px_38px_rgba(14,165,233,0.24)] transition hover:scale-[1.01] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex w-full items-center justify-center gap-2 rounded-[18px] bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-3 sm:rounded-[22px] sm:py-4 text-sm font-black text-slate-950 shadow-[0_18px_38px_rgba(14,165,233,0.24)] transition hover:scale-[1.01] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingUserId ? <Edit3 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {editingUserId ? 'Save Changes' : 'Create Account'}
@@ -933,15 +933,15 @@ export default function UserManagementPage() {
           </div>
         </form>
 
-        <section className="relative z-[40] overflow-visible rounded-[34px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5">
+        <section className="relative z-[40] overflow-visible rounded-[22px] border border-white/70 bg-white/90 p-4 sm:rounded-[34px] sm:p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5">
           <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-blue-300/20 blur-3xl dark:bg-blue-500/10" />
 
-          <div className="relative mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="relative mb-3 flex flex-col gap-3 sm:mb-5 sm:gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
                 Supabase Accounts
               </p>
-              <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
+              <h2 className="mt-2 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
                 Registered users
               </h2>
             </div>
@@ -996,11 +996,11 @@ export default function UserManagementPage() {
                   return (
                     <div
                       key={user.id}
-                      className="group relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_20px_45px_rgba(15,23,42,0.10)] dark:border-slate-800 dark:bg-slate-900/80 dark:hover:border-cyan-400/25"
+                      className="group relative overflow-hidden rounded-[20px] border border-slate-200 bg-white p-3 sm:rounded-[28px] sm:p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_20px_45px_rgba(15,23,42,0.10)] dark:border-slate-800 dark:bg-slate-900/80 dark:hover:border-cyan-400/25"
                     >
                       <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
                         <div className="flex min-w-0 items-start gap-4">
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br from-slate-900 to-blue-600 text-base font-black text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] dark:from-cyan-500 dark:to-blue-500">
+                          <div className="flex h-10 w-10 shrink-0 sm:h-14 sm:w-14 items-center justify-center rounded-[16px] bg-gradient-to-br from-slate-900 sm:rounded-[22px] to-blue-600 text-base font-black text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] dark:from-cyan-500 dark:to-blue-500">
                             {String(user.full_name || user.email || 'U').slice(0, 1).toUpperCase()}
                           </div>
 
@@ -1031,7 +1031,7 @@ export default function UserManagementPage() {
                               {user.email}
                             </p>
 
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                            <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:mt-3 sm:flex sm:flex-wrap sm:gap-2">
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                 <MapPinned className="h-3.5 w-3.5" />
                                 {user.assigned_barangay || 'City-wide'}
@@ -1045,11 +1045,11 @@ export default function UserManagementPage() {
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap justify-end gap-2">
+                        <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                           <button
                             type="button"
                             onClick={() => startEdit(user)}
-                            className="rounded-2xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-300"
+                            className="rounded-xl border border-slate-200 bg-white p-2 sm:rounded-2xl sm:p-2.5 text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-300"
                             title="Edit user"
                           >
                             <Edit3 className="h-4 w-4" />
@@ -1062,7 +1062,7 @@ export default function UserManagementPage() {
                               setResetPasswordValue('')
                               setShowResetPassword(false)
                             }}
-                            className="rounded-2xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                            className="rounded-xl border border-slate-200 bg-white p-2 sm:rounded-2xl sm:p-2.5 text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
                             title="Reset password"
                           >
                             <KeyRound className="h-4 w-4" />
@@ -1071,7 +1071,7 @@ export default function UserManagementPage() {
                           <button
                             type="button"
                             onClick={() => handleToggleActive(user)}
-                            className={`rounded-2xl border px-3 py-2 text-xs font-black shadow-sm transition hover:-translate-y-0.5 ${
+                            className={`rounded-xl border px-2 py-2 text-[10px] sm:rounded-2xl sm:px-3 sm:text-xs font-black shadow-sm transition hover:-translate-y-0.5 ${
                               user.is_active
                                 ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200'
                                 : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200'
@@ -1101,7 +1101,7 @@ export default function UserManagementPage() {
         </section>
       </div>
 
-      <section className="relative z-0 overflow-hidden rounded-[34px] border border-white/70 bg-white/90 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5">
+      <section className="relative z-0 overflow-hidden rounded-[22px] border border-white/70 bg-white/90 p-4 sm:rounded-[34px] sm:p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5">
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-slate-300/20 blur-3xl dark:bg-blue-500/10" />
 
         <div className="relative mb-5 flex items-center gap-3">
@@ -1121,14 +1121,14 @@ export default function UserManagementPage() {
 
         <div className="relative grid gap-3">
           {auditLogs.length === 0 ? (
-            <p className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50">
+            <p className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50 p-4 sm:rounded-[24px] sm:p-5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50">
               No user audit records yet.
             </p>
           ) : (
             auditLogs.slice(0, 8).map((log) => (
               <div
                 key={log.id || `${log.action}-${log.created_at}`}
-                className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 text-sm shadow-sm dark:border-slate-800 dark:from-slate-900/80 dark:to-slate-950"
+                className="rounded-[18px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 sm:rounded-[24px] sm:p-4 text-sm shadow-sm dark:border-slate-800 dark:from-slate-900/80 dark:to-slate-950"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="font-black capitalize text-slate-900 dark:text-white">
@@ -1148,11 +1148,65 @@ export default function UserManagementPage() {
         </div>
       </section>
 
+
+      <style>{`
+        @media (max-width: 639px) {
+          .user-mobile-compact {
+            --mobile-radius: 1.125rem;
+          }
+
+          .user-mobile-compact section,
+          .user-mobile-compact form {
+            max-width: 100%;
+          }
+
+          .user-mobile-compact input,
+          .user-mobile-compact button {
+            min-width: 0;
+          }
+
+          .user-mobile-compact .grid {
+            min-width: 0;
+          }
+
+          .user-mobile-compact [class*="tracking-[0.18em]"],
+          .user-mobile-compact [class*="tracking-[0.16em]"] {
+            letter-spacing: .08em;
+          }
+
+          .user-mobile-compact [class*="rounded-[34px]"],
+          .user-mobile-compact [class*="rounded-[36px]"] {
+            border-radius: 1.35rem;
+          }
+
+          .user-mobile-compact .absolute.top-full {
+            left: 0 !important;
+            right: 0 !important;
+            width: min(100%, calc(100vw - 2rem)) !important;
+            max-width: calc(100vw - 2rem) !important;
+          }
+
+          .user-mobile-compact [class*="max-h-[340px]"] {
+            max-height: 260px;
+          }
+
+          .user-mobile-compact .text-sm.leading-7,
+          .user-mobile-compact .text-sm.leading-6 {
+            line-height: 1.35rem;
+          }
+
+          .user-mobile-compact [class*="shadow-[0_24px_70px"],
+          .user-mobile-compact [class*="shadow-[0_28px_80px"] {
+            box-shadow: 0 14px 34px rgba(15,23,42,.12);
+          }
+        }
+      `}</style>
+
       {resetUser && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <form
             onSubmit={handleResetPassword}
-            className="relative w-full max-w-md overflow-hidden rounded-[34px] border border-white/10 bg-white p-6 shadow-2xl dark:bg-slate-950"
+            className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-white/10 bg-white p-4 sm:rounded-[34px] sm:p-6 shadow-2xl dark:bg-slate-950"
           >
             <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
 
@@ -1161,7 +1215,7 @@ export default function UserManagementPage() {
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
                   Reset Password
                 </p>
-                <h3 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
+                <h3 className="mt-2 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
                   {resetUser.full_name}
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">
@@ -1202,7 +1256,7 @@ export default function UserManagementPage() {
 
             <button
               disabled={saving}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-[22px] bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-4 text-sm font-black text-slate-950 shadow-[0_18px_38px_rgba(14,165,233,0.24)] disabled:opacity-70"
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-[18px] bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-3 sm:rounded-[22px] sm:py-4 text-sm font-black text-slate-950 shadow-[0_18px_38px_rgba(14,165,233,0.24)] disabled:opacity-70"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
               Reset Password
@@ -1213,3 +1267,4 @@ export default function UserManagementPage() {
     </div>
   )
 }
+``

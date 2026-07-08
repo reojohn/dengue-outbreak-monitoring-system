@@ -136,6 +136,312 @@ function MetricCard({ icon: Icon, label, value, helper, tone = 'text-blue-500' }
           <Icon className={`h-5 w-5 ${tone}`} />
         </div>
       </div>
+
+      <style>{`
+        @media (max-width: 639px) {
+          .bhw-mobile-compact,
+          .bhw-mobile-compact * {
+            min-width: 0;
+          }
+
+          .bhw-mobile-compact {
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+            padding-bottom: 1.25rem !important;
+          }
+
+          .bhw-mobile-compact.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.82rem !important;
+          }
+
+          .bhw-mobile-compact section,
+          .bhw-mobile-compact .rounded-\[34px\],
+          .bhw-mobile-compact .rounded-\[38px\],
+          .bhw-mobile-compact .rounded-\[30px\] {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 20px !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type {
+            padding: 0.85rem !important;
+            border-radius: 22px !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type > .absolute,
+          .bhw-mobile-compact .pointer-events-none.absolute {
+            opacity: 0.65 !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type .relative.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .inline-flex.items-center.gap-2.rounded-full,
+          .bhw-mobile-compact .rounded-full.border {
+            padding: 0.32rem 0.55rem !important;
+            font-size: 0.55rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: 0.075em !important;
+          }
+
+          .bhw-mobile-compact h1 {
+            margin-top: 0.75rem !important;
+            font-size: 1.45rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .bhw-mobile-compact h2,
+          .bhw-mobile-compact .text-xl.font-black,
+          .bhw-mobile-compact .text-lg.font-black {
+            font-size: 0.98rem !important;
+            line-height: 1.12 !important;
+            letter-spacing: -0.025em !important;
+          }
+
+          .bhw-mobile-compact h3 {
+            font-size: 0.95rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .bhw-mobile-compact p {
+            font-size: 0.72rem !important;
+            line-height: 1.28 !important;
+          }
+
+          .bhw-mobile-compact .text-sm { font-size: 0.7rem !important; line-height: 1.28 !important; }
+          .bhw-mobile-compact .text-xs { font-size: 0.58rem !important; line-height: 1.18 !important; }
+          .bhw-mobile-compact .text-2xl { font-size: 1.08rem !important; line-height: 1.05 !important; }
+          .bhw-mobile-compact .text-3xl { font-size: 1.25rem !important; line-height: 1.05 !important; }
+          .bhw-mobile-compact .text-4xl { font-size: 1.65rem !important; line-height: 1.05 !important; }
+
+          .bhw-mobile-compact h1 + p,
+          .bhw-mobile-compact section:first-of-type p.leading-7 {
+            margin-top: 0.5rem !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .bhw-mobile-grid-3 {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .bhw-mobile-grid-4 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .bhw-mobile-grid-3 > *,
+          .bhw-mobile-grid-4 > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+          }
+
+          .bhw-mobile-grid-3 > div,
+          .bhw-mobile-grid-4 > div,
+          .bhw-mobile-grid-3 > a,
+          .bhw-mobile-grid-4 > a {
+            border-radius: 15px !important;
+            padding: 0.52rem !important;
+            min-height: 72px !important;
+          }
+
+          .bhw-mobile-grid-3 p:first-child,
+          .bhw-mobile-grid-4 p:first-child {
+            font-size: 0.48rem !important;
+            line-height: 1.08 !important;
+            letter-spacing: 0.055em !important;
+          }
+
+          .bhw-mobile-grid-3 p:nth-child(2),
+          .bhw-mobile-grid-4 p:nth-child(2),
+          .bhw-mobile-grid-4 .text-3xl {
+            margin-top: 0.3rem !important;
+            font-size: 0.98rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .bhw-mobile-grid-3 p:last-child,
+          .bhw-mobile-grid-4 p:last-child {
+            font-size: 0.55rem !important;
+            line-height: 1.16 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type .relative.overflow-hidden.rounded-\[34px\] {
+            display: grid !important;
+            grid-template-columns: auto minmax(0, 1fr) !important;
+            align-items: center !important;
+            gap: 0.75rem !important;
+            text-align: left !important;
+            padding: 0.72rem !important;
+            border-radius: 18px !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type .relative.mx-auto.flex.h-24.w-24 {
+            margin: 0 !important;
+            height: 3.4rem !important;
+            width: 3.4rem !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type .relative.mx-auto.flex.h-24.w-24 svg {
+            height: 1.55rem !important;
+            width: 1.55rem !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type .relative.overflow-hidden.rounded-\[34px\] .mt-4,
+          .bhw-mobile-compact > section:first-of-type .relative.overflow-hidden.rounded-\[34px\] .mt-2,
+          .bhw-mobile-compact > section:first-of-type .relative.overflow-hidden.rounded-\[34px\] .mt-1 {
+            margin-top: 0.28rem !important;
+          }
+
+          .bhw-mobile-compact > section:first-of-type .relative.overflow-hidden.rounded-\[34px\] .overflow-hidden.rounded-full {
+            grid-column: 1 / -1 !important;
+            height: 0.45rem !important;
+            margin-top: 0.2rem !important;
+          }
+
+          .bhw-mobile-compact .group.relative.overflow-hidden.rounded-\[30px\] {
+            border-radius: 16px !important;
+            padding: 0.6rem !important;
+            min-height: 96px !important;
+          }
+
+          .bhw-mobile-compact .group.relative.overflow-hidden.rounded-\[30px\] .relative.flex {
+            gap: 0.5rem !important;
+          }
+
+          .bhw-mobile-compact .group.relative.overflow-hidden.rounded-\[30px\] .h-12.w-12 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .bhw-mobile-compact .group.relative.overflow-hidden.rounded-\[30px\] svg {
+            height: 0.95rem !important;
+            width: 0.95rem !important;
+          }
+
+          .bhw-mobile-compact section.grid.gap-5,
+          .bhw-mobile-compact section.grid.gap-4,
+          .bhw-mobile-compact .grid.gap-5,
+          .bhw-mobile-compact .grid.gap-4 {
+            gap: 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .relative.overflow-hidden.rounded-\[34px\],
+          .bhw-mobile-compact .rounded-\[34px\].border {
+            padding: 0.75rem !important;
+            border-radius: 20px !important;
+          }
+
+          .bhw-mobile-compact .flex.h-12.w-12,
+          .bhw-mobile-compact .flex.h-10.w-10 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .bhw-mobile-compact .flex.h-12.w-12 svg,
+          .bhw-mobile-compact .flex.h-10.w-10 svg,
+          .bhw-mobile-compact svg.h-7.w-7,
+          .bhw-mobile-compact svg.h-5.w-5 {
+            height: 0.95rem !important;
+            width: 0.95rem !important;
+          }
+
+          .bhw-mobile-compact .relative.mt-5.rounded-\[28px\] {
+            margin-top: 0.65rem !important;
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .bhw-mobile-compact .relative.mt-5.space-y-3 > :not([hidden]) ~ :not([hidden]),
+          .bhw-mobile-compact .mt-5.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.45rem !important;
+          }
+
+          .bhw-mobile-compact .relative.mt-5.space-y-3 .rounded-\[24px\],
+          .bhw-mobile-compact .mt-5.space-y-3 .rounded-\[22px\] {
+            border-radius: 15px !important;
+            padding: 0.55rem !important;
+          }
+
+          .bhw-mobile-compact .relative.mt-5.space-y-3 .rounded-\[24px\] .mt-3 {
+            margin-top: 0.45rem !important;
+          }
+
+          .bhw-mobile-compact .rounded-\[24px\],
+          .bhw-mobile-compact .rounded-\[22px\] {
+            border-radius: 15px !important;
+          }
+
+          .bhw-mobile-compact .mt-6 { margin-top: 0.8rem !important; }
+          .bhw-mobile-compact .mt-5 { margin-top: 0.68rem !important; }
+          .bhw-mobile-compact .mt-4 { margin-top: 0.55rem !important; }
+          .bhw-mobile-compact .mt-3 { margin-top: 0.45rem !important; }
+          .bhw-mobile-compact .mb-4 { margin-bottom: 0.55rem !important; }
+          .bhw-mobile-compact .mb-3 { margin-bottom: 0.45rem !important; }
+
+          .bhw-mobile-compact .p-6,
+          .bhw-mobile-compact .p-5,
+          .bhw-mobile-compact .p-4 {
+            padding: 0.65rem !important;
+          }
+
+          .bhw-mobile-compact .px-4.py-3,
+          .bhw-mobile-compact .px-4.py-3\.5 {
+            padding: 0.55rem 0.65rem !important;
+          }
+
+          .bhw-mobile-compact a.group.relative.overflow-hidden {
+            min-height: 92px !important;
+          }
+
+          .bhw-mobile-compact a.group.relative.overflow-hidden h3,
+          .bhw-mobile-compact .bhw-mobile-grid-3 h3 {
+            font-size: 0.78rem !important;
+            line-height: 1.1 !important;
+          }
+
+          .bhw-mobile-compact a.group.relative.overflow-hidden p,
+          .bhw-mobile-compact .bhw-mobile-grid-3 p {
+            font-size: 0.58rem !important;
+            line-height: 1.16 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .bhw-mobile-compact a.group.relative.overflow-hidden .absolute.right-5.top-5 {
+            right: 0.55rem !important;
+            top: 0.55rem !important;
+          }
+
+          .bhw-mobile-compact .truncate,
+          .bhw-mobile-compact p,
+          .bhw-mobile-compact span,
+          .bhw-mobile-compact h1,
+          .bhw-mobile-compact h2,
+          .bhw-mobile-compact h3 {
+            overflow-wrap: anywhere !important;
+          }
+        }
+      `}</style>
+
     </div>
   )
 }
@@ -205,7 +511,7 @@ export default function BHWPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="bhw-mobile-compact space-y-6">
       <section className={`relative overflow-hidden rounded-[38px] border ${tone.border} bg-gradient-to-br ${tone.soft} p-5 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/70 dark:ring-white/5 sm:p-6 lg:p-7`}>
         <div className={`pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full ${tone.glow} blur-3xl`} />
         <div className="pointer-events-none absolute -bottom-24 left-8 h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
@@ -233,7 +539,7 @@ export default function BHWPage() {
               field tasks, community advisories, and reports for CHO coordination.
             </p>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="bhw-mobile-grid-3 mt-5 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">Predicted</p>
                 <p className="mt-1 text-2xl font-black text-brand-text dark:text-white">{formatNumber(predictedCases)}</p>
@@ -278,8 +584,8 @@ export default function BHWPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <MetricCard icon={ShieldAlert} label="Predicted Cases" value={formatNumber(predictedCases)} helper="Latest barangay-level forecast" tone="text-rose-500" />
+      <section className="bhw-mobile-grid-4 grid gap-4 md:grid-cols-4">
+        <MetricCard icon={ShieldAlert} label="Expected Cases" value={formatNumber(predictedCases)} helper="Latest barangay forecast" tone="text-rose-500" />
         <MetricCard icon={Activity} label="Risk Score" value={`${score}/100`} helper="Priority monitoring index" tone="text-blue-500" />
         <MetricCard icon={TrendingUp} label="Trend Records" value={formatNumber(weeklyTotals.length)} helper="Available weekly points" tone="text-amber-500" />
         <MetricCard icon={MapPinned} label="City Hotspots" value={formatNumber(dashboardStats.highRiskCount || 0)} helper="High-risk barangays city-wide" tone="text-sky-500" />
@@ -303,7 +609,7 @@ export default function BHWPage() {
             <p className="text-sm font-bold leading-7">{getAction(risk)}</p>
           </div>
 
-          <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="bhw-mobile-grid-3 relative mt-5 grid gap-3 sm:grid-cols-3">
             {[
               { label: 'Inspect water storage and canals', icon: Droplets, tone: 'text-sky-500' },
               { label: 'Coordinate cleanup drive', icon: Home, tone: 'text-emerald-500' },
@@ -354,7 +660,7 @@ export default function BHWPage() {
               })
             ) : (
               <div className="rounded-[24px] border border-dashed border-slate-300 p-5 text-sm font-bold leading-6 text-brand-muted dark:border-slate-700 dark:text-slate-400">
-                No barangay-specific forecast rows yet. Run the CHO forecast process first.
+                No barangay forecast is available yet. Ask the CHO account to run the dengue forecast first.
               </div>
             )}
           </div>
@@ -389,7 +695,7 @@ export default function BHWPage() {
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-3 xl:grid-cols-3">
+        <div className="bhw-mobile-grid-3 grid gap-5 lg:grid-cols-3 xl:grid-cols-3">
           <Link to="/map" className="group relative overflow-hidden rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:shadow-[0_24px_58px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-900">
             <MapPinned className="mb-4 h-7 w-7 text-sky-500" />
             <h3 className="text-lg font-black text-brand-text dark:text-white">Hotspot Map</h3>

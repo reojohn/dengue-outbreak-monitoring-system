@@ -47,7 +47,7 @@ const actions = [
   },
   {
     label: 'Upload data',
-    description: 'Import dengue records and supporting datasets',
+    description: 'Upload dengue records and supporting files',
     icon: UploadCloud,
     style:
       'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
@@ -541,7 +541,7 @@ function summarizeCombinedRows(rows = []) {
       return row.rainfall !== undefined || row.temperature !== undefined || row.humidity !== undefined
     }).length,
     weatherCoverageLabel: rows.length
-      ? 'Loaded from saved combined dataset'
+      ? 'Loaded from saved combined files'
       : 'Weather data unavailable',
     rainfallPressure: getRainfallPressureLabel(averageRainfall),
     temperatureSuitability: getTemperatureSuitabilityLabel(averageTemperature),
@@ -706,12 +706,12 @@ function buildDatabaseIntegrationReadiness({
   const checks = [
     {
       id: 'sources-loaded',
-      label: 'All required datasets loaded',
+      label: 'All required files loaded',
       ready: hasAllSources,
       value: `${formatNumber(sourceHealth.loadedCount)} / ${formatNumber(Math.max(sourceHealth.sourceCount, 4))}`,
       description: hasAllSources
         ? 'Dengue, weather, population, and boundary files are available from the saved workspace.'
-        : 'Load all four required datasets before relying on the dashboard.',
+        : 'Load all four required files before relying on the dashboard.',
     },
     {
       id: 'barangay-name-check',
@@ -719,7 +719,7 @@ function buildDatabaseIntegrationReadiness({
       ready: barangayMatchReady,
       value: barangayMatchReady ? 'Matched' : 'Needs Review',
       description: barangayMatchReady
-        ? 'Barangay names in the dengue file were matched with the supporting datasets.'
+        ? 'Barangay names in the dengue file were matched with the supporting files.'
         : 'Some barangay names still need review.',
     },
     {
@@ -728,8 +728,8 @@ function buildDatabaseIntegrationReadiness({
       ready: hasWeatherRows,
       value: hasWeatherRows ? 'Linked' : 'Missing',
       description: hasWeatherRows
-        ? 'Rainfall, temperature, and humidity values are available in the saved combined dataset.'
-        : 'Weather values were not found in the saved combined dataset.',
+        ? 'Rainfall, temperature, and humidity values are available in the saved combined files.'
+        : 'Weather values were not found in the saved combined files.',
     },
     {
       id: 'population-linked',
@@ -737,8 +737,8 @@ function buildDatabaseIntegrationReadiness({
       ready: hasPopulationRows,
       value: hasPopulationRows ? 'Linked' : 'Missing',
       description: hasPopulationRows
-        ? 'Population values are available in the saved combined dataset.'
-        : 'Population values were not found in the saved combined dataset.',
+        ? 'Population values are available in the saved combined files.'
+        : 'Population values were not found in the saved combined files.',
     },
     {
       id: 'boundary-linked',
@@ -747,7 +747,7 @@ function buildDatabaseIntegrationReadiness({
       value: hasBoundaryRows ? 'Linked' : 'Missing',
       description: hasBoundaryRows
         ? 'Barangay map references are available for GIS display.'
-        : 'Boundary references were not found in the saved combined dataset.',
+        : 'Barangay map references were not found in the saved combined files.',
     },
     {
       id: 'forecast-ready',
@@ -755,8 +755,8 @@ function buildDatabaseIntegrationReadiness({
       ready: hasForecastRows,
       value: `${formatNumber(forecastRows.length)} barangay row${forecastRows.length === 1 ? '' : 's'}`,
       description: hasForecastRows
-        ? 'Saved forecast rows are available for dashboard, map, reports, and recommended actions.'
-        : 'Run the forecast to generate barangay risk rows.',
+        ? 'Saved forecast results are available for the dashboard, map, reports, and recommended actions.'
+        : 'Run the forecast to create barangay risk results.',
     },
   ]
 
@@ -884,34 +884,34 @@ function PremiumStatCard({
 
   return (
     <div
-      className={`group relative min-h-[172px] overflow-hidden rounded-[32px] border border-brand-line/70 bg-gradient-to-br ${style.glow} p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:shadow-none`}
+      className={`group relative min-h-[150px] overflow-hidden rounded-[24px] border border-brand-line/70 bg-gradient-to-br ${style.glow} p-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:shadow-none sm:min-h-[172px] sm:rounded-[32px] sm:p-5`}
     >
-      <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/70 blur-2xl dark:bg-white/5" />
+      <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-white/70 blur-2xl dark:bg-white/5 sm:-right-10 sm:-top-10 sm:h-28 sm:w-28" />
       <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent dark:via-slate-700" />
 
-      <div className="relative flex items-start justify-between gap-4">
+      <div className="relative flex items-start justify-between gap-2 sm:gap-4">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand-muted dark:text-slate-400">
+          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400 sm:text-[11px] sm:tracking-[0.18em]">
             {title}
           </p>
 
-          <h3 className="mt-4 text-4xl font-black tracking-tight text-brand-text dark:text-slate-100">
+          <h3 className="mt-2 text-[1.55rem] font-black leading-none tracking-tight text-brand-text dark:text-slate-100 sm:mt-4 sm:text-4xl">
             {value}
           </h3>
 
-          <p className="mt-2 max-w-[210px] text-sm leading-6 text-brand-muted dark:text-slate-400">
+          <p className="mt-2 max-w-[7.8rem] text-[11px] leading-4 text-brand-muted dark:text-slate-400 sm:max-w-[210px] sm:text-sm sm:leading-6">
             {helper}
           </p>
         </div>
 
         <div
-          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border shadow-sm ${style.icon}`}
+          className={`-mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border shadow-sm sm:mr-0 sm:h-12 sm:w-12 sm:rounded-[20px] ${style.icon}`}
         >
-          <Icon className="h-6 w-6" strokeWidth={2.4} />
+          <Icon className="h-4 w-4 sm:h-6 sm:w-6" strokeWidth={2.4} />
         </div>
       </div>
 
-      <div className={`absolute bottom-5 right-5 h-2.5 w-2.5 rounded-full ${style.badge}`} />
+      <div className={`absolute bottom-3 right-3 h-2.5 w-2.5 rounded-full sm:bottom-5 sm:right-5 ${style.badge}`} />
     </div>
   )
 }
@@ -1114,7 +1114,7 @@ export default function DashboardPage() {
       {
         title: usingBackendForecast ? 'Analysis ready' : 'Data readiness',
         message: usingBackendForecast
-          ? `The uploaded datasets are now feeding dashboard totals, priority ranking, environmental factors, trend view, and monitoring alerts.`
+          ? `The uploaded files are now feeding dashboard totals, priority barangays, weather factors, trend view, and monitoring alerts.`
           : `${Object.keys(sourceStatus || {}).length} data sources are available in the prototype workspace.`,
         icon: CheckCircle2,
         style:
@@ -1136,13 +1136,13 @@ export default function DashboardPage() {
   ])
 
   return (
-    <div className="space-y-6">
+    <div className="dashboard-mobile-compact space-y-6">
       <SectionTitle
         title="Dashboard Overview"
         subtitle={
           usingBackendForecast
-            ? 'Decision-ready overview from the latest uploaded dengue dataset with multi-source context.'
-            : 'Quick status, dengue trends, weather pressure, priority barangays, and data readiness from the current working dataset.'
+            ? 'Decision-ready overview from the latest uploaded dengue records.'
+            : 'Quick status, dengue trends, weather pressure, priority barangays, and file readiness from the current records.'
         }
       />
 
@@ -1162,7 +1162,7 @@ export default function DashboardPage() {
             </h2>
 
             <p className="mt-3 max-w-2xl text-sm leading-7 text-blue-100/90">
-              The dashboard combines dengue cases, weather indicators, population exposure, and barangay boundaries into a clear command view for forecasting, hotspot ranking, and response priorities.
+              The dashboard combines dengue cases, weather, population, and barangay map boundaries into one clear view for forecasting, hotspot checking, and response priorities.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -1217,7 +1217,7 @@ export default function DashboardPage() {
 
       <div
         id="dashboard-summary"
-        className="scroll-mt-28 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+        className="scroll-mt-28 grid grid-cols-2 gap-4 md:grid-cols-2 xl:grid-cols-4"
       >
         <PremiumStatCard
           title="Total cases"
@@ -1238,7 +1238,7 @@ export default function DashboardPage() {
         <PremiumStatCard
           title="Forecast total"
           value={formatNumber(displayStats.fourWeekForecast)}
-          helper="Projected dengue cases for the forecast window"
+          helper="Expected dengue cases for the selected period"
           icon={BarChart3}
           tone="orange"
         />
@@ -1255,7 +1255,7 @@ export default function DashboardPage() {
       {usingBackendForecast && (
         <div className="rounded-[28px] border border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-4 text-sm leading-6 text-brand-green shadow-sm dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-slate-900 dark:text-emerald-300">
           <span className="font-black">Analysis ready:</span>{' '}
-          The uploaded dengue records are now being used for dashboard totals, trend view, priority ranking, and monitoring alerts. The system identified{' '}
+          The uploaded dengue records are now being used for dashboard totals, trend view, priority barangays, and monitoring alerts. The system identified{' '}
           {formatNumber(highRiskCount)} high-risk barangay{highRiskCount === 1 ? '' : 's'},{' '}
           {formatNumber(moderateRiskCount)} moderate-risk barangay{moderateRiskCount === 1 ? '' : 's'}, and{' '}
           {formatNumber(lowRiskCount)} low-risk barangay{lowRiskCount === 1 ? '' : 's'}.
@@ -1275,7 +1275,7 @@ export default function DashboardPage() {
             </h3>
 
             <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Shows whether dengue, weather, population, and boundary datasets are working together for forecasting, GIS mapping, and DSS response planning.
+              Shows whether dengue, weather, population, and boundary files are working together for forecasting, mapping, and response planning.
             </p>
           </div>
 
@@ -1284,7 +1284,7 @@ export default function DashboardPage() {
           </span>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-white to-blue-50 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-blue-950/20">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
@@ -1319,7 +1319,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-400">
-              Weather pressure used by the multi-source scoring model.
+              Weather conditions used in the barangay risk score.
             </p>
           </div>
 
@@ -1368,7 +1368,7 @@ export default function DashboardPage() {
               Integration checks
             </p>
 
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-2">
               {integrationChecks.length > 0 ? (
                 integrationChecks.slice(0, 6).map((check) => (
                   <div
@@ -1395,7 +1395,7 @@ export default function DashboardPage() {
                 ))
               ) : (
                 <p className="rounded-[20px] border border-dashed border-slate-200 bg-white px-4 py-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 md:col-span-2">
-                  Upload the dengue, weather, population, and boundary datasets to run integration checks.
+                  Upload the dengue, weather, population, and boundary files so the system can check if they match.
                 </p>
               )}
             </div>
@@ -1588,7 +1588,7 @@ export default function DashboardPage() {
               ))
             ) : (
               <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-                No barangay risk ranking available yet.
+                No priority barangay list is available yet.
               </div>
             )}
           </div>
@@ -1610,7 +1610,7 @@ export default function DashboardPage() {
             Continue the dengue monitoring workflow.
           </p>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:block sm:space-y-3">
             {actions.map((action) => {
               const Icon = action.icon
 
@@ -1619,27 +1619,27 @@ export default function DashboardPage() {
                   key={action.label}
                   type="button"
                   onClick={() => handleQuickActionNavigation(actionRoutes[action.label])}
-                  className="group flex w-full items-center justify-between gap-3 rounded-[24px] border border-brand-line bg-gradient-to-r from-white to-slate-50 px-4 py-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                  className="group flex min-h-[132px] w-full flex-col items-start justify-between gap-3 overflow-hidden rounded-[24px] border border-brand-line bg-gradient-to-r from-white to-slate-50 px-3 py-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none sm:min-h-0 sm:flex-row sm:items-center sm:px-4 sm:py-4"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
                     <div
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${action.style}`}
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border sm:h-11 sm:w-11 ${action.style}`}
                     >
                       <Icon className="h-5 w-5" />
                     </div>
 
-                    <div>
-                      <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black leading-tight text-brand-text dark:text-slate-100">
                         {action.label}
                       </p>
 
-                      <p className="mt-0.5 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                      <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400 sm:mt-0.5">
                         {action.description}
                       </p>
                     </div>
                   </div>
 
-                  <ArrowRight className="h-4 w-4 text-brand-muted transition group-hover:translate-x-1 group-hover:text-brand-blue dark:text-slate-500 dark:group-hover:text-blue-300" />
+                  <ArrowRight className="mt-auto h-4 w-4 text-brand-muted transition group-hover:translate-x-1 group-hover:text-brand-blue dark:text-slate-500 dark:group-hover:text-blue-300 sm:mt-0" />
                 </button>
               )
             })}
@@ -1647,23 +1647,23 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={resetSampleData}
-              className="group flex w-full items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-left text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-200 hover:text-rose-600 hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:shadow-none dark:hover:border-rose-500/30 dark:hover:text-rose-300"
+              className="group flex min-h-[132px] w-full flex-col items-start justify-between gap-3 overflow-hidden rounded-[24px] border border-slate-200 bg-white px-3 py-3 text-left text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-200 hover:text-rose-600 hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:shadow-none dark:hover:border-rose-500/30 dark:hover:text-rose-300 sm:min-h-0 sm:flex-row sm:items-center sm:px-4 sm:py-4"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900 sm:h-11 sm:w-11">
                   <RefreshCcw className="h-5 w-5" />
                 </div>
 
                 <div>
-                  <p className="text-sm font-black">Reset workspace</p>
+                  <p className="text-sm font-black leading-tight">Reset workspace</p>
 
-                  <p className="mt-0.5 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                  <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400 sm:mt-0.5">
                     Clear uploaded results and return to an empty workspace.
                   </p>
                 </div>
               </div>
 
-              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+              <ArrowRight className="mt-auto h-4 w-4 transition group-hover:translate-x-1 sm:mt-0" />
             </button>
           </div>
         </Panel>
@@ -1718,31 +1718,31 @@ export default function DashboardPage() {
             Source summary
           </h3>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:block sm:space-y-3">
             {Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
               <div
                 key={key}
-                className="rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                className="min-h-[138px] overflow-hidden rounded-[24px] border border-brand-line bg-gradient-to-r from-slate-50 to-white p-3 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none sm:min-h-0 sm:p-4"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-black capitalize text-brand-text dark:text-slate-100">
+                    <p className="truncate text-sm font-black capitalize text-brand-text dark:text-slate-100">
                       {key}
                     </p>
 
-                    <p className="mt-1 max-w-full break-all text-xs leading-5 text-brand-muted dark:text-slate-400">
+                    <p className="mt-1 max-w-full truncate text-[11px] leading-4 text-brand-muted dark:text-slate-400 sm:text-xs sm:leading-5">
                       {item.uploadedName || 'No file uploaded'}
                     </p>
                   </div>
 
-                  <span className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(item.badge)}`}>
+                  <span className={`w-fit shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black leading-none sm:px-3 sm:text-[11px] ${getStatusStyle(item.badge)}`}>
                     {item.badge || 'No status'}
                   </span>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-3 py-2 text-xs font-bold text-brand-muted dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                  <span>Accepted records</span>
-                  <span>
+                <div className="mt-3 rounded-2xl border border-slate-100 bg-white px-3 py-2 text-[11px] font-bold leading-4 text-brand-muted shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:flex sm:items-center sm:justify-between sm:text-xs">
+                  <span className="block">Accepted records</span>
+                  <span className="mt-1 block font-black text-brand-text dark:text-slate-100 sm:mt-0">
                     {formatNumber(item.validCount || 0)} / {formatNumber(item.recordCount || 0)}
                   </span>
                 </div>

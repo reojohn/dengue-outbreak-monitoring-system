@@ -1032,7 +1032,7 @@ function getBackendRationale(row = {}) {
     `The saved forecast projects ${formatNumber(forecast)} case${forecast === 1 ? '' : 's'} for the next four periods.`,
     `Risk level is classified as ${risk} using the saved forecast result.`,
     `Trend direction is ${trend}, based on a recent average of ${formatNumber(recentAverage)} compared with a previous average of ${formatNumber(previousAverage)}.`,
-    `The uploaded dataset contains ${formatNumber(historical)} historical case${historical === 1 ? '' : 's'} for this barangay.`,
+    `The uploaded records contain ${formatNumber(historical)} historical case${historical === 1 ? '' : 's'} for this barangay.`,
   ]
 }
 
@@ -3089,7 +3089,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   addSlideTitle(
     sourceSlide,
     'Uploaded Data Readiness',
-    'Validation status of uploaded or available datasets.'
+    'Check status of uploaded or available files.'
   )
 
   sourceSlide.addTable(
@@ -3300,6 +3300,110 @@ function PremiumPanel({ id, children, className = '' }) {
   )
 }
 
+
+function splitMetadataItems(value, separator = ';') {
+  const text = String(value || '').trim()
+
+  if (!text) return []
+
+  return text
+    .split(separator)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function splitMetadataLabelValue(item = '') {
+  const text = String(item || '').trim()
+  const colonIndex = text.indexOf(':')
+
+  if (colonIndex <= 0) {
+    return {
+      label: '',
+      value: text,
+    }
+  }
+
+  return {
+    label: text.slice(0, colonIndex).trim(),
+    value: text.slice(colonIndex + 1).trim(),
+  }
+}
+
+function splitFeatureImportanceItem(item = '') {
+  const text = String(item || '').trim()
+  const match = text.match(/^(.*)\(([^()]+)\)$/)
+
+  if (!match) {
+    return {
+      label: text,
+      value: '',
+    }
+  }
+
+  return {
+    label: match[1].trim(),
+    value: match[2].trim(),
+  }
+}
+
+function MetadataDetailList({
+  value,
+  separator = ';',
+  itemClassName = 'border-slate-200 bg-white text-brand-text dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200',
+  labelClassName = 'text-brand-muted dark:text-slate-500',
+  valueClassName = 'text-brand-text dark:text-slate-100',
+  dotClassName = 'bg-brand-blue',
+  columns = 'grid-cols-1',
+  variant = 'plain',
+}) {
+  const items = splitMetadataItems(value, separator)
+
+  if (!items.length) {
+    return (
+      <p className="mt-2 text-sm font-bold leading-6 text-brand-muted dark:text-slate-400">
+        Not recorded
+      </p>
+    )
+  }
+
+  return (
+    <div className={`mt-3 grid gap-2 ${columns}`}>
+      {items.map((item, index) => {
+        const parsed = variant === 'feature'
+          ? splitFeatureImportanceItem(item)
+          : splitMetadataLabelValue(item)
+        const hasLabel = Boolean(parsed.label)
+        const hasValue = Boolean(parsed.value)
+
+        return (
+          <div
+            key={`${item}-${index}`}
+            className={`min-w-0 rounded-2xl border px-3 py-2.5 text-sm font-bold leading-5 ${itemClassName}`}
+          >
+            <div className="flex min-w-0 items-start gap-2">
+              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dotClassName}`} />
+
+              <div className="min-w-0 flex-1">
+                {hasLabel && (
+                  <p className={`break-words text-[10px] font-black uppercase tracking-[0.13em] ${labelClassName}`}>
+                    {parsed.label}
+                  </p>
+                )}
+
+                {hasValue && (
+                  <p className={`break-words ${hasLabel ? 'mt-1' : ''} ${valueClassName}`}>
+                    {parsed.value}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function ReportsPage() {
   const [format, setFormat] = useState('pdf')
   const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
@@ -3308,6 +3412,7 @@ export default function ReportsPage() {
   const [hotspotError, setHotspotError] = useState('')
   const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
   const [latestModelMetrics, setLatestModelMetrics] = useState(null)
+  const [isAiSnapshotOpen, setIsAiSnapshotOpen] = useState(false)
 
   const {
     dashboardStats = {},
@@ -3640,8 +3745,144 @@ const exportPayload = {
 
 
   return (
-    <div className="relative space-y-6 pb-10">
+    <div className="reports-mobile-compact relative space-y-6 pb-10">
       <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
+
+
+      <style>{`
+        @media (max-width: 639px) {
+          .reports-mobile-compact {
+            gap: 0.75rem;
+            padding-bottom: 1.25rem;
+          }
+
+          .reports-mobile-compact section,
+          .reports-mobile-compact [id="official-report-details"],
+          .reports-mobile-compact [id="decision-brief"],
+          .reports-mobile-compact [id="export-center"],
+          .reports-mobile-compact .rounded-\[34px\],
+          .reports-mobile-compact .rounded-\[36px\],
+          .reports-mobile-compact .rounded-\[30px\],
+          .reports-mobile-compact .rounded-\[28px\] {
+            border-radius: 1.25rem !important;
+          }
+
+          .reports-mobile-compact section,
+          .reports-mobile-compact .p-6,
+          .reports-mobile-compact .sm\:p-6,
+          .reports-mobile-compact .p-5,
+          .reports-mobile-compact .sm\:p-5 {
+            padding: 0.85rem !important;
+          }
+
+          .reports-mobile-compact h1 {
+            font-size: 1.75rem !important;
+            line-height: 2.05rem !important;
+          }
+
+          .reports-mobile-compact h2 {
+            font-size: 1.15rem !important;
+            line-height: 1.45rem !important;
+          }
+
+          .reports-mobile-compact h3 {
+            font-size: 1rem !important;
+            line-height: 1.3rem !important;
+          }
+
+          .reports-mobile-compact p {
+            line-height: 1.35rem;
+          }
+
+          .reports-mobile-compact .gap-6 {
+            gap: 0.85rem !important;
+          }
+
+          .reports-mobile-compact .gap-5,
+          .reports-mobile-compact .gap-4 {
+            gap: 0.7rem !important;
+          }
+
+          .reports-mobile-compact .mt-6,
+          .reports-mobile-compact .mt-5,
+          .reports-mobile-compact .mt-4 {
+            margin-top: 0.75rem !important;
+          }
+
+          .reports-mobile-compact .text-3xl {
+            font-size: 1.45rem !important;
+            line-height: 1.75rem !important;
+          }
+
+          .reports-mobile-compact .text-2xl {
+            font-size: 1.2rem !important;
+            line-height: 1.45rem !important;
+          }
+
+          .reports-mobile-compact .text-xl {
+            font-size: 1.05rem !important;
+            line-height: 1.35rem !important;
+          }
+
+          .reports-mobile-compact .h-14,
+          .reports-mobile-compact .w-14 {
+            height: 2.5rem !important;
+            width: 2.5rem !important;
+          }
+
+          .reports-mobile-compact .h-12,
+          .reports-mobile-compact .w-12,
+          .reports-mobile-compact .h-11,
+          .reports-mobile-compact .w-11 {
+            height: 2.25rem !important;
+            width: 2.25rem !important;
+          }
+
+          .reports-mobile-compact .h-10,
+          .reports-mobile-compact .w-10 {
+            height: 2rem !important;
+            width: 2rem !important;
+          }
+
+          .reports-mobile-compact .p-4 {
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .px-5 {
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+          }
+
+          .reports-mobile-compact .py-4,
+          .reports-mobile-compact .py-3\.5,
+          .reports-mobile-compact .py-3 {
+            padding-top: 0.6rem !important;
+            padding-bottom: 0.6rem !important;
+          }
+
+          .reports-mobile-compact .min-h-\[78px\] {
+            min-height: 3.5rem !important;
+          }
+
+          .reports-mobile-compact table {
+            font-size: 0.72rem;
+          }
+
+          .reports-mobile-compact th,
+          .reports-mobile-compact td {
+            padding: 0.55rem 0.65rem !important;
+          }
+
+          .reports-mobile-compact .overflow-x-auto {
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .reports-mobile-compact .break-words,
+          .reports-mobile-compact .break-all {
+            overflow-wrap: anywhere;
+          }
+        }
+      `}</style>
 
       <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.22)] dark:border-slate-800 sm:p-6 lg:p-7">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
@@ -3667,7 +3908,7 @@ const exportPayload = {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-4">
+            <div className="mt-6 grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-4">
               <HeroMetric
                 label="Total cases"
                 value={formatNumber(displayDashboardStats.totalCases)}
@@ -3779,7 +4020,7 @@ const exportPayload = {
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-5">
         <StatCard
           label="Total cases"
           value={formatNumber(displayDashboardStats.totalCases)}
@@ -3872,118 +4113,447 @@ const exportPayload = {
         </div>
       </div>
 
-      <PremiumPanel id="official-report-details" className="p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <SectionBadge icon={FileText} tone="slate">
-              Official report details
-            </SectionBadge>
+      <PremiumPanel id="official-report-details" className="relative p-0">
+        <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 px-5 py-5 sm:px-6 sm:py-6">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 left-6 h-52 w-52 rounded-full bg-emerald-400/20 blur-3xl" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_34%)]" />
 
-            <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Report metadata
-            </h2>
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/85 backdrop-blur">
+                <FileText className="h-3.5 w-3.5" />
+                Official report details
+              </div>
 
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              These details are included in the PDF, Excel, PowerPoint, and print outputs for a more official review-ready report.
-            </p>
-          </div>
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl">
+                Report metadata
+              </h2>
 
-          <span className="w-fit rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-            {officialReportMetadata.reportId}
-          </span>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {[
-            ['Generated by', officialReportMetadata.generatedBy],
-            ['Role', officialReportMetadata.role],
-            ['Generated date/time', officialReportMetadata.generatedAt],
-            ['Forecast window', officialReportMetadata.forecastWindow],
-            ['Forecast method', officialReportMetadata.forecastMethod],
-            ['Model version', officialReportMetadata.modelVersion],
-            ['Selected model', officialReportMetadata.selectedModel],
-            ['Train/test split', officialReportMetadata.trainTestSplit],
-            ['Random state', officialReportMetadata.randomState],
-            ['Models evaluated', officialReportMetadata.modelsEvaluated],
-            ['AI confidence', officialReportMetadata.aiConfidence],
-            ['Top feature importance', officialReportMetadata.featureImportanceSummary],
-            ['Selected model metrics', officialReportMetadata.selectedModelMetrics],
-            ['Risk thresholds', officialReportMetadata.riskThresholds],
-            ['Top high-risk barangays', officialReportMetadata.topHighRiskBarangays],
-          ].map(([label, value]) => (
-            <div
-              key={`metadata-${label}`}
-              className="rounded-[22px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
-            >
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                {label}
-              </p>
-
-              <p className="mt-2 break-words text-sm font-black leading-6 text-brand-text dark:text-slate-100">
-                {value}
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-white/75">
+                These details are included in the PDF, Excel, PowerPoint, and print outputs for a more official review-ready report.
               </p>
             </div>
-          ))}
-        </div>
 
-        <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-            <p className="text-sm font-black text-brand-text dark:text-slate-100">
-              Uploaded file record counts
-            </p>
+            <div className="w-fit rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left shadow-sm backdrop-blur">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/60">
+                Report ID
+              </p>
+
+              <p className="mt-1 text-sm font-black text-white">
+                {officialReportMetadata.reportId}
+              </p>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-sm dark:divide-slate-800">
-              <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:bg-slate-950 dark:text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Dataset</th>
-                  <th className="px-4 py-3">Filename</th>
-                  <th className="px-4 py-3">Upload date/time</th>
-                  <th className="px-4 py-3">Total</th>
-                  <th className="px-4 py-3">Valid</th>
-                  <th className="px-4 py-3">Invalid</th>
-                </tr>
-              </thead>
+          <div className="relative mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {[
+              ['Generated', officialReportMetadata.generatedAt, CalendarDays],
+              ['Forecast window', officialReportMetadata.forecastWindow, BarChart3],
+              ['Selected model', officialReportMetadata.selectedModel, Sparkles],
+              ['AI confidence', officialReportMetadata.aiConfidence, Gauge],
+            ].map(([label, value, Icon]) => (
+              <div
+                key={`metadata-highlight-${label}`}
+                className="rounded-[22px] border border-white/15 bg-white/10 p-3 shadow-sm backdrop-blur"
+              >
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white">
+                  <Icon className="h-4 w-4" />
+                </div>
 
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {officialSourceRows.length > 0 ? (
-                  officialSourceRows.map((row) => (
-                    <tr key={`official-source-${row.dataset}`} className="text-brand-muted dark:text-slate-400">
-                      <td className="px-4 py-3 font-black text-brand-text dark:text-slate-100">{row.dataset}</td>
-                      <td className="max-w-[280px] break-all px-4 py-3">{row.filename}</td>
-                      <td className="px-4 py-3">{row.uploadedAt}</td>
-                      <td className="px-4 py-3 font-bold">{formatNumber(row.totalRecords)}</td>
-                      <td className="px-4 py-3 font-bold text-brand-green dark:text-emerald-300">{formatNumber(row.validRecords)}</td>
-                      <td className="px-4 py-3 font-bold text-brand-orange dark:text-amber-300">{formatNumber(row.invalidRecords)}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className="px-4 py-4 text-brand-muted dark:text-slate-400" colSpan={6}>
-                      No uploaded file metadata available yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">
+                  {label}
+                </p>
 
-        <div className="mt-5 rounded-[24px] border border-amber-100 bg-amber-50/80 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10">
-          <p className="text-sm font-black text-brand-orange dark:text-amber-300">
-            Limitations and assumptions
-          </p>
-
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {officialReportMetadata.limitations.map((item, index) => (
-              <div key={`limitation-${index}`} className="flex gap-2 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-sm leading-6 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                  {index + 1}
-                </span>
-                <span>{item}</span>
+                <p className="mt-1 break-words text-sm font-black leading-5 text-white">
+                  {value}
+                </p>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-6">
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.05fr)_minmax(460px,0.95fr)]">
+            <div className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/70 p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:text-blue-300">
+                    Issuance details
+                  </p>
+
+                  <h3 className="mt-1 text-lg font-black text-brand-text dark:text-slate-100">
+                    Official report identity
+                  </h3>
+                </div>
+
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.22)]">
+                  <FileText className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {[
+                  ['Generated by', officialReportMetadata.generatedBy, Users],
+                  ['Role', officialReportMetadata.role, ShieldAlert],
+                  ['Generated date/time', officialReportMetadata.generatedAt, CalendarDays],
+                  ['Forecast window', officialReportMetadata.forecastWindow, BarChart3],
+                ].map(([label, value, Icon]) => (
+                  <div
+                    key={`issuance-${label}`}
+                    className="group rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-brand-blue dark:bg-blue-500/10 dark:text-blue-300">
+                        <Icon className="h-5 w-5" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                          {label}
+                        </p>
+
+                        <p className="mt-1 break-words text-sm font-black leading-6 text-brand-text dark:text-slate-100">
+                          {value}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 rounded-[24px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-blue shadow-sm dark:bg-white/10 dark:text-blue-300">
+                    <Database className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
+                      Forecast method
+                    </p>
+
+                    <p className="mt-1 text-sm font-semibold leading-6 text-brand-text dark:text-slate-300">
+                      {officialReportMetadata.forecastMethod}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[30px] border border-slate-200 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-4 text-white shadow-[0_18px_44px_rgba(15,23,42,0.18)] dark:border-slate-800">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-200">
+                    AI model snapshot
+                  </p>
+
+                  <h3 className="mt-1 break-words text-lg font-black">
+                    {officialReportMetadata.selectedModel}
+                  </h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAiSnapshotOpen((current) => !current)}
+                  aria-expanded={isAiSnapshotOpen}
+                  className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-sm transition hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/15"
+                >
+                  {isAiSnapshotOpen ? (
+                    <ChevronUp className="h-5 w-5" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAiSnapshotOpen((current) => !current)}
+                aria-expanded={isAiSnapshotOpen}
+                className="mt-4 flex w-full items-center justify-between gap-3 rounded-[24px] border border-white/15 bg-white/10 px-4 py-3 text-left shadow-sm backdrop-blur transition hover:border-white/25 hover:bg-white/15"
+              >
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">
+                    Model details
+                  </p>
+
+                  <p className="mt-1 break-words text-sm font-black leading-5 text-white">
+                    {isAiSnapshotOpen ? 'Hide evaluation metrics and feature importance' : 'View evaluation metrics and feature importance'}
+                  </p>
+                </div>
+
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
+                  {isAiSnapshotOpen ? 'Collapse' : 'Expand'}
+                  {isAiSnapshotOpen ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </span>
+              </button>
+
+              {isAiSnapshotOpen && (
+                <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ['Version', officialReportMetadata.modelVersion],
+                      ['Split', officialReportMetadata.trainTestSplit],
+                      ['Random state', officialReportMetadata.randomState],
+                      ['Models', officialReportMetadata.modelsEvaluated],
+                    ].map(([label, value]) => (
+                      <div
+                        key={`model-snapshot-${label}`}
+                        className="rounded-2xl border border-white/15 bg-white/10 px-3 py-3 backdrop-blur"
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/50">
+                          {label}
+                        </p>
+
+                        <p className="mt-1 break-words text-sm font-black leading-5 text-white">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-[24px] border border-emerald-300/20 bg-emerald-400/10 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+                        Selected model metrics
+                      </p>
+
+                      <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-[10px] font-black text-emerald-100">
+                        Evaluation
+                      </span>
+                    </div>
+
+                    <MetadataDetailList
+                      value={officialReportMetadata.selectedModelMetrics}
+                      separator=";"
+                      itemClassName="border-emerald-300/15 bg-white/10"
+                      labelClassName="text-emerald-200"
+                      valueClassName="text-white"
+                      dotClassName="bg-emerald-300"
+                      columns="grid-cols-1 sm:grid-cols-2"
+                    />
+                  </div>
+
+                  <div className="rounded-[24px] border border-amber-300/20 bg-amber-400/10 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">
+                        Top feature importance
+                      </p>
+
+                      <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[10px] font-black text-amber-100">
+                        Top 5
+                      </span>
+                    </div>
+
+                    <MetadataDetailList
+                      value={officialReportMetadata.featureImportanceSummary}
+                      separator=";"
+                      itemClassName="border-amber-300/15 bg-white/10"
+                      labelClassName="text-amber-200"
+                      valueClassName="text-white"
+                      dotClassName="bg-amber-300"
+                      variant="feature"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 2xl:grid-cols-2">
+            <div className="rounded-[28px] border border-emerald-100 bg-emerald-50/80 p-4 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-green shadow-sm dark:bg-white/10 dark:text-emerald-300">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-green dark:text-emerald-300">
+                    Risk thresholds
+                  </p>
+
+                  <MetadataDetailList
+                    value={officialReportMetadata.riskThresholds}
+                    separator=";"
+                    itemClassName="border-emerald-100 bg-white/85 dark:border-emerald-500/20 dark:bg-slate-950/60"
+                    labelClassName="text-brand-green dark:text-emerald-300"
+                    valueClassName="text-brand-text dark:text-slate-100"
+                    dotClassName="bg-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-rose-100 bg-rose-50/80 p-4 shadow-sm dark:border-rose-500/20 dark:bg-rose-500/10">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-red shadow-sm dark:bg-white/10 dark:text-rose-300">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-red dark:text-rose-300">
+                    Top high-risk barangays
+                  </p>
+
+                  <MetadataDetailList
+                    value={officialReportMetadata.topHighRiskBarangays}
+                    separator=","
+                    itemClassName="border-rose-100 bg-white/85 dark:border-rose-500/20 dark:bg-slate-950/60"
+                    labelClassName="text-brand-red dark:text-rose-300"
+                    valueClassName="text-brand-text dark:text-slate-100"
+                    dotClassName="bg-rose-500"
+                    columns="grid-cols-1 sm:grid-cols-2"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-blue-100 bg-blue-50/80 p-4 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10 2xl:col-span-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-blue shadow-sm dark:bg-white/10 dark:text-blue-300">
+                    <Gauge className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
+                      AI confidence
+                    </p>
+
+                    <p className="mt-1 break-words text-sm font-bold leading-6 text-brand-text dark:text-slate-300">
+                      {officialReportMetadata.aiConfidence}
+                    </p>
+                  </div>
+                </div>
+
+                <span className="w-fit rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-slate-950/60 dark:text-blue-300">
+                  Model selection note
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                  Uploaded file record counts
+                </p>
+
+                <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
+                  Official source details used for export metadata.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['Total', officialReportMetadata.totalRecords],
+                  ['Valid', officialReportMetadata.validRecords],
+                  ['Invalid', officialReportMetadata.invalidRecords],
+                ].map(([label, value]) => (
+                  <div
+                    key={`source-count-${label}`}
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+                      {label}
+                    </p>
+
+                    <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                      {formatNumber(value || 0)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm dark:divide-slate-800">
+                <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:bg-slate-950 dark:text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">Dataset</th>
+                    <th className="px-4 py-3">Filename</th>
+                    <th className="px-4 py-3">Upload date/time</th>
+                    <th className="px-4 py-3">Total</th>
+                    <th className="px-4 py-3">Valid</th>
+                    <th className="px-4 py-3">Invalid</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {officialSourceRows.length > 0 ? (
+                    officialSourceRows.map((row) => (
+                      <tr
+                        key={`official-source-${row.dataset}`}
+                        className="text-brand-muted transition hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-950"
+                      >
+                        <td className="px-4 py-3 font-black text-brand-text dark:text-slate-100">
+                          {row.dataset}
+                        </td>
+                        <td className="max-w-[280px] break-all px-4 py-3">
+                          {row.filename}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.uploadedAt}
+                        </td>
+                        <td className="px-4 py-3 font-bold">
+                          {formatNumber(row.totalRecords)}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-brand-green dark:text-emerald-300">
+                          {formatNumber(row.validRecords)}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-brand-orange dark:text-amber-300">
+                          {formatNumber(row.invalidRecords)}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="px-4 py-4 text-brand-muted dark:text-slate-400" colSpan={6}>
+                        No uploaded file metadata available yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[28px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950">
+            <div className="flex items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-brand-orange shadow-sm dark:bg-white/10 dark:text-amber-300">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+
+              <div>
+                <p className="text-sm font-black text-brand-orange dark:text-amber-300">
+                  Limitations and assumptions
+                </p>
+
+                <p className="text-xs font-semibold text-brand-muted dark:text-slate-500">
+                  These reminders are included for official review and interpretation.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+              {officialReportMetadata.limitations.map((item, index) => (
+                <div
+                  key={`limitation-${index}`}
+                  className="flex gap-2 rounded-2xl border border-white/80 bg-white/85 px-3 py-2 text-sm leading-6 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400"
+                >
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                    {index + 1}
+                  </span>
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </PremiumPanel>
@@ -4115,7 +4685,7 @@ const exportPayload = {
                           </div>
                         </div>
 
-                        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
                             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
                               Combined score
@@ -4177,7 +4747,7 @@ const exportPayload = {
                                 Combined Data risk factors
                               </p>
 
-                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-2">
                                 {[
                                   ['Rainfall', profile.rainfallPressure, CloudRain],
                                   ['Temperature', profile.temperatureSuitability, Thermometer],
@@ -4308,7 +4878,7 @@ const exportPayload = {
             Select the output format, then generate the response planning report.
           </p>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2">
             {exportFormats.map((item) => {
               const Icon = item.icon
 
@@ -4435,7 +5005,7 @@ const exportPayload = {
                     Combined Data factors
                   </p>
 
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-2">
                     {[
                       ['Combined score', `${formatNumber(topProfile.score)}/100`],
                       ['Environment', topProfile.environmentalSuitability],
@@ -4559,7 +5129,7 @@ const exportPayload = {
             Uploaded data readiness
           </h2>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          <div className="mt-5 grid grid-cols-2 gap-2 lg:gap-3 lg:grid-cols-2">
             {Object.entries(sourceStatus || {}).length > 0 ? (
               Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
                 <div
@@ -4607,7 +5177,7 @@ const exportPayload = {
           Recent report activity
         </h2>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+        <div className="mt-5 grid gap-2 sm:gap-3 lg:grid-cols-3">
           {(activityLogs || []).slice(0, 3).length > 0 ? (
             (activityLogs || []).slice(0, 3).map((log) => (
               <div

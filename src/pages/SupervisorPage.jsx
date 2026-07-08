@@ -28,7 +28,7 @@ function formatNumber(value) {
 }
 
 function formatModelName(value) {
-  if (!value) return 'No model selected yet'
+  if (!value) return 'No forecast method selected yet'
 
   return String(value)
     .replace(/_/g, ' ')
@@ -161,6 +161,216 @@ function StatCard({ icon: Icon, label, value, helper, tone = 'blue' }) {
           {helper}
         </p>
       </div>
+
+
+      <style>{`
+        @media (max-width: 639px) {
+          .supervisor-mobile-compact {
+            --sv-card-radius: 20px;
+            --sv-card-pad: 0.85rem;
+          }
+
+          .supervisor-mobile-compact > * + * {
+            margin-top: 0.9rem !important;
+          }
+
+          .supervisor-hero-panel,
+          .supervisor-ai-panel,
+          .supervisor-ranking-panel,
+          .supervisor-priority-panel,
+          .supervisor-reminder-panel {
+            border-radius: 22px !important;
+            padding: 0.9rem !important;
+          }
+
+          .supervisor-hero-panel h1 {
+            margin-top: 0.75rem !important;
+            font-size: 1.55rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .supervisor-hero-panel p,
+          .supervisor-ai-panel p,
+          .supervisor-ranking-panel p,
+          .supervisor-priority-panel p,
+          .supervisor-reminder-panel p {
+            line-height: 1.45 !important;
+          }
+
+          .supervisor-hero-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .supervisor-hero-metrics > div {
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+            min-width: 0 !important;
+          }
+
+          .supervisor-hero-metrics p:first-child,
+          .supervisor-ai-fields p:first-child,
+          .supervisor-stat-grid p:first-of-type {
+            font-size: 0.56rem !important;
+            letter-spacing: 0.09em !important;
+          }
+
+          .supervisor-hero-metrics p:nth-child(2) {
+            font-size: 1.15rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .supervisor-hero-metrics p:last-child {
+            display: none !important;
+          }
+
+          .supervisor-hero-panel .rounded-[32px] {
+            border-radius: 20px !important;
+            padding: 0.85rem !important;
+          }
+
+          .supervisor-hero-panel .rounded-[32px] h2 {
+            font-size: 1.15rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .supervisor-hero-panel .rounded-[32px] .h-14.w-14 {
+            height: 2.5rem !important;
+            width: 2.5rem !important;
+            border-radius: 16px !important;
+          }
+
+          .supervisor-ai-panel .h-24.w-24,
+          .supervisor-ai-panel .sm\:h-28.sm\:w-28 {
+            height: 4.5rem !important;
+            width: 4.5rem !important;
+            border-radius: 18px !important;
+          }
+
+          .supervisor-ai-panel h2 {
+            font-size: 1.25rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .supervisor-ai-fields {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .supervisor-ai-fields > div {
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .supervisor-ai-fields p:last-child {
+            font-size: 0.92rem !important;
+          }
+
+          .supervisor-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.65rem !important;
+          }
+
+          .supervisor-stat-grid > div {
+            border-radius: 20px !important;
+            padding: 0.75rem !important;
+            min-height: 132px !important;
+          }
+
+          .supervisor-stat-grid .h-12.w-12 {
+            height: 2.35rem !important;
+            width: 2.35rem !important;
+            border-radius: 14px !important;
+          }
+
+          .supervisor-stat-grid p:nth-of-type(2) {
+            font-size: 1.55rem !important;
+            line-height: 1.1 !important;
+          }
+
+          .supervisor-stat-grid p:nth-of-type(3) {
+            margin-top: 0.35rem !important;
+            font-size: 0.68rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .supervisor-ranking-panel h2,
+          .supervisor-priority-panel h2 {
+            font-size: 1.15rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .supervisor-ranking-panel .h-12.w-12,
+          .supervisor-priority-panel .h-12.w-12 {
+            height: 2.4rem !important;
+            width: 2.4rem !important;
+            border-radius: 14px !important;
+          }
+
+          .supervisor-table-scroll {
+            max-height: 360px !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .supervisor-table-scroll table {
+            min-width: 660px !important;
+            font-size: 0.75rem !important;
+          }
+
+          .supervisor-table-scroll th,
+          .supervisor-table-scroll td {
+            padding: 0.55rem 0.65rem !important;
+          }
+
+          .supervisor-priority-panel .space-y-3 > p {
+            border-radius: 16px !important;
+            padding: 0.75rem !important;
+            font-size: 0.78rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .supervisor-action-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .supervisor-action-grid > a {
+            border-radius: 18px !important;
+            padding: 0.75rem !important;
+            min-height: 126px !important;
+          }
+
+          .supervisor-action-grid svg.mb-3 {
+            margin-bottom: 0.45rem !important;
+            height: 1.2rem !important;
+            width: 1.2rem !important;
+          }
+
+          .supervisor-action-grid p {
+            display: none !important;
+          }
+
+          .supervisor-action-grid div {
+            font-size: 0.72rem !important;
+            line-height: 1.25 !important;
+            align-items: flex-start !important;
+          }
+
+          .supervisor-reminder-panel {
+            padding: 0.85rem !important;
+          }
+
+          .supervisor-reminder-panel h3 {
+            font-size: 1rem !important;
+          }
+
+          .supervisor-reminder-panel p {
+            margin-top: 0.5rem !important;
+            font-size: 0.78rem !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }
@@ -195,8 +405,8 @@ export default function SupervisorPage() {
     : 0
 
   return (
-    <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[38px] border border-white/80 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 text-white shadow-[0_28px_80px_rgba(15,23,42,0.26)] ring-1 ring-white/10">
+    <div className="supervisor-mobile-compact space-y-6">
+      <section className="supervisor-hero-panel relative overflow-hidden rounded-[38px] border border-white/80 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 text-white shadow-[0_28px_80px_rgba(15,23,42,0.26)] ring-1 ring-white/10">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
         <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
@@ -213,11 +423,11 @@ export default function SupervisorPage() {
             </h1>
 
             <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
-              Executive monitoring workspace for reviewing barangay risk levels, validating forecast readiness,
+              Supervisor workspace for reviewing barangay risk levels, checking forecast readiness,
               identifying high-priority areas, and supporting resource allocation decisions.
             </p>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="supervisor-hero-metrics mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Barangays</p>
                 <p className="mt-1 text-2xl font-black">{formatNumber(totalBarangays)}</p>
@@ -271,7 +481,7 @@ export default function SupervisorPage() {
         </div>
       </section>
 
-      <section className="relative overflow-hidden rounded-[34px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-indigo-500/10">
+      <section className="supervisor-ai-panel relative overflow-hidden rounded-[34px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-indigo-500/10">
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-sky-400/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-indigo-400/10 blur-3xl" />
 
@@ -284,7 +494,7 @@ export default function SupervisorPage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
                 <Sparkles className="h-3.5 w-3.5" />
-                Best model selected
+                Best forecast method selected
               </div>
 
               <p className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-400">
@@ -296,18 +506,18 @@ export default function SupervisorPage() {
               </h2>
 
               <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-300">
-                Version v1. This model was selected from the model comparison because it produced the best forecast performance for the latest integrated dataset.
+                Version v1. This method was selected because it gave the most reliable result using the latest uploaded files.
               </p>
             </div>
           </div>
 
-          <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto">
+          <div className="supervisor-ai-fields grid w-full gap-3 sm:grid-cols-2 lg:w-auto">
             <div className="rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
                 Forecast Status
               </p>
               <p className="mt-1 text-lg font-black text-brand-text dark:text-white">
-                {modelName === 'No model selected yet' ? 'Pending' : 'Ready'}
+                {modelName === 'No forecast method selected yet' ? 'Pending' : 'Ready'}
               </p>
             </div>
 
@@ -323,7 +533,7 @@ export default function SupervisorPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="supervisor-stat-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={ShieldAlert}
           label="High Risk"
@@ -352,13 +562,13 @@ export default function SupervisorPage() {
           icon={Database}
           label="Ready Sources"
           value={`${readySources}/4`}
-          helper="Uploaded datasets available for review."
+          helper="Uploaded files available for review."
           tone="blue"
         />
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="relative overflow-hidden rounded-[34px] border border-white/80 bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
+        <div className="supervisor-ranking-panel relative overflow-hidden rounded-[34px] border border-white/80 bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
           <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl dark:bg-blue-500/10" />
 
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -372,7 +582,7 @@ export default function SupervisorPage() {
                   Barangay Risk Ranking
                 </h2>
                 <p className="text-sm font-bold text-brand-muted dark:text-slate-400">
-                  Scroll to review all ranked barangays.
+                  Scroll to review all priority barangays.
                 </p>
               </div>
             </div>
@@ -460,7 +670,7 @@ export default function SupervisorPage() {
                   {sortedRows.length === 0 && (
                     <tr>
                       <td colSpan="6" className="px-4 py-10 text-center text-sm font-bold text-brand-muted dark:text-slate-400">
-                        No barangay risk ranking available yet.
+                        No priority barangay list is available yet.
                       </td>
                     </tr>
                   )}
@@ -507,7 +717,7 @@ export default function SupervisorPage() {
         </div>
 
         <div className="space-y-5">
-          <div className="relative overflow-hidden rounded-[34px] border border-white/80 bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
+          <div className="supervisor-priority-panel relative overflow-hidden rounded-[34px] border border-white/80 bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
             <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-500/10" />
 
             <div className="relative flex items-center gap-3">
@@ -535,7 +745,7 @@ export default function SupervisorPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <div className="supervisor-action-grid grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
             <Link
               to="/map"
               className="group relative overflow-hidden rounded-[26px] border border-slate-200 bg-white p-5 font-black shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_22px_50px_rgba(37,99,235,0.16)] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/30"
@@ -560,7 +770,7 @@ export default function SupervisorPage() {
                 <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </div>
               <p className="mt-2 text-sm font-bold leading-6 text-brand-muted dark:text-slate-400">
-                Inspect selected model outputs.
+                Review the selected forecast results.
               </p>
             </Link>
 
@@ -579,7 +789,7 @@ export default function SupervisorPage() {
             </Link>
           </div>
 
-          <div className="rounded-[34px] border border-white/80 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/30">
+          <div className="supervisor-reminder-panel rounded-[34px] border border-white/80 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/30">
             <div className="flex items-center gap-3">
               <Building2 className="h-5 w-5 text-blue-500" />
               <h3 className="text-lg font-black text-brand-text dark:text-white">
@@ -588,7 +798,7 @@ export default function SupervisorPage() {
             </div>
 
             <p className="mt-3 text-sm font-bold leading-7 text-brand-muted dark:text-slate-400">
-              Validate forecast outputs with CHO field reports before final resource allocation and public advisory decisions.
+              Check the forecast against CHO field reports before assigning supplies or posting public advisories.
             </p>
           </div>
         </div>

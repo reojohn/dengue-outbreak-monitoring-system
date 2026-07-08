@@ -302,3 +302,332 @@ html.dark body,
 html.dark #root {
   background: #020617;
 }
+
+/* Phase 2 mobile compact system
+   Mobile-only utilities. Desktop is untouched because every rule is scoped to max-width breakpoints. */
+@layer utilities {
+  .mobile-safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .mobile-page-compact {}
+  .mobile-card-compact {}
+  .mobile-panel-compact {}
+  .mobile-stat-grid {}
+  .mobile-stat-card {}
+  .mobile-section-compact {}
+  .mobile-table-scroll {}
+  .mobile-chart-compact {}
+  .mobile-action-list {}
+}
+
+@media (max-width: 1023px) {
+  .dengue-mobile-topbar {
+    position: sticky !important;
+    top: max(0.5rem, env(safe-area-inset-top)) !important;
+    overflow: visible !important;
+  }
+
+  .dengue-mobile-icon-button {
+    min-height: 2.5rem !important;
+    height: 2.5rem !important;
+    width: 2.5rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .dengue-mobile-drawer {
+    height: 100dvh !important;
+    max-width: min(19rem, 86vw) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .dengue-mobile-drawer nav {
+    overflow-y: auto !important;
+    max-height: none !important;
+  }
+
+  .dengue-mobile-page-summary {
+    display: block !important;
+  }
+
+  .dengue-page-header {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dengue-mobile-page-summary {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 18% 0%, rgba(45, 110, 163, 0.22), transparent 24rem),
+      linear-gradient(180deg, #061326 0%, #07182c 55%, #08111f 100%) !important;
+  }
+
+  main,
+  section {
+    scroll-margin-top: 5rem;
+  }
+
+  .dengue-layout-shell {
+    min-height: auto !important;
+    gap: 0 !important;
+  }
+
+  .dengue-layout-shell > main > div {
+    border-radius: 1rem !important;
+    padding: 0.55rem !important;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.10) !important;
+  }
+
+  .dengue-mobile-topbar {
+    margin-bottom: 0.45rem !important;
+    padding: 0.45rem 0.5rem !important;
+    border-radius: 1.05rem !important;
+  }
+
+  .dengue-mobile-topbar button {
+    height: 2.35rem !important;
+    min-height: 2.35rem !important;
+    width: 2.35rem !important;
+    border-radius: 0.9rem !important;
+  }
+
+  .dengue-mobile-page-summary {
+    margin-bottom: 0.55rem !important;
+    padding: 0.7rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .dengue-mobile-page-summary h1 {
+    font-size: 1.15rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .dengue-mobile-page-summary p {
+    font-size: 0.78rem !important;
+  }
+
+  .dengue-mobile-drawer {
+    width: min(18.5rem, 86vw) !important;
+    padding: 0.85rem !important;
+  }
+
+  .dengue-mobile-drawer .relative.mb-8 {
+    margin-bottom: 0.85rem !important;
+  }
+
+  .dengue-mobile-drawer .relative.mt-auto {
+    padding-top: 0.85rem !important;
+  }
+
+  .dengue-mobile-drawer .group\/navitem {
+    padding: 0.12rem !important;
+  }
+
+  .dengue-mobile-drawer .group\/navitem > div {
+    gap: 0.65rem !important;
+    border-radius: 1rem !important;
+    padding: 0.55rem 0.65rem !important;
+    font-size: 0.86rem !important;
+  }
+
+  .dengue-mobile-drawer .group\/navitem span:first-of-type {
+    height: 2.05rem !important;
+    width: 2.05rem !important;
+    border-radius: 0.8rem !important;
+  }
+
+  .dengue-premium-panel {
+    border-radius: 1.35rem !important;
+  }
+
+  .dengue-scaled-content {
+    font-size: 0.9rem;
+  }
+
+  .dengue-scaled-content .mobile-page-compact,
+  .dengue-scaled-content .dashboard-mobile-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem !important;
+  }
+
+  .dengue-scaled-content .mobile-section-compact {
+    margin-top: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .dengue-scaled-content .mobile-panel-compact,
+  .dengue-scaled-content .mobile-card-compact {
+    border-radius: 1.05rem !important;
+    padding: 0.8rem !important;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10) !important;
+  }
+
+  .dengue-scaled-content .mobile-card-compact h2,
+  .dengue-scaled-content .mobile-panel-compact h2,
+  .dengue-scaled-content .mobile-card-compact .mobile-heading,
+  .dengue-scaled-content .mobile-panel-compact .mobile-heading {
+    font-size: 1.18rem !important;
+    line-height: 1.14 !important;
+    letter-spacing: -0.035em !important;
+  }
+
+  .dengue-scaled-content .mobile-card-compact h3,
+  .dengue-scaled-content .mobile-panel-compact h3,
+  .dengue-scaled-content .mobile-subheading {
+    font-size: 1rem !important;
+    line-height: 1.16 !important;
+  }
+
+  .dengue-scaled-content .mobile-card-compact p,
+  .dengue-scaled-content .mobile-panel-compact p,
+  .dengue-scaled-content .mobile-copy {
+    font-size: 0.8rem !important;
+    line-height: 1.35 !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card {
+    min-height: 6.4rem !important;
+    border-radius: 1rem !important;
+    padding: 0.75rem !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card h3,
+  .dengue-scaled-content .mobile-stat-card .mobile-stat-value {
+    margin-top: 0.45rem !important;
+    font-size: 1.55rem !important;
+    line-height: 1 !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card p,
+  .dengue-scaled-content .mobile-stat-card .mobile-stat-label,
+  .dengue-scaled-content .mobile-stat-card .mobile-stat-helper {
+    font-size: 0.68rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card svg {
+    height: 1rem !important;
+    width: 1rem !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card .mobile-stat-icon,
+  .dengue-scaled-content .mobile-stat-card .h-12.w-12,
+  .dengue-scaled-content .mobile-stat-card .h-11.w-11,
+  .dengue-scaled-content .mobile-stat-card .h-10.w-10 {
+    height: 2rem !important;
+    width: 2rem !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .dengue-scaled-content .mobile-chart-compact {
+    height: 250px !important;
+    min-height: 250px !important;
+  }
+
+  .dengue-scaled-content .mobile-table-scroll,
+  .dengue-scaled-content .overflow-x-auto {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dengue-scaled-content .mobile-table-scroll table,
+  .dengue-scaled-content .overflow-x-auto table {
+    min-width: 620px;
+    font-size: 0.78rem !important;
+  }
+
+  .dengue-scaled-content .mobile-table-scroll th,
+  .dengue-scaled-content .mobile-table-scroll td,
+  .dengue-scaled-content .overflow-x-auto th,
+  .dengue-scaled-content .overflow-x-auto td {
+    padding: 0.55rem 0.65rem !important;
+    white-space: nowrap;
+  }
+
+  .dengue-scaled-content .mobile-action-list {
+    display: grid !important;
+    gap: 0.55rem !important;
+  }
+
+  .dengue-scaled-content .mobile-action-list button,
+  .dengue-scaled-content .mobile-action-list a {
+    min-height: 3rem !important;
+    border-radius: 1rem !important;
+    padding: 0.7rem !important;
+  }
+
+  .dengue-scaled-content .mobile-action-list p {
+    font-size: 0.78rem !important;
+    line-height: 1.28 !important;
+  }
+
+  .dengue-scaled-content .mobile-hide-copy {
+    display: none !important;
+  }
+
+  .dengue-scaled-content .mobile-two-columns {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.6rem !important;
+  }
+
+  .dengue-scaled-content .mobile-one-column {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .leaflet-container {
+    height: 360px !important;
+    min-height: 360px !important;
+    border-radius: 1rem !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .dengue-layout-shell > main > div {
+    padding: 0.45rem !important;
+    border-radius: 0.95rem !important;
+  }
+
+  .dengue-scaled-content .mobile-panel-compact,
+  .dengue-scaled-content .mobile-card-compact {
+    padding: 0.68rem !important;
+    border-radius: 0.95rem !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card {
+    min-height: 5.9rem !important;
+    padding: 0.65rem !important;
+  }
+
+  .dengue-scaled-content .mobile-stat-card h3,
+  .dengue-scaled-content .mobile-stat-card .mobile-stat-value {
+    font-size: 1.38rem !important;
+  }
+
+  .dengue-scaled-content .mobile-chart-compact {
+    height: 220px !important;
+    min-height: 220px !important;
+  }
+}
+

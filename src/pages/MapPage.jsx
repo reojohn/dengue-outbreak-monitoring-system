@@ -1688,7 +1688,7 @@ export default function MapPage() {
   )
 
   return (
-    <div className="relative space-y-6 pb-10">
+    <div className="map-mobile-compact relative space-y-6 pb-10">
       <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
 
       {selectedPanelOpen &&
@@ -1696,7 +1696,7 @@ export default function MapPage() {
         createPortal(
           (
         <div
-          className={`fixed z-[9999] w-[min(560px,calc(100vw-24px))] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.30)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:ring-white/10 ${
+          className={`map-selected-panel fixed z-[9999] w-[min(560px,calc(100vw-24px))] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/95 shadow-[0_28px_80px_rgba(15,23,42,0.30)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/95 dark:ring-white/10 ${
             dragState ? 'select-none ring-2 ring-brand-blue/30' : ''
           }`}
           style={{
@@ -1763,7 +1763,7 @@ export default function MapPage() {
               </span>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="map-mobile-selected-metrics mt-5 grid gap-3 sm:grid-cols-2">
               {selectedMetrics.map((metric) => {
                 const Icon = metric.icon
 
@@ -1832,7 +1832,7 @@ export default function MapPage() {
                       </p>
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="map-mobile-field-grid-3 mt-4 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-[20px] border border-white/80 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-950/70">
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
                           Dengue cases
@@ -2050,7 +2050,7 @@ export default function MapPage() {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="map-mobile-hero-grid mt-6 grid gap-3 sm:grid-cols-3">
               <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
                   Time periods used
@@ -2298,7 +2298,7 @@ export default function MapPage() {
             </button>
 
             {legendOpen && (
-              <div className="grid gap-3 border-t border-slate-100 px-4 py-4 dark:border-slate-800 sm:grid-cols-3">
+              <div className="map-mobile-legend-grid grid gap-3 border-t border-slate-100 px-4 py-4 dark:border-slate-800 sm:grid-cols-3">
                 {legendItems.map((item) => {
                   const Icon = item.icon
 
@@ -2593,6 +2593,487 @@ export default function MapPage() {
           </div>
         </div>
       </div>
+
+      <style>{`
+        @media (max-width: 639px) {
+          .map-mobile-compact,
+          .map-mobile-compact * {
+            min-width: 0;
+            box-sizing: border-box;
+          }
+
+          .map-mobile-compact {
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+            padding-bottom: 1.25rem !important;
+          }
+
+          .map-mobile-compact > .pointer-events-none.absolute {
+            display: none !important;
+          }
+
+          .map-mobile-compact.space-y-6 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.85rem !important;
+          }
+
+          .map-mobile-compact section,
+          .map-mobile-compact #hotspot-map,
+          .map-mobile-compact [class*="rounded-[34px]"],
+          .map-mobile-compact [class*="rounded-[36px]"] {
+            max-width: 100% !important;
+            overflow: hidden !important;
+            border-radius: 22px !important;
+            padding: 0.85rem !important;
+          }
+
+          .map-mobile-compact > section:first-of-type {
+            padding: 0.9rem !important;
+            border-radius: 22px !important;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22) !important;
+          }
+
+          .map-mobile-compact > section:first-of-type .relative.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          .map-mobile-compact h1 {
+            font-size: 1.55rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .map-mobile-compact h2,
+          .map-mobile-compact .text-2xl.font-black.tracking-tight {
+            font-size: 1.08rem !important;
+            line-height: 1.14 !important;
+            letter-spacing: -0.035em !important;
+          }
+
+          .map-mobile-compact h3,
+          .map-mobile-compact .text-xl.font-black,
+          .map-mobile-compact .text-lg.font-black {
+            font-size: 0.95rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .map-mobile-compact p {
+            font-size: 0.72rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .map-mobile-compact > section:first-of-type h1 + p {
+            margin-top: 0.55rem !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+            font-size: 0.78rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .map-mobile-compact .inline-flex.items-center.gap-2.rounded-full.border,
+          .map-mobile-compact .mb-4.inline-flex,
+          .map-mobile-compact .mb-2.inline-flex,
+          .map-mobile-compact .mb-3.inline-flex {
+            padding: 0.32rem 0.58rem !important;
+            font-size: 0.55rem !important;
+            letter-spacing: 0.09em !important;
+          }
+
+          .map-mobile-hero-grid {
+            margin-top: 0.75rem !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.48rem !important;
+          }
+
+          .map-mobile-hero-grid > div {
+            min-height: 76px !important;
+            border-radius: 16px !important;
+            padding: 0.55rem !important;
+          }
+
+          .map-mobile-hero-grid p:first-child {
+            font-size: 0.47rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.065em !important;
+          }
+
+          .map-mobile-hero-grid p:nth-child(2) {
+            margin-top: 0.35rem !important;
+            font-size: 1.12rem !important;
+            line-height: 1 !important;
+          }
+
+          .map-mobile-hero-grid p:last-child {
+            margin-top: 0.2rem !important;
+            font-size: 0.55rem !important;
+            line-height: 1.16 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .map-mobile-compact > section:first-of-type .rounded-[30px] {
+            border-radius: 18px !important;
+            padding: 0.7rem !important;
+          }
+
+          .map-mobile-compact > section:first-of-type .h-14.w-14,
+          .map-mobile-compact > section:first-of-type .h-12.w-12 {
+            height: 2.35rem !important;
+            width: 2.35rem !important;
+            border-radius: 14px !important;
+          }
+
+          .map-mobile-compact > section:first-of-type .h-14.w-14 svg,
+          .map-mobile-compact > section:first-of-type .h-12.w-12 svg {
+            height: 1.05rem !important;
+            width: 1.05rem !important;
+          }
+
+          .map-mobile-compact > section:first-of-type .mt-5.rounded-[24px] {
+            margin-top: 0.65rem !important;
+            border-radius: 15px !important;
+            padding: 0.6rem !important;
+          }
+
+          .map-mobile-compact > section:first-of-type button.mt-5 {
+            min-height: 64px !important;
+            margin-top: 0.65rem !important;
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .map-mobile-compact > section:first-of-type button.mt-5 .h-12.w-12,
+          .map-mobile-compact > section:first-of-type button.mt-5 .h-10.w-10 {
+            height: 2rem !important;
+            width: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .map-mobile-compact .mt-6 { margin-top: 0.9rem !important; }
+          .map-mobile-compact .mt-5 { margin-top: 0.75rem !important; }
+          .map-mobile-compact .mt-4 { margin-top: 0.6rem !important; }
+          .map-mobile-compact .mt-3 { margin-top: 0.48rem !important; }
+          .map-mobile-compact .gap-6 { gap: 0.85rem !important; }
+          .map-mobile-compact .gap-5 { gap: 0.7rem !important; }
+          .map-mobile-compact .gap-4 { gap: 0.6rem !important; }
+          .map-mobile-compact .gap-3 { gap: 0.48rem !important; }
+
+          .map-mobile-compact .grid.gap-6.xl\:grid-cols-\[minmax\(0\,1\.65fr\)_minmax\(340px\,0\.75fr\)\],
+          .map-mobile-compact .grid.gap-6 {
+            gap: 0.85rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map {
+            border-radius: 20px !important;
+            padding: 0.7rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map > .flex,
+          .map-mobile-compact #hotspot-map .mb-3.flex {
+            gap: 0.55rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .mt-5.overflow-hidden.rounded-[30px] {
+            margin-top: 0.65rem !important;
+            border-radius: 18px !important;
+            padding: 0.6rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.gap-2 {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.gap-2 > div,
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.gap-2 > span {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 0.34rem 0.45rem !important;
+            font-size: 0.5rem !important;
+            line-height: 1.08 !important;
+            text-align: center !important;
+            white-space: normal !important;
+          }
+
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.items-center.gap-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.rounded-2xl {
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            width: 100% !important;
+            border-radius: 14px !important;
+            padding: 0.25rem !important;
+            gap: 0.25rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.rounded-2xl button {
+            justify-content: center !important;
+            gap: 0.2rem !important;
+            border-radius: 10px !important;
+            padding: 0.42rem 0.25rem !important;
+            font-size: 0.5rem !important;
+            letter-spacing: 0.055em !important;
+          }
+
+          .map-mobile-compact #hotspot-map .flex.flex-wrap.rounded-2xl button svg {
+            width: 0.72rem !important;
+            height: 0.72rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map button.group.inline-flex,
+          .map-mobile-compact #hotspot-map button.inline-flex.items-center.gap-2 {
+            width: 100% !important;
+            min-height: 38px !important;
+            justify-content: center !important;
+            border-radius: 13px !important;
+            padding: 0.5rem !important;
+            font-size: 0.55rem !important;
+            letter-spacing: 0.06em !important;
+          }
+
+          .map-mobile-compact #hotspot-map button.group.inline-flex .h-9.w-9 {
+            display: none !important;
+          }
+
+          .map-mobile-compact #hotspot-map button.group.inline-flex svg,
+          .map-mobile-compact #hotspot-map button.inline-flex.items-center.gap-2 svg {
+            width: 0.8rem !important;
+            height: 0.8rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .h-[560px],
+          .map-mobile-compact #hotspot-map .sm\:h-[680px],
+          .map-mobile-compact #hotspot-map .h-[calc(100vh-190px)] {
+            height: 420px !important;
+            min-height: 420px !important;
+            max-height: 420px !important;
+            border-radius: 18px !important;
+            padding: 0.35rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .h-full.overflow-hidden.rounded-[22px] {
+            border-radius: 15px !important;
+          }
+
+          .map-mobile-legend-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+            padding: 0.55rem !important;
+          }
+
+          .map-mobile-legend-grid > div {
+            border-radius: 13px !important;
+            padding: 0.45rem !important;
+            min-height: 70px !important;
+          }
+
+          .map-mobile-legend-grid .inline-flex {
+            padding: 0.25rem 0.35rem !important;
+            font-size: 0.46rem !important;
+            letter-spacing: 0.035em !important;
+          }
+
+          .map-mobile-compact .rounded-[26px],
+          .map-mobile-compact .rounded-[24px],
+          .map-mobile-compact .rounded-[20px] {
+            border-radius: 15px !important;
+          }
+
+          .map-mobile-compact .p-5,
+          .map-mobile-compact .p-4,
+          .map-mobile-compact .px-4.py-3,
+          .map-mobile-compact .px-4.py-3\.5,
+          .map-mobile-compact .p-3 {
+            padding: 0.62rem !important;
+          }
+
+          .map-mobile-compact .relative.self-start.overflow-hidden.rounded-[30px] {
+            height: 205px !important;
+            min-height: 205px !important;
+            border-radius: 18px !important;
+          }
+
+          .map-mobile-compact .relative.self-start.overflow-hidden.rounded-[30px] .absolute.bottom-0 {
+            padding: 0.75rem !important;
+          }
+
+          .map-mobile-compact .relative.self-start.overflow-hidden.rounded-[30px] p {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .map-mobile-compact .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.75rem !important;
+          }
+
+          .map-mobile-compact .mt-5.space-y-3 > :not([hidden]) ~ :not([hidden]),
+          .map-mobile-compact .mt-3.space-y-2 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 0.48rem !important;
+          }
+
+          .map-mobile-compact .mt-5.space-y-3 button {
+            border-radius: 15px !important;
+            padding: 0.58rem !important;
+            gap: 0.45rem !important;
+          }
+
+          .map-mobile-compact .mt-5.space-y-3 button .h-10.w-10 {
+            height: 1.75rem !important;
+            width: 1.75rem !important;
+            border-radius: 10px !important;
+            font-size: 0.62rem !important;
+          }
+
+          .map-mobile-compact .mt-5.space-y-3 button span.font-black {
+            font-size: 0.72rem !important;
+            line-height: 1.08 !important;
+          }
+
+          .map-mobile-compact .mt-5.space-y-3 button p {
+            margin-top: 0.1rem !important;
+            font-size: 0.58rem !important;
+            line-height: 1.14 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .map-mobile-compact .mt-5.space-y-3 button > span:last-child {
+            padding: 0.35rem 0.5rem !important;
+            font-size: 0.56rem !important;
+          }
+
+          .map-mobile-compact .rounded-[26px].border.border-blue-100,
+          .map-mobile-compact .rounded-[24px].border.border-blue-100,
+          .map-mobile-compact .rounded-[24px].border.border-violet-100,
+          .map-mobile-compact .rounded-[24px].border.border-slate-200,
+          .map-mobile-compact .rounded-[24px].border.border-amber-100 {
+            padding: 0.62rem !important;
+            border-radius: 15px !important;
+          }
+
+          .map-mobile-compact .text-2xl { font-size: 1.05rem !important; line-height: 1.1 !important; }
+          .map-mobile-compact .text-xl { font-size: 0.98rem !important; line-height: 1.1 !important; }
+          .map-mobile-compact .text-lg { font-size: 0.9rem !important; line-height: 1.14 !important; }
+          .map-mobile-compact .text-base { font-size: 0.78rem !important; line-height: 1.2 !important; }
+          .map-mobile-compact .text-sm { font-size: 0.7rem !important; line-height: 1.28 !important; }
+          .map-mobile-compact .text-xs { font-size: 0.6rem !important; line-height: 1.18 !important; }
+          .map-mobile-compact .text-[11px] { font-size: 0.52rem !important; line-height: 1.1 !important; }
+
+          .map-selected-panel {
+            left: 0.55rem !important;
+            right: 0.55rem !important;
+            top: auto !important;
+            bottom: 0.6rem !important;
+            width: auto !important;
+            max-height: 84vh !important;
+            border-radius: 22px !important;
+          }
+
+          .map-selected-panel > div:first-child {
+            cursor: default !important;
+            padding: 0.75rem !important;
+          }
+
+          .map-selected-panel > div:first-child p {
+            display: none !important;
+          }
+
+          .map-selected-panel > div:last-child {
+            max-height: calc(84vh - 68px) !important;
+            padding: 0.75rem !important;
+          }
+
+          .map-selected-panel h3 {
+            font-size: 1.2rem !important;
+            line-height: 1.1 !important;
+          }
+
+          .map-selected-panel p,
+          .map-selected-panel span,
+          .map-selected-panel button,
+          .map-selected-panel li {
+            font-size: 0.68rem !important;
+            line-height: 1.22 !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.42rem !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics > div {
+            min-height: 78px !important;
+            border-radius: 14px !important;
+            padding: 0.5rem !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics .h-10.w-10 {
+            display: none !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics p:first-of-type {
+            font-size: 0.48rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.06em !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics p:last-of-type {
+            margin-top: 0.35rem !important;
+            font-size: 0.68rem !important;
+            line-height: 1.15 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden !important;
+          }
+
+          .map-selected-panel .map-mobile-field-grid-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+          }
+
+          .map-selected-panel .map-mobile-field-grid-3 > div {
+            border-radius: 13px !important;
+            padding: 0.5rem !important;
+          }
+
+          .map-selected-panel .rounded-[26px],
+          .map-selected-panel .rounded-[24px],
+          .map-selected-panel .rounded-[22px],
+          .map-selected-panel .rounded-[20px] {
+            border-radius: 15px !important;
+            padding: 0.62rem !important;
+          }
+
+          .map-selected-panel .mt-5 { margin-top: 0.65rem !important; }
+          .map-selected-panel .mt-4 { margin-top: 0.55rem !important; }
+          .map-selected-panel .mt-3 { margin-top: 0.45rem !important; }
+          .map-selected-panel .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.38rem !important; }
+
+          .map-selected-panel .flex.flex-wrap.gap-2 {
+            gap: 0.35rem !important;
+          }
+
+          .map-selected-panel .flex.flex-wrap.gap-2 span {
+            padding: 0.33rem 0.48rem !important;
+            font-size: 0.55rem !important;
+          }
+        }
+      `}</style>
+
     </div>
   )
 }
