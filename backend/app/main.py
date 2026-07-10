@@ -1,3 +1,6 @@
+import os
+
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,15 +16,24 @@ app = FastAPI(
     version="0.1.0",
 )
 
+local_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+
+deployed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+allowed_origins = list(dict.fromkeys(local_origins + deployed_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://192.168.1.42:5173",
-    ],
+    allow_origins=allowed_origins,
     # Allows local network testing from phones such as http://192.168.x.x:5173
     allow_origin_regex=r"http://192\.168\.\d+\.\d+:5173",
     allow_credentials=True,

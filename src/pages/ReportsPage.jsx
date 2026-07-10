@@ -866,7 +866,7 @@ function getOfficialReportMetadata({
   } = getActiveModelPayload(backendForecastResult, latestModelMetrics)
 
   return {
-    reportId: `DR-${new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14)}`,
+    reportId: `DR-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`,
     generatedAt,
     generatedBy,
     role,

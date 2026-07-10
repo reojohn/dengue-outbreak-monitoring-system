@@ -1,5 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:8000`
+const configuredApiUrl = import.meta.env.VITE_API_BASE_URL?.trim()
 
+const API_BASE_URL = (
+  configuredApiUrl ||
+  `${window.location.protocol}//${window.location.hostname}:8000`
+).replace(/\/+$/, '')
 
 function getAuthToken() {
   try {
