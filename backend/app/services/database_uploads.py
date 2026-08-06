@@ -1,4 +1,5 @@
 import json
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import text
@@ -8,6 +9,68 @@ from app.database import engine
 
 def _to_json(value: Any) -> str:
     return json.dumps(value or {}, default=str)
+
+
+_DATASET_UPLOADS_SCHEMA_READY = False
+_DATASET_UPLOADS_SCHEMA_LOCK = Lock()
+
+
+def ensure_dataset_uploads_schema() -> None:
+    """Create or repair the upload metadata table used by every file type."""
+    global _DATASET_UPLOADS_SCHEMA_READY
+
+    if _DATASET_UPLOADS_SCHEMA_READY:
+        return
+
+    with _DATASET_UPLOADS_SCHEMA_LOCK:
+        if _DATASET_UPLOADS_SCHEMA_READY:
+            return
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    create table if not exists public.dataset_uploads (
+                        upload_id uuid primary key default gen_random_uuid(),
+                        dataset_type text not null,
+                        original_filename text not null,
+                        file_type text not null default '',
+                        uploaded_by text not null default 'demo_user',
+                        status text not null default 'validated',
+                        original_row_count integer not null default 0,
+                        valid_row_count integer not null default 0,
+                        invalid_row_count integer not null default 0,
+                        validation_summary jsonb not null default '{}'::jsonb,
+                        detection_result jsonb not null default '{}'::jsonb,
+                        error_message text,
+                        uploaded_at timestamptz not null default now()
+                    )
+                """)
+            )
+
+            column_statements = [
+                "alter table public.dataset_uploads add column if not exists file_type text not null default ''",
+                "alter table public.dataset_uploads add column if not exists uploaded_by text not null default 'demo_user'",
+                "alter table public.dataset_uploads add column if not exists status text not null default 'validated'",
+                "alter table public.dataset_uploads add column if not exists original_row_count integer not null default 0",
+                "alter table public.dataset_uploads add column if not exists valid_row_count integer not null default 0",
+                "alter table public.dataset_uploads add column if not exists invalid_row_count integer not null default 0",
+                "alter table public.dataset_uploads add column if not exists validation_summary jsonb not null default '{}'::jsonb",
+                "alter table public.dataset_uploads add column if not exists detection_result jsonb not null default '{}'::jsonb",
+                "alter table public.dataset_uploads add column if not exists error_message text",
+                "alter table public.dataset_uploads add column if not exists uploaded_at timestamptz not null default now()",
+            ]
+
+            for statement in column_statements:
+                connection.execute(text(statement))
+
+            connection.execute(
+                text("""
+                    create index if not exists idx_dataset_uploads_type_uploaded_at
+                    on public.dataset_uploads (dataset_type, uploaded_at desc)
+                """)
+            )
+
+        _DATASET_UPLOADS_SCHEMA_READY = True
 
 
 def save_dataset_upload(
@@ -24,6 +87,8 @@ def save_dataset_upload(
     detection_result: dict | None = None,
     error_message: str | None = None,
 ) -> str:
+    ensure_dataset_uploads_schema()
+
     with engine.begin() as connection:
         result = connection.execute(
             text("""
@@ -76,6 +141,8 @@ def save_dataset_upload(
 
 
 def get_latest_dataset_uploads() -> dict:
+    ensure_dataset_uploads_schema()
+
     with engine.connect() as connection:
         result = connection.execute(
             text("""
@@ -132,7 +199,8 @@ def get_latest_dataset_previews(limit: int = 300) -> dict:
             text("""
                 select integration_run_id, row_count, created_at
                 from public.integration_runs
-                order by created_at desc
+                where status = 'completed'
+                order by created_at desc, integration_run_id desc
                 limit 1
             """)
         )

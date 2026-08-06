@@ -1,10 +1,14 @@
 from math import asin, cos, radians, sin, sqrt
+import json
 
 from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.database import engine
 from app.services.barangay_normalizer import normalize_barangay_key
+
+
+_HOTSPOT_CACHE_READY = False
 
 
 def _safe_text(value):
@@ -78,16 +82,9 @@ def _haversine_km(lat1, lng1, lat2, lng2):
     return radius_km * c
 
 
-def _load_latest_database_merged_rows():
-    """
-    Load the latest saved combined dataset from Supabase.
-
-    This makes hotspot analysis survive backend restarts because it no longer
-    depends on temporary backend memory.
-    """
-
+def _get_latest_integration_run_id():
     with engine.connect() as connection:
-        run_result = connection.execute(
+        return connection.execute(
             text(
                 """
                 select integration_run_id
@@ -98,47 +95,56 @@ def _load_latest_database_merged_rows():
                 limit 1
                 """
             )
-        )
+        ).scalar_one_or_none()
 
-        integration_run_id = run_result.scalar_one_or_none()
 
-        if not integration_run_id:
-            return {
-                "integration_run_id": None,
-                "rows": [],
-            }
+def _load_latest_database_merged_rows(integration_run_id=None):
+    """Load one database-aggregated row per barangay for hotspot analysis.
 
+    The previous implementation transferred every historical month from
+    Supabase and then aggregated in Python. This query performs the exact same
+    sum/average/max operations inside PostgreSQL and normally returns about 86
+    rows instead of thousands.
+    """
+    integration_run_id = integration_run_id or _get_latest_integration_run_id()
+
+    if not integration_run_id:
+        return {
+            "integration_run_id": None,
+            "rows": [],
+            "pre_aggregated": True,
+        }
+
+    with engine.connect() as connection:
         rows_result = connection.execute(
             text(
                 """
                 select
-                    integrated_row_id,
-                    integration_run_id,
-                    barangay,
-                    barangay_key,
-                    barangay_original,
-                    barangay_original_key,
-                    period,
-                    report_date,
-                    year,
-                    month,
-                    week,
-                    cases,
-                    deaths,
-                    rainfall,
-                    temperature,
-                    humidity,
-                    population,
-                    population_year,
-                    density,
-                    boundary_area_sqkm,
-                    geometry_id,
-                    boundary_match_status,
-                    population_match_status,
-                    weather_match_status
+                    max(nullif(barangay, '')) as barangay,
+                    coalesce(
+                        nullif(barangay_key, ''),
+                        nullif(barangay_original_key, '')
+                    ) as barangay_key,
+                    count(*) as record_count,
+                    coalesce(sum(cases), 0) as total_cases,
+                    coalesce(sum(deaths), 0) as total_deaths,
+                    avg(rainfall) as average_rainfall,
+                    avg(temperature) as average_temperature,
+                    avg(humidity) as average_humidity,
+                    max(population) as population,
+                    max(density) as density,
+                    max(boundary_area_sqkm) as boundary_area_sqkm
                 from public.integrated_dataset_rows
                 where integration_run_id = :integration_run_id
-                order by barangay, year, month, week, period
+                  and coalesce(
+                        nullif(barangay_key, ''),
+                        nullif(barangay_original_key, '')
+                      ) is not null
+                group by coalesce(
+                    nullif(barangay_key, ''),
+                    nullif(barangay_original_key, '')
+                )
+                order by max(nullif(barangay, ''))
                 """
             ),
             {
@@ -151,6 +157,7 @@ def _load_latest_database_merged_rows():
     return {
         "integration_run_id": str(integration_run_id),
         "rows": rows,
+        "pre_aggregated": True,
     }
 
 
@@ -256,17 +263,46 @@ def _get_boundary_lookup():
     }
 
 
-def _get_merged_rows():
-    database_result = _load_latest_database_merged_rows()
+def _get_merged_rows(integration_run_id=None):
+    database_result = _load_latest_database_merged_rows(integration_run_id)
 
     return {
         "source": "supabase_integrated_dataset_rows",
         "integration_run_id": database_result["integration_run_id"],
         "rows": database_result["rows"],
+        "pre_aggregated": database_result.get("pre_aggregated", False),
     }
 
 
 def _aggregate_merged_rows(merged_rows):
+    if merged_rows and "total_cases" in merged_rows[0] and "record_count" in merged_rows[0]:
+        barangays = []
+
+        for row in merged_rows:
+            barangay = _safe_text(row.get("barangay"))
+            barangay_key = normalize_barangay_key(row.get("barangay_key") or barangay)
+
+            if not barangay_key:
+                continue
+
+            barangays.append(
+                {
+                    "barangay": barangay,
+                    "barangay_key": barangay_key,
+                    "record_count": int(_to_number(row.get("record_count"), 0)),
+                    "total_cases": round(_to_number(row.get("total_cases"), 0), 3),
+                    "total_deaths": round(_to_number(row.get("total_deaths"), 0), 3),
+                    "average_rainfall": round(_to_number(row.get("average_rainfall"), 0), 3),
+                    "average_temperature": round(_to_number(row.get("average_temperature"), 0), 3),
+                    "average_humidity": round(_to_number(row.get("average_humidity"), 0), 3),
+                    "population": _to_number(row.get("population"), 0),
+                    "density": _to_number(row.get("density"), 0),
+                    "boundary_area_sqkm": _to_number(row.get("boundary_area_sqkm"), 0),
+                }
+            )
+
+        return barangays
+
     grouped = {}
 
     for row in merged_rows:
@@ -527,11 +563,153 @@ def _recommended_action(level):
     return "Continue routine monitoring."
 
 
-def build_geospatial_hotspots(radius_km=3.0, fallback_nearest_count=3):
-    radius_km = _clamp(_to_number(radius_km, 3.0), 0.5, 15)
-    fallback_nearest_count = int(_clamp(_to_number(fallback_nearest_count, 3), 1, 8))
+def _ensure_hotspot_cache_table():
+    global _HOTSPOT_CACHE_READY
 
-    merged_source = _get_merged_rows()
+    if _HOTSPOT_CACHE_READY:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                create table if not exists public.hotspot_runs (
+                    hotspot_run_id uuid primary key default gen_random_uuid(),
+                    integration_run_id uuid not null,
+                    radius_km numeric not null,
+                    fallback_nearest_count integer not null,
+                    result jsonb not null default '{}'::jsonb,
+                    created_at timestamptz not null default now(),
+                    updated_at timestamptz not null default now(),
+                    unique (integration_run_id, radius_km, fallback_nearest_count)
+                )
+                """
+            )
+        )
+
+    _HOTSPOT_CACHE_READY = True
+
+
+def _load_cached_hotspot_result(integration_run_id, radius_km, fallback_nearest_count):
+    if not integration_run_id:
+        return None
+
+    try:
+        _ensure_hotspot_cache_table()
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    select result
+                    from public.hotspot_runs
+                    where integration_run_id = :integration_run_id
+                      and radius_km = :radius_km
+                      and fallback_nearest_count = :fallback_nearest_count
+                    limit 1
+                    """
+                ),
+                {
+                    "integration_run_id": integration_run_id,
+                    "radius_km": radius_km,
+                    "fallback_nearest_count": fallback_nearest_count,
+                },
+            ).mappings().first()
+    except Exception:
+        return None
+
+    if not row:
+        return None
+
+    result = row.get("result")
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except Exception:
+            return None
+
+    return result if isinstance(result, dict) else None
+
+
+def _save_cached_hotspot_result(result, radius_km, fallback_nearest_count):
+    integration_run_id = result.get("integration_run_id") if isinstance(result, dict) else None
+    if not integration_run_id:
+        return
+
+    try:
+        _ensure_hotspot_cache_table()
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    insert into public.hotspot_runs (
+                        integration_run_id,
+                        radius_km,
+                        fallback_nearest_count,
+                        result,
+                        created_at,
+                        updated_at
+                    )
+                    values (
+                        :integration_run_id,
+                        :radius_km,
+                        :fallback_nearest_count,
+                        cast(:result as jsonb),
+                        now(),
+                        now()
+                    )
+                    on conflict (integration_run_id, radius_km, fallback_nearest_count)
+                    do update set
+                        result = excluded.result,
+                        updated_at = now()
+                    """
+                ),
+                {
+                    "integration_run_id": integration_run_id,
+                    "radius_km": radius_km,
+                    "fallback_nearest_count": fallback_nearest_count,
+                    "result": json.dumps(result, default=str),
+                },
+            )
+    except Exception:
+        # Hotspot analysis must still work if cache persistence is unavailable.
+        return
+
+
+def build_geospatial_hotspots(
+    radius_km=3.0,
+    fallback_nearest_count=3,
+    force_refresh=False,
+    cached_only=False,
+):
+    radius_km = round(_clamp(_to_number(radius_km, 3.0), 0.5, 15), 3)
+    fallback_nearest_count = int(_clamp(_to_number(fallback_nearest_count, 3), 1, 8))
+    integration_run_id = _get_latest_integration_run_id()
+
+    if not integration_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No saved combined dataset rows are available. Upload and combine the source datasets first.",
+        )
+
+    if not force_refresh:
+        cached_result = _load_cached_hotspot_result(
+            integration_run_id,
+            radius_km,
+            fallback_nearest_count,
+        )
+        if cached_result:
+            return {
+                **cached_result,
+                "cache_status": "reused",
+            }
+
+    if cached_only:
+        raise HTTPException(
+            status_code=404,
+            detail="No saved hotspot result exists for the latest integration. Run the hotspot check from the Map page first.",
+        )
+
+    merged_source = _get_merged_rows(integration_run_id)
     merged_rows = merged_source["rows"]
 
     if not merged_rows:
@@ -719,7 +897,7 @@ def build_geospatial_hotspots(radius_km=3.0, fallback_nearest_count=3):
         level = item.get("hotspot_level", "Unknown")
         level_counts[level] = level_counts.get(level, 0) + 1
 
-    return {
+    result = {
         "message": "Geospatial hotspot analysis completed successfully.",
         "method": "Database-backed neighborhood-based spatial hotspot scoring",
         "data_source": merged_source["source"],
@@ -764,4 +942,17 @@ def build_geospatial_hotspots(radius_km=3.0, fallback_nearest_count=3):
             "level_counts": level_counts,
         },
         "hotspots": barangays,
+    }
+
+    _save_cached_hotspot_result(result, radius_km, fallback_nearest_count)
+
+    try:
+        from app.services.notification_builder import save_hotspot_notifications
+        save_hotspot_notifications(result)
+    except Exception:
+        pass
+
+    return {
+        **result,
+        "cache_status": "refreshed",
     }

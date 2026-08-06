@@ -14,6 +14,21 @@ function getAuthToken() {
   }
 }
 
+function getCurrentUserKey() {
+  try {
+    const session = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
+    const identity =
+      session?.userId ||
+      session?.email ||
+      session?.label ||
+      'default_user'
+
+    return `user:${String(identity).trim().toLowerCase()}`
+  } catch {
+    return 'default_user'
+  }
+}
+
 function withAuthHeaders(options = {}) {
   const token = getAuthToken()
   const headers = { ...(options.headers || {}) }
@@ -224,10 +239,14 @@ export async function getBackendAlignmentReport() {
 export async function getGeospatialHotspots({
   radiusKm = 3,
   fallbackNearestCount = 3,
+  forceRefresh = false,
+  cachedOnly = false,
 } = {}) {
   const params = new URLSearchParams({
     radius_km: String(radiusKm),
     fallback_nearest_count: String(fallbackNearestCount),
+    force_refresh: String(Boolean(forceRefresh)),
+    cached_only: String(Boolean(cachedOnly)),
   })
 
   const response = await apiFetch(`${API_BASE_URL}/geospatial/hotspots?${params.toString()}`)
@@ -236,6 +255,25 @@ export async function getGeospatialHotspots({
 
 export async function getBackendNotifications() {
   const response = await apiFetch(`${API_BASE_URL}/notifications`)
+  return handleApiResponse(response)
+}
+
+export async function getNotificationPreferences() {
+  const response = await apiFetch(`${API_BASE_URL}/notifications/preferences`)
+  return handleApiResponse(response)
+}
+
+export async function updateNotificationPreferences(notificationsEnabled) {
+  const response = await apiFetch(`${API_BASE_URL}/notifications/preferences`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      notifications_enabled: Boolean(notificationsEnabled),
+    }),
+  })
+
   return handleApiResponse(response)
 }
 
@@ -344,13 +382,13 @@ export async function getGeneratedReports({ limit = 20 } = {}) {
 
 
 
-export async function getSavedWorkspaceState({ userKey = 'default_user' } = {}) {
+export async function getSavedWorkspaceState({ userKey = getCurrentUserKey() } = {}) {
   const params = new URLSearchParams({ user_key: userKey })
   const response = await apiFetch(`${API_BASE_URL}/workspace?${params.toString()}`)
   return handleApiResponse(response)
 }
 
-export async function saveWorkspaceState(workspace, { userKey = 'default_user' } = {}) {
+export async function saveWorkspaceState(workspace, { userKey = getCurrentUserKey() } = {}) {
   const response = await apiFetch(`${API_BASE_URL}/workspace`, {
     method: 'PUT',
     headers: {
@@ -365,7 +403,7 @@ export async function saveWorkspaceState(workspace, { userKey = 'default_user' }
   return handleApiResponse(response)
 }
 
-export async function clearSavedWorkspaceState({ userKey = 'default_user' } = {}) {
+export async function clearSavedWorkspaceState({ userKey = getCurrentUserKey() } = {}) {
   const params = new URLSearchParams({ user_key: userKey })
   const response = await apiFetch(`${API_BASE_URL}/workspace?${params.toString()}`, {
     method: 'DELETE',
@@ -373,13 +411,13 @@ export async function clearSavedWorkspaceState({ userKey = 'default_user' } = {}
   return handleApiResponse(response)
 }
 
-export async function getNotificationReads({ userKey = 'default_user' } = {}) {
+export async function getNotificationReads({ userKey = getCurrentUserKey() } = {}) {
   const params = new URLSearchParams({ user_key: userKey })
   const response = await apiFetch(`${API_BASE_URL}/notifications/reads?${params.toString()}`)
   return handleApiResponse(response)
 }
 
-export async function markNotificationRead(notificationId, { userKey = 'default_user' } = {}) {
+export async function markNotificationRead(notificationId, { userKey = getCurrentUserKey() } = {}) {
   const params = new URLSearchParams({ user_key: userKey })
   const response = await apiFetch(`${API_BASE_URL}/notifications/reads/${encodeURIComponent(notificationId)}?${params.toString()}`, {
     method: 'POST',
@@ -387,7 +425,7 @@ export async function markNotificationRead(notificationId, { userKey = 'default_
   return handleApiResponse(response)
 }
 
-export async function markNotificationsRead(notificationIds, { userKey = 'default_user' } = {}) {
+export async function markNotificationsRead(notificationIds, { userKey = getCurrentUserKey() } = {}) {
   const response = await apiFetch(`${API_BASE_URL}/notifications/reads`, {
     method: 'POST',
     headers: {

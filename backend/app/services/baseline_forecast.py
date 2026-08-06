@@ -126,10 +126,12 @@ async def generate_baseline_dengue_forecast(file: UploadFile):
         # This avoids extreme jumps while we are still waiting for the real historical dataset.
         capped_change_rate = max(min(change_rate, 0.30), -0.30)
 
-        forecast_next_period = round(recent_average * (1 + capped_change_rate))
-        forecast_next_period = max(forecast_next_period, 0)
-
-        forecast_next_4_periods = forecast_next_period * 4
+        horizon_values = [
+            max(round(recent_average * ((1 + capped_change_rate) ** horizon)), 0)
+            for horizon in range(1, 5)
+        ]
+        forecast_next_period = horizon_values[0]
+        forecast_next_4_periods = sum(horizon_values)
 
         risk_level = classify_forecast_risk(forecast_next_4_periods)
 
@@ -146,6 +148,15 @@ async def generate_baseline_dengue_forecast(file: UploadFile):
                 "trend_direction": trend_direction,
                 "forecast_next_period": int(forecast_next_period),
                 "forecast_next_4_periods": int(forecast_next_4_periods),
+                "forecast_period_predictions": [
+                    {
+                        "horizon": horizon,
+                        "period": f"Period {horizon}",
+                        "predicted_cases": int(value),
+                    }
+                    for horizon, value in enumerate(horizon_values, start=1)
+                ],
+                "forecast_strategy": "trend_projection_fallback",
                 "risk_level": risk_level,
                 "recommendation": get_recommendation(risk_level, trend_direction),
             }
@@ -199,4 +210,5 @@ async def generate_baseline_dengue_forecast(file: UploadFile):
         "dengue_detection": dengue_detection,
         "forecast_results": forecast_rows,
         "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
+        "forecast_strategy": "trend_projection_fallback",
     }

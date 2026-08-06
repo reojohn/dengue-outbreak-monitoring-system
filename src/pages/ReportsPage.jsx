@@ -29,8 +29,12 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
-import { riskStyles } from '../utils/analytics'
+import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
 import { createBackendNotificationEvent, getGeospatialHotspots, getLatestModelMetrics, saveGeneratedReport } from '../services/api'
+import reportsHeroBackground from '../assets/reports.png'
+
+const REPORT_TITLE = 'Four-Month Dengue Response Planning Report'
+const REPORT_EXPORT_BASENAME = 'dengue-four-month-response-planning-report'
 
 const exportFormats = [
   {
@@ -77,7 +81,7 @@ const distributionItems = [
     icon: ShieldAlert,
   },
   {
-    label: 'Weekly decision briefing',
+    label: 'Four-month forecast decision briefing',
     icon: ClipboardList,
   },
   {
@@ -128,6 +132,45 @@ function readOptionalNumber(source, keys = [], fallback = 0) {
   return Number.isFinite(number) ? number : fallback
 }
 
+function getCanonicalCombinedRiskScore(row = null) {
+  if (!row) return 0
+
+  const directFields = [
+    'combined_risk_score',
+    'combinedRiskScore',
+    'multi_source_risk_score',
+    'multiSourceRiskScore',
+    'overall_risk_score',
+    'overallRiskScore',
+  ]
+
+  for (const field of directFields) {
+    const number = Number(row?.[field])
+
+    if (Number.isFinite(number) && number > 0) {
+      return number
+    }
+  }
+
+  const decisionSupport = row?.decisionSupport || {}
+  const fallbackValues = [
+    decisionSupport.multiSourceRiskScore,
+    decisionSupport.riskScore,
+    row?.riskScore,
+    row?.risk_score,
+  ]
+
+  for (const value of fallbackValues) {
+    const number = Number(value)
+
+    if (Number.isFinite(number) && number > 0) {
+      return number
+    }
+  }
+
+  return 0
+}
+
 function formatOptionalNumber(value, suffix = '') {
   const number = Number(value)
 
@@ -159,7 +202,7 @@ function escapeHtml(value) {
 
 function getGenericRecommendedAction(risk) {
   if (risk === 'High') {
-    return 'Conduct source reduction, coordinate immediate cleanup, and issue a barangay-level dengue alert within 24 to 48 hours.'
+    return 'Conduct source reduction, coordinate immediate cleanup, and issue a barangay-level dengue alert within 48 hours.'
   }
 
   if (risk === 'Moderate') {
@@ -170,7 +213,7 @@ function getGenericRecommendedAction(risk) {
     return 'Maintain routine monitoring, public advisories, and regular environmental sanitation activities.'
   }
 
-  return 'Upload and validate dengue records first before generating a complete response recommendation.'
+  return 'Upload and validate dengue records first before generating a recommended barangay response.'
 }
 
 function getDecisionSupport(row) {
@@ -242,13 +285,7 @@ function getDecisionSupport(row) {
       readNestedLabel(decisionSupport.temperatureSuitability || row?.temperatureSuitability || row?.temperatureSuitabilityLabel, 'Temperature suitability unavailable'),
     humiditySuitability:
       readNestedLabel(decisionSupport.humiditySuitability || row?.humiditySuitability || row?.humiditySuitabilityLabel, 'Humidity suitability unavailable'),
-    multiSourceRiskScore:
-      decisionSupport.multiSourceRiskScore ??
-      decisionSupport.riskScore ??
-      row?.multiSourceRiskScore ??
-      row?.multiSourceScore ??
-      row?.riskScore ??
-      0,
+    multiSourceRiskScore: getCanonicalCombinedRiskScore(row),
     riskComponents:
       decisionSupport.riskComponents ||
       row?.riskComponents ||
@@ -259,13 +296,7 @@ function getDecisionSupport(row) {
 
 function getMultiSourceProfile(row = null) {
   const decision = getDecisionSupport(row)
-  const score = Number(
-    decision.multiSourceRiskScore ||
-      row?.multiSourceRiskScore ||
-      row?.multiSourceScore ||
-      row?.riskScore ||
-      0
-  )
+  const score = Number(getCanonicalCombinedRiskScore(row))
 
   return {
     score: Number.isFinite(score) ? Math.round(score) : 0,
@@ -388,33 +419,7 @@ function getPriorityDistribution(riskRows = []) {
 }
 
 function getSortedRiskRows(riskRows = []) {
-  return [...riskRows].sort((a, b) => {
-    const decisionA = getDecisionSupport(a)
-    const decisionB = getDecisionSupport(b)
-
-    const priorityDifference =
-      getPrioritySortValue(decisionB.priority) -
-      getPrioritySortValue(decisionA.priority)
-
-    if (priorityDifference !== 0) {
-      return priorityDifference
-    }
-
-    const scoreDifference =
-      Number(decisionB.score || 0) - Number(decisionA.score || 0)
-
-    if (scoreDifference !== 0) {
-      return scoreDifference
-    }
-
-    const riskDifference = getRiskSortValue(b.risk) - getRiskSortValue(a.risk)
-
-    if (riskDifference !== 0) {
-      return riskDifference
-    }
-
-    return Number(b.forecast || 0) - Number(a.forecast || 0)
-  })
+  return [...riskRows].sort(compareCanonicalBarangayPriority)
 }
 
 function getRiskBadgeStyle(risk) {
@@ -504,20 +509,42 @@ function formatHotspotScore(value) {
   return `${Math.round(number)}/100`
 }
 
+const BARANGAY_NAME_ALIASES = {
+  'agusan pequenio': 'agusan pequeno',
+  'agusan pequino': 'agusan pequeno',
+  'baan km3': 'baan km 3',
+  'baan kilometer 3': 'baan km 3',
+  'brgy baan km 3': 'baan km 3',
+  'datu silongan': 'silongan',
+  'fort poyohon new asia': 'port poyohon',
+  'fort poyohon': 'port poyohon',
+  'new society village poblacion': 'new society village',
+  nsv: 'new society village',
+  'sto nino': 'santo nino',
+  'st nino': 'santo nino',
+}
+
 function normalizeBarangayName(value = '') {
-  return String(value)
+  const normalized = String(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/ñ/g, 'n')
     .replace(/\(.*?\)/g, ' ')
     .replace(/\bpob\.?\b/gi, ' ')
     .replace(/\bbgy\.?\b/gi, ' ')
+    .replace(/\bbrgy\.?\b/gi, ' ')
     .replace(/\bbarangay\b/gi, ' ')
+    .replace(/\bsto\.?\b/gi, 'santo')
+    .replace(/\bst\.?\b/gi, 'santo')
+    .replace(/\bkilometer\b/gi, 'km')
+    .replace(/\bkm\.?(\d+)\b/gi, 'km $1')
     .replace(/\./g, ' ')
     .replace(/[^a-zA-Z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
+
+  return BARANGAY_NAME_ALIASES[normalized] || normalized
 }
 
 function namesMatch(first, second) {
@@ -533,6 +560,679 @@ function namesMatch(first, second) {
   if (b.length >= 4 && a.includes(b)) return true
 
   return false
+}
+
+function strictBarangayNamesMatch(first, second) {
+  const a = normalizeBarangayName(first)
+  const b = normalizeBarangayName(second)
+
+  if (!a || !b) return false
+
+  return a === b || a.replace(/\s+/g, '') === b.replace(/\s+/g, '')
+}
+
+function isHotspotMapReviewRow(row = null) {
+  return Boolean(
+    row &&
+      (row.hotspot_level === 'Needs Map Review' ||
+        row.has_map_boundary === false ||
+        row.spatial_influence_source === 'no_map_boundary')
+  )
+}
+
+function hotspotMatchesRiskRow(hotspot = null, riskRow = null, strict = false) {
+  if (!hotspot || !riskRow) return false
+
+  const hotspotNames = [hotspot.barangay, hotspot.barangay_key].filter(Boolean)
+  const riskNames = [riskRow.barangay, riskRow.barangayKey, riskRow.barangay_key].filter(Boolean)
+  const matcher = strict ? strictBarangayNamesMatch : namesMatch
+
+  return hotspotNames.some((hotspotName) => {
+    return riskNames.some((riskName) => matcher(hotspotName, riskName))
+  })
+}
+
+function chooseBestHotspotCandidate(candidates = [], riskRow = null) {
+  if (!candidates.length) return null
+
+  return [...candidates].sort((a, b) => {
+    const boundaryDifference =
+      Number(!isHotspotMapReviewRow(b.row)) - Number(!isHotspotMapReviewRow(a.row))
+
+    if (boundaryDifference !== 0) return boundaryDifference
+
+    const exactDifference = Number(b.strict) - Number(a.strict)
+
+    if (exactDifference !== 0) return exactDifference
+
+    const scoreDifference =
+      Number(b.row?.hotspot_score || b.row?.base_risk_score || 0) -
+      Number(a.row?.hotspot_score || a.row?.base_risk_score || 0)
+
+    if (scoreDifference !== 0) return scoreDifference
+
+    const aExactName = strictBarangayNamesMatch(a.row?.barangay, riskRow?.barangay)
+    const bExactName = strictBarangayNamesMatch(b.row?.barangay, riskRow?.barangay)
+
+    return Number(bExactName) - Number(aExactName)
+  })[0]
+}
+
+function reconcileHotspotRows(hotspotRows = [], riskRows = []) {
+  if (!Array.isArray(hotspotRows) || hotspotRows.length === 0) return []
+
+  if (!Array.isArray(riskRows) || riskRows.length === 0) {
+    const byName = new Map()
+
+    hotspotRows.forEach((row) => {
+      const key = normalizeBarangayName(row?.barangay || row?.barangay_key)
+
+      if (!key) return
+
+      const existing = byName.get(key)
+
+      if (!existing) {
+        byName.set(key, row)
+        return
+      }
+
+      const existingReview = isHotspotMapReviewRow(existing)
+      const currentReview = isHotspotMapReviewRow(row)
+
+      if ((existingReview && !currentReview) || Number(row?.hotspot_score || 0) > Number(existing?.hotspot_score || 0)) {
+        byName.set(key, row)
+      }
+    })
+
+    return Array.from(byName.values())
+  }
+
+  const usedIndexes = new Set()
+
+  return riskRows.map((riskRow) => {
+    const strictCandidates = hotspotRows
+      .map((row, index) => ({ row, index, strict: true }))
+      .filter((candidate) => {
+        return !usedIndexes.has(candidate.index) && hotspotMatchesRiskRow(candidate.row, riskRow, true)
+      })
+
+    const looseCandidates = strictCandidates.length
+      ? []
+      : hotspotRows
+          .map((row, index) => ({ row, index, strict: false }))
+          .filter((candidate) => {
+            return !usedIndexes.has(candidate.index) && hotspotMatchesRiskRow(candidate.row, riskRow, false)
+          })
+
+    const selected = chooseBestHotspotCandidate(
+      strictCandidates.length ? strictCandidates : looseCandidates,
+      riskRow
+    )
+
+    if (!selected) {
+      return {
+        barangay: riskRow.barangay || 'Unknown barangay',
+        barangay_key: riskRow.barangayKey || riskRow.barangay_key || '',
+        hotspot_level: 'Not checked',
+        hotspot_score: 0,
+        neighbor_influence_score: 0,
+        has_map_boundary: null,
+        recommended_map_action: 'Hotspot result was not returned for this official barangay.',
+      }
+    }
+
+    usedIndexes.add(selected.index)
+
+    return {
+      ...selected.row,
+      barangay: riskRow.barangay || selected.row?.barangay || 'Unknown barangay',
+      barangay_key:
+        riskRow.barangayKey ||
+        riskRow.barangay_key ||
+        selected.row?.barangay_key ||
+        '',
+      forecast_risk: riskRow.risk || selected.row?.forecast_risk || '',
+      forecast_cases: Number(riskRow.forecast || selected.row?.forecast_cases || 0),
+    }
+  })
+}
+
+function getFeatureName(feature) {
+  const props = feature?.properties || {}
+
+  return (
+    props.adm4_name ||
+    props.adm4_ref_name ||
+    props.name ||
+    props.Name ||
+    props.NAME ||
+    props.barangay ||
+    props.barangayName ||
+    props.barangay_name ||
+    props.brgy ||
+    props.brgy_name ||
+    props.BARANGAY ||
+    props.BRGY ||
+    props.BRGY_NAME ||
+    props.BGY_NAME ||
+    props.BgyName ||
+    props.ADM4_EN ||
+    props.NAME_3 ||
+    props.NAME_4 ||
+    props.LOC_NAME ||
+    props.LOCALITY ||
+    props.MUNICIPALITY ||
+    props.detected_barangay_name ||
+    props.standardized_barangay ||
+    'Unnamed barangay'
+  )
+}
+
+function getFeatureReferenceName(feature) {
+  const props = feature?.properties || {}
+
+  return (
+    props.adm4_ref_name ||
+    props.adm4_name ||
+    props.name ||
+    props.Name ||
+    props.NAME ||
+    props.barangay ||
+    props.barangayName ||
+    props.barangay_name ||
+    props.brgy ||
+    props.brgy_name ||
+    props.BARANGAY ||
+    props.BRGY_NAME ||
+    props.BgyName ||
+    props.ADM4_EN ||
+    props.NAME_3 ||
+    props.NAME_4 ||
+    props.detected_barangay_name ||
+    props.standardized_barangay ||
+    ''
+  )
+}
+
+
+function getSelectedBarangayName(value) {
+  if (!value) return ''
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (value?.type === 'Feature') {
+    return getFeatureName(value)
+  }
+
+  if (value?.feature) {
+    return getSelectedBarangayName(value.feature)
+  }
+
+  if (value?.target?.feature) {
+    return getSelectedBarangayName(value.target.feature)
+  }
+
+  if (value?.layer?.feature) {
+    return getSelectedBarangayName(value.layer.feature)
+  }
+
+  if (value?.properties) {
+    return getFeatureName(value)
+  }
+
+  return (
+    value.barangay ||
+    value.name ||
+    value.adm4_name ||
+    value.adm4_ref_name ||
+    value.barangay_name ||
+    value.BARANGAY ||
+    value.ADM4_EN ||
+    value.label ||
+    value.value ||
+    ''
+  )
+}
+
+function getBoundaryGeoJson(boundaryRecords = []) {
+  if (!boundaryRecords) return null
+
+  if (
+    boundaryRecords.type === 'FeatureCollection' &&
+    Array.isArray(boundaryRecords.features)
+  ) {
+    return boundaryRecords
+  }
+
+  if (Array.isArray(boundaryRecords)) {
+    const featureCollection = boundaryRecords.find((item) => {
+      return item?.type === 'FeatureCollection' && Array.isArray(item.features)
+    })
+
+    if (featureCollection) {
+      return featureCollection
+    }
+
+    const features = boundaryRecords.filter((item) => {
+      return item?.type === 'Feature' && item.geometry
+    })
+
+    if (features.length > 0) {
+      return {
+        type: 'FeatureCollection',
+        features,
+      }
+    }
+  }
+
+  return null
+}
+
+function countBoundaryFeatures(boundaryRecords) {
+  const geoJson = getBoundaryGeoJson(boundaryRecords)
+
+  return geoJson?.features?.length || 0
+}
+
+function normalizeDataKey(key = '') {
+  return String(key)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function readValue(source, keys = [], fallback = undefined) {
+  if (!source) return fallback
+
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null && source[key] !== '') {
+      return source[key]
+    }
+  }
+
+  const normalizedLookup = Object.keys(source).reduce((acc, key) => {
+    acc[normalizeDataKey(key)] = source[key]
+    return acc
+  }, {})
+
+  for (const key of keys) {
+    const normalizedKey = normalizeDataKey(key)
+
+    if (
+      normalizedLookup[normalizedKey] !== undefined &&
+      normalizedLookup[normalizedKey] !== null &&
+      normalizedLookup[normalizedKey] !== ''
+    ) {
+      return normalizedLookup[normalizedKey]
+    }
+  }
+
+  return fallback
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  if (value === undefined || value === null || value === '') return fallback
+
+  const cleaned = typeof value === 'string'
+    ? value.replace(/,/g, '').replace(/%/g, '').trim()
+    : value
+
+  const number = Number(cleaned)
+
+  return Number.isFinite(number) ? number : fallback
+}
+
+function readNumber(source, keys = [], fallback = 0) {
+  return toFiniteNumber(readValue(source, keys), fallback)
+}
+
+function readPositiveNumber(source, keys = []) {
+  const number = readNumber(source, keys, 0)
+
+  return number > 0 ? number : 0
+}
+
+function readText(source, keys = [], fallback = '') {
+  const value = readValue(source, keys)
+  const text = String(value ?? '').trim()
+
+  return text || fallback
+}
+
+function getOverallRiskScore(row) {
+  return readNumber(row, [
+    'multiSourceRiskScore',
+    'multi_source_risk_score',
+    'combinedRiskScore',
+    'combined_risk_score',
+    'overallRiskScore',
+    'overall_risk_score',
+    'riskScore',
+    'risk_score',
+  ], 0)
+}
+
+function getEnvironmentalSuitabilityValue(row) {
+  return readText(row, [
+    'environmentalSuitability',
+    'environmental_suitability',
+    'weatherCondition',
+    'weather_condition',
+    'environmentalLabel',
+    'environmental_label',
+  ])
+}
+
+function getRainfallPressureValue(row) {
+  return readText(row, [
+    'rainfallPressure',
+    'rainfall_pressure',
+    'rainfallRisk',
+    'rainfall_risk',
+  ])
+}
+
+function getTemperatureSuitabilityValue(row) {
+  return readText(row, [
+    'temperatureSuitability',
+    'temperature_suitability',
+    'temperatureCondition',
+    'temperature_condition',
+  ])
+}
+
+function getHumiditySuitabilityValue(row) {
+  return readText(row, [
+    'humiditySuitability',
+    'humidity_suitability',
+    'humidityCondition',
+    'humidity_condition',
+  ])
+}
+
+function getRecordName(record) {
+  if (!record) return ''
+
+  return readText(record, [
+    'barangay',
+    'barangayName',
+    'barangay_name',
+    'barangay_raw',
+    'barangayRaw',
+    'brgy',
+    'brgy_name',
+    'name',
+    'adm4_name',
+    'adm4_ref_name',
+    'location',
+    'area',
+    'BgyName',
+    'BRGY_NAME',
+    'BARANGAY',
+  ])
+}
+
+function getPopulationRowForSelection(selected, feature, populationRecords = []) {
+  const featureName = getFeatureName(feature)
+  const referenceName = getFeatureReferenceName(feature)
+
+  return (
+    populationRecords.find((record) => {
+      const recordName = getRecordName(record)
+
+      return (
+        namesMatch(recordName, selected) ||
+        namesMatch(recordName, featureName) ||
+        namesMatch(recordName, referenceName)
+      )
+    }) || null
+  )
+}
+
+function getPopulationValue({ row, feature, populationRow }) {
+  const props = feature?.properties || {}
+
+  return (
+    readPositiveNumber(row, [
+      'population',
+      'totalPopulation',
+      'populationCount',
+      'pop',
+      'total_pop',
+      'totalPop',
+    ]) ||
+    readPositiveNumber(populationRow, [
+      'population',
+      'totalPopulation',
+      'populationCount',
+      'pop',
+      'total_pop',
+      'totalPop',
+    ]) ||
+    readPositiveNumber(props, [
+      'population',
+      'totalPopulation',
+      'populationCount',
+      'pop',
+      'total_pop',
+      'totalPop',
+      'POPULATION',
+    ])
+  )
+}
+
+function getAreaValue({ row, feature }) {
+  const props = feature?.properties || {}
+
+  return (
+    readPositiveNumber(row, ['area_sqkm', 'areaSqKm', 'area_sq_km', 'area', 'areaKm2', 'boundary_area_sqkm', 'boundaryAreaSqKm']) ||
+    readPositiveNumber(props, ['area_sqkm', 'areaSqKm', 'area_sq_km', 'area', 'areaKm2', 'boundary_area_sqkm', 'boundaryAreaSqKm'])
+  )
+}
+
+
+function getBoundaryFeatureForBarangay(barangay, boundaryFeatures = []) {
+  if (!barangay || !Array.isArray(boundaryFeatures) || !boundaryFeatures.length) {
+    return null
+  }
+
+  return (
+    boundaryFeatures.find((feature) => {
+      return (
+        namesMatch(barangay, getFeatureName(feature)) ||
+        namesMatch(barangay, getFeatureReferenceName(feature))
+      )
+    }) || null
+  )
+}
+
+function average(values = []) {
+  const validValues = values
+    .map((value) => Number(value || 0))
+    .filter((value) => Number.isFinite(value))
+
+  if (!validValues.length) return 0
+
+  return validValues.reduce((total, value) => total + value, 0) / validValues.length
+}
+
+function sum(values = []) {
+  return values.reduce((total, value) => total + Number(value || 0), 0)
+}
+
+function parseCoverageDate(value) {
+  if (value === undefined || value === null || value === '') return null
+
+  const raw = String(value).trim()
+
+  if (!raw) return null
+
+  const weekMatch = raw.match(/^(\d{4})-?W(\d{1,2})$/i)
+
+  if (weekMatch) {
+    const year = Number(weekMatch[1])
+    const week = Number(weekMatch[2])
+    const date = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7))
+
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const parsed = new Date(raw)
+
+  if (Number.isNaN(parsed.getTime())) return null
+
+  return parsed
+}
+
+function formatCoverageDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'N/A'
+
+  return date.toISOString().slice(0, 10)
+}
+
+function getWeatherDate(record) {
+  const directDate = readValue(record, [
+    'date',
+    'reportingDate',
+    'reporting_date',
+    'weatherDate',
+    'weather_date',
+    'observationDate',
+    'observation_date',
+    'recordDate',
+    'record_date',
+    'period',
+  ])
+
+  const parsedDirectDate = parseCoverageDate(directDate)
+
+  if (parsedDirectDate) return parsedDirectDate
+
+  const year = readNumber(record, ['year', 'weatherYear', 'weather_year'], 0)
+  const month = readNumber(record, ['month', 'weatherMonth', 'weather_month'], 0)
+  const day = readNumber(record, ['day', 'dateDay', 'weatherDay', 'weather_day'], 1)
+  const dayOfYear = readNumber(record, ['dayOfYear', 'day_of_year', 'doy', 'julianDay', 'julian_day'], 0)
+
+  if (year > 0 && dayOfYear > 0) {
+    const date = new Date(Date.UTC(year, 0, dayOfYear))
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  if (year > 0 && month > 0) {
+    const date = new Date(Date.UTC(year, month - 1, day > 0 ? day : 1))
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  return null
+}
+
+function getWeatherNumber(record, keys = []) {
+  return readNumber(record, keys, 0)
+}
+
+function getWeatherContextForPeriods(periods = [], weatherRecords = []) {
+  const emptyContext = {
+    averageRainfall: 0,
+    totalRainfall: 0,
+    averageTemperature: 0,
+    averageHumidity: 0,
+    weatherRecordCount: 0,
+    weatherCoverageLabel: 'Weather data unavailable',
+  }
+
+  if (!Array.isArray(weatherRecords) || !weatherRecords.length) {
+    return emptyContext
+  }
+
+  const weatherItems = weatherRecords
+    .map((record, index) => ({
+      record,
+      index,
+      date: getWeatherDate(record),
+      rainfall: getWeatherNumber(record, [
+        'rainfall',
+        'rainfall_mm',
+        'rainfallMm',
+        'rain',
+        'rain_mm',
+        'precipitation',
+        'precipitation_mm',
+        'precip',
+        'prectotcorr',
+        'precipAmount',
+        'precip_amount',
+      ]),
+      temperature: getWeatherNumber(record, [
+        'temperature',
+        'temperature_c',
+        'temperatureC',
+        'temp',
+        'temp_c',
+        'air_temperature',
+        'airTemperature',
+        't2m',
+      ]),
+      humidity: getWeatherNumber(record, [
+        'humidity',
+        'relative_humidity',
+        'relativeHumidity',
+        'humidity_percent',
+        'rh',
+        'rh2m',
+      ]),
+    }))
+    .filter((item) => item.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+  if (!weatherItems.length) {
+    return emptyContext
+  }
+
+  const periodDates = periods
+    .map((period) => parseCoverageDate(period.period || period))
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  let selectedWeatherItems = []
+
+  if (periodDates.length) {
+    const start = new Date(periodDates[0].getTime())
+    const end = new Date(periodDates[periodDates.length - 1].getTime())
+
+    start.setUTCDate(start.getUTCDate() - 14)
+    end.setUTCDate(end.getUTCDate() + 7)
+
+    selectedWeatherItems = weatherItems.filter((item) => {
+      return item.date.getTime() >= start.getTime() && item.date.getTime() <= end.getTime()
+    })
+  }
+
+  if (!selectedWeatherItems.length) {
+    selectedWeatherItems = weatherItems.slice(-30)
+  }
+
+  const rainfallValues = selectedWeatherItems.map((item) => item.rainfall)
+  const temperatureValues = selectedWeatherItems
+    .map((item) => item.temperature)
+    .filter((value) => value !== 0)
+  const humidityValues = selectedWeatherItems
+    .map((item) => item.humidity)
+    .filter((value) => value !== 0)
+
+  const firstDate = selectedWeatherItems[0]?.date
+  const lastDate = selectedWeatherItems[selectedWeatherItems.length - 1]?.date
+
+  return {
+    averageRainfall: Number(average(rainfallValues).toFixed(2)),
+    totalRainfall: Number(sum(rainfallValues).toFixed(2)),
+    averageTemperature: Number(average(temperatureValues).toFixed(2)),
+    averageHumidity: Number(average(humidityValues).toFixed(2)),
+    weatherRecordCount: selectedWeatherItems.length,
+    weatherCoverageLabel: firstDate && lastDate
+      ? `${formatCoverageDate(firstDate)} to ${formatCoverageDate(lastDate)}`
+      : 'Weather data available',
+  }
 }
 
 function getHotspotForBarangay(row = null, hotspotRows = []) {
@@ -572,6 +1272,42 @@ function getHotspotCounts(hotspotRows = []) {
       notChecked: 0,
     }
   )
+}
+
+function getHotspotCountTotal(counts = {}) {
+  return (
+    Number(counts.confirmed || 0) +
+    Number(counts.emerging || 0) +
+    Number(counts.watch || 0) +
+    Number(counts.low || 0) +
+    Number(counts.needsReview || 0) +
+    Number(counts.notChecked || 0)
+  )
+}
+
+function getRankedHotspotRows(hotspotRows = []) {
+  return [...hotspotRows]
+    .filter((row) => {
+      return !isHotspotMapReviewRow(row) && row.hotspot_level !== 'Not checked'
+    })
+    .sort((a, b) => Number(b.hotspot_score || 0) - Number(a.hotspot_score || 0))
+}
+
+function buildReconciledHotspotSummary(summary = null, counts = {}, officialBarangayCount = 0) {
+  return {
+    ...(summary || {}),
+    official_barangay_count: Number(officialBarangayCount || 0),
+    reconciled_total: getHotspotCountTotal(counts),
+    level_counts: {
+      'Confirmed Hotspot': Number(counts.confirmed || 0),
+      'Emerging Hotspot': Number(counts.emerging || 0),
+      'Watch Area': Number(counts.watch || 0),
+      'Low Spatial Concern': Number(counts.low || 0),
+      'Needs Map Review': Number(counts.needsReview || 0),
+      'Not checked': Number(counts.notChecked || 0),
+    },
+    barangays_needing_map_review: Number(counts.needsReview || 0),
+  }
 }
 
 function getReportDataSourceLabel(usingSavedForecast) {
@@ -645,7 +1381,7 @@ function getReportSourceRows(sourceStatus = {}) {
 
 function formatThresholds(value) {
   if (!value) {
-    return 'High risk: 70 and above; Moderate risk: 45 to 69; Low risk: below 45.'
+    return 'High risk: 60 and above; Moderate risk: 25 to 59; Low risk: below 25.'
   }
 
   if (typeof value === 'string') return value
@@ -900,7 +1636,7 @@ function getOfficialReportMetadata({
       backendForecastResult?.forecast_window ||
       backendForecastResult?.forecastWindow ||
       backendForecastResult?.forecast_period ||
-      'Next 4 reporting periods',
+      'Next 4 months',
     topHighRiskBarangays: getTopHighRiskBarangays(sortedRiskRows),
     sourceRows,
     limitations: [
@@ -961,212 +1697,480 @@ function hasBackendForecastData(backendForecastResult) {
   )
 }
 
-function getBackendPriorityLabel(row = {}) {
-  const risk = row.risk_level || 'Low'
-  const trend = row.trend_direction || 'Stable'
-
+function getBackendResponsePriority(risk) {
   if (risk === 'High') return 'Immediate Response'
-  if (risk === 'Moderate' && trend === 'Increasing') return 'Preventive Monitoring'
   if (risk === 'Moderate') return 'Preventive Monitoring'
-  if (risk === 'Low' && trend === 'Increasing') return 'Early Monitoring'
-
-  return 'Routine Monitoring'
+  if (risk === 'Low') return 'Routine Monitoring'
+  return 'Waiting for data'
 }
 
-function getBackendDecisionScore(row = {}) {
+function getBackendDecisionScore(row) {
   const risk = row.risk_level || 'Low'
-  const forecast = Number(row.forecast_next_4_periods || 0)
-  const priorityRank = Number(row.priority_rank || 0)
+  const riskScore = risk === 'High' ? 70 : risk === 'Moderate' ? 45 : 20
+  const forecastScore = Math.min(Number(row.forecast_next_4_periods || 0), 100)
+  const rankPenalty = Number(row.priority_rank || 0) > 0 ? Number(row.priority_rank || 0) : 0
 
-  const riskWeight = {
-    High: 90,
-    Moderate: 60,
-    Low: 30,
-  }[risk] || 20
-
-  const rankBonus = priorityRank > 0 ? Math.max(0, 20 - priorityRank) : 0
-  const forecastBonus = Math.min(60, Math.round(forecast / 2))
-
-  return riskWeight + forecastBonus + rankBonus
+  return Math.max(0, Math.round(riskScore + forecastScore - rankPenalty))
 }
 
-function getBackendActionPlan(row = {}) {
-  const recommendation = row.recommendation || getGenericRecommendedAction(row.risk_level)
-  const risk = row.risk_level || 'Low'
-  const barangay = row.barangay || 'the barangay'
+function buildBackendActionPlan({
+  risk,
+  forecast,
+  forecastNextPeriod,
+  recentAverage,
+  previousAverage,
+  trendLabel,
+  recommendation,
+}) {
+  const actions = []
+  const trendText = String(trendLabel || '').toLowerCase()
+  const isIncreasing = trendText.includes('increasing')
+  const isDecreasing = trendText.includes('decreasing')
+
+  if (recommendation) {
+    actions.push(recommendation)
+  }
 
   if (risk === 'High') {
-    return [
-      recommendation,
-      `Coordinate immediate barangay-level inspection and cleanup activities in ${barangay}.`,
-      'Validate recent case reports and check if clustered cases are occurring near possible breeding sites.',
-      'Prioritize health education reminders, larval source reduction, and close weekly monitoring.',
-    ]
+    actions.push(
+      'Activate barangay-level dengue alert and coordinate response within 24 to 48 hours.',
+      'Prioritize source reduction in households, drainage areas, water storage containers, and other mosquito breeding sites.',
+      'Deploy BHWs for focused fever case checking, household advisories, and immediate reporting of new suspected dengue cases.',
+      'Coordinate cleanup activities with barangay officials, sanitation personnel, and community volunteers.',
+      'Review updated case reports after 7 days to determine if the response reduced case movement.'
+    )
+  } else if (risk === 'Moderate') {
+    actions.push(
+      'Place the barangay under intensified reporting-period monitoring to prevent escalation into high-risk status.',
+      'Inspect common breeding areas such as stagnant water sites, canals, schools, and dense residential zones.',
+      'Strengthen dengue prevention messaging through BHWs, purok leaders, barangay pages, and community announcements.',
+      'Prepare targeted cleanup and IEC activities if the next reporting period continues to increase.',
+      'Compare new dengue reports against the forecast output during the next reporting-period review.'
+    )
+  } else if (risk === 'Low') {
+    actions.push(
+      'Maintain routine dengue surveillance and regular environmental sanitation activities.',
+      'Continue household reminders on removing stagnant water and seeking early consultation for fever symptoms.',
+      'Check if new cases are clustered in a specific purok or household group before escalating the response.',
+      'Keep barangay advisories active during rainy periods and add spatial coordination only when the hotspot check confirms nearby higher-risk influence.',
+      'Reassess the barangay after the next reporting period.'
+    )
+  } else {
+    actions.push(
+      'Upload and validate dengue records before generating a full response action plan.',
+      'Use boundary and population context as supporting information once case records are available.'
+    )
   }
 
-  if (risk === 'Moderate') {
-    return [
-      recommendation,
-      `Schedule preventive inspection and community cleanup activities in ${barangay}.`,
-      'Monitor case movement during the next reporting period and prepare escalation if the trend increases.',
-      'Continue barangay information drives on dengue prevention and breeding-site removal.',
-    ]
+  if (isIncreasing) {
+    actions.push(
+      'Escalate surveillance because the recent trend indicates increasing case movement.'
+    )
   }
 
-  return [
-    recommendation,
-    `Maintain routine surveillance and sanitation monitoring in ${barangay}.`,
-    'Continue public reminders on dengue prevention and household source reduction.',
-  ]
+  if (isDecreasing && risk !== 'Low') {
+    actions.push(
+      'Continue monitoring despite the decreasing trend because the barangay still has non-low risk classification.'
+    )
+  }
+
+  if (forecast >= 100 || forecastNextPeriod >= 25) {
+    actions.push(
+      'Prioritize this barangay in the next CHO coordination meeting because projected case pressure is high.'
+    )
+  }
+
+  if (recentAverage > previousAverage && previousAverage > 0) {
+    actions.push(
+      'Validate recent case reports because the recent average is higher than the previous baseline period.'
+    )
+  }
+
+  return Array.from(new Set(actions.filter(Boolean))).slice(0, 8)
 }
 
-function getBackendRationale(row = {}) {
-  const forecast = Number(row.forecast_next_4_periods || 0)
-  const historical = Number(row.historical_total_cases || 0)
-  const recentAverage = Number(row.recent_average_cases || 0)
-  const previousAverage = Number(row.previous_average_cases || 0)
-  const trend = row.trend_direction || 'Stable'
-  const risk = row.risk_level || 'Low'
-
-  return [
-    `The saved forecast projects ${formatNumber(forecast)} case${forecast === 1 ? '' : 's'} for the next four periods.`,
-    `Risk level is classified as ${risk} using the saved forecast result.`,
-    `Trend direction is ${trend}, based on a recent average of ${formatNumber(recentAverage)} compared with a previous average of ${formatNumber(previousAverage)}.`,
-    `The uploaded records contain ${formatNumber(historical)} historical case${historical === 1 ? '' : 's'} for this barangay.`,
+function buildBackendRationale({
+  barangay,
+  risk,
+  forecast,
+  forecastNextPeriod,
+  recentAverage,
+  previousAverage,
+  historicalTotalCases,
+  trendLabel,
+  latestPeriod,
+  recordCount,
+}) {
+  const rationale = [
+    `Saved forecast classified ${barangay} as ${risk} risk.`,
+    `Projected four-period cases: ${formatNumber(forecast)}.`,
+    `Forecast for the next period: ${formatNumber(forecastNextPeriod)} cases.`,
+    `Recent average cases: ${formatNumber(recentAverage)}.`,
+    `Previous average cases: ${formatNumber(previousAverage)}.`,
+    `Historical total cases: ${formatNumber(historicalTotalCases)}.`,
+    `Recent trend direction: ${trendLabel || 'Not available'}.`,
   ]
+
+  if (latestPeriod) {
+    rationale.push(`Latest reporting period used: ${latestPeriod}.`)
+  }
+
+  if (recordCount > 0) {
+    rationale.push(`${formatNumber(recordCount)} historical record${recordCount === 1 ? '' : 's'} were used for this barangay.`)
+  }
+
+  if (forecast >= 100) {
+    rationale.push('The forecast is high, so immediate response planning is recommended.')
+  }
+
+  if (recentAverage > previousAverage && previousAverage > 0) {
+    rationale.push('Recent average is higher than the previous average, indicating possible worsening case movement.')
+  }
+
+  if (recentAverage <= previousAverage && previousAverage > 0) {
+    rationale.push('Recent average is not higher than the previous average, but risk classification and forecast output still require monitoring.')
+  }
+
+  return Array.from(new Set(rationale.filter(Boolean))).slice(0, 9)
 }
 
-function buildBackendRiskRows(backendForecastResult = null) {
+function buildBackendRiskRows(backendForecastResult = null, context = {}) {
   const backendRows = backendForecastResult?.forecast_results || []
+  const {
+    populationRecords = [],
+    boundaryFeatures = [],
+    weatherRecords = [],
+  } = context
+
+  const backendPeriods = backendRows.map((row, index) => ({
+    period: readText(row, ['latest_period', 'latestPeriod', 'period'], `Forecast period ${index + 1}`),
+    index,
+    sortValue: index,
+  }))
+
+  const sharedWeatherContext = getWeatherContextForPeriods(backendPeriods, weatherRecords)
 
   return backendRows
     .map((row) => {
-      const priority = getBackendPriorityLabel(row)
-      const score = getBackendDecisionScore(row)
-      const recommendation = row.recommendation || getGenericRecommendedAction(row.risk_level)
-      const actions = getBackendActionPlan(row)
-      const rationale = getBackendRationale(row)
+      const barangay = row.barangay || row.barangay_name || 'Unspecified barangay'
+      const forecast = Number(row.forecast_next_4_periods || row.forecastedCases || row.forecast || 0)
+      const forecastNextPeriod = Number(row.forecast_next_period || row.currentCases || row.current_cases || 0)
+      const forecastPeriodPredictions = Array.isArray(row.forecast_period_predictions || row.forecastPeriodPredictions)
+        ? (row.forecast_period_predictions || row.forecastPeriodPredictions).map((item, index) => ({
+            horizon: Number(item?.horizon || index + 1),
+            period: String(item?.period || `Forecast period ${index + 1}`),
+            predictedCases: Number(item?.predicted_cases ?? item?.predictedCases ?? 0),
+          }))
+        : []
+      const recentAverage = Number(row.recent_average_cases || row.recentAverage || 0)
+      const previousAverage = Number(row.previous_average_cases || row.previousAverage || 0)
+      const historicalTotalCases = Number(row.historical_total_cases || row.totalCases || row.cases || 0)
+      const trendLabel = row.trend_direction || row.trendDirection || row.trend || 'Stable'
+      const responsePriority = row.response_priority || row.responsePriority || getBackendResponsePriority(row.risk_level || row.risk)
+      const backendRecommendation = row.recommendation || getGenericRecommendedAction(row.risk_level || row.risk)
+      const backendDecisionScore = getBackendDecisionScore(row)
+      const latestPeriod = row.latest_period || row.latestPeriod || ''
+      const recordCount = Number(row.record_count || row.recordCount || 0)
 
-      const combinedRiskScore = Number(
-        row.multi_source_risk_score ??
-          row.combined_risk_score ??
-          row.risk_score ??
-          0
-      )
+      const boundaryFeature = getBoundaryFeatureForBarangay(barangay, boundaryFeatures)
+      const populationRow = getPopulationRowForSelection(barangay, boundaryFeature, populationRecords)
+      const boundaryArea = getAreaValue({ row, feature: boundaryFeature })
+      const population = getPopulationValue({ row, feature: boundaryFeature, populationRow })
+      const density =
+        readPositiveNumber(row, [
+          'density',
+          'populationDensity',
+          'population_density',
+          'densityPerSqKm',
+        ]) ||
+        (population > 0 && boundaryArea > 0 ? population / boundaryArea : 0)
 
-      const environmentalScore = Number(row.environmental_score || 0)
+      const rowWeatherContext = latestPeriod
+        ? getWeatherContextForPeriods([{ period: latestPeriod }], weatherRecords)
+        : sharedWeatherContext
 
-      const environmentalSuitability =
-        row.environmental_suitability ||
-        row.environmentalSuitability ||
-        'Environmental data unavailable'
+      const weatherContext = rowWeatherContext.weatherRecordCount > 0
+        ? rowWeatherContext
+        : sharedWeatherContext
 
-      const rainfallPressure =
-        row.rainfall_pressure ||
-        row.rainfallPressure ||
-        'Rainfall pressure unavailable'
+      const averageRainfall =
+        readNumber(row, [
+          'average_rainfall',
+          'averageRainfall',
+          'avgRainfall',
+          'rainfall',
+          'rainfall_mm',
+          'rainfallMm',
+        ], 0) || weatherContext.averageRainfall
 
-      const temperatureSuitability =
-        row.temperature_suitability ||
-        row.temperatureSuitability ||
-        'Temperature suitability unavailable'
+      const averageTemperature =
+        readNumber(row, [
+          'average_temperature',
+          'averageTemperature',
+          'avgTemperature',
+          'temperature',
+          'temperature_c',
+          'temperatureC',
+        ], 0) || weatherContext.averageTemperature
 
-      const humiditySuitability =
-        row.humidity_suitability ||
-        row.humiditySuitability ||
-        'Humidity suitability unavailable'
+      const averageHumidity =
+        readNumber(row, [
+          'average_humidity',
+          'averageHumidity',
+          'avgHumidity',
+          'humidity',
+          'relative_humidity',
+          'relativeHumidity',
+        ], 0) || weatherContext.averageHumidity
 
-      const populationExposure =
-        row.population_exposure ||
-        row.populationExposure ||
-        'Population exposure unavailable'
+      const series = [
+        {
+          period: 'Previous average',
+          cases: previousAverage,
+        },
+        {
+          period: 'Recent average',
+          cases: recentAverage,
+        },
+        ...(forecastPeriodPredictions.length
+          ? forecastPeriodPredictions.map((item) => ({
+              period: item.period,
+              cases: item.predictedCases,
+              horizon: item.horizon,
+              isForecast: true,
+            }))
+          : [{ period: 'Forecast next period', cases: forecastNextPeriod, horizon: 1, isForecast: true }]),
+      ]
 
-      const densityLevel =
-        row.density_level ||
-        row.densityLevel ||
-        'Density unavailable'
+      const history = [previousAverage, recentAverage, forecastNextPeriod]
 
-      const averageRainfall = Number(row.average_rainfall || row.averageRainfall || 0)
-      const averageTemperature = Number(row.average_temperature || row.averageTemperature || 0)
-      const averageHumidity = Number(row.average_humidity || row.averageHumidity || 0)
-      const population = Number(row.population || 0)
-      const density = Number(row.density || 0)
-      const riskComponents = row.risk_components || row.riskComponents || {}
-
-      return {
-        barangay: row.barangay || 'Unspecified barangay',
-        barangayKey: row.barangay_key || '',
-        risk: row.risk_level || 'Low',
-        forecast: Number(row.forecast_next_4_periods || 0),
-        forecastedCases: Number(row.forecast_next_4_periods || 0),
-        predictedCases: Number(row.forecast_next_4_periods || 0),
-        totalCases: Number(row.historical_total_cases || 0),
-        cases: Number(row.historical_total_cases || 0),
-        currentCases: Number(row.forecast_next_period || 0),
-        previousCases: Number(row.previous_average_cases || 0),
-        recentAverage: Number(row.recent_average_cases || 0),
-        previousAverage: Number(row.previous_average_cases || 0),
-        trend: row.trend_direction || 'Stable',
-        trendLabel: row.trend_direction || 'Stable',
-        latestPeriod: row.latest_period || '',
-        priorityRank: Number(row.priority_rank || 0),
-        responsePriority: priority,
-        decisionScore: score,
-        recommendedAction: recommendation,
-        primaryAction: recommendation,
-        recommendedActions: actions,
-        recommendationRationale: rationale,
-
-        multiSourceRiskScore: combinedRiskScore,
-        multiSourceScore: combinedRiskScore,
-        riskScore: combinedRiskScore,
-        environmentalScore,
-        environmentalSuitability,
-        environmentalSuitabilityLabel: environmentalSuitability,
-        rainfallPressure,
-        rainfallPressureLabel: rainfallPressure,
-        temperatureSuitability,
-        temperatureSuitabilityLabel: temperatureSuitability,
-        humiditySuitability,
-        humiditySuitabilityLabel: humiditySuitability,
-        populationExposure,
-        densityLevel,
+      const multiSourceRisk = computeMultiSourceRisk({
+        forecast,
+        currentCases: forecastNextPeriod,
+        previousCases: previousAverage,
+        totalCases: historicalTotalCases,
+        trend: trendLabel,
+        recentAverage,
+        previousAverage,
+        history,
+        weeklyCases: history,
+        population,
+        areaSqKm: boundaryArea,
+        density,
         averageRainfall,
+        totalRainfall: weatherContext.totalRainfall,
         averageTemperature,
         averageHumidity,
+      })
+
+      const backendRisk = row.risk_level || row.risk || multiSourceRisk.risk || 'Low'
+      const baseRiskScore = readNumber(row, [
+        'risk_score',
+        'riskScore',
+        'base_risk_score',
+        'baseRiskScore',
+      ], 0)
+      const combinedRiskScore = readNumber(row, [
+        'combined_risk_score',
+        'multi_source_risk_score',
+        'combinedRiskScore',
+        'multiSourceRiskScore',
+        'overallRiskScore',
+        'overall_risk_score',
+      ], multiSourceRisk.score || baseRiskScore)
+      const environmentalScore = readNumber(row, [
+        'environmental_score',
+        'environmentalScore',
+      ], multiSourceRisk.environmentalSuitability?.score || 0)
+      const environmentalSuitability =
+        getEnvironmentalSuitabilityValue(row) ||
+        multiSourceRisk.environmentalSuitability?.label ||
+        ''
+      const rainfallPressure =
+        getRainfallPressureValue(row) ||
+        multiSourceRisk.environmentalSuitability?.rainfallPressure?.label ||
+        ''
+      const temperatureSuitability =
+        getTemperatureSuitabilityValue(row) ||
+        multiSourceRisk.environmentalSuitability?.temperatureSuitability?.label ||
+        ''
+      const humiditySuitability =
+        getHumiditySuitabilityValue(row) ||
+        multiSourceRisk.environmentalSuitability?.humiditySuitability?.label ||
+        ''
+      const populationExposure = readText(row, [
+        'population_exposure',
+        'populationExposure',
+      ])
+      const densityLevel = readText(row, [
+        'density_level',
+        'densityLevel',
+      ])
+      const riskComponents = row.risk_components || row.riskComponents || multiSourceRisk.components || null
+
+      const rowData = {
+        barangay,
+        barangayKey: row.barangay_key || row.barangayKey || '',
+        risk: backendRisk,
+        forecast,
+        forecastedCases: forecast,
+        predictedCases: forecast,
+
+        totalCases: historicalTotalCases,
+        cases: historicalTotalCases,
+        currentCases: forecastNextPeriod,
+        previousCases: previousAverage,
+
+        recentAverage,
+        previousAverage,
+        trend: trendLabel,
+        trendLabel,
+        trendDirection: trendLabel,
+
+        riskScore: combinedRiskScore,
+        risk_score: baseRiskScore,
+        baseRiskScore,
+        combinedRiskScore,
+        combined_risk_score: combinedRiskScore,
+        multiSourceRiskScore: combinedRiskScore,
+        multi_source_risk_score: combinedRiskScore,
+        overallRiskScore: combinedRiskScore,
+
+        environmentalScore,
+        environmental_score: environmentalScore,
+        environmentalSuitability,
+        environmental_suitability: environmentalSuitability,
+        rainfallPressure,
+        rainfall_pressure: rainfallPressure,
+        temperatureSuitability,
+        temperature_suitability: temperatureSuitability,
+        humiditySuitability,
+        humidity_suitability: humiditySuitability,
+        populationExposure,
+        population_exposure: populationExposure,
+        densityLevel,
+        density_level: densityLevel,
+
+        averageRainfall,
+        average_rainfall: averageRainfall,
+        avgRainfall: averageRainfall,
+        totalRainfall: weatherContext.totalRainfall,
+        total_rainfall: weatherContext.totalRainfall,
+        averageTemperature,
+        average_temperature: averageTemperature,
+        avgTemperature: averageTemperature,
+        averageHumidity,
+        average_humidity: averageHumidity,
+        avgHumidity: averageHumidity,
+        weatherRecordCount: weatherContext.weatherRecordCount,
+        weather_record_count: weatherContext.weatherRecordCount,
+        weatherCoverageLabel: weatherContext.weatherCoverageLabel,
+        weather_coverage_label: weatherContext.weatherCoverageLabel,
+
         population,
         density,
+        areaSqKm: boundaryArea,
+        area_sqkm: boundaryArea,
+        boundaryAreaSqKm: boundaryArea,
+        boundary_area_sqkm: boundaryArea,
         riskComponents,
+        risk_components: riskComponents,
 
-        decisionSupport: {
-          priority,
-          score,
-          summary: recommendation,
-          primaryAction: recommendation,
-          actions,
-          rationale,
-          trendDirection: row.trend_direction || 'Stable',
-          densityLevel,
-          populationExposure,
-          forecastPressure: `${row.risk_level || 'Low'} forecast pressure`,
-          environmentalSuitability,
-          environmentalScore,
-          rainfallPressure,
-          temperatureSuitability,
-          humiditySuitability,
-          multiSourceRiskScore: combinedRiskScore,
-          riskScore: combinedRiskScore,
-          riskComponents,
-        },
-      }
-    })
-    .sort((a, b) => {
-      if (a.priorityRank && b.priorityRank) {
-        return a.priorityRank - b.priorityRank
+        history,
+        weeklyCases: history,
+        caseHistory: series,
+        series,
+        periods: forecastPeriodPredictions.length
+          ? forecastPeriodPredictions.map((item) => item.period)
+          : [latestPeriod || 'Latest period'],
+        forecastPeriodPredictions,
+        forecastStrategy: row.forecast_strategy || row.forecastStrategy || '',
+
+        latestPeriod,
+        recordCount,
       }
 
-      return b.forecast - a.forecast
+      const computedDecisionSupport = computeDecisionSupport(rowData)
+
+      const fallbackActionPlan = buildBackendActionPlan({
+        risk: backendRisk,
+        forecast,
+        forecastNextPeriod,
+        recentAverage,
+        previousAverage,
+        trendLabel,
+        recommendation: backendRecommendation || computedDecisionSupport.primaryAction,
+      })
+
+      const actionPlan = Array.from(
+        new Set([
+          backendRecommendation,
+          ...(Array.isArray(computedDecisionSupport.actions)
+            ? computedDecisionSupport.actions
+            : []),
+          ...fallbackActionPlan,
+        ].filter(Boolean))
+      ).slice(0, 8)
+
+      const backendRationale = buildBackendRationale({
+        barangay,
+        risk: backendRisk,
+        forecast,
+        forecastNextPeriod,
+        recentAverage,
+        previousAverage,
+        historicalTotalCases,
+        trendLabel,
+        latestPeriod,
+        recordCount,
+      })
+
+      const rationale = Array.from(
+        new Set([
+          ...backendRationale,
+          ...(Array.isArray(computedDecisionSupport.rationale)
+            ? computedDecisionSupport.rationale
+            : []),
+        ].filter(Boolean))
+      ).slice(0, 9)
+
+      const decisionSupport = {
+        ...computedDecisionSupport,
+        summary:
+          backendRecommendation ||
+          computedDecisionSupport.summary ||
+          getGenericRecommendedAction(backendRisk),
+        priority:
+          computedDecisionSupport.priority ||
+          responsePriority,
+        actions: actionPlan,
+        rationale,
+        score: Math.max(
+          Number(computedDecisionSupport.score || 0),
+          Number(backendDecisionScore || 0)
+        ),
+        primaryAction: actionPlan[0] || backendRecommendation,
+        trendDirection: trendLabel,
+        forecastPressure:
+          computedDecisionSupport.forecastPressure ||
+          'Forecast pressure available',
+      }
+
+      return {
+        ...rowData,
+
+        recommendedAction: decisionSupport.summary,
+        primaryAction: decisionSupport.primaryAction,
+        recommendedActions: decisionSupport.actions,
+        responsePriority: decisionSupport.priority,
+        recommendationRationale: decisionSupport.rationale,
+        decisionScore: decisionSupport.score,
+        decisionSupport,
+
+        backendPriorityRank: Number(row.priority_rank || row.priorityRank || 0),
+      }
     })
+    .sort(compareCanonicalBarangayPriority)
 }
 
 function buildBackendDashboardStats(backendForecastResult = null, backendDengueSummary = null) {
@@ -1212,7 +2216,7 @@ function getTopDecisionText(topBarangay) {
   const decision = getDecisionSupport(topBarangay)
   const profile = getMultiSourceProfile(topBarangay)
 
-  return `${topBarangay.barangay} is the top response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a Response score of ${formatNumber(decision.score)}, and a Combined Data risk score of ${formatNumber(profile.score)}/100.`
+  return `${topBarangay.barangay} is the top response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, a Response score of ${formatNumber(decision.score)}, and a combined risk score of ${formatNumber(profile.score)}/100.`
 }
 
 function getReportSummary({ sortedRiskRows, dashboardStats }) {
@@ -1235,7 +2239,7 @@ function getReportSummary({ sortedRiskRows, dashboardStats }) {
       ? `${decisionCounts.urgent} barangay${decisionCounts.urgent === 1 ? '' : 's'} require immediate, high-priority, or escalated response planning.`
       : 'No barangay currently requires immediate or escalated response planning.',
     topBarangay
-      ? `${topBarangay.barangay} is the highest Response priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a Combined Data risk score of ${formatNumber(topProfile.score)}/100.`
+      ? `${topBarangay.barangay} is the highest Response priority with ${topDecision.priority}, ${formatNumber(topBarangay.forecast)} projected cases, and a combined risk score of ${formatNumber(topProfile.score)}/100.`
       : 'No top priority barangay is available.',
     `Environmental context used in the report includes ${topProfile.rainfallPressure}, ${topProfile.temperatureSuitability}, and ${topProfile.humiditySuitability}.`,
     `The current workspace has a data quality score of ${dashboardStats?.dataQuality || 0}%.`,
@@ -1248,7 +2252,7 @@ function buildPrintableActionList(actions = []) {
   }
 
   return actions
-    .slice(0, 6)
+    .slice(0, 8)
     .map((action) => `<li>${escapeHtml(action)}</li>`)
     .join('')
 }
@@ -1259,7 +2263,7 @@ function buildPrintableRationaleList(rationale = []) {
   }
 
   return rationale
-    .slice(0, 5)
+    .slice(0, 9)
     .map((reason) => `<li>${escapeHtml(reason)}</li>`)
     .join('')
 }
@@ -1270,7 +2274,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const hotspotCounts = getHotspotCounts(hotspotRows)
-  const topHotspot = hotspotRows[0] || null
+  const topHotspot = getRankedHotspotRows(hotspotRows)[0] || null
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
   const officialMetadata = reportMetadata || getOfficialReportMetadata({
@@ -1532,7 +2536,11 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
         <h2>Hotspot Summary</h2>
         <p>Confirmed hotspots: ${formatNumber(hotspotCounts.confirmed)}</p>
         <p>Emerging hotspots: ${formatNumber(hotspotCounts.emerging)}</p>
+        <p>Watch areas: ${formatNumber(hotspotCounts.watch)}</p>
+        <p>Low spatial concern: ${formatNumber(hotspotCounts.low)}</p>
         <p>Barangays needing map name review: ${formatNumber(hotspotCounts.needsReview)}</p>
+        <p>Not checked: ${formatNumber(hotspotCounts.notChecked)}</p>
+        <p>Official barangays accounted for: ${formatNumber(getHotspotCountTotal(hotspotCounts))}</p>
         <p>Top hotspot: ${escapeHtml(topHotspot?.barangay || 'Not checked')}</p>
 
         <h2>Response Priority Distribution</h2>
@@ -1556,7 +2564,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
               <th>Barangay</th>
               <th>Risk</th>
               <th>Response Priority</th>
-              <th>Combined Data Score</th>
+              <th>Combined Risk Score</th>
               <th>Response Score</th>
               <th>Forecast</th>
               <th>Hotspot</th>
@@ -1651,7 +2659,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const hotspotCounts = getHotspotCounts(hotspotRows)
-  const topHotspot = hotspotRows[0] || null
+  const topHotspot = getRankedHotspotRows(hotspotRows)[0] || null
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
   const officialMetadata = reportMetadata || getOfficialReportMetadata({
@@ -1691,9 +2699,13 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       ['Low-risk barangays', formatNumber(lowRiskCount)],
       ['Confirmed hotspots', formatNumber(hotspotCounts.confirmed)],
       ['Emerging hotspots', formatNumber(hotspotCounts.emerging)],
+      ['Watch areas', formatNumber(hotspotCounts.watch)],
+      ['Low spatial concern', formatNumber(hotspotCounts.low)],
       ['Map names needing review', formatNumber(hotspotCounts.needsReview)],
+      ['Hotspot results not checked', formatNumber(hotspotCounts.notChecked)],
+      ['Official barangays accounted for', formatNumber(getHotspotCountTotal(hotspotCounts))],
       ['Report data source', dataSourceLabel],
-      ['Four-week forecast total', formatNumber(dashboardStats.fourWeekForecast)],
+      ['Forecast-horizon total', formatNumber(dashboardStats.fourWeekForecast)],
       ['Data quality score', `${dashboardStats.dataQuality}%`],
       ['Top priority barangay', topBarangay?.barangay || 'No data'],
       ['Top response priority', topDecision.priority || 'No data'],
@@ -1824,7 +2836,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   autoTable(doc, {
     startY: 100,
-    head: [['Combined Data Factor', 'Value']],
+    head: [['Combined Risk Factor', 'Value']],
     body: [
       ['Combined risk score', `${formatNumber(topProfile.score)}/100`],
       ['Environmental suitability', topProfile.environmentalSuitability],
@@ -1858,7 +2870,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     head: [['No.', 'Recommended Action']],
     body:
       topDecision.actions?.length > 0
-        ? topDecision.actions.slice(0, 6).map((action, index) => [
+        ? topDecision.actions.slice(0, 8).map((action, index) => [
             index + 1,
             action,
           ])
@@ -1893,7 +2905,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     head: [['Reason']],
     body:
       topDecision.rationale?.length > 0
-        ? topDecision.rationale.slice(0, 6).map((reason) => [reason])
+        ? topDecision.rationale.slice(0, 9).map((reason) => [reason])
         : [['No rationale available.']],
     theme: 'grid',
     styles: {
@@ -2043,7 +3055,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     },
   })
 
-  doc.save('weekly-dengue-response-planning-report.pdf')
+  doc.save(`${REPORT_EXPORT_BASENAME}.pdf`)
 }
 
 function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
@@ -2052,7 +3064,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const hotspotCounts = getHotspotCounts(hotspotRows)
-  const topHotspot = hotspotRows[0] || null
+  const topHotspot = getRankedHotspotRows(hotspotRows)[0] || null
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
   const officialMetadata = reportMetadata || getOfficialReportMetadata({
@@ -2064,7 +3076,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   const workbook = XLSX.utils.book_new()
 
   const summarySheet = XLSX.utils.aoa_to_sheet([
-    ['Weekly Dengue Response Planning Report'],
+    [REPORT_TITLE],
     ['Generated', generatedAt],
     ['Report ID', officialMetadata.reportId],
     ['Generated by', officialMetadata.generatedBy],
@@ -2093,14 +3105,18 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Low-risk barangays', lowRiskCount],
     ['Confirmed hotspots', hotspotCounts.confirmed],
     ['Emerging hotspots', hotspotCounts.emerging],
+    ['Watch areas', hotspotCounts.watch],
+    ['Low spatial concern', hotspotCounts.low],
     ['Map names needing review', hotspotCounts.needsReview],
+    ['Hotspot results not checked', hotspotCounts.notChecked],
+    ['Official barangays accounted for', getHotspotCountTotal(hotspotCounts)],
     ['Top hotspot barangay', topHotspot?.barangay || 'Not checked'],
     ['Report data source', dataSourceLabel],
-    ['Four-week forecast total', Number(dashboardStats.fourWeekForecast || 0)],
+    ['Forecast-horizon total', Number(dashboardStats.fourWeekForecast || 0)],
     ['Data quality score', `${dashboardStats.dataQuality}%`],
     ['Top priority barangay', topBarangay?.barangay || 'No data'],
     ['top response priority', topDecision.priority || 'No data'],
-    ['Top Combined Data risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
+    ['Top combined risk score', `${getMultiSourceProfile(topBarangay).score}/100`],
     ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
     ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
     ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
@@ -2158,11 +3174,11 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       'Barangay',
       'Risk Level',
       'Response Priority',
-      'Combined Data Risk Score',
+      'Combined Risk Score',
       'Decision Score',
       'Projected Cases',
       'Historical Total Cases',
-      'Current Cases',
+      'Next-Period Forecast',
       'Previous Cases',
       'Trend',
       'Trend Direction',
@@ -2241,7 +3257,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   const factorSheet = XLSX.utils.aoa_to_sheet([
     [
       'Barangay',
-      'Combined Data Risk Score',
+      'Combined Risk Score',
       'Environmental Suitability',
       'Rainfall Pressure',
       'Average Rainfall',
@@ -2292,7 +3308,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 18 },
   ]
 
-  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Combined Data Factors')
+  XLSX.utils.book_append_sheet(workbook, factorSheet, 'Combined Risk Factors')
 
   const actionRows = []
 
@@ -2445,7 +3461,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   XLSX.utils.book_append_sheet(workbook, sourceSheet, 'Uploaded Data')
 
-  XLSX.writeFile(workbook, 'weekly-dengue-response-planning-report.xlsx')
+  XLSX.writeFile(workbook, `${REPORT_EXPORT_BASENAME}.xlsx`)
 }
 
 async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
@@ -2454,7 +3470,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const hotspotCounts = getHotspotCounts(hotspotRows)
-  const topHotspot = hotspotRows[0] || null
+  const topHotspot = getRankedHotspotRows(hotspotRows)[0] || null
   const topBarangays = sortedRiskRows.slice(0, 5)
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
@@ -2469,8 +3485,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = 'Barangay-Level Dengue Outbreak Prevention System'
-  pptx.subject = 'Weekly Dengue Response Planning Report'
-  pptx.title = 'Weekly Dengue Response Planning Report'
+  pptx.subject = REPORT_TITLE
+  pptx.title = REPORT_TITLE
   pptx.company = 'Caraga State University'
   pptx.theme = {
     headFontFace: 'Aptos Display',
@@ -2649,7 +3665,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     charSpace: 1.5,
   })
 
-  titleSlide.addText('Weekly Response Briefing', {
+  titleSlide.addText('Four-Month Forecast Briefing', {
     x: 0.8,
     y: 1.7,
     w: 11.2,
@@ -2830,7 +3846,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   })
 
   summarySlide.addText(
-    `Confirmed: ${formatNumber(hotspotCounts.confirmed)} • Emerging: ${formatNumber(hotspotCounts.emerging)} • Needs map name review: ${formatNumber(hotspotCounts.needsReview)}`,
+    `Confirmed: ${formatNumber(hotspotCounts.confirmed)} • Emerging: ${formatNumber(hotspotCounts.emerging)} • Watch: ${formatNumber(hotspotCounts.watch)} • Low concern: ${formatNumber(hotspotCounts.low)} • Needs review: ${formatNumber(hotspotCounts.needsReview)} • Accounted: ${formatNumber(getHotspotCountTotal(hotspotCounts))}`,
     {
       x: 0.72,
       y: 5.92,
@@ -2877,12 +3893,12 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   addSlideTitle(
     prioritySlide,
     'Response Priority Barangays',
-    'Top barangays ranked by Response priority, decision score, risk level, and projected dengue cases.'
+    'Top barangays ranked by risk level, combined multi-source score, response priority, and projected dengue cases.'
   )
 
   prioritySlide.addTable(
     [
-      ['Rank', 'Barangay', 'Risk', 'Response Priority', 'Score', 'Projected'],
+      ['Rank', 'Barangay', 'Risk', 'Response Priority', 'Combined Risk', 'Projected'],
       ...(topBarangays.length > 0
         ? topBarangays.map((row, index) => {
             const decision = getDecisionSupport(row)
@@ -2892,7 +3908,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
               row.barangay,
               row.risk,
               decision.priority,
-              formatNumber(decision.score),
+              `${formatNumber(getCanonicalCombinedRiskScore(row))}/100`,
               formatNumber(row.forecast),
             ]
           })
@@ -2974,7 +3990,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const factorSlide = pptx.addSlide()
   addSlideTitle(
     factorSlide,
-    'Combined Data Risk Factors',
+    'Combined Risk Factors',
     'Environmental, population, density, and forecast factors used by the Response ranking.'
   )
 
@@ -3011,8 +4027,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   factorSlide.addText(
     topBarangay
-      ? `${topBarangay.barangay} currently has a Combined Data score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
-      : 'Combined Data factors will appear after dengue, weather, population, and boundary records are available.',
+      ? `${topBarangay.barangay} currently has a combined risk score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
+      : 'Combined risk factors will appear after dengue, weather, population, and boundary records are available.',
     {
       x: 0.75,
       y: 4.95,
@@ -3193,79 +4209,152 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   )
 
   await pptx.writeFile({
-    fileName: 'weekly-dengue-response-planning-report.pptx',
+    fileName: `${REPORT_EXPORT_BASENAME}.pptx`,
   })
 }
 
-function StatCard({ label, value, helper, icon: Icon, tone = 'blue' }) {
-  const toneMap = {
+function getReportVisualTheme(tone = 'slate') {
+  const themes = {
     blue: {
-      iconWrap:
-        'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
-      glow: 'from-blue-50/90 to-white dark:from-blue-500/10 dark:to-slate-900',
+      surface:
+        'border-blue-200/70 bg-gradient-to-br from-blue-50/95 via-white to-cyan-50/75 dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5',
+      icon:
+        'border-blue-200 bg-white text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200',
+      line: 'from-blue-600 via-cyan-400 to-sky-300',
+      glow: 'bg-blue-400/20',
+      meter: 'from-blue-600 via-sky-400 to-cyan-300',
+      chip:
+        'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200',
+      darkCard: 'from-[#071321]/95 via-[#082039]/90 to-[#0a3550]/80',
     },
     rose: {
-      iconWrap:
-        'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
-      glow: 'from-rose-50/90 to-white dark:from-rose-500/10 dark:to-slate-900',
-    },
-    emerald: {
-      iconWrap:
-        'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-      glow: 'from-emerald-50/90 to-white dark:from-emerald-500/10 dark:to-slate-900',
+      surface:
+        'border-rose-200/70 bg-gradient-to-br from-rose-50/95 via-white to-orange-50/75 dark:border-rose-400/20 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5',
+      icon:
+        'border-rose-200 bg-white text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200',
+      line: 'from-rose-600 via-orange-400 to-amber-300',
+      glow: 'bg-rose-400/20',
+      meter: 'from-rose-600 via-orange-400 to-amber-300',
+      chip:
+        'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
+      darkCard: 'from-[#17070e]/95 via-[#2a0b16]/90 to-[#451722]/80',
     },
     amber: {
-      iconWrap:
-        'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
-      glow: 'from-amber-50/90 to-white dark:from-amber-500/10 dark:to-slate-900',
+      surface:
+        'border-amber-200/70 bg-gradient-to-br from-amber-50/95 via-white to-orange-50/75 dark:border-amber-400/20 dark:from-amber-500/10 dark:via-slate-950 dark:to-orange-500/5',
+      icon:
+        'border-amber-200 bg-white text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200',
+      line: 'from-amber-600 via-orange-400 to-yellow-300',
+      glow: 'bg-amber-400/20',
+      meter: 'from-amber-600 via-orange-400 to-yellow-300',
+      chip:
+        'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
+      darkCard: 'from-[#170e06]/95 via-[#2d1707]/90 to-[#493009]/80',
+    },
+    emerald: {
+      surface:
+        'border-emerald-200/70 bg-gradient-to-br from-emerald-50/95 via-white to-teal-50/75 dark:border-emerald-400/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5',
+      icon:
+        'border-emerald-200 bg-white text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200',
+      line: 'from-emerald-600 via-teal-400 to-cyan-300',
+      glow: 'bg-emerald-400/20',
+      meter: 'from-emerald-600 via-teal-400 to-cyan-300',
+      chip:
+        'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
+      darkCard: 'from-[#06150f]/95 via-[#08251b]/90 to-[#0b3c2e]/80',
+    },
+    violet: {
+      surface:
+        'border-violet-200/70 bg-gradient-to-br from-violet-50/95 via-white to-indigo-50/75 dark:border-violet-400/20 dark:from-violet-500/10 dark:via-slate-950 dark:to-indigo-500/5',
+      icon:
+        'border-violet-200 bg-white text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-200',
+      line: 'from-violet-600 via-indigo-400 to-cyan-300',
+      glow: 'bg-violet-400/20',
+      meter: 'from-violet-600 via-indigo-400 to-cyan-300',
+      chip:
+        'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
+      darkCard: 'from-[#10091f]/95 via-[#21113e]/90 to-[#302258]/80',
+    },
+    slate: {
+      surface:
+        'border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-white to-blue-50/60 dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/20',
+      icon:
+        'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
+      line: 'from-slate-600 via-blue-400 to-transparent',
+      glow: 'bg-slate-400/15',
+      meter: 'from-slate-600 via-blue-400 to-cyan-300',
+      chip:
+        'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200',
+      darkCard: 'from-[#07101c]/95 via-[#0a1728]/90 to-[#12243a]/80',
     },
   }
 
-  const style = toneMap[tone] || toneMap.blue
+  return themes[tone] || themes.slate
+}
+
+function getRiskCardTheme(risk) {
+  if (risk === 'High') return getReportVisualTheme('rose')
+  if (risk === 'Moderate') return getReportVisualTheme('amber')
+  if (risk === 'Low') return getReportVisualTheme('emerald')
+  return getReportVisualTheme('slate')
+}
+
+function StatCard({ label, value, helper, icon: Icon, tone = 'blue' }) {
+  const theme = getReportVisualTheme(tone)
 
   return (
-    <div
-      className={`group relative overflow-hidden rounded-[26px] border border-brand-line/70 bg-gradient-to-br ${style.glow} p-5 shadow-[0_16px_36px_rgba(15,23,42,0.07)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(15,23,42,0.11)] dark:border-slate-800 dark:bg-slate-900`}
+    <article
+      className={`group relative min-h-[190px] overflow-hidden rounded-[30px] border p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)] ring-1 ring-white/75 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_68px_rgba(15,23,42,0.15)] dark:ring-white/5 ${theme.surface}`}
     >
-      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/60 blur-2xl dark:bg-white/5" />
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
+      <div className={`pointer-events-none absolute -right-14 -top-14 h-40 w-40 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${theme.glow}`} />
+      <div className="pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full border border-white/70 opacity-60 dark:border-white/5" />
 
-      <div className="relative flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
-            {label}
-          </p>
+      <div className="relative flex h-full flex-col">
+        <div className="flex items-start justify-between gap-4">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${theme.icon}`}>
+            <Icon className="h-5 w-5" strokeWidth={2.25} />
+          </div>
 
-          <h3 className="mt-3 break-words text-3xl font-black tracking-tight text-brand-text dark:text-slate-100">
-            {value}
-          </h3>
+          <span className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm dark:border-white/5 dark:bg-white/5 dark:text-slate-400">
+            Live report
+          </span>
+        </div>
 
-          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">
+          {label}
+        </p>
+        <h3 className="mt-1 break-words text-3xl font-black tracking-[-0.05em] text-slate-950 dark:text-white">
+          {value}
+        </h3>
+
+        <div className="mt-auto pt-4">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/80 shadow-inner dark:bg-slate-800">
+            <div className={`h-full w-[72%] rounded-full bg-gradient-to-r ${theme.meter}`} />
+          </div>
+          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-400">
             {helper}
           </p>
         </div>
-
-        <div
-          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-sm ${style.iconWrap}`}
-        >
-          <Icon className="h-6 w-6" strokeWidth={2.2} />
-        </div>
       </div>
-    </div>
+    </article>
   )
 }
 
-function HeroMetric({ label, value, helper }) {
+function HeroMetric({ label, value, helper, tone = 'blue' }) {
+  const theme = getReportVisualTheme(tone)
+
   return (
-    <div className="rounded-[24px] border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
-      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+    <div className="group/hero-metric relative overflow-hidden rounded-[22px] border border-white/15 bg-gradient-to-br from-white/10 via-slate-950/40 to-cyan-400/5 p-4 shadow-[0_16px_36px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-white/25">
+      <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${theme.line}`} />
+      <div className={`pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full blur-2xl ${theme.glow}`} />
+      <p className="relative text-[9px] font-black uppercase tracking-[0.16em] text-slate-300">
         {label}
       </p>
-
-      <p className="mt-2 text-2xl font-black tracking-tight text-white">
+      <p className="relative mt-2 text-2xl font-black tracking-[-0.04em] text-white">
         {value}
       </p>
-
-      <p className="mt-1 text-xs leading-5 text-white/70">
+      <p className="relative mt-1 text-[11px] font-semibold leading-5 text-slate-300/80">
         {helper}
       </p>
     </div>
@@ -3273,33 +4362,86 @@ function HeroMetric({ label, value, helper }) {
 }
 
 function SectionBadge({ icon: Icon, children, tone = 'blue' }) {
-  const toneMap = {
-    blue: 'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
-    rose: 'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
-    emerald: 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-    amber: 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
-    slate: 'border-slate-200 bg-slate-50 text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  }
+  const theme = getReportVisualTheme(tone)
 
   return (
-    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] ${toneMap[tone] || toneMap.blue}`}>
+    <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.17em] shadow-sm ${theme.icon}`}>
       <Icon className="h-3.5 w-3.5" strokeWidth={2.4} />
       {children}
     </div>
   )
 }
 
-function PremiumPanel({ id, children, className = '' }) {
+function PremiumPanel({ id, children, className = '', tone = 'slate' }) {
+  const theme = getReportVisualTheme(tone)
+
   return (
     <section
       id={id}
-      className={`scroll-mt-28 overflow-hidden rounded-[34px] border border-slate-200/80 bg-white/90 shadow-[0_22px_60px_rgba(15,23,42,0.08)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/80 dark:ring-white/5 ${className}`}
+      className={`group relative scroll-mt-28 overflow-hidden rounded-[34px] border shadow-[0_22px_68px_rgba(15,23,42,0.08)] ring-1 ring-white/80 backdrop-blur-xl transition duration-300 hover:shadow-[0_30px_82px_rgba(15,23,42,0.13)] dark:ring-white/5 ${theme.surface} ${className}`}
     >
-      {children}
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
+      <div className={`pointer-events-none absolute -right-24 -top-24 h-60 w-60 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-110 ${theme.glow}`} />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035] dark:[background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)]" />
+      <div className="relative z-[1]">{children}</div>
     </section>
   )
 }
 
+function DisclosureCard({
+  id,
+  open,
+  onToggle,
+  icon: Icon,
+  title,
+  description,
+  summary,
+  tone = 'slate',
+}) {
+  const theme = getReportVisualTheme(tone)
+
+  return (
+    <PremiumPanel id={id} tone={tone} className="p-4 sm:p-5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="group/disclosure flex w-full items-start justify-between gap-4 text-left"
+      >
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-sm ${theme.icon}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-black tracking-tight text-brand-text dark:text-slate-100 sm:text-xl">
+                {title}
+              </h2>
+              <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] ${theme.chip}`}>
+                {open ? 'Expanded' : 'Collapsed'}
+              </span>
+            </div>
+
+            <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">
+              {description}
+            </p>
+
+            {summary && (
+              <span className={`mt-3 inline-flex w-fit rounded-full border px-3 py-1.5 text-xs font-black ${theme.chip}`}>
+                {summary}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border shadow-sm transition group-hover/disclosure:-translate-y-0.5 ${theme.icon}`}>
+          {open ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </div>
+      </button>
+    </PremiumPanel>
+  )
+}
 
 function splitMetadataItems(value, separator = ';') {
   const text = String(value || '').trim()
@@ -3413,6 +4555,15 @@ export default function ReportsPage() {
   const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
   const [latestModelMetrics, setLatestModelMetrics] = useState(null)
   const [isAiSnapshotOpen, setIsAiSnapshotOpen] = useState(false)
+  const [isAdditionalIndicatorsOpen, setIsAdditionalIndicatorsOpen] = useState(false)
+  const [isHotspotDetailsOpen, setIsHotspotDetailsOpen] = useState(false)
+  const [isOfficialDetailsOpen, setIsOfficialDetailsOpen] = useState(false)
+  const [isExportDetailsOpen, setIsExportDetailsOpen] = useState(false)
+  const [isSupportingDetailsOpen, setIsSupportingDetailsOpen] = useState(false)
+  const [isActivityOpen, setIsActivityOpen] = useState(false)
+  const [isTopResponseDetailsOpen, setIsTopResponseDetailsOpen] = useState(false)
+
+  const data = useData()
 
   const {
     dashboardStats = {},
@@ -3422,7 +4573,56 @@ export default function ReportsPage() {
     backendForecastResult = null,
     backendDengueSummary = null,
     addActivityLog,
-  } = useData()
+    boundaryRecords = [],
+  } = data
+
+  const populationRecords = useMemo(() => {
+    const candidates = [
+      data.populationRecords,
+      data.populationRows,
+      data.populationData,
+      data.populationDataset,
+    ]
+
+    return candidates.find((candidate) => Array.isArray(candidate)) || []
+  }, [
+    data.populationRecords,
+    data.populationRows,
+    data.populationData,
+    data.populationDataset,
+  ])
+
+  const weatherRecords = useMemo(() => {
+    const candidates = [
+      data.weatherRecords,
+      data.weatherRows,
+      data.weatherData,
+      data.weatherDataset,
+      data.meteorologicalRecords,
+      data.meteorologicalRows,
+      data.meteorologicalData,
+      data.meteorologicalDataset,
+    ]
+
+    return candidates.find((candidate) => Array.isArray(candidate)) || []
+  }, [
+    data.weatherRecords,
+    data.weatherRows,
+    data.weatherData,
+    data.weatherDataset,
+    data.meteorologicalRecords,
+    data.meteorologicalRows,
+    data.meteorologicalData,
+    data.meteorologicalDataset,
+  ])
+
+  const boundaryGeoJson = useMemo(() => {
+    return getBoundaryGeoJson(boundaryRecords)
+  }, [boundaryRecords])
+
+  const boundaryFeatures = useMemo(() => {
+    return boundaryGeoJson?.features || []
+  }, [boundaryGeoJson])
 
   useEffect(() => {
     let active = true
@@ -3453,7 +4653,11 @@ export default function ReportsPage() {
 
   const displayRiskRows = useMemo(() => {
     if (usingBackendForecast) {
-      return buildBackendRiskRows(backendForecastResult)
+      return buildBackendRiskRows(backendForecastResult, {
+        populationRecords,
+        boundaryFeatures,
+        weatherRecords,
+      })
     }
 
     if (Array.isArray(riskRows) && riskRows.length > 0) {
@@ -3461,7 +4665,14 @@ export default function ReportsPage() {
     }
 
     return []
-  }, [usingBackendForecast, backendForecastResult, riskRows])
+  }, [
+    usingBackendForecast,
+    backendForecastResult,
+    riskRows,
+    populationRecords,
+    boundaryFeatures,
+    weatherRecords,
+  ])
 
   const displayDashboardStats = useMemo(() => {
     if (usingBackendForecast) {
@@ -3519,13 +4730,30 @@ export default function ReportsPage() {
   }, [usingBackendForecast, sourceStatus?.boundary?.validCount, backendForecastResult])
 
 
-  const hotspotRows = useMemo(() => {
+  const rawHotspotRows = useMemo(() => {
     return Array.isArray(hotspotResult?.hotspots) ? hotspotResult.hotspots : []
   }, [hotspotResult])
 
-  const hotspotSummary = hotspotResult?.summary || null
+  const hotspotRows = useMemo(() => {
+    return reconcileHotspotRows(rawHotspotRows, sortedRiskRows)
+  }, [rawHotspotRows, sortedRiskRows])
+
   const hotspotCounts = getHotspotCounts(hotspotRows)
+  const hotspotCountTotal = getHotspotCountTotal(hotspotCounts)
   const hotspotPriorityCount = hotspotCounts.confirmed + hotspotCounts.emerging
+  const hotspotSummary = useMemo(() => {
+    return buildReconciledHotspotSummary(
+      hotspotResult?.summary || null,
+      hotspotCounts,
+      sortedRiskRows.length
+    )
+  }, [hotspotResult, hotspotCounts, sortedRiskRows.length])
+  const rankedHotspotRows = useMemo(() => {
+    return getRankedHotspotRows(hotspotRows)
+  }, [hotspotRows])
+  const mapReviewHotspotRows = useMemo(() => {
+    return hotspotRows.filter((row) => isHotspotMapReviewRow(row))
+  }, [hotspotRows])
   const reportDataSourceLabel = getReportDataSourceLabel(usingBackendForecast)
   const officialReportMetadata = useMemo(() => {
     return getOfficialReportMetadata({
@@ -3538,6 +4766,46 @@ export default function ReportsPage() {
     })
   }, [sourceStatus, backendForecastResult, latestModelMetrics, generatedAt, sortedRiskRows, usingBackendForecast])
   const officialSourceRows = officialReportMetadata.sourceRows || []
+  const hasUploadedDataIssues = useMemo(() => {
+    const sourceEntries = Object.entries(sourceStatus || {})
+
+    if (!sourceEntries.length) return true
+
+    return sourceEntries.some(([, item = {}]) => {
+      const badge = String(item.badge || item.status || '').toLowerCase()
+      const invalidCount = Number(item.invalidCount || item.invalidRecords || item.invalid_records || 0)
+      const hasFile = Boolean(item.uploadedName || item.filename || item.file_name)
+
+      return (
+        !hasFile ||
+        invalidCount > 0 ||
+        badge.includes('review') ||
+        badge.includes('pending') ||
+        badge.includes('missing') ||
+        badge.includes('error') ||
+        badge.includes('failed')
+      )
+    })
+  }, [sourceStatus])
+
+  const hasHotspotIssues = Boolean(
+    hotspotError ||
+      hotspotCounts.needsReview > 0 ||
+      (!isLoadingHotspotReport && hotspotRows.length === 0)
+  )
+
+  useEffect(() => {
+    if (hasUploadedDataIssues) {
+      setIsSupportingDetailsOpen(true)
+    }
+  }, [hasUploadedDataIssues])
+
+  useEffect(() => {
+    if (hasHotspotIssues) {
+      setIsHotspotDetailsOpen(true)
+    }
+  }, [hasHotspotIssues])
+
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const topBarangays = sortedRiskRows.slice(0, 5)
@@ -3552,6 +4820,15 @@ export default function ReportsPage() {
 
   const selectedExport = exportFormats.find((item) => item.id === format) || exportFormats[0]
   const SelectedExportIcon = selectedExport.icon
+  const selectedOutputTone =
+    format === 'pdf'
+      ? 'rose'
+      : format === 'excel'
+        ? 'emerald'
+        : format === 'powerpoint'
+          ? 'blue'
+          : 'amber'
+  const selectedOutputTheme = getReportVisualTheme(selectedOutputTone)
 
   const reportSummary = useMemo(() => {
     return getReportSummary({
@@ -3563,15 +4840,15 @@ export default function ReportsPage() {
 
   function getReportFilePath(formatLabel) {
     if (formatLabel === 'PDF') {
-      return 'local_download:weekly-dengue-response-planning-report.pdf'
+      return `local_download:${REPORT_EXPORT_BASENAME}.pdf`
     }
 
     if (formatLabel === 'Excel') {
-      return 'local_download:weekly-dengue-response-planning-report.xlsx'
+      return `local_download:${REPORT_EXPORT_BASENAME}.xlsx`
     }
 
     if (formatLabel === 'PowerPoint') {
-      return 'local_download:weekly-dengue-response-planning-report.pptx'
+      return `local_download:${REPORT_EXPORT_BASENAME}.pptx`
     }
 
     return 'browser_print_view'
@@ -3600,7 +4877,11 @@ export default function ReportsPage() {
       lowRiskBarangayCount: lowRiskCount,
       confirmedHotspotCount: hotspotCounts.confirmed,
       emergingHotspotCount: hotspotCounts.emerging,
+      watchAreaCount: hotspotCounts.watch,
+      lowSpatialConcernCount: hotspotCounts.low,
       mapReviewCount: hotspotCounts.needsReview,
+      hotspotNotCheckedCount: hotspotCounts.notChecked,
+      hotspotAccountedBarangayCount: hotspotCountTotal,
       hotspotPriorityCount,
       topBarangay: topBarangay?.barangay || '',
       topPriority: topDecision?.priority || '',
@@ -3623,7 +4904,7 @@ export default function ReportsPage() {
       await saveGeneratedReport({
         report_code: reportMetadataForExport.reportId,
         report_type: formatLabel,
-        report_title: 'Weekly Dengue Response Planning Report',
+        report_title: REPORT_TITLE,
         generated_by: reportMetadataForExport.generatedBy,
         generated_role: reportMetadataForExport.role,
         generated_at: exportedAtIso,
@@ -3666,7 +4947,7 @@ export default function ReportsPage() {
 
 
   async function handleExport() {
-    const title = 'Weekly Dengue Response Planning Report'
+    const title = REPORT_TITLE
     const exportedAt = getCurrentDateTime()
     const exportedAtIso = new Date().toISOString()
     const reportMetadataForExport = getOfficialReportMetadata({
@@ -3683,10 +4964,18 @@ let exportHotspotSummary = hotspotSummary
 
 try {
   const latestHotspotResult = await getGeospatialHotspots()
-  exportHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
+  const latestRawHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
     ? latestHotspotResult.hotspots
-    : hotspotRows
-  exportHotspotSummary = latestHotspotResult?.summary || hotspotSummary
+    : rawHotspotRows
+
+  exportHotspotRows = reconcileHotspotRows(latestRawHotspotRows, sortedRiskRows)
+
+  const exportHotspotCounts = getHotspotCounts(exportHotspotRows)
+  exportHotspotSummary = buildReconciledHotspotSummary(
+    latestHotspotResult?.summary || hotspotSummary,
+    exportHotspotCounts,
+    sortedRiskRows.length
+  )
 } catch {
   exportHotspotRows = hotspotRows
   exportHotspotSummary = hotspotSummary
@@ -3884,60 +5173,78 @@ const exportPayload = {
         }
       `}</style>
 
-      <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.22)] dark:border-slate-800 sm:p-6 lg:p-7">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_34%)]" />
+      <section className="reports-hero-panel relative isolate overflow-hidden rounded-[38px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.34)] ring-1 ring-white/10 sm:rounded-[40px]">
+        <img
+          src={reportsHeroBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover brightness-[0.9] saturate-[1.08]"
+          style={{ objectPosition: '62% center' }}
+        />
 
-        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-stretch">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(100deg,rgba(2,6,23,0.97)_0%,rgba(3,13,28,0.91)_42%,rgba(4,22,40,0.60)_68%,rgba(2,6,23,0.74)_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_74%_24%,rgba(56,189,248,0.18),transparent_27%),radial-gradient(circle_at_92%_90%,rgba(99,102,241,0.14),transparent_28%)]" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
+        <div className="pointer-events-none absolute inset-x-20 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
+        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-indigo-400/10 blur-3xl" />
+
+        <div className="relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.62fr)] xl:items-center xl:p-10">
           <div className="flex flex-col justify-between">
             <div>
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/35 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 shadow-sm backdrop-blur-md">
                 <Sparkles className="h-3.5 w-3.5" />
-                Report center
+                Reporting command center
               </div>
 
-              <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
-                Reports and Exports
+              <h1 className="mt-6 max-w-4xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.45rem]">
+                Turn dengue intelligence into review-ready reports.
               </h1>
 
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/90 sm:text-base">
+              <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
                 {usingBackendForecast
                   ? 'Ready-to-use reports generated from saved forecast, Response priority ranking, and response recommendations.'
-                  : 'Ready-to-use reports for CHO review, barangay coordination, and weekly dengue response planning.'}
+                  : 'Ready-to-use reports for CHO review, barangay coordination, and dengue response planning.'}
               </p>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-4">
+            <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <HeroMetric
                 label="Total cases"
                 value={formatNumber(displayDashboardStats.totalCases)}
                 helper="Recorded workspace cases"
+                tone="blue"
               />
 
               <HeroMetric
                 label="Urgent alerts"
                 value={formatNumber(decisionCounts.urgent)}
                 helper="Urgent response priorities"
+                tone="rose"
               />
 
               <HeroMetric
                 label="Forecast total"
                 value={formatNumber(displayDashboardStats.fourWeekForecast)}
-                helper="Projected four-week cases"
+                helper="Projected forecast-horizon cases"
+                tone="amber"
               />
 
               <HeroMetric
                 label="Data quality"
                 value={`${displayDashboardStats.dataQuality || 0}%`}
                 helper="Validated readiness score"
+                tone="emerald"
               />
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-white/20 bg-white/20 p-5 shadow-[0_20px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+          <div className={`group/output relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${selectedOutputTheme.darkCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.54)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
+            <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${selectedOutputTheme.line}`} />
+            <div className={`pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full ${selectedOutputTheme.glow} blur-3xl`} />
             <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border border-white/20 bg-white/20 text-white shadow-inner">
+              <div className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border shadow-inner ${selectedOutputTheme.icon}`}>
                 <SelectedExportIcon className="h-7 w-7" strokeWidth={2.2} />
               </div>
 
@@ -3954,7 +5261,7 @@ const exportPayload = {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-white/20 bg-black/10 p-4">
+            <div className="relative mt-5 rounded-[24px] border border-white/15 bg-black/20 p-4 shadow-inner">
               <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/70">
                 Generated timestamp
               </p>
@@ -3982,7 +5289,7 @@ const exportPayload = {
                 color: '#0f172a',
                 borderColor: 'rgba(255,255,255,0.45)',
               }}
-              className="group mt-5 flex min-h-[78px] w-full items-center justify-between gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(15,23,42,0.22)]"
+              className="group relative mt-5 flex min-h-[78px] w-full items-center justify-between gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_18px_38px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.32)]"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.24)]">
@@ -4020,6 +5327,18 @@ const exportPayload = {
         </div>
       </section>
 
+      <DisclosureCard
+        id="additional-report-indicators"
+        open={isAdditionalIndicatorsOpen}
+        onToggle={() => setIsAdditionalIndicatorsOpen((current) => !current)}
+        icon={Gauge}
+        title="Additional report indicators"
+        description="Open the supporting indicators only when a more detailed report review is needed."
+        summary={`Citywide average combined risk score: ${formatNumber(averageMultiSourceScore)}/100`}
+        tone="blue"
+      />
+
+      {isAdditionalIndicatorsOpen && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-5">
         <StatCard
           label="Total cases"
@@ -4040,15 +5359,15 @@ const exportPayload = {
         <StatCard
           label="Forecast total"
           value={formatNumber(displayDashboardStats.fourWeekForecast)}
-          helper="Projected four-week cases"
+          helper="Projected forecast-horizon cases"
           icon={BarChart3}
           tone="amber"
         />
 
         <StatCard
-          label="Avg Combined score"
+          label="Avg combined risk score"
           value={`${formatNumber(averageMultiSourceScore)}/100`}
-          helper="Average Combined Data risk"
+          helper="Average combined risk"
           icon={Gauge}
           tone="blue"
         />
@@ -4061,6 +5380,8 @@ const exportPayload = {
           tone="emerald"
         />
       </div>
+
+      )}
 
       {usingBackendForecast && (
         <div className="relative overflow-hidden rounded-[28px] border border-emerald-100 bg-emerald-50/80 px-5 py-4 text-sm leading-6 text-brand-green shadow-[0_18px_40px_rgba(15,23,42,0.07)] dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -4106,13 +5427,139 @@ const exportPayload = {
 
             <p className="mt-1">
               {hotspotRows.length > 0
-                ? `${formatNumber(hotspotPriorityCount)} barangay${hotspotPriorityCount === 1 ? '' : 's'} are confirmed or emerging hotspots. ${formatNumber(hotspotCounts.needsReview)} barangay${hotspotCounts.needsReview === 1 ? '' : 's'} need map name review before final hotspot interpretation.`
+                ? `${formatNumber(hotspotPriorityCount)} barangay${hotspotPriorityCount === 1 ? '' : 's'} are confirmed or emerging hotspots. ${formatNumber(hotspotCounts.needsReview)} barangay${hotspotCounts.needsReview === 1 ? '' : 's'} need map name review. ${formatNumber(hotspotCountTotal)} of ${formatNumber(sortedRiskRows.length)} official barangays are accounted for exactly once.`
                 : hotspotError || 'Hotspot information will appear after the map file and saved forecast are available.'}
             </p>
           </div>
         </div>
       </div>
 
+      <DisclosureCard
+        id="hotspot-analysis-details"
+        open={isHotspotDetailsOpen}
+        onToggle={() => setIsHotspotDetailsOpen((current) => !current)}
+        icon={MapPin}
+        title="Hotspot analysis details"
+        description="View hotspot categories, map-name review items, and the highest spatial-priority barangays."
+        summary={
+          hotspotRows.length > 0
+            ? `${formatNumber(hotspotPriorityCount)} confirmed or emerging · ${formatNumber(hotspotCounts.needsReview)} need review · ${formatNumber(hotspotCountTotal)}/${formatNumber(sortedRiskRows.length)} accounted`
+            : 'Hotspot data not available'
+        }
+        tone={hasHotspotIssues ? 'amber' : 'blue'}
+      />
+
+      {isHotspotDetailsOpen && (
+        <PremiumPanel className="p-5 sm:p-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {[
+              ['Confirmed', hotspotCounts.confirmed, 'rose'],
+              ['Emerging', hotspotCounts.emerging, 'amber'],
+              ['Watch areas', hotspotCounts.watch, 'amber'],
+              ['Low concern', hotspotCounts.low, 'emerald'],
+              ['Needs map review', hotspotCounts.needsReview, 'blue'],
+              ['Not checked', hotspotCounts.notChecked, 'slate'],
+            ].map(([label, value, tone]) => (
+              <div
+                key={`hotspot-detail-${label}`}
+                className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                  {label}
+                </p>
+                <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                  {formatNumber(value)}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className={`mt-4 rounded-[22px] border p-4 text-sm font-bold leading-6 ${
+            hotspotCountTotal === sortedRiskRows.length
+              ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+              : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+          }`}>
+            Hotspot classification total: {formatNumber(hotspotCountTotal)} of {formatNumber(sortedRiskRows.length)} official barangays. Each official barangay is counted once.
+          </div>
+
+          {hotspotRows.length > 0 ? (
+            <>
+            <div className="mt-4 space-y-2">
+              {rankedHotspotRows.slice(0, 5).map((row, index) => (
+                <div
+                  key={`hotspot-row-${row.barangay || index}`}
+                  className="flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-black text-brand-text dark:text-slate-100">
+                      #{index + 1} {row.barangay || 'Unknown barangay'}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                      {row.recommended_map_action || 'Continue routine monitoring.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`rounded-full border px-3 py-1 text-xs font-black ${getHotspotBadgeStyle(row.hotspot_level)}`}>
+                      {getHotspotLevelLabel(row.hotspot_level)}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-brand-text dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                      {formatHotspotScore(row.hotspot_score)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {mapReviewHotspotRows.length > 0 && (
+              <div className="mt-5 rounded-[24px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
+                <p className="flex items-center gap-2 text-sm font-black text-brand-blue dark:text-blue-300">
+                  <AlertTriangle className="h-4 w-4" />
+                  Barangays needing map name review
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  These official barangays are counted inside the 86-barangay total, but their spatial scores are not final until the boundary name match is corrected.
+                </p>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {mapReviewHotspotRows.map((row) => (
+                    <div
+                      key={`report-map-review-${row.barangay}`}
+                      className="rounded-[20px] border border-blue-100 bg-white p-3 dark:border-blue-500/20 dark:bg-slate-950/70"
+                    >
+                      <p className="font-black text-brand-text dark:text-slate-100">
+                        {row.barangay || 'Unknown barangay'}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
+                        Local risk before map match: {formatHotspotScore(row.base_risk_score)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            </>
+          ) : (
+            <div className="mt-4 rounded-[22px] border border-dashed border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+              {hotspotError || 'Hotspot analysis will appear after the map file and saved forecast are available.'}
+            </div>
+          )}
+        </PremiumPanel>
+      )}
+
+      <DisclosureCard
+        id="official-report-details-control"
+        open={isOfficialDetailsOpen}
+        onToggle={() => setIsOfficialDetailsOpen((current) => !current)}
+        icon={FileText}
+        title="Official report and technical details"
+        description="Report identity, uploaded-source metadata, forecast method, AI evaluation, thresholds, and limitations remain available for official review."
+        summary={`${officialReportMetadata.reportId} · ${officialReportMetadata.selectedModel}`}
+        tone="slate"
+      />
+
+      {isOfficialDetailsOpen && (
       <PremiumPanel id="official-report-details" className="relative p-0">
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 px-5 py-5 sm:px-6 sm:py-6">
           <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
@@ -4558,8 +6005,10 @@ const exportPayload = {
         </div>
       </PremiumPanel>
 
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <PremiumPanel id="decision-brief" className="p-5 sm:p-6">
+        <PremiumPanel id="decision-brief" tone="blue" className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <SectionBadge icon={Sparkles} tone="blue">
@@ -4567,7 +6016,7 @@ const exportPayload = {
               </SectionBadge>
 
               <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                Weekly response planning brief
+                Four-month dengue response planning brief
               </h2>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
@@ -4593,7 +6042,7 @@ const exportPayload = {
               {reportSummary.map((item, index) => (
                 <div
                   key={item}
-                  className="flex items-start gap-3 rounded-[20px] border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                  className="group/summary relative overflow-hidden flex items-start gap-3 rounded-[22px] border border-slate-200/80 bg-gradient-to-br from-white via-white to-blue-50/65 px-4 py-3.5 shadow-[0_10px_26px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-blue-200 dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20"
                 >
                   <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-blue text-xs font-black text-white">
                     {index + 1}
@@ -4651,15 +6100,18 @@ const exportPayload = {
                     const decision = getDecisionSupport(row)
                     const profile = getMultiSourceProfile(row)
                     const isExpanded = expandedPriorityBarangay === row.barangay
+                    const riskCardTheme = getRiskCardTheme(row.risk)
 
                     return (
                       <div
                         key={`${row.barangay}-${index}`}
-                        className="group rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-blue/20 hover:shadow-md dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+                        className={`group relative overflow-hidden rounded-[28px] border p-4 shadow-[0_14px_38px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(15,23,42,0.14)] dark:ring-white/5 ${riskCardTheme.surface}`}
                       >
+                        <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskCardTheme.line}`} />
+                        <div className={`pointer-events-none absolute -right-14 -top-16 h-36 w-36 rounded-full blur-3xl ${riskCardTheme.glow}`} />
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm dark:bg-white dark:text-slate-950">
+                            <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-gradient-to-br ${riskCardTheme.line} text-sm font-black text-white shadow-[0_12px_26px_rgba(15,23,42,0.18)]`}>
                               #{index + 1}
                             </div>
 
@@ -4685,42 +6137,13 @@ const exportPayload = {
                           </div>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              Combined score
-                            </p>
-                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                              {formatNumber(profile.score)}/100
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              Environment
-                            </p>
-                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                              {profile.environmentalSuitability}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              Response score
-                            </p>
-                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                              {formatNumber(decision.score)} pts
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                              Current
-                            </p>
-                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                              {formatNumber(row.currentCases || 0)} cases
-                            </p>
-                          </div>
+                        <div className={`relative mt-3 rounded-[20px] border bg-white/75 px-4 py-3 shadow-inner dark:bg-slate-950/60 ${riskCardTheme.chip}`}>
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
+                            Recommended response
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-brand-text dark:text-slate-300">
+                            {decision.summary}
+                          </p>
                         </div>
 
                         <div className="mt-3 flex justify-end">
@@ -4742,9 +6165,30 @@ const exportPayload = {
 
                         {isExpanded && (
                           <div className="mt-4 rounded-[22px] border border-slate-200 bg-white/90 p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
+                            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              {[
+                                ['Combined risk score', `${formatNumber(profile.score)}/100`],
+                                ['Environment', profile.environmentalSuitability],
+                                ['Response score', `${formatNumber(decision.score)} pts`],
+                                ['Next-period forecast', `${formatNumber(row.currentCases || 0)} cases`],
+                              ].map(([label, value]) => (
+                                <div
+                                  key={`${row.barangay}-technical-${label}`}
+                                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950"
+                                >
+                                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                                    {label}
+                                  </p>
+                                  <p className="mt-1 text-sm font-black leading-5 text-brand-text dark:text-slate-100">
+                                    {value}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+
                             <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/80">
                               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                                Combined Data risk factors
+                                combined risk factors
                               </p>
 
                               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-2">
@@ -4777,16 +6221,6 @@ const exportPayload = {
                               </div>
                             </div>
 
-                            <div className="mt-3 rounded-[20px] border border-blue-100 bg-blue-50 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
-                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
-                                Recommended response
-                              </p>
-
-                              <p className="mt-1 text-sm leading-6 text-brand-text dark:text-slate-300">
-                                {decision.summary}
-                              </p>
-                            </div>
-
                             {decision.actions.length > 0 && (
                               <div className="mt-3 rounded-[20px] border border-amber-100 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/10">
                                 <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
@@ -4794,7 +6228,7 @@ const exportPayload = {
                                 </p>
 
                                 <div className="mt-3 space-y-2">
-                                  {decision.actions.slice(0, 3).map((action, actionIndex) => (
+                                  {decision.actions.slice(0, 8).map((action, actionIndex) => (
                                     <div
                                       key={`${action}-${actionIndex}`}
                                       className="flex gap-2 text-sm leading-6 text-brand-text dark:text-slate-300"
@@ -4817,7 +6251,7 @@ const exportPayload = {
                                 </p>
 
                                 <div className="mt-3 space-y-2">
-                                  {decision.rationale.slice(0, 3).map((reason, reasonIndex) => (
+                                  {decision.rationale.slice(0, 9).map((reason, reasonIndex) => (
                                     <div
                                       key={`${reason}-${reasonIndex}`}
                                       className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400"
@@ -4865,7 +6299,7 @@ const exportPayload = {
           </div>
         </PremiumPanel>
 
-        <PremiumPanel id="export-center" className="p-5 sm:p-6 xl:sticky xl:top-24 xl:self-start">
+        <PremiumPanel id="export-center" tone="emerald" className="p-5 sm:p-6 xl:sticky xl:top-24 xl:self-start">
           <SectionBadge icon={Download} tone="emerald">
             Export center
           </SectionBadge>
@@ -4881,20 +6315,32 @@ const exportPayload = {
           <div className="mt-5 grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2">
             {exportFormats.map((item) => {
               const Icon = item.icon
+              const itemTone =
+                item.id === 'pdf'
+                  ? 'rose'
+                  : item.id === 'excel'
+                    ? 'emerald'
+                    : item.id === 'powerpoint'
+                      ? 'blue'
+                      : 'amber'
+              const itemTheme = getReportVisualTheme(itemTone)
+              const isSelected = format === item.id
 
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => setFormat(item.id)}
-                  className={`group rounded-[24px] border p-4 text-left text-sm font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                    format === item.id
-                      ? 'ring-2 ring-brand-blue ring-offset-2 dark:ring-offset-slate-900'
+                  className={`group relative overflow-hidden rounded-[26px] border p-4 text-left text-sm font-semibold shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-white/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(15,23,42,0.14)] dark:ring-white/5 ${itemTheme.surface} ${
+                    isSelected
+                      ? 'ring-2 ring-cyan-400 ring-offset-2 dark:ring-offset-slate-950'
                       : ''
-                  } ${item.style}`}
+                  }`}
                 >
+                  <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${itemTheme.line}`} />
+                  <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl ${itemTheme.glow}`} />
                   <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm dark:bg-white/10">
+                    <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm ${itemTheme.icon}`}>
                       <Icon className="h-5 w-5" />
                     </div>
 
@@ -4940,6 +6386,25 @@ const exportPayload = {
             Generate selected output
           </button>
 
+          <button
+            type="button"
+            onClick={() => setIsExportDetailsOpen((current) => !current)}
+            aria-expanded={isExportDetailsOpen}
+            className="mt-5 flex w-full items-center justify-between gap-3 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-left shadow-sm transition hover:border-brand-blue/30 dark:border-slate-800 dark:bg-slate-950"
+          >
+            <div>
+              <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                Report contents and priority distribution
+              </p>
+              <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                View the technical fields included in exports and the full response-priority breakdown.
+              </p>
+            </div>
+            {isExportDetailsOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+          </button>
+
+          {isExportDetailsOpen && (
+            <>
           <div className="mt-5 rounded-[24px] border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:to-slate-900">
             <p className="flex items-center gap-2 text-sm font-black text-brand-orange dark:text-amber-300">
               <AlertTriangle className="h-4 w-4" />
@@ -4948,7 +6413,7 @@ const exportPayload = {
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {usingBackendForecast
-               ? 'PDF, Excel, PowerPoint, and print reports now include forecast totals, response priorities, Combined Data score, rainfall, temperature, humidity, population exposure, density level, hotspot summary, recommended actions, and reasons for the recommendation.'
+               ? 'PDF, Excel, PowerPoint, and print reports now include forecast totals, response priorities, combined risk score, rainfall, temperature, humidity, population exposure, density level, hotspot summary, recommended actions, and reasons for the recommendation.'
                 : 'PDF, Excel, PowerPoint, and print reports include response priority, combined risk score, rainfall, temperature, humidity, population, density, action plan, and reasons for the recommendation.'}
             </p>
           </div>
@@ -4981,6 +6446,8 @@ const exportPayload = {
               )}
             </div>
           </div>
+            </>
+          )}
 
           <div className="mt-5 rounded-[26px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-5 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950">
             <h3 className="flex items-center gap-2 text-lg font-black text-brand-orange dark:text-amber-300">
@@ -5000,14 +6467,32 @@ const exportPayload = {
                   </p>
                 </div>
 
-                <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                <button
+                  type="button"
+                  onClick={() => setIsTopResponseDetailsOpen((current) => !current)}
+                  aria-expanded={isTopResponseDetailsOpen}
+                  className="flex w-full items-center justify-between gap-3 rounded-[20px] border border-white/80 bg-white/80 px-4 py-3 text-left shadow-sm transition hover:border-brand-blue/30 dark:border-slate-700 dark:bg-slate-950/70"
+                >
+                  <div>
+                    <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                      Supporting risk factors
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                      Combined score, environment, weather, density, and recommendation rationale.
+                    </p>
+                  </div>
+                  {isTopResponseDetailsOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </button>
+
+                {isTopResponseDetailsOpen && (
+                  <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                    Combined Data factors
+                    Combined risk factors
                   </p>
 
                   <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-2">
                     {[
-                      ['Combined score', `${formatNumber(topProfile.score)}/100`],
+                      ['Combined risk score', `${formatNumber(topProfile.score)}/100`],
                       ['Environment', topProfile.environmentalSuitability],
                       ['Rainfall', topProfile.rainfallPressure],
                       ['Temperature', topProfile.temperatureSuitability],
@@ -5029,6 +6514,7 @@ const exportPayload = {
                     ))}
                   </div>
                 </div>
+                )}
 
                 {topDecision.actions.length > 0 && (
                   <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
@@ -5037,7 +6523,7 @@ const exportPayload = {
                     </p>
 
                     <div className="mt-3 space-y-2">
-                      {topDecision.actions.slice(0, 5).map((action, index) => (
+                      {topDecision.actions.slice(0, 8).map((action, index) => (
                         <div
                           key={`${action}-${index}`}
                           className="flex gap-2 text-sm leading-6 text-brand-text dark:text-slate-300"
@@ -5053,14 +6539,14 @@ const exportPayload = {
                   </div>
                 )}
 
-                {topDecision.rationale.length > 0 && (
+                {isTopResponseDetailsOpen && topDecision.rationale.length > 0 && (
                   <div className="rounded-[20px] border border-white/80 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                     <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
                       Why this recommendation
                     </p>
 
                     <div className="mt-3 space-y-2">
-                      {topDecision.rationale.slice(0, 4).map((reason, index) => (
+                      {topDecision.rationale.slice(0, 9).map((reason, index) => (
                         <div
                           key={`${reason}-${index}`}
                           className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400"
@@ -5082,8 +6568,20 @@ const exportPayload = {
         </PremiumPanel>
       </div>
 
+      <DisclosureCard
+        id="report-supporting-details"
+        open={isSupportingDetailsOpen}
+        onToggle={() => setIsSupportingDetailsOpen((current) => !current)}
+        icon={Database}
+        title="Report contents and uploaded data"
+        description="Review who receives the report and inspect uploaded filenames, statuses, and record counts."
+        summary={`${distributionItems.length} included items · ${officialSourceRows.length} datasets${hasUploadedDataIssues ? ' · needs review' : ''}`}
+        tone={hasUploadedDataIssues ? 'amber' : 'slate'}
+      />
+
+      {isSupportingDetailsOpen && (
       <div className="grid gap-6 xl:grid-cols-[0.7fr_1fr]">
-        <PremiumPanel className="p-5 sm:p-6">
+        <PremiumPanel tone="blue" className="p-5 sm:p-6">
           <SectionBadge icon={Send} tone="blue">
             Distribution
           </SectionBadge>
@@ -5099,7 +6597,7 @@ const exportPayload = {
               return (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900"
+                  className="group/distribution relative overflow-hidden flex items-center justify-between gap-3 rounded-[26px] border border-blue-200/70 bg-gradient-to-br from-blue-50/90 via-white to-cyan-50/60 px-4 py-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:shadow-md dark:border-blue-400/15 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-blue shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:text-blue-300 dark:ring-slate-700">
@@ -5120,7 +6618,7 @@ const exportPayload = {
           </div>
         </PremiumPanel>
 
-        <PremiumPanel className="p-5 sm:p-6">
+        <PremiumPanel tone="slate" className="p-5 sm:p-6">
           <SectionBadge icon={Database} tone="slate">
             Uploaded data readiness
           </SectionBadge>
@@ -5134,7 +6632,7 @@ const exportPayload = {
               Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
                 <div
                   key={key}
-                  className="min-w-0 rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+                  className="group/source relative min-w-0 overflow-hidden rounded-[26px] border border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-white to-blue-50/60 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/20"
                 >
                   <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
@@ -5168,6 +6666,20 @@ const exportPayload = {
         </PremiumPanel>
       </div>
 
+      )}
+
+      <DisclosureCard
+        id="recent-report-activity-control"
+        open={isActivityOpen}
+        onToggle={() => setIsActivityOpen((current) => !current)}
+        icon={Activity}
+        title="Recent report activity"
+        description="Open the audit trail only when checking recent exports or troubleshooting report generation."
+        summary={`${Math.min((activityLogs || []).length, 3)} recent item${Math.min((activityLogs || []).length, 3) === 1 ? '' : 's'}`}
+        tone="slate"
+      />
+
+      {isActivityOpen && (
       <PremiumPanel className="p-5 sm:p-6">
         <SectionBadge icon={Activity} tone="slate">
           Activity
@@ -5182,7 +6694,7 @@ const exportPayload = {
             (activityLogs || []).slice(0, 3).map((log) => (
               <div
                 key={log.id}
-                className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-4 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+                className="group/activity relative overflow-hidden rounded-[26px] border border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-white to-blue-50/55 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/20"
               >
                 <p className="text-sm font-black text-brand-text dark:text-slate-100">
                   {log.action}
@@ -5204,6 +6716,7 @@ const exportPayload = {
           )}
         </div>
       </PremiumPanel>
+      )}
     </div>
   )
 }

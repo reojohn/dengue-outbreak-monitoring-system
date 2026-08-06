@@ -63,6 +63,8 @@ def ensure_forecast_factor_columns() -> None:
         connection.execute(text("alter table public.forecast_results add column if not exists population integer"))
         connection.execute(text("alter table public.forecast_results add column if not exists density numeric"))
         connection.execute(text("alter table public.forecast_results add column if not exists risk_components jsonb not null default '{}'::jsonb"))
+        connection.execute(text("alter table public.forecast_results add column if not exists forecast_period_predictions jsonb not null default '[]'::jsonb"))
+        connection.execute(text("alter table public.forecast_results add column if not exists forecast_strategy text"))
 
         connection.execute(text("create index if not exists idx_forecast_results_combined_risk_score on public.forecast_results (combined_risk_score desc)"))
 
@@ -279,6 +281,119 @@ def _get_environmental_label(environmental_score):
     return "Environmental data unavailable"
 
 
+def _risk_priority_value(value: Any) -> int:
+    risk = str(value or "").strip().lower()
+
+    if risk == "high":
+        return 3
+
+    if risk == "moderate":
+        return 2
+
+    if risk == "low":
+        return 1
+
+    return 0
+
+
+def _is_high_environment_for_priority(row: dict) -> bool:
+    rainfall = _to_float(row.get("average_rainfall"), 0) or 0
+    temperature = _to_float(row.get("average_temperature"), 0) or 0
+    humidity = _to_float(row.get("average_humidity"), 0) or 0
+
+    scores = []
+
+    if rainfall > 0:
+        scores.append(3 if rainfall >= 10 else 2 if rainfall >= 4 else 1)
+
+    if temperature > 0:
+        if 24 <= temperature <= 32:
+            scores.append(3)
+        elif 20 <= temperature < 24 or 32 < temperature <= 35:
+            scores.append(2)
+        else:
+            scores.append(1)
+
+    if humidity > 0:
+        scores.append(3 if humidity >= 75 else 2 if humidity >= 60 else 1)
+
+    if not scores:
+        environment = str(
+            row.get("environmental_suitability")
+            or row.get("environmentalSuitability")
+            or ""
+        ).strip().lower()
+        return "highly suitable" in environment or "high environmental" in environment
+
+    normalized_score = round((sum(scores) / (len(scores) * 3)) * 100)
+    return normalized_score >= 70
+
+
+def _canonical_response_priority_value(row: dict) -> int:
+    risk = str(row.get("risk_level") or row.get("risk") or "").strip().lower()
+    trend = str(row.get("trend_direction") or row.get("trend") or "").strip().lower()
+    density_label = str(
+        row.get("density_level") or row.get("densityLevel") or ""
+    ).strip().lower()
+    density = _to_float(row.get("density"), 0) or 0
+    forecast = _to_float(row.get("forecast_next_4_periods"), 0) or 0
+
+    is_increasing = "increasing" in trend
+    is_high_environment = _is_high_environment_for_priority(row)
+    is_dense = (
+        density >= 3000
+        or "very high" in density_label
+        or "high density" in density_label
+    )
+
+    if risk == "high" and (
+        is_increasing
+        or is_high_environment
+        or is_dense
+        or forecast >= 60
+    ):
+        return 7
+
+    if risk == "high":
+        return 6
+
+    if risk == "moderate" and is_increasing and (is_high_environment or is_dense):
+        return 5
+
+    if risk == "moderate" and (is_increasing or is_high_environment):
+        return 4
+
+    if risk == "moderate":
+        return 3
+
+    if risk == "low" and (is_increasing or is_high_environment):
+        return 2
+
+    if risk == "low":
+        return 1
+
+    return 0
+
+
+def _canonical_priority_sort_key(row: dict):
+    return (
+        -_risk_priority_value(row.get("risk_level") or row.get("risk")),
+        -(_to_float(row.get("combined_risk_score"), 0) or 0),
+        -_canonical_response_priority_value(row),
+        -(_to_float(row.get("forecast_next_4_periods"), 0) or 0),
+        str(row.get("barangay") or "").strip().lower(),
+    )
+
+
+def _apply_canonical_priority_ranks(rows: list[dict]) -> list[dict]:
+    ranked_rows = sorted(rows, key=_canonical_priority_sort_key)
+
+    for index, row in enumerate(ranked_rows, start=1):
+        row["priority_rank"] = index
+
+    return ranked_rows
+
+
 def _build_combined_risk_profile(row: dict, integrated_profile: dict | None = None) -> dict:
     integrated_profile = integrated_profile or {}
 
@@ -437,6 +552,7 @@ def save_forecast_result(
 
         if forecast_rows:
             payloads = []
+            enriched_forecast_rows = []
 
             for row in forecast_rows:
                 barangay = row.get("barangay") or ""
@@ -472,13 +588,17 @@ def save_forecast_result(
                             row.get("forecast_next_4_periods"),
                             0,
                         ),
+                        "forecast_period_predictions": _to_json(
+                            row.get("forecast_period_predictions") or []
+                        ),
+                        "forecast_strategy": row.get("forecast_strategy") or forecast_result.get("forecast_strategy"),
                         "risk_level": row.get("risk_level"),
                         "risk_score": _to_float(
                             row.get("forecast_next_4_periods"),
                             0,
                         ),
                         "recommendation": row.get("recommendation"),
-                        "priority_rank": _to_int(row.get("priority_rank"), 0),
+                        "priority_rank": 0,
                         "combined_risk_score": combined_profile["combined_risk_score"],
                         "environmental_score": combined_profile["environmental_score"],
                         "environmental_suitability": combined_profile["environmental_suitability"],
@@ -496,6 +616,39 @@ def save_forecast_result(
                     }
                 )
 
+                enriched_forecast_rows.append(
+                    {
+                        **row,
+                        "barangay_key": barangay_key,
+                        "priority_rank": 0,
+                        "combined_risk_score": combined_profile["combined_risk_score"],
+                        "multi_source_risk_score": combined_profile["combined_risk_score"],
+                        "environmental_score": combined_profile["environmental_score"],
+                        "environmental_suitability": combined_profile["environmental_suitability"],
+                        "rainfall_pressure": combined_profile["rainfall_pressure"],
+                        "temperature_suitability": combined_profile["temperature_suitability"],
+                        "humidity_suitability": combined_profile["humidity_suitability"],
+                        "population_exposure": combined_profile["population_exposure"],
+                        "density_level": combined_profile["density_level"],
+                        "average_rainfall": combined_profile["average_rainfall"],
+                        "average_temperature": combined_profile["average_temperature"],
+                        "average_humidity": combined_profile["average_humidity"],
+                        "population": combined_profile["population"],
+                        "density": combined_profile["density"],
+                        "risk_components": combined_profile["risk_components"],
+                    }
+                )
+
+            payloads = _apply_canonical_priority_ranks(payloads)
+            enriched_forecast_rows = _apply_canonical_priority_ranks(enriched_forecast_rows)
+
+            # Return the same canonical, database-backed scores immediately to the
+            # frontend. Without this, the browser calculates a temporary fallback
+            # score before refresh, while Supabase returns a different saved score
+            # after refresh, causing the top barangay to appear to change.
+            forecast_result["forecast_results"] = enriched_forecast_rows
+            forecast_result["barangay_count"] = len(enriched_forecast_rows)
+
             connection.execute(
                 text("""
                     insert into public.forecast_results (
@@ -510,6 +663,8 @@ def save_forecast_result(
                         trend_direction,
                         forecast_next_period,
                         forecast_next_4_periods,
+                        forecast_period_predictions,
+                        forecast_strategy,
                         risk_level,
                         risk_score,
                         recommendation,
@@ -541,6 +696,8 @@ def save_forecast_result(
                         :trend_direction,
                         :forecast_next_period,
                         :forecast_next_4_periods,
+                        cast(:forecast_period_predictions as jsonb),
+                        :forecast_strategy,
                         :risk_level,
                         :risk_score,
                         :recommendation,
@@ -600,7 +757,11 @@ def get_latest_forecast_result_from_database() -> dict:
                     completed_at,
                     created_by
                 from public.forecast_runs
-                order by started_at desc
+                where status = 'completed'
+                order by
+                    completed_at desc nulls last,
+                    started_at desc nulls last,
+                    forecast_run_id desc
                 limit 1
             """)
         )
@@ -635,6 +796,8 @@ def get_latest_forecast_result_from_database() -> dict:
                     trend_direction,
                     forecast_next_period,
                     forecast_next_4_periods,
+                    forecast_period_predictions,
+                    forecast_strategy,
                     risk_level,
                     risk_score,
                     recommendation,
@@ -656,7 +819,16 @@ def get_latest_forecast_result_from_database() -> dict:
                     created_at
                 from public.forecast_results
                 where forecast_run_id = :forecast_run_id
-                order by priority_rank asc
+                order by
+                    case risk_level
+                        when 'High' then 3
+                        when 'Moderate' then 2
+                        when 'Low' then 1
+                        else 0
+                    end desc,
+                    combined_risk_score desc nulls last,
+                    forecast_next_4_periods desc,
+                    barangay asc
             """),
             {
                 "forecast_run_id": forecast_run["forecast_run_id"],
@@ -664,6 +836,12 @@ def get_latest_forecast_result_from_database() -> dict:
         )
 
         rows = rows_result.mappings().all()
+
+    validation_summary = forecast_run["validation_summary"] or {}
+    forecast_period_unit = validation_summary.get("forecast_period_unit", "period")
+    forecast_horizon_periods = int(validation_summary.get("forecast_horizon_periods", 4) or 4)
+    forecast_horizon_label = validation_summary.get("forecast_horizon_label") or "Next 4 reporting periods"
+    temporal_granularity = validation_summary.get("temporal_granularity", "reporting_period")
 
     forecast_results = []
 
@@ -751,6 +929,11 @@ def get_latest_forecast_result_from_database() -> dict:
                 "trend_direction": row["trend_direction"],
                 "forecast_next_period": int(row["forecast_next_period"] or 0),
                 "forecast_next_4_periods": int(row["forecast_next_4_periods"] or 0),
+                "forecast_period_predictions": row["forecast_period_predictions"] or [],
+                "forecast_strategy": row["forecast_strategy"] or validation_summary.get("forecast_strategy"),
+                "forecast_period_unit": forecast_period_unit,
+                "forecast_horizon_periods": forecast_horizon_periods,
+                "forecast_horizon_label": forecast_horizon_label,
                 "risk_level": row["risk_level"],
                 "risk_score": float(row["risk_score"] or 0),
                 "combined_risk_score": float(combined_risk_score or 0),
@@ -774,6 +957,8 @@ def get_latest_forecast_result_from_database() -> dict:
             }
         )
 
+    forecast_results = _apply_canonical_priority_ranks(forecast_results)
+
     return {
         "message": "Latest saved forecast loaded from Supabase.",
         "has_saved_forecast": True,
@@ -789,13 +974,22 @@ def get_latest_forecast_result_from_database() -> dict:
             "completed_at": str(forecast_run["completed_at"]) if forecast_run["completed_at"] else None,
             "created_by": forecast_run["created_by"],
         },
-        "forecast_method": "Saved auto-selected machine learning forecast using uploaded dengue, weather, population, and barangay map records.",
+        "forecast_method": (
+            "Four horizon-specific direct models generate Periods 1 through 4 separately; their predictions are summed for cumulative risk classification."
+            if validation_summary.get("forecast_strategy") == "direct_multi_step"
+            else "Saved forecast using uploaded dengue, weather, population, and barangay map records."
+        ),
+        "forecast_strategy": validation_summary.get("forecast_strategy"),
         "model_version": forecast_run["model_version"] or "v1",
-        "risk_thresholds": "High risk: 70 and above; Moderate risk: 45 to 69; Low risk: below 45.",
-        "forecast_window": "Next 4 reporting periods",
+        "risk_thresholds": "High risk: 60 and above; Moderate risk: 25 to 59; Low risk: below 25.",
+        "forecast_window": forecast_horizon_label,
+        "temporal_granularity": temporal_granularity,
+        "forecast_period_unit": forecast_period_unit,
+        "forecast_horizon_periods": forecast_horizon_periods,
+        "forecast_horizon_label": forecast_horizon_label,
         "total_forecast_next_4_periods": int(forecast_run["total_forecast_next_4_periods"] or 0),
         "risk_counts": forecast_run["risk_counts"] or {},
-        "validation_summary": forecast_run["validation_summary"] or {},
+        "validation_summary": validation_summary,
         "forecast_results": forecast_results,
         "barangay_count": len(forecast_results),
     }

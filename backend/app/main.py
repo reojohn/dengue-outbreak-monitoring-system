@@ -57,6 +57,7 @@ app.include_router(sessions.router)
 @app.on_event("startup")
 def startup_auth_setup():
     ensure_auth_tables()
+    notifications.ensure_notification_preferences_table()
 
 
 @app.get("/")

@@ -246,7 +246,8 @@ def get_latest_integration_dataset() -> dict:
                     created_by,
                     created_at
                 from public.integration_runs
-                order by created_at desc
+                where status = 'completed'
+                order by created_at desc, integration_run_id desc
                 limit 1
             """)
         )

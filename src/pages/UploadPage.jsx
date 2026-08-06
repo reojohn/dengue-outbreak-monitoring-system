@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   CloudRain,
   Database,
@@ -21,6 +22,7 @@ import {
   Users,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import uploadHeroBackground from '../assets/upload.png'
 import { useData } from '../context/DataContext'
 import {
   autoRunModel,
@@ -1371,6 +1373,21 @@ function getPreviewHeaders(sourceId) {
 
 
 function formatBackendMappingSummary(detection = {}) {
+  if (detection.source_format === 'doh_monthly_summary') {
+    const coverage = [detection.coverage_start, detection.coverage_end]
+      .filter(Boolean)
+      .join(' to ')
+
+    return [
+      'Format → DOH monthly dengue summary',
+      coverage ? `coverage → ${coverage}` : '',
+      `cases → ${detection.case_measure || 'Grand Total'}`,
+      'deaths → not provided',
+    ]
+      .filter(Boolean)
+      .join(', ')
+  }
+
   const matchedFields = detection.matched_fields || {}
 
   const labels = {
@@ -1397,7 +1414,8 @@ function getBackendValidationCounts(cleanResult = {}) {
 
   const invalidCount =
     Number(summary.invalid_cases_rows || 0) +
-    Number(summary.invalid_deaths_rows || 0)
+    Number(summary.invalid_deaths_rows || 0) +
+    Number(summary.monthly_total_discrepancy_count || 0)
 
   return {
     missingCount,
@@ -1417,7 +1435,9 @@ function mapBackendCleanedRows(cleanedRows = []) {
     month: row.month ?? '',
     week: row.week ?? '',
     cases: Number(row.cases || 0),
-    deaths: Number(row.deaths || 0),
+    deaths: row.death_data_status === 'not_provided' ? '' : Number(row.deaths || 0),
+    deathDataStatus: row.death_data_status || '',
+    sourceFormat: row.source_format || '',
     status: 'Valid',
   }))
 }
@@ -1433,7 +1453,9 @@ function mapBackendInvalidRows(invalidRows = []) {
     month: row.month ?? '',
     week: row.week ?? '',
     cases: Number(row.cases || 0),
-    deaths: Number(row.deaths || 0),
+    deaths: row.death_data_status === 'not_provided' ? '' : Number(row.deaths || 0),
+    deathDataStatus: row.death_data_status || '',
+    sourceFormat: row.source_format || '',
     status: 'Needs Review',
   }))
 }
@@ -1451,6 +1473,7 @@ function buildBackendDengueValidationResult({
 )
   const invalidPreview = mapBackendInvalidRows(cleanResult.invalid_preview || [])
   const mappingSummary = formatBackendMappingSummary(cleanResult.dengue_detection)
+  const sourceMetadata = cleanResult.source_metadata || cleanResult.dengue_detection || {}
 
   return {
     sourceId: 'historical',
@@ -1464,6 +1487,10 @@ function buildBackendDengueValidationResult({
     duplicateCount: counts.duplicateCount,
     invalidCount: counts.invalidCount,
     mappingSummary,
+    sourceMetadata,
+    sourceFormat: cleanResult.source_format || sourceMetadata.source_format || 'standard_structured',
+    temporalGranularity: cleanResult.temporal_granularity || sourceMetadata.temporal_granularity || '',
+    forecastHorizonLabel: cleanResult.forecast_horizon_label || sourceMetadata.forecast_horizon_label || '',
     inspectResult,
     cleanResult,
     summaryResult,
@@ -2311,9 +2338,9 @@ function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
 
   const modal = (
     <div className="fixed inset-0 z-[99999] flex min-h-dvh items-center justify-center overflow-hidden bg-slate-950/75 px-4 py-6 backdrop-blur-md">
-      <div className="relative w-full max-w-[520px] overflow-hidden rounded-[36px] border border-white/15 bg-slate-950 p-6 text-white shadow-[0_34px_100px_rgba(0,0,0,0.58)] ring-1 ring-white/10">
+      <div className="relative w-full max-w-[520px] overflow-hidden rounded-[36px] border border-white/[0.15] bg-slate-950 p-6 text-white shadow-[0_34px_100px_rgba(0,0,0,0.58)] ring-1 ring-white/10">
         <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-cyan-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-6 h-64 w-64 rounded-full bg-emerald-400/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-6 h-64 w-64 rounded-full bg-emerald-400/[0.15] blur-3xl" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.10)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.10)_1px,transparent_1px)] bg-[size:22px_22px] opacity-25" />
         <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
 
@@ -2565,6 +2592,86 @@ function buildAlignmentReportFromMergedRows(rows = []) {
     duplicates: {},
     source: 'saved_integrated_dataset',
   }
+}
+
+function ExpandableSection({
+  title,
+  summary,
+  icon: Icon = FileCheck2,
+  defaultOpen = false,
+  forceOpen = false,
+  children,
+}) {
+  const [isOpen, setIsOpen] = useState(Boolean(defaultOpen || forceOpen))
+
+  useEffect(() => {
+    if (forceOpen) setIsOpen(true)
+  }, [forceOpen])
+
+  return (
+    <section
+      className={`premium-expandable-section overflow-hidden rounded-[28px] border transition-all duration-300 ${
+        isOpen
+          ? 'border-slate-200/90 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.07)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900 dark:ring-white/5'
+          : 'border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)] hover:border-blue-200 hover:shadow-[0_16px_38px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-blue-500/30'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
+        className="group flex min-h-[82px] w-full items-center justify-between gap-4 px-5 py-4 text-left transition focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 sm:px-6"
+      >
+        <span className="flex min-w-0 items-center gap-4">
+          <span className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-blue-100 bg-gradient-to-br from-blue-50 to-cyan-50 text-brand-blue shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-cyan-500/10 dark:text-blue-300">
+            <span className="pointer-events-none absolute inset-x-2 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent dark:via-blue-300/40" />
+            <Icon className="relative h-5 w-5" aria-hidden="true" />
+          </span>
+
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="block text-base font-black tracking-tight text-brand-text dark:text-slate-100 sm:text-lg">
+                {title}
+              </span>
+              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-brand-muted dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 sm:inline-flex">
+                Details
+              </span>
+            </span>
+
+            {summary ? (
+              <span className="mt-1 block text-sm leading-5 text-brand-muted dark:text-slate-400">
+                {summary}
+              </span>
+            ) : null}
+          </span>
+        </span>
+
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="hidden text-xs font-black text-brand-blue dark:text-blue-300 sm:inline-flex">
+            {isOpen ? 'Collapse' : 'Open'}
+          </span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-brand-muted transition-all duration-300 group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-brand-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:border-blue-500/30 dark:group-hover:bg-blue-500/10 dark:group-hover:text-blue-300">
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </span>
+        </span>
+      </button>
+
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ${
+          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="border-t border-slate-200/80 bg-slate-50/[0.45] p-2 dark:border-slate-800 dark:bg-slate-950/[0.35] sm:p-3">
+            {children}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 export default function UploadPage() {
@@ -3043,6 +3150,12 @@ export default function UploadPage() {
   }
 
   async function handleResetBackendIntegration() {
+    const confirmed = window.confirm(
+      'Clear the combined dataset? This removes the generated integrated rows and related preparation results, but it does not remove the original uploaded source files. You can combine the files again afterward.'
+    )
+
+    if (!confirmed) return
+
     autoPreparationRunIdRef.current += 1
     autoPreparationRunningRef.current = false
     setAutoProcessing({
@@ -3383,34 +3496,108 @@ export default function UploadPage() {
   ])
 
 
-  function getSourceUploadErrorMessage(error, sourceTitle = 'selected file type') {
+  function getSourceUploadErrorDetails(
+    error,
+    sourceTitle = 'selected file type',
+    localValidationResult = null
+  ) {
     const fallbackMessage =
       `This file does not match the selected upload type. Please upload the correct ${sourceTitle.toLowerCase()} file.`
 
     const rawMessage = String(error?.message || '').trim()
-
-    if (!rawMessage) return fallbackMessage
-
     const lower = rawMessage.toLowerCase()
+    const localValidCount = Number(localValidationResult?.validCount || 0)
 
-    if (
-      lower.includes('missing') ||
-      lower.includes('required') ||
-      lower.includes('not valid') ||
-      lower.includes('invalid') ||
-      lower.includes('unable to validate') ||
-      lower.includes('does not contain') ||
-      lower.includes('must contain') ||
-      lower.includes('featurecollection') ||
-      lower.includes('cannot be used') ||
-      lower.includes('expected') ||
-      lower.includes('column') ||
-      lower.includes('field')
-    ) {
-      return fallbackMessage
+    const backendErrorPatterns = [
+      'database',
+      'supabase',
+      'postgres',
+      'sqlalchemy',
+      'relation ',
+      'schema',
+      'permission denied',
+      'connection',
+      'connect to server',
+      'could not connect',
+      'failed to fetch',
+      'network',
+      'timed out',
+      'timeout',
+      'transaction',
+      'insert into',
+      'database_url',
+      'upload job',
+      'backend',
+    ]
+
+    const explicitFileMismatchPatterns = [
+      'does not match the selected upload type',
+      'json file must contain a list of records',
+      'excel files cannot be used for barangay map boundaries',
+      'featurecollection',
+      'does not contain',
+      'must contain',
+      'unable to validate the selected file',
+      'cannot be used for',
+    ]
+
+    const looksLikeBackendError =
+      localValidCount > 0 ||
+      backendErrorPatterns.some((pattern) => lower.includes(pattern)) ||
+      (
+        lower.includes('column') &&
+        (
+          lower.includes('relation') ||
+          lower.includes('table') ||
+          lower.includes('database')
+        )
+      )
+
+    if (looksLikeBackendError) {
+      return {
+        status: 'backend-error',
+        badge: 'Save failed',
+        message: rawMessage
+          ? `The file structure is valid, but the backend or Supabase database could not save it. ${rawMessage}`
+          : 'The file structure is valid, but the backend or Supabase database could not save it. Check that the backend is running and the database schema is up to date.',
+      }
     }
 
-    return rawMessage
+    const looksLikeFileMismatch =
+      explicitFileMismatchPatterns.some((pattern) => lower.includes(pattern)) ||
+      (
+        localValidationResult &&
+        localValidCount <= 0
+      ) ||
+      lower.includes('missing required') ||
+      lower.includes('invalid file') ||
+      lower.includes('not a valid')
+
+    if (!rawMessage || looksLikeFileMismatch) {
+      return {
+        status: 'error',
+        badge: 'Wrong file',
+        message: fallbackMessage,
+      }
+    }
+
+    return {
+      status: 'backend-error',
+      badge: 'Upload failed',
+      message: `The file could not be completed by the backend. ${rawMessage}`,
+    }
+  }
+
+  function getSourceUploadErrorMessage(
+    error,
+    sourceTitle = 'selected file type',
+    localValidationResult = null
+  ) {
+    return getSourceUploadErrorDetails(
+      error,
+      sourceTitle,
+      localValidationResult
+    ).message
   }
 
   function setSourceUploadProcessing(sourceId, sourceTitle) {
@@ -3433,14 +3620,28 @@ export default function UploadPage() {
     }))
   }
 
-  function setSourceUploadError(sourceId, sourceTitle, error) {
+  function setSourceUploadError(
+    sourceId,
+    sourceTitle,
+    error,
+    localValidationResult = null
+  ) {
+    const details = getSourceUploadErrorDetails(
+      error,
+      sourceTitle,
+      localValidationResult
+    )
+
     setSourceUploadStates((current) => ({
       ...current,
       [sourceId]: {
-        status: 'error',
-        message: getSourceUploadErrorMessage(error, sourceTitle),
+        status: details.status,
+        badge: details.badge,
+        message: details.message,
       },
     }))
+
+    return details
   }
 
   function clearStaleCombinedData() {
@@ -3486,13 +3687,13 @@ export default function UploadPage() {
     setUploadMessage('')
     setUploadError('')
 
+    let localValidationResult = null
+
     try {
       const fileName = file.name.toLowerCase()
       const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
       const isCsv = fileName.endsWith('.csv')
       const isJson = fileName.endsWith('.json') || fileName.endsWith('.geojson')
-
-      let localValidationResult = null
 
       if (shouldBuildLocalPreview(file)) {
         try {
@@ -3552,6 +3753,10 @@ export default function UploadPage() {
               duplicateCount: backendResult.duplicateCount,
               invalidCount: backendResult.invalidCount,
               mappingSummary: backendResult.mappingSummary,
+              sourceFormat: backendResult.sourceFormat,
+              temporalGranularity: backendResult.temporalGranularity,
+              forecastHorizonLabel: backendResult.forecastHorizonLabel,
+              sourceMetadata: backendResult.sourceMetadata,
               backendPowered: true,
             },
           },
@@ -3567,8 +3772,15 @@ export default function UploadPage() {
           ? ` Detected mapping: ${backendResult.mappingSummary}.`
           : ''
 
+        const isDohMonthly = backendResult.sourceFormat === 'doh_monthly_summary'
+        const dohSummary = backendResult.sourceMetadata || {}
+        const dohWarningCount = Number(dohSummary.monthly_total_discrepancy_count || 0)
+        const unknownLocationCount = Number(dohSummary.unknown_location_record_count || 0)
+
         setUploadMessage(
-          `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.${adaptiveMappingNote}`
+          isDohMonthly
+            ? `Upload successful. The DOH monthly report was recognized and converted into ${backendResult.validCount} usable barangay-month records covering ${dohSummary.coverage_start || '2018-01'} to ${dohSummary.coverage_end || '2025-12'}. Grand Total was used as the case count. ${unknownLocationCount} unknown-location record${unknownLocationCount === 1 ? '' : 's'} were separated from barangay forecasting, and ${dohWarningCount} monthly total discrepanc${dohWarningCount === 1 ? 'y was' : 'ies were'} flagged for review.`
+            : `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.${adaptiveMappingNote}`
         )
 
         addActivityLog(
@@ -3892,14 +4104,20 @@ export default function UploadPage() {
         `${selectedSource.title} uploaded from ${file.name}. Valid records: ${result.validCount}/${result.recordCount}.`
       )
     } catch (error) {
-      const friendlyError = getSourceUploadErrorMessage(error, selectedSource.title)
+      const errorDetails = setSourceUploadError(
+        selected,
+        selectedSource.title,
+        error,
+        localValidationResult
+      )
 
-      setUploadError(friendlyError)
-      setSourceUploadError(selected, selectedSource.title, error)
+      setUploadError(errorDetails.message)
 
       addActivityLog(
-        'Dataset upload failed',
-        `${selectedSource.title} upload failed. ${friendlyError}`
+        errorDetails.status === 'backend-error'
+          ? 'Dataset save failed'
+          : 'Dataset upload failed',
+        `${selectedSource.title} upload failed. ${errorDetails.message}`
       )
     } finally {
       setIsProcessing(false)
@@ -3907,119 +4125,181 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="upload-mobile-compact relative space-y-6 pb-10">
+    <div className="upload-mobile-compact premium-upload-page relative space-y-7 pb-10">
       <AutoProcessingModal
         visible={autoProcessing.visible}
         step={autoProcessing.step}
         detail={autoProcessing.detail}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/60 blur-3xl dark:bg-blue-500/10" />
+      <><div className="pointer-events-none absolute -left-24 -top-10 -z-10 h-80 w-80 rounded-full bg-blue-200/[0.45] blur-3xl dark:bg-blue-500/10" /><div className="pointer-events-none absolute -right-24 top-[520px] -z-10 h-72 w-72 rounded-full bg-cyan-100/[0.55] blur-3xl dark:bg-cyan-500/10" /></>
 
-      <section className="relative overflow-hidden rounded-[36px] border border-slate-900/10 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-900 p-5 shadow-[0_28px_70px_rgba(15,23,42,0.20)] dark:border-slate-800 sm:p-6 lg:p-7">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_34%)]" />
+      <section className="premium-upload-hero relative isolate min-h-[470px] overflow-hidden rounded-[38px] border border-slate-900/10 bg-slate-950 shadow-[0_30px_90px_rgba(15,23,42,0.30)] dark:border-slate-800">
+        <img
+          src={uploadHeroBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center"
+        />
 
-        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-stretch">
-          <div className="flex flex-col justify-between">
-            <div>
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 backdrop-blur">
-                <Sparkles className="h-3.5 w-3.5" />
-                Upload center
-              </div>
+        <div className="pointer-events-none absolute inset-0 bg-slate-950/30" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,0.98)_0%,rgba(2,6,23,0.90)_34%,rgba(2,6,23,0.58)_64%,rgba(2,6,23,0.34)_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.04)_0%,rgba(2,6,23,0.16)_52%,rgba(2,6,23,0.82)_100%)]" />
+        <div className="pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full bg-cyan-300/[0.15] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-[38%] h-72 w-72 rounded-full bg-blue-500/[0.15] blur-3xl" />
+        <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/[0.65] to-transparent" />
 
-              <h1 className="max-w-4xl text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
-                Upload and Check Data
-              </h1>
-
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-white/80 sm:text-base">
-                Add the dengue, weather, population, and map files. The system checks the files, fixes common formatting issues, and tells you what still needs review before using the forecast.
-              </p>
+        <div className="relative z-10 grid min-h-[470px] gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-center xl:p-10">
+          <div className="max-w-[760px]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.15] bg-white/10 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.20em] text-cyan-100 shadow-lg backdrop-blur-xl">
+              <Sparkles className="h-3.5 w-3.5" />
+              Data preparation workspace
             </div>
 
-            <div className="mobile-grid-3 mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                  Files uploaded
-                </p>
-                <p className="mt-3 text-2xl font-black text-white">
-                  {loadedSourceCount}/{sources.length}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-white/70">
-                  Files that passed checking
-                </p>
-              </div>
+            <h1 className="mt-5 max-w-3xl text-3xl font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_4px_24px_rgba(2,6,23,0.75)] sm:text-5xl xl:text-[3.45rem]">
+              Build a trusted data foundation for every dengue decision.
+            </h1>
 
-              <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                  Current file quality
-                </p>
-                <p className="mt-3 text-2xl font-black text-white">
-                  {validPercent}%
-                </p>
-                <p className="mt-1 text-xs leading-5 text-white/70">
-                  Good records in this file
-                </p>
-              </div>
+            <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-200 sm:text-base sm:leading-8">
+              Upload dengue, weather, population, and barangay boundary files in one guided workspace. The system validates every source, combines matching records, and prepares the latest forecast automatically.
+            </p>
 
-              <div className="rounded-[22px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                  Ready for forecast?
-                </p>
-                <p className="mt-3 text-2xl font-black text-white">
-                  {readyChecklistCount}/{checklist.length}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-white/70">
-                  Checks completed
-                </p>
-              </div>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <label
+                className={`premium-hero-upload-button group inline-flex min-h-[50px] items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black shadow-[0_16px_40px_rgba(2,6,23,0.28)] transition ${
+                  isProcessing
+                    ? 'pointer-events-none cursor-not-allowed opacity-60'
+                    : 'cursor-pointer hover:-translate-y-0.5'
+                }`}
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <UploadCloud className="h-4 w-4 transition group-hover:-translate-y-0.5" />
+                )}
+                {isProcessing ? 'Processing file...' : `Upload ${selectedSource.title}`}
+                <input
+                  type="file"
+                  className="hidden"
+                  accept={selectedSource?.accept}
+                  onChange={handleFileUpload}
+                  disabled={isProcessing}
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => document.getElementById('data-upload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-2xl border border-white/[0.15] bg-white/10 px-5 py-3 text-sm font-black text-white shadow-lg backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white/[0.15]"
+              >
+                Review all sources
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="premium-hero-metrics mt-8 grid gap-3 sm:grid-cols-3">
+              {[
+                ['Sources ready', `${loadedSourceCount}/${sources.length}`, 'Validated input files'],
+                ['Selected quality', `${validPercent}%`, 'Usable records'],
+                ['Workflow checks', `${readyChecklistCount}/${checklist.length}`, 'Requirements completed'],
+              ].map(([label, value, helper]) => (
+                <div
+                  key={label}
+                  className="rounded-[22px] border border-white/[0.12] bg-slate-950/[0.38] px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-xl"
+                >
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    {label}
+                  </p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className="text-2xl font-black tracking-tight text-white">{value}</p>
+                    <span className="text-right text-[10px] font-semibold leading-4 text-slate-400">{helper}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-white/20 bg-white/20 p-5 shadow-[0_20px_48px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] border border-white/20 bg-white/20 text-white shadow-inner">
-                <ActiveSourceIcon className="h-7 w-7" strokeWidth={2.2} />
-              </div>
+          <div className="relative overflow-hidden rounded-[30px] border border-white/[0.14] bg-slate-950/[0.66] p-5 text-white shadow-[0_28px_70px_rgba(2,6,23,0.48)] backdrop-blur-2xl sm:p-6">
+            <div className="pointer-events-none absolute -right-14 -top-16 h-40 w-40 rounded-full bg-cyan-300/[0.15] blur-3xl" />
+            <div className="pointer-events-none absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
 
-              <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/60">
-                  Selected file type
+            <div className="relative flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.20em] text-cyan-200/80">
+                  Workspace readiness
                 </p>
-                <h2 className="mt-2 text-xl font-black tracking-tight text-white">
-                  {selectedSource.title}
+                <h2 className="mt-2 text-2xl font-black tracking-tight">
+                  {backendComplete || hasCombinedBackendData ? 'Analysis pipeline ready' : 'Preparing source files'}
                 </h2>
-                <p className="mt-1 text-sm leading-6 text-white/70">
-                  {selectedSource.desc}
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Each completed source moves the system closer to automatic integration and forecasting.
                 </p>
               </div>
-            </div>
 
-            <div className="mt-5 rounded-[24px] border border-white/20 bg-black/10 p-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                Current file
-              </p>
-              <p className="mt-2 break-words text-sm font-bold leading-6 text-white">
-                {selectedFileName}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
-                  {selectedSource.type}
-                </span>
-                <span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getStatusStyle(selectedStatus.badge || 'Not loaded')}`}>
-                  {selectedStatus.badge || 'Not loaded'}
-                </span>
+              <div
+                className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[5px] shadow-[0_0_35px_rgba(34,211,238,0.16)]"
+                style={{
+                  background: `conic-gradient(#22d3ee ${Math.round((loadedSourceCount / Math.max(sources.length, 1)) * 100)}%, rgba(255,255,255,0.10) 0)`,
+                }}
+              >
+                <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 ring-1 ring-white/10">
+                  <span className="text-xl font-black">{loadedSourceCount}</span>
+                  <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">of {sources.length}</span>
+                </div>
               </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-white/15 bg-black/10 p-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/60">
-                What to do next
-              </p>
-              <p className="mt-2 text-sm leading-6 text-white/75">
-                Choose a file type below, upload the file, then review any warnings before continuing.
-              </p>
+            <div className="premium-readiness-source-list relative mt-5 space-y-2.5">
+              {sources.map((source, index) => {
+                const SourceIcon = source.icon
+                const status = sourceStatus?.[source.contextKey] || {}
+                const ready = Number(status.validCount || 0) > 0 || Number(databaseUploads?.[source.contextKey]?.valid_row_count || 0) > 0
+                const isCurrent = selected === source.id
+
+                return (
+                  <button
+                    key={`hero-${source.id}`}
+                    type="button"
+                    onClick={() => {
+                      setSelected(source.id)
+                      setUploadMessage('')
+                      setUploadError('')
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 text-left transition ${
+                      isCurrent
+                        ? 'border-cyan-300/25 bg-cyan-300/10'
+                        : 'border-white/[0.08] bg-white/[0.035] hover:border-white/[0.15] hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border ${ready ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200' : 'border-white/10 bg-white/5 text-slate-400'}`}>
+                      <SourceIcon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-black text-slate-100">{source.title}</span>
+                      <span className="mt-0.5 block truncate text-[10px] text-slate-500">{ready ? 'Validated and available' : `Step ${index + 1} • Waiting for file`}</span>
+                    </span>
+                    {ready ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" />
+                    ) : (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-slate-600" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="premium-current-source-card relative mt-5 rounded-[20px] border border-white/10 bg-white/[0.045] p-3.5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-white/10 bg-white/[0.06] text-cyan-200">
+                  <ActiveSourceIcon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Currently selected</p>
+                  <p className="mt-1 truncate text-sm font-black text-white">{selectedSource.title}</p>
+                  <p className="mt-0.5 truncate text-[10px] text-slate-500">{selectedFileName}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -4030,7 +4310,7 @@ export default function UploadPage() {
         className="scroll-mt-28 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.18fr)_390px]"
       >
         <div className="space-y-5">
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-5">
+          <div className="premium-upload-source-workspace rounded-[30px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_16px_46px_rgba(15,23,42,0.065)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
@@ -4061,7 +4341,9 @@ export default function UploadPage() {
                 const sourcePercent = recordCount > 0 ? Math.round((validCount / recordCount) * 100) : 0
                 const uploadState = sourceUploadStates[source.id]
                 const isSourceProcessing = uploadState?.status === 'processing'
-                const hasSourceError = uploadState?.status === 'error'
+                const hasSourceFileError = uploadState?.status === 'error'
+                const hasSourceBackendError = uploadState?.status === 'backend-error'
+                const hasSourceError = hasSourceFileError || hasSourceBackendError
                 const hasSourceSuccess = uploadState?.status === 'success'
 
                 return (
@@ -4074,20 +4356,22 @@ export default function UploadPage() {
                       setUploadMessage('')
                       setUploadError('')
                     }}
-                    className={`group relative overflow-hidden rounded-[30px] border p-5 text-left shadow-[0_18px_42px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] dark:shadow-none ${
+                    className={`group premium-source-card relative overflow-hidden rounded-[26px] border p-5 text-left shadow-[0_12px_34px_rgba(15,23,42,0.065)] transition-all duration-300 hover:-translate-y-0.5 dark:shadow-none ${
                       isSourceProcessing
                         ? 'border-cyan-300 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.28),transparent_38%),linear-gradient(135deg,#ecfeff,#ffffff_54%,#eff6ff)] ring-4 ring-cyan-300/30 shadow-[0_24px_58px_rgba(14,165,233,0.22)] dark:border-cyan-400/60 dark:bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.24),transparent_40%),linear-gradient(135deg,#082f49,#0f172a_58%,#111827)] dark:ring-cyan-400/20'
                         : isActive
                           ? 'border-brand-blue bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_36%),linear-gradient(135deg,#eff6ff,#ffffff_54%,#ecfeff)] ring-2 ring-brand-blue/20 dark:border-blue-500/50 dark:bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.22),transparent_38%),linear-gradient(135deg,#0f172a,#111827_58%,#082f49)] dark:ring-blue-500/20'
-                          : hasSourceError
-                            ? 'border-rose-300 bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.12),transparent_36%),linear-gradient(135deg,#fff1f2,#ffffff_54%,#fff7ed)] ring-2 ring-rose-200/60 dark:border-rose-500/40 dark:bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.18),transparent_38%),linear-gradient(135deg,#1e1b4b,#111827_58%,#450a0a)] dark:ring-rose-500/20'
-                            : 'border-brand-line/70 bg-gradient-to-br from-white via-white to-slate-50 hover:border-brand-blue/40 hover:shadow-[0_24px_54px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:hover:border-blue-500/30 dark:hover:shadow-none'
+                          : hasSourceBackendError
+                            ? 'border-amber-300 bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.14),transparent_36%),linear-gradient(135deg,#fffbeb,#ffffff_54%,#fff7ed)] ring-2 ring-amber-200/60 dark:border-amber-500/40 dark:bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.18),transparent_38%),linear-gradient(135deg,#1c1917,#111827_58%,#451a03)] dark:ring-amber-500/20'
+                            : hasSourceFileError
+                              ? 'border-rose-300 bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.12),transparent_36%),linear-gradient(135deg,#fff1f2,#ffffff_54%,#fff7ed)] ring-2 ring-rose-200/60 dark:border-rose-500/40 dark:bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.18),transparent_38%),linear-gradient(135deg,#1e1b4b,#111827_58%,#450a0a)] dark:ring-rose-500/20'
+                              : 'border-brand-line/70 bg-gradient-to-br from-white via-white to-slate-50 hover:border-brand-blue/40 hover:shadow-[0_24px_54px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:hover:border-blue-500/30 dark:hover:shadow-none'
                     }`}
                   >
-                    <div className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${source.glow} blur-2xl opacity-70 transition group-hover:opacity-100`} />
+                    <div className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${source.glow} blur-2xl opacity-35 transition group-hover:opacity-60`} />
                     <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-80 dark:via-white/20" />
                     {isActive && (
-                      <div className="pointer-events-none absolute inset-y-5 left-0 w-1 rounded-r-full bg-brand-blue shadow-[0_0_24px_rgba(37,95,143,0.55)]" />
+                      <div className="pointer-events-none absolute inset-x-6 top-0 h-1 rounded-b-full bg-brand-blue shadow-[0_0_24px_rgba(37,95,143,0.55)]" />
                     )}
 
                     {isSourceProcessing && (
@@ -4106,14 +4390,22 @@ export default function UploadPage() {
                         className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${
                           isSourceProcessing
                             ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
-                            : hasSourceError
-                              ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
-                              : hasSourceSuccess
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-                                : getStatusStyle(badge)
+                            : hasSourceBackendError
+                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+                              : hasSourceFileError
+                                ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+                                : hasSourceSuccess
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                  : getStatusStyle(badge)
                         }`}
                       >
-                        {isSourceProcessing ? 'Checking file...' : hasSourceError ? 'Wrong file' : hasSourceSuccess ? 'Checked' : badge}
+                        {isSourceProcessing
+                          ? 'Checking file...'
+                          : hasSourceError
+                            ? uploadState?.badge || 'Upload failed'
+                            : hasSourceSuccess
+                              ? 'Checked'
+                              : badge}
                       </span>
                     </div>
 
@@ -4151,9 +4443,11 @@ export default function UploadPage() {
                           className={`mt-3 flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-bold ${
                             isSourceProcessing
                               ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
-                              : hasSourceError
-                                ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                              : hasSourceBackendError
+                                ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200'
+                                : hasSourceFileError
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
                           }`}
                         >
                           {isSourceProcessing ? (
@@ -4169,7 +4463,7 @@ export default function UploadPage() {
                       )}
 
                       {isSourceProcessing && (
-                        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/55 backdrop-blur-[2px] dark:bg-slate-950/50">
+                        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/[0.55] backdrop-blur-[2px] dark:bg-slate-950/50">
                           <div className="flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-4 py-2 text-xs font-black text-cyan-700 shadow-[0_16px_34px_rgba(14,165,233,0.18)] dark:border-cyan-500/20 dark:bg-slate-950 dark:text-cyan-300">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Processing file
@@ -4177,7 +4471,7 @@ export default function UploadPage() {
                         </div>
                       )}
 
-                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-brand-blue to-cyan-400 transition-all duration-500"
                           style={{ width: `${sourcePercent}%` }}
@@ -4189,7 +4483,7 @@ export default function UploadPage() {
               })}
             </div>
 
-            <div className="mt-5 rounded-[30px] border border-brand-blue/20 bg-gradient-to-br from-slate-50 via-white to-blue-50/70 p-4 shadow-[0_16px_38px_rgba(15,23,42,0.07)] dark:border-blue-500/20 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950/30 sm:p-5">
+            <div className="premium-source-selection-panel mt-5 rounded-[26px] border border-blue-100/80 bg-gradient-to-br from-slate-50 via-white to-blue-50/50 p-4 shadow-[0_10px_28px_rgba(15,23,42,0.045)] dark:border-blue-500/20 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950/20 sm:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${selectedSource.color}`}>
@@ -4236,7 +4530,13 @@ export default function UploadPage() {
             </div>
           </div>
 
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <ExpandableSection
+            title="File Validation Details"
+            summary={`${Number(currentStats.validCount || 0).toLocaleString()} of ${Number(currentStats.recordCount || 0).toLocaleString()} records valid • ${Number(currentStats.missingCount || 0) + Number(currentStats.duplicateCount || 0) + Number(currentStats.invalidCount || 0)} item${Number(currentStats.missingCount || 0) + Number(currentStats.duplicateCount || 0) + Number(currentStats.invalidCount || 0) === 1 ? '' : 's'} need review`}
+            icon={FileCheck2}
+            forceOpen={Boolean(uploadError || Number(currentStats.missingCount || 0) + Number(currentStats.duplicateCount || 0) + Number(currentStats.invalidCount || 0) > 0)}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -4311,9 +4611,29 @@ export default function UploadPage() {
                 {validationResult.mappingSummary}
               </div>
             )}
-          </div>
 
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+            {validationResult?.sourceId === selected && validationResult?.sourceFormat === 'doh_monthly_summary' && (
+              <div className="mt-4 rounded-[24px] border border-amber-100 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                <p className="font-black">Official DOH report handling</p>
+                <p className="mt-1">
+                  The original report layout was preserved as the source. The system extracted monthly barangay rows, did not invent missing weekly records, and marked death data as not provided.
+                </p>
+                {Number(validationResult?.sourceMetadata?.monthly_total_discrepancy_count || 0) > 0 && (
+                  <p className="mt-2 font-bold">
+                    Review warning: {validationResult.sourceMetadata.monthly_total_discrepancy_count} monthly subtotal does not match the sum of its listed barangay rows.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          </ExpandableSection>
+
+          <ExpandableSection
+            title="File Compatibility Details"
+            summary={`${integrationScore}% compatibility • ${integrationStatus}`}
+            icon={ShieldCheck}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300">
@@ -4408,8 +4728,16 @@ export default function UploadPage() {
               ))}
             </div>
           </div>
+          </ExpandableSection>
 
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <ExpandableSection
+            title="Combined Data Details"
+            summary={hasCombinedBackendData
+              ? `${Number(backendBuildSummary?.row_count || backendMergedRows.length || 0).toLocaleString()} combined records ready`
+              : `${backendLoadedSourceCount}/${backendRequiredSourceCount} required files ready`}
+            icon={Database}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
@@ -4569,7 +4897,7 @@ export default function UploadPage() {
               </>
             )}
 
-            <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+            <div className="premium-data-table-card mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
               <div className="records-preview-scroll max-h-[460px] max-w-full overflow-auto overscroll-contain">
                 <table className="w-full min-w-[980px] text-left text-sm">
                   <thead className="sticky top-0 z-20 bg-slate-50/95 text-[11px] uppercase tracking-[0.12em] text-brand-muted shadow-[0_1px_0_rgba(15,23,42,0.08)] backdrop-blur-xl dark:bg-slate-950/95 dark:text-slate-400 dark:shadow-[0_1px_0_rgba(148,163,184,0.12)]">
@@ -4632,8 +4960,17 @@ export default function UploadPage() {
               This table shows what the system created after combining the uploaded files. Rows are shown by page to keep the Upload page smooth. Review rows marked “Needs Review” before using the forecast or map.
             </p>
           </div>
+          </ExpandableSection>
 
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <ExpandableSection
+            title="Barangay Name Matching Details"
+            summary={activeAlignmentReport
+              ? `${Number(activeAlignmentReport.alignment_score || 0)}% matched • ${alignmentWarnings.length + alignmentUnmatchedRows.length + alignmentDuplicateTotal} item${alignmentWarnings.length + alignmentUnmatchedRows.length + alignmentDuplicateTotal === 1 ? '' : 's'} need review`
+              : 'Runs automatically after the files are combined'}
+            icon={ClipboardCheck}
+            forceOpen={Boolean(alignmentWarnings.length || alignmentUnmatchedRows.length || alignmentDuplicateTotal)}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300">
@@ -4740,7 +5077,7 @@ export default function UploadPage() {
             )}
 
             {activeAlignmentReport && (
-              <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+              <div className="premium-data-table-card mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
                 <div className="records-preview-scroll max-h-[360px] max-w-full overflow-auto overscroll-contain">
                   <table className="w-full min-w-[920px] text-left text-sm">
                     <thead className="sticky top-0 z-20 bg-slate-50/95 text-[11px] uppercase tracking-[0.12em] text-brand-muted shadow-[0_1px_0_rgba(15,23,42,0.08)] backdrop-blur-xl dark:bg-slate-950/95 dark:text-slate-400 dark:shadow-[0_1px_0_rgba(148,163,184,0.12)]">
@@ -4796,8 +5133,14 @@ export default function UploadPage() {
               Use this section to fix barangay names before relying on forecast results, map colors, population counts, and recommended actions.
             </p>
           </div>
+          </ExpandableSection>
 
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <ExpandableSection
+            title="Preview Uploaded Records"
+            summary={`${previewRows.length.toLocaleString()} record${previewRows.length === 1 ? '' : 's'} available for ${selectedSource.title.toLowerCase()}`}
+            icon={Table2}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
@@ -4817,7 +5160,7 @@ export default function UploadPage() {
               </span>
             </div>
 
-            <div className="mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+            <div className="premium-data-table-card mt-5 overflow-hidden rounded-[28px] border border-brand-line/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
               <div className="records-preview-scroll max-h-[560px] max-w-full overflow-auto overscroll-contain">
                 <table className="w-full min-w-[720px] text-left text-sm">
                   <thead className="sticky top-0 z-20 bg-slate-50/95 text-[11px] uppercase tracking-[0.12em] text-brand-muted shadow-[0_1px_0_rgba(15,23,42,0.08)] backdrop-blur-xl dark:bg-slate-950/95 dark:text-slate-400 dark:shadow-[0_1px_0_rgba(148,163,184,0.12)]">
@@ -4883,10 +5226,17 @@ export default function UploadPage() {
               Records are shown by page to avoid lag. Use Previous and Next to review more rows, and swipe sideways on smaller screens to view all columns.
             </p>
           </div>
+          </ExpandableSection>
         </div>
 
         <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <ExpandableSection
+            title="Pre-Forecast Checklist"
+            summary={`${readyChecklistCount}/${checklist.length} requirements completed`}
+            icon={ClipboardCheck}
+            forceOpen={readyChecklistCount < checklist.length}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
               <ClipboardCheck className="h-3.5 w-3.5" />
               Checklist
@@ -4900,7 +5250,7 @@ export default function UploadPage() {
               Complete these items before using the forecast, map, and recommendations.
             </p>
 
-            <div className="mt-5 space-y-3">
+            <div className="premium-checklist-stack mt-5 space-y-3">
               {checklist.map((item) => (
                 <div
                   key={item.label}
@@ -4939,8 +5289,14 @@ export default function UploadPage() {
               ))}
             </div>
           </div>
+          </ExpandableSection>
 
-          <div className="rounded-[32px] border border-brand-line/70 bg-white/90 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 sm:p-6">
+          <ExpandableSection
+            title="Forecast Model Details"
+            summary={forecastModelMeta.hasModel ? `${forecastModelMeta.displayName} • ${forecastModelMeta.modelVersion}` : 'Model selection will appear after a valid forecast is generated'}
+            icon={Bot}
+          >
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.055)] ring-1 ring-white/70 dark:border-slate-800 dark:bg-slate-900/95 dark:ring-white/5 sm:p-6">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300">
               <Bot className="h-3.5 w-3.5" />
               AI forecast model
@@ -4954,7 +5310,7 @@ export default function UploadPage() {
               After the dengue file is checked, the system compares available forecasting models and keeps the best-performing one for the latest forecast.
             </p>
 
-            <div className="mt-4 overflow-hidden rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-blue-50 p-4 shadow-sm dark:border-violet-500/20 dark:from-violet-500/10 dark:via-slate-950 dark:to-blue-950/20">
+            <div className="premium-model-card mt-4 overflow-hidden rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-blue-50 p-4 shadow-sm dark:border-violet-500/20 dark:from-violet-500/10 dark:via-slate-950 dark:to-blue-950/20">
               <div className="flex items-start gap-3">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] border border-violet-200 bg-white text-violet-700 shadow-sm dark:border-violet-500/20 dark:bg-white/10 dark:text-violet-300">
                   <Bot className="h-6 w-6" strokeWidth={2.3} />
@@ -4979,7 +5335,7 @@ export default function UploadPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[22px] border border-white/80 bg-white/75 px-4 py-3 text-sm leading-6 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400">
+              <div className="mt-4 rounded-[22px] border border-white/[0.08]0 bg-white/75 px-4 py-3 text-sm leading-6 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400">
                 {forecastModelMeta.hasModel
                   ? `The selected model will also appear on the Forecast page. The user does not need to choose an algorithm manually.`
                   : 'The selected model will appear here after the first valid dengue forecast is generated.'}
@@ -5004,6 +5360,7 @@ export default function UploadPage() {
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </button>
           </div>
+          </ExpandableSection>
         </aside>
       </div>
 
@@ -5068,6 +5425,520 @@ export default function UploadPage() {
           border: 2px solid rgba(15, 23, 42, 0.95);
         }
 
+
+        /* Premium upload-card system */
+        .premium-upload-page {
+          --upload-card-blue: 37, 99, 235;
+          --upload-card-cyan: 6, 182, 212;
+          --upload-card-amber: 245, 158, 11;
+          --upload-card-emerald: 16, 185, 129;
+          --upload-card-violet: 139, 92, 246;
+          --upload-card-rose: 244, 63, 94;
+        }
+
+        .premium-upload-page .premium-upload-source-workspace,
+        .premium-upload-page .premium-source-selection-panel,
+        .premium-upload-page .premium-expandable-section,
+        .premium-upload-page .premium-data-table-card,
+        .premium-upload-page .premium-model-card {
+          position: relative;
+          isolation: isolate;
+        }
+
+        .premium-upload-page .premium-upload-source-workspace {
+          overflow: hidden;
+          border-color: rgba(148, 163, 184, 0.28) !important;
+          background:
+            radial-gradient(circle at 92% 0%, rgba(56, 189, 248, 0.12), transparent 28%),
+            radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.08), transparent 25%),
+            linear-gradient(145deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94)) !important;
+          box-shadow:
+            0 28px 72px rgba(15, 23, 42, 0.10),
+            inset 0 1px 0 rgba(255,255,255,0.96) !important;
+        }
+
+        .premium-upload-page .premium-upload-source-workspace::before {
+          content: "";
+          position: absolute;
+          inset: 0 12% auto;
+          height: 3px;
+          border-radius: 0 0 999px 999px;
+          background: linear-gradient(90deg, transparent, #2563eb, #22d3ee, #10b981, transparent);
+          box-shadow: 0 0 24px rgba(34, 211, 238, 0.28);
+          z-index: 2;
+        }
+
+        .dark .premium-upload-page .premium-upload-source-workspace {
+          border-color: rgba(51, 65, 85, 0.82) !important;
+          background:
+            radial-gradient(circle at 92% 0%, rgba(14, 165, 233, 0.12), transparent 30%),
+            radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.07), transparent 26%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.94)) !important;
+          box-shadow:
+            0 30px 78px rgba(2, 6, 23, 0.34),
+            inset 0 1px 0 rgba(255,255,255,0.045) !important;
+        }
+
+        .premium-upload-page .premium-hero-metrics > div {
+          position: relative;
+          isolation: isolate;
+          overflow: hidden;
+          min-height: 104px;
+          border-color: rgba(255,255,255,0.16) !important;
+          background:
+            linear-gradient(145deg, rgba(15,23,42,0.74), rgba(2,6,23,0.46)) !important;
+          box-shadow:
+            0 18px 44px rgba(2,6,23,0.28),
+            inset 0 1px 0 rgba(255,255,255,0.10) !important;
+          transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+        }
+
+        .premium-upload-page .premium-hero-metrics > div::before {
+          content: "";
+          position: absolute;
+          inset: 0 14% auto;
+          height: 2px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, transparent, rgba(103,232,249,0.92), transparent);
+          box-shadow: 0 0 20px rgba(34,211,238,0.42);
+        }
+
+        .premium-upload-page .premium-hero-metrics > div::after {
+          content: "";
+          position: absolute;
+          right: -34px;
+          top: -40px;
+          width: 108px;
+          height: 108px;
+          border-radius: 999px;
+          background: radial-gradient(circle, rgba(34,211,238,0.18), transparent 68%);
+          pointer-events: none;
+        }
+
+        .premium-upload-page .premium-hero-metrics > div:hover {
+          transform: translateY(-3px);
+          border-color: rgba(103,232,249,0.32) !important;
+          box-shadow:
+            0 24px 54px rgba(2,6,23,0.38),
+            inset 0 1px 0 rgba(255,255,255,0.13) !important;
+        }
+
+        .premium-upload-page .premium-readiness-source-list > button {
+          position: relative;
+          overflow: hidden;
+          min-height: 58px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.055);
+        }
+
+        .premium-upload-page .premium-readiness-source-list > button::after {
+          content: "";
+          position: absolute;
+          inset: auto 12px 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(34,211,238,0.45), transparent);
+          opacity: 0;
+          transition: opacity 180ms ease;
+        }
+
+        .premium-upload-page .premium-readiness-source-list > button:hover::after {
+          opacity: 1;
+        }
+
+        .premium-upload-page .premium-current-source-card {
+          overflow: hidden;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(34,211,238,0.13), transparent 42%),
+            rgba(255,255,255,0.045) !important;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+        }
+
+        .premium-upload-page .premium-current-source-card::after {
+          content: "";
+          position: absolute;
+          right: -28px;
+          bottom: -34px;
+          width: 104px;
+          height: 104px;
+          border-radius: 999px;
+          border: 1px solid rgba(103,232,249,0.12);
+          box-shadow: 0 0 0 18px rgba(34,211,238,0.025);
+          pointer-events: none;
+        }
+
+        .premium-upload-page .premium-source-card {
+          --card-accent: var(--upload-card-blue);
+          min-height: 306px;
+          border-radius: 30px !important;
+          border-color: rgba(148, 163, 184, 0.30) !important;
+          box-shadow:
+            0 20px 50px rgba(15,23,42,0.09),
+            inset 0 1px 0 rgba(255,255,255,0.92) !important;
+          transform: translateZ(0);
+        }
+
+        .premium-upload-page .premium-source-card:nth-child(2) {
+          --card-accent: var(--upload-card-cyan);
+        }
+
+        .premium-upload-page .premium-source-card:nth-child(3) {
+          --card-accent: var(--upload-card-amber);
+        }
+
+        .premium-upload-page .premium-source-card:nth-child(4) {
+          --card-accent: var(--upload-card-emerald);
+        }
+
+        .premium-upload-page .premium-source-card::after {
+          content: "";
+          position: absolute;
+          right: -46px;
+          bottom: -52px;
+          width: 154px;
+          height: 154px;
+          border-radius: 999px;
+          border: 1px solid rgba(var(--card-accent), 0.13);
+          box-shadow:
+            0 0 0 22px rgba(var(--card-accent), 0.035),
+            0 0 0 44px rgba(var(--card-accent), 0.018);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .premium-upload-page .premium-source-card:hover {
+          transform: translateY(-6px) scale(1.005);
+          border-color: rgba(var(--card-accent), 0.44) !important;
+          box-shadow:
+            0 30px 72px rgba(15,23,42,0.15),
+            0 0 0 1px rgba(var(--card-accent),0.08),
+            inset 0 1px 0 rgba(255,255,255,0.98) !important;
+        }
+
+        .dark .premium-upload-page .premium-source-card {
+          border-color: rgba(51,65,85,0.86) !important;
+          box-shadow:
+            0 24px 58px rgba(2,6,23,0.34),
+            inset 0 1px 0 rgba(255,255,255,0.045) !important;
+        }
+
+        .dark .premium-upload-page .premium-source-card:hover {
+          border-color: rgba(var(--card-accent), 0.42) !important;
+          box-shadow:
+            0 32px 74px rgba(2,6,23,0.48),
+            0 0 34px rgba(var(--card-accent),0.07),
+            inset 0 1px 0 rgba(255,255,255,0.06) !important;
+        }
+
+        .premium-upload-page .premium-source-selection-panel {
+          overflow: hidden;
+          border-color: rgba(59,130,246,0.20) !important;
+          background:
+            radial-gradient(circle at 95% 0%, rgba(34,211,238,0.14), transparent 30%),
+            linear-gradient(145deg, rgba(255,255,255,0.98), rgba(239,246,255,0.88)) !important;
+          box-shadow:
+            0 20px 52px rgba(37,95,143,0.10),
+            inset 0 1px 0 rgba(255,255,255,0.96) !important;
+        }
+
+        .premium-upload-page .premium-source-selection-panel::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 4px;
+          background: linear-gradient(180deg, #2563eb, #22d3ee, #10b981);
+        }
+
+        .dark .premium-upload-page .premium-source-selection-panel {
+          border-color: rgba(59,130,246,0.24) !important;
+          background:
+            radial-gradient(circle at 95% 0%, rgba(14,165,233,0.12), transparent 32%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.92)) !important;
+          box-shadow:
+            0 24px 60px rgba(2,6,23,0.34),
+            inset 0 1px 0 rgba(255,255,255,0.045) !important;
+        }
+
+        .premium-upload-page .mobile-grid-4 > div,
+        .premium-upload-page .mobile-grid-3 > div {
+          --metric-accent: var(--upload-card-blue);
+          position: relative;
+          isolation: isolate;
+          overflow: hidden;
+          min-height: 148px;
+          border-radius: 27px !important;
+          border-color: rgba(148,163,184,0.27) !important;
+          background:
+            linear-gradient(145deg, rgba(255,255,255,0.99), rgba(248,250,252,0.93)) !important;
+          box-shadow:
+            0 18px 44px rgba(15,23,42,0.075),
+            inset 0 1px 0 rgba(255,255,255,0.96) !important;
+          transition:
+            transform 220ms ease,
+            box-shadow 220ms ease,
+            border-color 220ms ease;
+        }
+
+        .premium-upload-page .mobile-grid-4 > div:nth-child(4n + 2),
+        .premium-upload-page .mobile-grid-3 > div:nth-child(3n + 2) {
+          --metric-accent: var(--upload-card-cyan);
+        }
+
+        .premium-upload-page .mobile-grid-4 > div:nth-child(4n + 3),
+        .premium-upload-page .mobile-grid-3 > div:nth-child(3n + 3) {
+          --metric-accent: var(--upload-card-amber);
+        }
+
+        .premium-upload-page .mobile-grid-4 > div:nth-child(4n + 4) {
+          --metric-accent: var(--upload-card-emerald);
+        }
+
+        .premium-upload-page .mobile-grid-4 > div::before,
+        .premium-upload-page .mobile-grid-3 > div::before {
+          content: "";
+          position: absolute;
+          inset: 0 0 auto;
+          height: 3px;
+          background: linear-gradient(
+            90deg,
+            rgba(var(--metric-accent), 0.18),
+            rgba(var(--metric-accent), 0.96),
+            rgba(var(--metric-accent), 0.22)
+          );
+          box-shadow: 0 0 22px rgba(var(--metric-accent), 0.16);
+          z-index: -1;
+        }
+
+        .premium-upload-page .mobile-grid-4 > div::after,
+        .premium-upload-page .mobile-grid-3 > div::after {
+          content: "";
+          position: absolute;
+          right: -42px;
+          top: -44px;
+          width: 126px;
+          height: 126px;
+          border-radius: 999px;
+          background: radial-gradient(circle, rgba(var(--metric-accent),0.16), transparent 68%);
+          border: 1px solid rgba(var(--metric-accent),0.09);
+          pointer-events: none;
+          z-index: -1;
+        }
+
+        .premium-upload-page .mobile-grid-4 > div:hover,
+        .premium-upload-page .mobile-grid-3 > div:hover {
+          transform: translateY(-5px);
+          border-color: rgba(var(--metric-accent),0.34) !important;
+          box-shadow:
+            0 26px 62px rgba(15,23,42,0.12),
+            0 0 0 1px rgba(var(--metric-accent),0.05),
+            inset 0 1px 0 rgba(255,255,255,0.98) !important;
+        }
+
+        .dark .premium-upload-page .mobile-grid-4 > div,
+        .dark .premium-upload-page .mobile-grid-3 > div {
+          border-color: rgba(51,65,85,0.82) !important;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(var(--metric-accent),0.08), transparent 34%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.92)) !important;
+          box-shadow:
+            0 20px 48px rgba(2,6,23,0.30),
+            inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+
+        .dark .premium-upload-page .mobile-grid-4 > div:hover,
+        .dark .premium-upload-page .mobile-grid-3 > div:hover {
+          border-color: rgba(var(--metric-accent),0.34) !important;
+          box-shadow:
+            0 28px 66px rgba(2,6,23,0.44),
+            0 0 32px rgba(var(--metric-accent),0.055),
+            inset 0 1px 0 rgba(255,255,255,0.055) !important;
+        }
+
+        .premium-upload-page .mobile-grid-6 > div {
+          position: relative;
+          overflow: hidden;
+          border-radius: 25px !important;
+          border-color: rgba(148,163,184,0.27) !important;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(37,99,235,0.08), transparent 36%),
+            linear-gradient(145deg, rgba(255,255,255,0.99), rgba(248,250,252,0.94)) !important;
+          box-shadow:
+            0 15px 38px rgba(15,23,42,0.065),
+            inset 0 1px 0 rgba(255,255,255,0.94) !important;
+          transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+        }
+
+        .premium-upload-page .mobile-grid-6 > div::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 3px;
+          background: linear-gradient(180deg, #2563eb, #22d3ee);
+        }
+
+        .premium-upload-page .mobile-grid-6 > div:hover {
+          transform: translateX(3px);
+          border-color: rgba(37,99,235,0.28) !important;
+          box-shadow:
+            0 21px 50px rgba(15,23,42,0.10),
+            inset 0 1px 0 rgba(255,255,255,0.98) !important;
+        }
+
+        .dark .premium-upload-page .mobile-grid-6 > div {
+          border-color: rgba(51,65,85,0.82) !important;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(14,165,233,0.08), transparent 36%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.92)) !important;
+          box-shadow:
+            0 18px 42px rgba(2,6,23,0.28),
+            inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+
+        .premium-upload-page .premium-expandable-section {
+          border-radius: 31px !important;
+          border-color: rgba(148,163,184,0.28) !important;
+          box-shadow:
+            0 20px 54px rgba(15,23,42,0.075),
+            inset 0 1px 0 rgba(255,255,255,0.92) !important;
+        }
+
+        .premium-upload-page .premium-expandable-section::before {
+          content: "";
+          position: absolute;
+          inset: 0 12% auto;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(37,99,235,0.75), rgba(34,211,238,0.82), transparent);
+          opacity: 0.72;
+          z-index: 3;
+        }
+
+        .premium-upload-page .premium-expandable-section > button {
+          position: relative;
+          background:
+            radial-gradient(circle at 92% 0%, rgba(56,189,248,0.08), transparent 28%),
+            linear-gradient(145deg, rgba(255,255,255,0.98), rgba(248,250,252,0.90));
+        }
+
+        .dark .premium-upload-page .premium-expandable-section {
+          border-color: rgba(51,65,85,0.84) !important;
+          box-shadow:
+            0 22px 58px rgba(2,6,23,0.32),
+            inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+
+        .dark .premium-upload-page .premium-expandable-section > button {
+          background:
+            radial-gradient(circle at 92% 0%, rgba(14,165,233,0.07), transparent 30%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.94));
+        }
+
+        .premium-upload-page .premium-checklist-stack > div {
+          position: relative;
+          overflow: hidden;
+          min-height: 76px;
+          border-radius: 24px !important;
+          border-color: rgba(148,163,184,0.27) !important;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(16,185,129,0.10), transparent 38%),
+            linear-gradient(145deg, rgba(255,255,255,0.99), rgba(248,250,252,0.94)) !important;
+          box-shadow:
+            0 14px 34px rgba(15,23,42,0.065),
+            inset 0 1px 0 rgba(255,255,255,0.95) !important;
+          transition: transform 190ms ease, border-color 190ms ease, box-shadow 190ms ease;
+        }
+
+        .premium-upload-page .premium-checklist-stack > div::before {
+          content: "";
+          position: absolute;
+          inset: 10px auto 10px 0;
+          width: 3px;
+          border-radius: 999px;
+          background: linear-gradient(180deg, #10b981, #22d3ee);
+        }
+
+        .premium-upload-page .premium-checklist-stack > div:hover {
+          transform: translateX(4px);
+          border-color: rgba(16,185,129,0.30) !important;
+          box-shadow:
+            0 20px 46px rgba(15,23,42,0.10),
+            inset 0 1px 0 rgba(255,255,255,0.98) !important;
+        }
+
+        .dark .premium-upload-page .premium-checklist-stack > div {
+          border-color: rgba(51,65,85,0.82) !important;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(16,185,129,0.08), transparent 38%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.92)) !important;
+          box-shadow:
+            0 16px 38px rgba(2,6,23,0.28),
+            inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+
+        .premium-upload-page .premium-model-card {
+          overflow: hidden;
+          border-color: rgba(139,92,246,0.22) !important;
+          background:
+            radial-gradient(circle at 94% 0%, rgba(59,130,246,0.14), transparent 32%),
+            radial-gradient(circle at 0% 100%, rgba(139,92,246,0.11), transparent 30%),
+            linear-gradient(145deg, rgba(255,255,255,0.99), rgba(245,243,255,0.90)) !important;
+          box-shadow:
+            0 22px 54px rgba(76,29,149,0.10),
+            inset 0 1px 0 rgba(255,255,255,0.97) !important;
+        }
+
+        .premium-upload-page .premium-model-card::after {
+          content: "";
+          position: absolute;
+          right: -46px;
+          bottom: -54px;
+          width: 160px;
+          height: 160px;
+          border-radius: 999px;
+          border: 1px solid rgba(139,92,246,0.14);
+          box-shadow:
+            0 0 0 22px rgba(139,92,246,0.035),
+            0 0 0 44px rgba(59,130,246,0.02);
+          pointer-events: none;
+        }
+
+        .dark .premium-upload-page .premium-model-card {
+          border-color: rgba(139,92,246,0.24) !important;
+          background:
+            radial-gradient(circle at 94% 0%, rgba(59,130,246,0.11), transparent 34%),
+            radial-gradient(circle at 0% 100%, rgba(139,92,246,0.09), transparent 32%),
+            linear-gradient(145deg, rgba(15,23,42,0.98), rgba(2,6,23,0.94)) !important;
+          box-shadow:
+            0 24px 60px rgba(2,6,23,0.36),
+            inset 0 1px 0 rgba(255,255,255,0.045) !important;
+        }
+
+        .premium-upload-page .premium-data-table-card {
+          border-radius: 31px !important;
+          border-color: rgba(148,163,184,0.28) !important;
+          background:
+            linear-gradient(145deg, rgba(255,255,255,1), rgba(248,250,252,0.96)) !important;
+          box-shadow:
+            0 24px 62px rgba(15,23,42,0.10),
+            inset 0 1px 0 rgba(255,255,255,0.98) !important;
+        }
+
+        .premium-upload-page .premium-data-table-card::before {
+          content: "";
+          position: absolute;
+          inset: 0 10% auto;
+          height: 3px;
+          background: linear-gradient(90deg, transparent, #2563eb, #22d3ee, transparent);
+          opacity: 0.78;
+          z-index: 30;
+        }
+
+        .dark .premium-upload-page .premium-data-table-card {
+          border-color: rgba(51,65,85,0.86) !important;
+          background:
+            linear-gradient(145deg, rgba(15,23,42,0.99), rgba(2,6,23,0.96)) !important;
+          box-shadow:
+            0 26px 66px rgba(2,6,23,0.42),
+            inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+
         @media (max-width: 639px) {
           .upload-mobile-compact {
             --upload-mobile-radius: 22px;
@@ -5110,7 +5981,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .mt-6.grid p:first-child {
-            font-size: 0.52rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.08em !important;
           }
@@ -5122,7 +5993,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .mt-6.grid p:last-child {
-            font-size: 0.64rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.25 !important;
           }
 
@@ -5239,12 +6110,12 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload button p {
-            font-size: 0.68rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.25 !important;
           }
 
           .upload-mobile-compact #data-upload button span {
-            font-size: 0.58rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.1 !important;
             padding: 0.28rem 0.48rem !important;
           }
@@ -5290,7 +6161,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload thead {
-            font-size: 0.62rem !important;
+            font-size: 0.75rem !important;
           }
 
           .upload-mobile-compact #data-upload aside {
@@ -5372,7 +6243,7 @@ export default function UploadPage() {
           .upload-mobile-compact section .mb-4.inline-flex {
             margin-bottom: 0.65rem !important;
             padding: 0.35rem 0.6rem !important;
-            font-size: 0.58rem !important;
+            font-size: 0.75rem !important;
             letter-spacing: 0.13em !important;
           }
 
@@ -5407,7 +6278,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .mt-6.grid p:first-child {
-            font-size: 0.5rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.08em !important;
           }
@@ -5420,7 +6291,7 @@ export default function UploadPage() {
 
           .upload-mobile-compact section .mt-6.grid p:last-child {
             margin-top: 0.2rem !important;
-            font-size: 0.61rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.2 !important;
           }
 
@@ -5451,7 +6322,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .rounded-\[30px\] p {
-            font-size: 0.68rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.3 !important;
           }
 
@@ -5503,7 +6374,7 @@ export default function UploadPage() {
 
           .upload-mobile-compact #data-upload .inline-flex.items-center.gap-2 {
             padding: 0.32rem 0.58rem !important;
-            font-size: 0.55rem !important;
+            font-size: 0.75rem !important;
             letter-spacing: 0.1em !important;
           }
 
@@ -5519,7 +6390,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload p {
-            font-size: 0.74rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.32 !important;
           }
 
@@ -5581,7 +6452,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.62rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.22 !important;
           }
 
@@ -5590,7 +6461,7 @@ export default function UploadPage() {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            font-size: 0.52rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.1 !important;
             padding: 0.24rem 0.42rem !important;
           }
@@ -5666,7 +6537,7 @@ export default function UploadPage() {
 
           .upload-mobile-compact #data-upload table {
             width: max-content !important;
-            font-size: 0.72rem !important;
+            font-size: 0.75rem !important;
           }
 
           .upload-mobile-compact #data-upload table.min-w-\[980px\] { min-width: 760px !important; }
@@ -5680,7 +6551,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload thead {
-            font-size: 0.58rem !important;
+            font-size: 0.75rem !important;
             letter-spacing: 0.08em !important;
           }
 
@@ -5697,7 +6568,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload aside .flex.items-center.justify-between span.text-sm {
-            font-size: 0.7rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.2 !important;
           }
 
@@ -5750,7 +6621,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.62rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.2 !important;
           }
 
@@ -5759,7 +6630,7 @@ export default function UploadPage() {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            font-size: 0.52rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.1 !important;
             padding: 0.24rem 0.42rem !important;
           }
@@ -5845,7 +6716,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.5rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.08 !important;
             letter-spacing: 0.07em !important;
           }
@@ -5876,7 +6747,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.58rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.15 !important;
           }
 
@@ -5891,7 +6762,7 @@ export default function UploadPage() {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            font-size: 0.5rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.05 !important;
             padding: 0.22rem 0.36rem !important;
           }
@@ -5914,7 +6785,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.58rem !important;
+            font-size: 0.75rem !important;
             line-height: 1.12 !important;
           }
 
@@ -5939,13 +6810,127 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload button h3 {
-            font-size: 0.72rem !important;
+            font-size: 0.75rem !important;
           }
 
           .upload-mobile-compact section .mt-6.grid {
             grid-template-columns: minmax(0, 1fr) !important;
           }
         }
+
+
+        /* Premium Upload page refinement */
+        .premium-upload-page {
+          isolation: isolate;
+        }
+
+        .premium-hero-upload-button {
+          background: #ffffff !important;
+          color: #0f172a !important;
+          border: 1px solid rgba(255, 255, 255, 0.92) !important;
+          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+        }
+
+        .premium-hero-upload-button:hover {
+          background: #ecfeff !important;
+          color: #0f172a !important;
+          border-color: rgba(165, 243, 252, 0.95) !important;
+        }
+
+        .dark .premium-hero-upload-button {
+          background: #ffffff !important;
+          color: #0f172a !important;
+          border-color: rgba(255, 255, 255, 0.92) !important;
+        }
+
+        .premium-upload-hero {
+          background-image:
+            radial-gradient(circle at 78% 18%, rgba(34, 211, 238, 0.12), transparent 30%),
+            linear-gradient(135deg, #020617, #071827 55%, #03111f);
+        }
+
+        .premium-source-card::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          border-radius: inherit;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+        }
+
+        .dark .premium-source-card::after {
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .premium-expandable-section > button {
+          background-image: linear-gradient(120deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.98));
+        }
+
+        .dark .premium-expandable-section > button {
+          background-image: linear-gradient(120deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.98));
+        }
+
+        @media (max-width: 639px) {
+          .premium-upload-page .premium-upload-hero {
+            min-height: auto !important;
+            border-radius: 24px !important;
+            padding: 0 !important;
+          }
+
+          .premium-upload-page .premium-upload-hero > .relative.z-10 {
+            min-height: auto !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.9rem !important;
+            padding: 1rem !important;
+          }
+
+          .premium-upload-page .premium-upload-hero h1 {
+            font-size: 1.9rem !important;
+            line-height: 1.03 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .premium-upload-page .premium-upload-hero .premium-hero-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .premium-upload-page .premium-upload-hero .premium-hero-metrics > div {
+            min-height: 76px !important;
+            border-radius: 15px !important;
+            padding: 0.55rem !important;
+          }
+
+          .premium-upload-page .premium-upload-hero .premium-hero-metrics p:first-child {
+            font-size: 0.7rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.07em !important;
+          }
+
+          .premium-upload-page .premium-upload-hero .premium-hero-metrics p.text-2xl {
+            font-size: 1.1rem !important;
+          }
+
+          .premium-upload-page .premium-upload-hero .premium-hero-metrics span {
+            display: none !important;
+          }
+
+          .premium-expandable-section {
+            border-radius: 20px !important;
+          }
+
+          .premium-expandable-section > button {
+            min-height: 68px !important;
+            padding: 0.75rem !important;
+          }
+
+          .premium-expandable-section > button .h-12.w-12 {
+            height: 2.35rem !important;
+            width: 2.35rem !important;
+            border-radius: 13px !important;
+          }
+        }
+
       `}</style>
     </div>
   )

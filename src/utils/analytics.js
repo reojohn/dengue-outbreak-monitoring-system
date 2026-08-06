@@ -120,6 +120,125 @@ export function getRiskMapColor(risk) {
   }
 }
 
+export function getCanonicalRiskPriority(risk = '') {
+  const value = String(risk || '').trim().toLowerCase()
+
+  if (value === 'high') return 3
+  if (value === 'moderate') return 2
+  if (value === 'low') return 1
+
+  return 0
+}
+
+export function getCanonicalResponsePriority(priority = '') {
+  const value = String(priority || '').trim().toLowerCase()
+
+  if (value.includes('immediate')) return 7
+  if (value.includes('high priority')) return 6
+  if (value.includes('escalated')) return 5
+  if (value.includes('preventive')) return 4
+  if (value.includes('close monitoring') || value === 'monitoring') return 3
+  if (value.includes('early')) return 2
+  if (value.includes('routine')) return 1
+
+  return 0
+}
+
+export function getCanonicalCombinedRiskScore(row = {}) {
+  const directValues = [
+    row?.combinedRiskScore,
+    row?.combined_risk_score,
+    row?.multiSourceRiskScore,
+    row?.multi_source_risk_score,
+    row?.overallRiskScore,
+    row?.overall_risk_score,
+    row?.decisionSupport?.multiSourceRiskScore,
+    row?.decisionSupport?.riskScore,
+    row?.riskScore,
+  ]
+
+  for (const value of directValues) {
+    const number = Number(value)
+
+    if (Number.isFinite(number)) {
+      return Math.max(0, Math.min(100, number))
+    }
+  }
+
+  return 0
+}
+
+export function getCanonicalForecastValue(row = {}) {
+  return toNumber(
+    row?.forecast ??
+      row?.forecastedCases ??
+      row?.forecasted_cases ??
+      row?.predictedCases ??
+      row?.predicted_cases ??
+      row?.forecast_next_4_periods ??
+      row?.forecastCases ??
+      row?.forecast_cases,
+    0
+  )
+}
+
+export function getCanonicalDecisionScore(row = {}) {
+  return toNumber(
+    row?.decisionScore ??
+      row?.decision_score ??
+      row?.decisionSupport?.score ??
+      row?.priorityScore ??
+      row?.priority_score,
+    0
+  )
+}
+
+export function compareCanonicalBarangayPriority(a = {}, b = {}) {
+  const riskDifference =
+    getCanonicalRiskPriority(b?.risk ?? b?.risk_level) -
+    getCanonicalRiskPriority(a?.risk ?? a?.risk_level)
+
+  if (riskDifference !== 0) return riskDifference
+
+  const combinedScoreDifference =
+    getCanonicalCombinedRiskScore(b) - getCanonicalCombinedRiskScore(a)
+
+  if (combinedScoreDifference !== 0) return combinedScoreDifference
+
+  const responsePriorityDifference =
+    getCanonicalResponsePriority(
+      b?.responsePriority ?? b?.response_priority ?? b?.decisionSupport?.priority
+    ) -
+    getCanonicalResponsePriority(
+      a?.responsePriority ?? a?.response_priority ?? a?.decisionSupport?.priority
+    )
+
+  if (responsePriorityDifference !== 0) return responsePriorityDifference
+
+  const forecastDifference =
+    getCanonicalForecastValue(b) - getCanonicalForecastValue(a)
+
+  if (forecastDifference !== 0) return forecastDifference
+
+  const decisionScoreDifference =
+    getCanonicalDecisionScore(b) - getCanonicalDecisionScore(a)
+
+  if (decisionScoreDifference !== 0) return decisionScoreDifference
+
+  return String(a?.barangay || a?.barangay_name || '').localeCompare(
+    String(b?.barangay || b?.barangay_name || '')
+  )
+}
+
+export function rankCanonicalBarangays(rows = []) {
+  return [...rows]
+    .sort(compareCanonicalBarangayPriority)
+    .map((row, index) => ({
+      ...row,
+      canonicalPriorityRank: index + 1,
+    }))
+}
+
 export function computeTrendLabel({
   recentAverage = 0,
   previousAverage = 0,
@@ -654,6 +773,88 @@ function buildRationale({
   return reasons
 }
 
+function buildContextualActions({
+  risk,
+  trendDirection,
+  densityLevel,
+  forecast,
+  currentCases,
+  totalCases,
+  populationExposure,
+  environmentalSuitability,
+}) {
+  const actions = []
+  const forecastValue = toNumber(forecast)
+  const currentValue = toNumber(currentCases)
+  const historicalValue = toNumber(totalCases)
+  const rainfallScore = environmentalSuitability?.rainfallPressure?.score || 0
+  const highEnvironment = environmentalSuitability?.label === environmentalLevels.HIGH
+  const denseArea =
+    densityLevel === densityLevels.VERY_HIGH ||
+    densityLevel === densityLevels.HIGH
+  const largePopulation = (populationExposure?.score || 0) >= 2
+
+  if (trendDirection === trendDirections.INCREASING) {
+    actions.push(
+      'Increase reporting-period surveillance and compare new reports against the recent upward case movement before escalating the response.'
+    )
+  } else if (trendDirection === trendDirections.DECREASING && risk !== riskLevels.LOW) {
+    actions.push(
+      'Confirm that the decreasing trend continues in the next reporting period before reducing monitoring intensity.'
+    )
+  }
+
+  if (rainfallScore >= 2) {
+    actions.push(
+      'Schedule post-rainfall checks of canals, drainage lines, uncovered containers, tires, and other water-holding sites.'
+    )
+  }
+
+  if (denseArea) {
+    actions.push(
+      'Prioritize densely populated puroks for household inspection because close residential spacing may increase exposure.'
+    )
+  }
+
+  if (largePopulation) {
+    actions.push(
+      'Plan wider BHW coverage and use multiple barangay communication channels because a larger population may require broader advisories.'
+    )
+  }
+
+  if (historicalValue >= 500) {
+    actions.push(
+      'Review historically affected puroks and repeated case locations because this barangay has a high cumulative dengue burden.'
+    )
+  } else if (historicalValue >= 200) {
+    actions.push(
+      'Compare new reports with previously affected locations because the barangay has a substantial historical case burden.'
+    )
+  } else if (historicalValue > 0 && historicalValue < 50) {
+    actions.push(
+      'Check whether the limited historical cases are concentrated in a small number of locations before expanding field activities.'
+    )
+  }
+
+  if (forecastValue > 0 && currentValue <= 0) {
+    actions.push(
+      'Keep preventive activities ready even if the latest period is quiet because the model still projects cases in the forecast horizon.'
+    )
+  } else if (forecastValue <= 0 && currentValue > 0) {
+    actions.push(
+      'Validate the latest reported cases even though the near-term forecast is low, and watch for new clustering.'
+    )
+  }
+
+  if (highEnvironment && rainfallScore < 2) {
+    actions.push(
+      'Maintain mosquito-control reminders because temperature and humidity remain suitable even without strong rainfall pressure.'
+    )
+  }
+
+  return actions
+}
+
 function buildActions({
   priority,
   risk,
@@ -661,15 +862,18 @@ function buildActions({
   densityLevel,
   forecast,
   currentCases,
+  totalCases,
+  populationExposure,
   environmentalSuitability,
 }) {
   const forecastValue = toNumber(forecast)
   const currentValue = toNumber(currentCases)
   const hasRainfallPressure = environmentalSuitability?.rainfallPressure?.score >= 2
   const hasHighEnvironment = environmentalSuitability?.label === environmentalLevels.HIGH
+  let baseActions = []
 
   if (priority === decisionPriorityLevels.IMMEDIATE) {
-    return [
+    baseActions = [
       'Activate barangay-level dengue alert and coordinate response within 24 to 48 hours.',
       'Conduct rapid source reduction in the selected barangay, prioritizing stagnant water sites and high-density puroks.',
       hasRainfallPressure
@@ -677,73 +881,80 @@ function buildActions({
         : 'Inspect common stagnant water sites, containers, canals, and drainage areas.',
       'Deploy BHWs for focused household inspection, fever case checking, and dengue prevention advisories.',
       'Coordinate cleanup operations with barangay officials, sanitation teams, and community volunteers.',
-      'Review new dengue reports after 7 days to check if the intervention reduced case movement.',
+      'Review new dengue reports after the next reporting period to check if the intervention reduced case movement.',
     ]
-  }
-
-  if (priority === decisionPriorityLevels.HIGH) {
-    return [
-      'Schedule priority source reduction and environmental sanitation within the week.',
+  } else if (priority === decisionPriorityLevels.HIGH) {
+    baseActions = [
+      'Schedule priority source reduction and environmental sanitation within the current reporting cycle.',
       hasHighEnvironment
         ? 'Prioritize wet, humid, and dense residential zones during inspection and cleanup.'
         : 'Inspect locations with repeated dengue reports and possible mosquito breeding sites.',
       'Strengthen barangay advisories through BHWs, schools, community pages, and purok leaders.',
-      'Monitor weekly case updates and escalate if the forecast, weather exposure, or recent cases continue to increase.',
+      'Monitor each reporting update and escalate if the forecast, weather exposure, or recent cases continue to increase.',
     ]
-  }
-
-  if (priority === decisionPriorityLevels.ESCALATED) {
-    return [
+  } else if (priority === decisionPriorityLevels.ESCALATED) {
+    baseActions = [
       'Increase surveillance because moderate risk is paired with increasing trend or high-density exposure.',
       'Conduct targeted inspection in dense residential zones, schools, drainage areas, and common water storage sites.',
       hasRainfallPressure
         ? 'Add post-rainfall larval source checks to the barangay inspection schedule.'
         : 'Prepare cleanup and IEC activities before the barangay shifts into high-risk status.',
-      'Validate new reports weekly and compare them against the forecasted case count.',
+      'Validate new reports during the next reporting period and compare them against the forecasted case count.',
     ]
-  }
-
-  if (priority === decisionPriorityLevels.PREVENTIVE) {
-    return [
-      'Strengthen preventive messaging and weekly monitoring before the risk level worsens.',
+  } else if (priority === decisionPriorityLevels.PREVENTIVE) {
+    baseActions = [
+      'Strengthen preventive messaging and reporting-period monitoring before the risk level worsens.',
       'Inspect common breeding areas and remind households to remove standing water.',
       hasHighEnvironment
         ? 'Increase IEC reminders during weather conditions that support mosquito survival and breeding.'
         : 'Coordinate with BHWs to watch for clustering of fever cases.',
       'Reassess the barangay after the next reporting period.',
     ]
-  }
-
-  if (priority === decisionPriorityLevels.MONITORING) {
-    return [
-      'Continue weekly monitoring and maintain routine source reduction activities.',
+  } else if (priority === decisionPriorityLevels.MONITORING) {
+    baseActions = [
+      'Continue close monitoring and maintain routine source reduction activities.',
       'Focus inspections on areas with previous dengue reports or poor drainage conditions.',
       'Keep barangay advisories active and encourage early consultation for fever symptoms.',
       'Escalate only if forecasted cases, current cases, weather pressure, or trend begin increasing.',
     ]
-  }
-
-  if (priority === decisionPriorityLevels.EARLY) {
-    return [
-      'Flag the barangay for early warning because the trend is increasing even though the current risk is low.',
+  } else if (priority === decisionPriorityLevels.EARLY) {
+    baseActions = [
+      'Flag the barangay for early warning because the trend or environmental pressure is elevated even though the current risk is low.',
       'Verify recent reports and check whether cases are clustered in one purok or household group.',
       'Send preventive reminders through BHWs and barangay communication channels.',
       'Monitor the next reporting period before deciding whether to escalate response.',
     ]
-  }
-
-  if (risk === riskLevels.LOW && forecastValue > 0 && currentValue > 0) {
-    return [
+  } else if (risk === riskLevels.LOW && forecastValue > 0 && currentValue > 0) {
+    baseActions = [
       'Maintain routine dengue surveillance and sanitation activities.',
       'Continue household reminders on eliminating stagnant water.',
       'Track the next reporting period to ensure cases do not increase.',
     ]
+  } else {
+    baseActions = [
+      'Upload and validate dengue records before generating a full decision support recommendation.',
+      'Use weather, boundary, and population data as supporting context once case records are available.',
+    ]
   }
 
-  return [
-    'Upload and validate dengue records before generating a full decision support recommendation.',
-    'Use weather, boundary, and population data as supporting context once case records are available.',
-  ]
+  const contextualActions = buildContextualActions({
+    risk,
+    trendDirection,
+    densityLevel,
+    forecast,
+    currentCases,
+    totalCases,
+    populationExposure,
+    environmentalSuitability,
+  })
+
+  return Array.from(
+    new Set([
+      ...baseActions.slice(0, 2),
+      ...contextualActions,
+      ...baseActions.slice(2),
+    ].filter(Boolean))
+  ).slice(0, 8)
 }
 
 function computePriority({
@@ -996,6 +1207,8 @@ export function computeDecisionSupport(input = {}) {
     densityLevel,
     forecast,
     currentCases,
+    totalCases,
+    populationExposure,
     environmentalSuitability,
   })
 

@@ -1584,7 +1584,7 @@ export function DataProvider({ children }) {
       saveWorkspaceState(compactWorkspaceForPersistence(workspace)).catch(() => {
         saveWorkspace(workspace)
       })
-    }, 650)
+    }, 5000)
 
     return () => window.clearTimeout(saveTimer)
   }, [workspace, workspaceHydrated])
@@ -1895,6 +1895,22 @@ export function DataProvider({ children }) {
         total_forecast_next_4_periods: Number(result.total_forecast_next_4_periods || 0),
         risk_counts: result.risk_counts || {},
         validation_summary: result.validation_summary || {},
+        temporal_granularity:
+          result.temporal_granularity || result.validation_summary?.temporal_granularity || 'reporting_period',
+        forecast_period_unit:
+          result.forecast_period_unit || result.validation_summary?.forecast_period_unit || 'period',
+        forecast_horizon_periods: Number(
+          result.forecast_horizon_periods || result.validation_summary?.forecast_horizon_periods || 4
+        ),
+        forecast_horizon_label:
+          result.forecast_horizon_label ||
+          result.forecast_window ||
+          result.validation_summary?.forecast_horizon_label ||
+          'Next 4 reporting periods',
+        forecast_strategy:
+          result.forecast_strategy || result.validation_summary?.forecast_strategy || '',
+        forecast_method:
+          result.forecast_method || result.validation_summary?.forecast_method || '',
         forecast_results: forecastResults,
         forecast_run: result.forecast_run || null,
         databaseBacked: true,
@@ -2001,8 +2017,8 @@ export function DataProvider({ children }) {
 
     loadLatestUploadDatabaseStatus({ silent: true })
     syncBackendIntegrationStatus({ silent: true })
-    loadLatestSavedBoundaryGeoJson({ silent: true })
     loadLatestBackendIntegrationDataset({ silent: true })
+    loadLatestSavedBoundaryGeoJson({ silent: true })
     loadLatestSavedForecast({ silent: true })
   }, [workspaceHydrated])
 

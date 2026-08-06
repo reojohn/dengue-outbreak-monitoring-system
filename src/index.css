@@ -631,3 +631,231 @@ html.dark #root {
   }
 }
 
+
+
+/* User-centered interaction defaults */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(14, 165, 233, 0.38);
+  outline-offset: 3px;
+}
+
+@media (max-width: 639px) {
+  :where(button, [role='button'], input, select) {
+    min-height: 44px;
+  }
+
+  .dengue-scaled-content {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Softer light mode
+   Keeps dark mode unchanged while reducing glare from pure-white surfaces. */
+:root {
+  --dengue-light-canvas: #dfe7eb;
+  --dengue-light-surface: #edf2f4;
+  --dengue-light-surface-raised: #f2f5f6;
+  --dengue-light-surface-soft: #e7edf0;
+  --dengue-light-border: #c6d2d9;
+  --dengue-light-border-soft: #d1dbe1;
+  --dengue-light-text: #203544;
+  --dengue-light-muted: #586c7a;
+}
+
+html:not(.dark) {
+  color-scheme: light;
+  background: var(--dengue-light-canvas);
+}
+
+html:not(.dark) body,
+html:not(.dark) #root {
+  background: var(--dengue-light-canvas);
+  color: var(--dengue-light-text);
+}
+
+html:not(.dark) .panel {
+  background: var(--dengue-light-surface) !important;
+  border-color: var(--dengue-light-border) !important;
+  box-shadow: 0 14px 34px rgba(31, 51, 68, 0.08) !important;
+}
+
+html:not(.dark) .bg-brand-bg {
+  background-color: var(--dengue-light-canvas) !important;
+}
+
+html:not(.dark) .text-brand-text {
+  color: var(--dengue-light-text) !important;
+}
+
+html:not(.dark) .text-brand-muted {
+  color: var(--dengue-light-muted) !important;
+}
+
+/* Replace high-brightness white utility surfaces with a soft blue-gray. */
+html:not(.dark) .bg-white {
+  background-color: var(--dengue-light-surface-raised) !important;
+}
+
+html:not(.dark) .bg-white\/95 {
+  background-color: rgba(242, 245, 246, 0.95) !important;
+}
+
+html:not(.dark) .bg-white\/90 {
+  background-color: rgba(239, 243, 245, 0.92) !important;
+}
+
+html:not(.dark) .bg-white\/85 {
+  background-color: rgba(237, 242, 244, 0.90) !important;
+}
+
+html:not(.dark) .bg-white\/80 {
+  background-color: rgba(235, 240, 243, 0.88) !important;
+}
+
+html:not(.dark) .bg-white\/75 {
+  background-color: rgba(234, 239, 242, 0.84) !important;
+}
+
+html:not(.dark) .bg-white\/70 {
+  background-color: rgba(232, 238, 241, 0.80) !important;
+}
+
+html:not(.dark) .bg-white\/60,
+html:not(.dark) .bg-white\/50 {
+  background-color: rgba(230, 237, 240, 0.68) !important;
+}
+
+html:not(.dark) [class~="bg-white/[0.96]"],
+html:not(.dark) [class~="bg-white/[0.94]"],
+html:not(.dark) [class~="bg-white/[0.92]"] {
+  background-color: rgba(242, 245, 246, 0.94) !important;
+}
+
+html:not(.dark) [class~="bg-white/[0.85]"],
+html:not(.dark) [class~="bg-white/[0.82]"],
+html:not(.dark) [class~="bg-white/[0.80]"] {
+  background-color: rgba(235, 240, 243, 0.88) !important;
+}
+
+html:not(.dark) [class~="bg-white/[0.75]"],
+html:not(.dark) [class~="bg-white/[0.70]"] {
+  background-color: rgba(232, 238, 241, 0.82) !important;
+}
+
+html:not(.dark) .bg-slate-50,
+html:not(.dark) .bg-slate-50\/95,
+html:not(.dark) .bg-slate-50\/90,
+html:not(.dark) .bg-slate-50\/80,
+html:not(.dark) .bg-slate-50\/70,
+html:not(.dark) .bg-slate-50\/60 {
+  background-color: var(--dengue-light-surface-soft) !important;
+}
+
+html:not(.dark) .bg-slate-100 {
+  background-color: #e0e8ec !important;
+}
+
+html:not(.dark) .bg-slate-200 {
+  background-color: #d4dee4 !important;
+}
+
+/* Muted pastel status surfaces remain distinct without appearing fluorescent. */
+html:not(.dark) .bg-blue-50 { background-color: #e4ecf2 !important; }
+html:not(.dark) .bg-sky-50 { background-color: #e3edf1 !important; }
+html:not(.dark) .bg-cyan-50 { background-color: #e1edef !important; }
+html:not(.dark) .bg-teal-50 { background-color: #e2ecea !important; }
+html:not(.dark) .bg-emerald-50 { background-color: #e3ece7 !important; }
+html:not(.dark) .bg-amber-50 { background-color: #eee8db !important; }
+html:not(.dark) .bg-orange-50 { background-color: #efe6dd !important; }
+html:not(.dark) .bg-rose-50 { background-color: #eee3e6 !important; }
+html:not(.dark) .bg-violet-50 { background-color: #eae7ef !important; }
+
+/* Soften white stops inside Tailwind gradients. */
+html:not(.dark) .from-white {
+  --tw-gradient-from: #f1f4f5 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(241 244 245 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html:not(.dark) .via-white {
+  --tw-gradient-to: rgb(239 243 245 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #eff3f5 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+html:not(.dark) .to-white {
+  --tw-gradient-to: #eef2f4 var(--tw-gradient-to-position) !important;
+}
+
+html:not(.dark) .from-slate-50 {
+  --tw-gradient-from: #e8eef1 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(232 238 241 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html:not(.dark) .via-slate-50 {
+  --tw-gradient-to: rgb(231 237 240 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #e7edf0 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+html:not(.dark) .to-slate-50 {
+  --tw-gradient-to: #e7edf0 var(--tw-gradient-to-position) !important;
+}
+
+/* Blend hard-coded white gradients used by premium cards into the soft theme. */
+html:not(.dark) [class*="bg-[radial-gradient"][class*="#ffffff"],
+html:not(.dark) [class*="bg-[linear-gradient"][class*="#ffffff"] {
+  background-color: #eaf0f2 !important;
+  background-blend-mode: multiply;
+}
+
+html:not(.dark) [class*="rgba(248,250,252"] {
+  background-color: rgba(224, 232, 236, 0.62) !important;
+  background-blend-mode: multiply;
+}
+
+/* Lower border glare while preserving clear card separation. */
+html:not(.dark) .border-brand-line,
+html:not(.dark) .border-brand-line\/70,
+html:not(.dark) .border-slate-200,
+html:not(.dark) .border-slate-200\/80,
+html:not(.dark) .border-slate-200\/70,
+html:not(.dark) .border-slate-300 {
+  border-color: var(--dengue-light-border) !important;
+}
+
+html:not(.dark) .border-white\/80,
+html:not(.dark) .border-white\/75,
+html:not(.dark) .border-white\/70,
+html:not(.dark) .border-white\/60,
+html:not(.dark) .border-white\/50 {
+  border-color: rgba(198, 210, 217, 0.82) !important;
+}
+
+html:not(.dark) .ring-slate-200,
+html:not(.dark) .ring-slate-200\/70,
+html:not(.dark) .ring-slate-200\/65,
+html:not(.dark) .ring-slate-200\/60,
+html:not(.dark) .ring-slate-300\/55 {
+  --tw-ring-color: rgba(190, 203, 212, 0.62) !important;
+}
+
+html:not(.dark) input,
+html:not(.dark) select,
+html:not(.dark) textarea {
+  color: var(--dengue-light-text);
+  caret-color: #2d6ea3;
+}
+
+html:not(.dark) input::placeholder,
+html:not(.dark) textarea::placeholder {
+  color: #70828f;
+  opacity: 1;
+}
+
+html:not(.dark) .leaflet-tooltip,
+html:not(.dark) .leaflet-popup-content-wrapper,
+html:not(.dark) .leaflet-popup-tip {
+  background: #edf2f4;
+  color: var(--dengue-light-text);
+  border-color: var(--dengue-light-border);
+}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Bell,
+  BellOff,
   Activity,
   AlertTriangle,
   CheckCircle2,
@@ -9,7 +11,6 @@ import {
   CalendarDays,
   CheckCheck,
   ClipboardCheck,
-  ChevronDown,
   LayoutDashboard,
   Map,
   Upload,
@@ -35,36 +36,208 @@ import { getAuthSession, getRoleHome } from '../utils/auth'
 import { useData } from '../context/DataContext'
 import {
   getBackendNotifications,
+  getNotificationPreferences,
   getNotificationReads,
   markNotificationRead as saveNotificationRead,
   markNotificationsRead as saveNotificationsRead,
+  updateNotificationPreferences,
   logoutUser,
 } from '../services/api'
+import { compareCanonicalBarangayPriority, getCanonicalCombinedRiskScore } from '../utils/analytics'
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['cho', 'supervisor', 'admin', 'viewer'] },
-  { to: '/upload', label: 'Upload', icon: Upload, roles: ['cho', 'admin'] },
-  { to: '/forecast', label: 'Forecast', icon: BarChart3, roles: ['cho', 'supervisor', 'admin'] },
-  { to: '/map', label: 'Map', icon: Map, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
-  { to: '/bhw', label: 'BHW Home', icon: ClipboardCheck, roles: ['bhw', 'cho', 'admin'] },
-  { to: '/supervisor', label: 'Supervisor', icon: ShieldAlert, roles: ['supervisor', 'cho', 'admin'] },
-  { to: '/users', label: 'Users', icon: UsersRound, roles: ['cho', 'admin'] },
+  { to: '/dashboard', label: 'Situation Overview', icon: LayoutDashboard, roles: ['cho', 'supervisor', 'admin', 'viewer'] },
+  { to: '/upload', label: 'Data Upload', icon: Upload, roles: ['cho', 'admin'] },
+  { to: '/forecast', label: 'Risk Forecast', icon: BarChart3, roles: ['cho', 'supervisor', 'admin'] },
+  { to: '/map', label: 'Hotspot Map', icon: Map, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
+  { to: '/bhw', label: 'Barangay Workspace', icon: ClipboardCheck, roles: ['bhw', 'cho', 'admin'] },
+  { to: '/supervisor', label: 'Response Coordination', icon: ShieldAlert, roles: ['supervisor', 'cho', 'admin'] },
+  { to: '/users', label: 'User Accounts', icon: UsersRound, roles: ['cho', 'admin'] },
   { to: '/reports', label: 'Reports', icon: FileText, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
 ]
 
 const TEXT_SCALE_MIN = 90
 const TEXT_SCALE_MAX = 160
 const TEXT_SCALE_STEP = 5
+const NOTIFICATION_POLL_INTERVAL_MS = 5 * 60 * 1000
 
-function getRecordPeriod(record) {
-  return (
-    record?.reportingDate ||
-    record?.reporting_date ||
-    record?.date ||
-    record?.week ||
-    record?.epi_week ||
-    ''
-  )
+function padTwoDigits(value) {
+  return String(value).padStart(2, '0')
+}
+
+function getValidYear(value) {
+  const year = Number(value)
+
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+    return null
+  }
+
+  return year
+}
+
+function getValidMonth(value) {
+  const month = Number(value)
+
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return null
+  }
+
+  return month
+}
+
+function getValidWeek(value) {
+  const week = Number(value)
+
+  if (!Number.isInteger(week) || week < 1 || week > 53) {
+    return null
+  }
+
+  return week
+}
+
+function buildMonthPeriod(year, month) {
+  return {
+    label: `${year}-${padTwoDigits(month)}`,
+    sortValue: Date.UTC(year, month - 1, 1),
+  }
+}
+
+function buildWeekPeriod(year, week) {
+  const januaryFourth = new Date(Date.UTC(year, 0, 4))
+  const dayOfWeek = januaryFourth.getUTCDay() || 7
+  const firstIsoWeekMonday = new Date(januaryFourth)
+
+  firstIsoWeekMonday.setUTCDate(januaryFourth.getUTCDate() - dayOfWeek + 1)
+
+  const weekDate = new Date(firstIsoWeekMonday)
+  weekDate.setUTCDate(firstIsoWeekMonday.getUTCDate() + (week - 1) * 7)
+
+  return {
+    label: `${year}-W${padTwoDigits(week)}`,
+    sortValue: weekDate.getTime(),
+  }
+}
+
+function parseDatePeriod(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return buildMonthPeriod(value.getUTCFullYear(), value.getUTCMonth() + 1)
+  }
+
+  const rawValue = String(value).trim()
+
+  if (!rawValue) return null
+
+  const yearMonthMatch = rawValue.match(/^(\d{4})[-/]?(\d{1,2})(?:[-/]\d{1,2})?$/)
+
+  if (yearMonthMatch) {
+    const year = getValidYear(yearMonthMatch[1])
+    const month = getValidMonth(yearMonthMatch[2])
+
+    if (year && month) {
+      return buildMonthPeriod(year, month)
+    }
+  }
+
+  const isoWeekMatch = rawValue.match(/^(\d{4})[-/ ]?W?(\d{1,2})$/i)
+
+  if (isoWeekMatch && /w/i.test(rawValue)) {
+    const year = getValidYear(isoWeekMatch[1])
+    const week = getValidWeek(isoWeekMatch[2])
+
+    if (year && week) {
+      return buildWeekPeriod(year, week)
+    }
+  }
+
+  const parsedDate = new Date(rawValue)
+
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return buildMonthPeriod(
+      parsedDate.getUTCFullYear(),
+      parsedDate.getUTCMonth() + 1
+    )
+  }
+
+  return null
+}
+
+function getRecordPeriodInfo(record = {}) {
+  const directDateFields = [
+    record.reportingDate,
+    record.reporting_date,
+    record.date,
+    record.report_date,
+    record.case_date,
+    record.month_date,
+  ]
+
+  for (const value of directDateFields) {
+    const parsedPeriod = parseDatePeriod(value)
+
+    if (parsedPeriod) {
+      return parsedPeriod
+    }
+  }
+
+  const year =
+    getValidYear(record.year) ||
+    getValidYear(record.reporting_year) ||
+    getValidYear(record.report_year)
+
+  const month =
+    getValidMonth(record.month) ||
+    getValidMonth(record.reporting_month) ||
+    getValidMonth(record.report_month)
+
+  if (year && month) {
+    return buildMonthPeriod(year, month)
+  }
+
+  const week =
+    getValidWeek(record.week) ||
+    getValidWeek(record.epi_week) ||
+    getValidWeek(record.reporting_week)
+
+  if (year && week) {
+    return buildWeekPeriod(year, week)
+  }
+
+  const fallbackPeriodFields = [
+    record.period,
+    record.reporting_period,
+    record.year_month,
+    record.month_year,
+  ]
+
+  for (const value of fallbackPeriodFields) {
+    const parsedPeriod = parseDatePeriod(value)
+
+    if (parsedPeriod) {
+      return parsedPeriod
+    }
+  }
+
+  return null
+}
+
+function getLatestReportingPeriod(records = []) {
+  let latestPeriod = null
+
+  records.forEach((record) => {
+    const period = getRecordPeriodInfo(record)
+
+    if (!period) return
+
+    if (!latestPeriod || period.sortValue > latestPeriod.sortValue) {
+      latestPeriod = period
+    }
+  })
+
+  return latestPeriod?.label || 'No data period'
 }
 
 function getInitialTheme() {
@@ -401,6 +574,8 @@ function DisplaySettingsPanel({
   setHighContrast,
   reduceMotion,
   setReduceMotion,
+  notificationsEnabled,
+  setNotificationsEnabled,
   onReset,
   onClose,
 }) {
@@ -449,9 +624,9 @@ function DisplaySettingsPanel({
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      className={`dengue-premium-panel ${mobile ? 'fixed left-3 right-3 top-[72px] z-[9999] max-h-[calc(100vh-5.5rem)] w-auto max-w-none' : 'absolute right-0 top-14 z-[9999] w-[calc(100vw-2rem)] max-w-[470px]'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`} 
+      className={`dengue-premium-panel ${mobile ? 'fixed left-3 right-3 top-[72px] z-[9999] max-h-[calc(100vh-5.5rem)] w-auto max-w-none' : 'fixed right-6 top-[92px] z-[9999] max-h-[calc(100vh-7.25rem)] w-[calc(100vw-3rem)] max-w-[470px] xl:right-8'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`}
     >
-      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-sky-300/30 blur-3xl dark:bg-sky-500/15" />
+      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-sky-300/30 blur-3xl dark:bg-sky-500/[0.15]" />
       <div className="pointer-events-none absolute -bottom-16 left-6 h-44 w-44 rounded-full bg-emerald-300/20 blur-3xl dark:bg-emerald-500/10" />
       <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-sky-400/70 to-transparent" />
 
@@ -588,6 +763,18 @@ function DisplaySettingsPanel({
             title="Reduce motion"
             description="Minimizes transitions and hover movement for a steadier interface."
           />
+
+          <SettingsToggle
+            enabled={notificationsEnabled}
+            onToggle={() => setNotificationsEnabled((current) => !current)}
+            icon={notificationsEnabled ? Bell : BellOff}
+            title="System notifications"
+            description={
+              notificationsEnabled
+                ? 'Checks for new alerts every five minutes. This preference is synced to the signed-in account.'
+                : 'Notification polling, unread badges, and pop-up reminders are paused for the signed-in account.'
+            }
+          />
         </div>
 
         <button
@@ -607,6 +794,7 @@ function NotificationsPanel({
   panelRef,
   mobile = false,
   notifications,
+  notificationsEnabled,
   readNotificationIds,
   markAllNotificationsAsRead,
   handleNotificationClick,
@@ -620,10 +808,10 @@ function NotificationsPanel({
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      className={`dengue-premium-panel ${mobile ? 'fixed left-3 right-3 top-[72px] z-[9999] max-h-[calc(100vh-5.5rem)] w-auto max-w-none' : 'absolute right-0 top-14 z-[9999] w-[calc(100vw-2rem)] max-w-[460px] sm:w-[460px]'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`} 
+      className={`dengue-premium-panel ${mobile ? 'fixed left-3 right-3 top-[72px] z-[9999] max-h-[calc(100vh-5.5rem)] w-auto max-w-none' : 'absolute right-0 top-14 z-[9999] w-[calc(100vw-2rem)] max-w-[460px] sm:w-[460px]'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`}
     >
-      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-300/30 blur-3xl dark:bg-blue-500/15" />
-      <div className="pointer-events-none absolute -bottom-16 left-6 h-44 w-44 rounded-full bg-rose-300/15 blur-3xl dark:bg-rose-500/10" />
+      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-300/30 blur-3xl dark:bg-blue-500/[0.15]" />
+      <div className="pointer-events-none absolute -bottom-16 left-6 h-44 w-44 rounded-full bg-rose-300/[0.15] blur-3xl dark:bg-rose-500/10" />
       <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/70 to-transparent" />
 
       <div className="relative border-b border-slate-100/90 bg-gradient-to-br from-white via-blue-50/90 to-slate-50 px-5 py-4 dark:border-slate-800 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
@@ -654,7 +842,7 @@ function NotificationsPanel({
           </button>
         </div>
 
-        {notifications.length > 0 && (
+        {notificationsEnabled && notifications.length > 0 && (
           <button
             type="button"
             onClick={markAllNotificationsAsRead}
@@ -667,7 +855,24 @@ function NotificationsPanel({
       </div>
 
       <div className={mobile ? "dengue-premium-scrollbar relative max-h-[calc(100vh-18rem)] overflow-y-auto p-3" : "dengue-premium-scrollbar relative max-h-[430px] overflow-y-auto p-3.5"}>
-        {notifications.map((item, index) => {
+        {!notificationsEnabled ? (
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-5 text-center dark:border-slate-700 dark:bg-slate-900/80">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[20px] border border-slate-200 bg-white text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+              <BellOff className="h-5 w-5" />
+            </div>
+            <p className="mt-3 text-sm font-black text-brand-text dark:text-slate-100">
+              Notifications are turned off
+            </p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
+              Open Display settings to turn notification polling, badges, and pop-up reminders back on.
+            </p>
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/80 p-5 text-center dark:border-emerald-500/20 dark:bg-emerald-500/10">
+            <CheckCircle2 className="mx-auto h-6 w-6 text-emerald-600 dark:text-emerald-300" />
+            <p className="mt-2 text-sm font-black text-emerald-800 dark:text-emerald-200">No active alerts</p>
+          </div>
+        ) : notifications.map((item, index) => {
           const isRead = readNotificationIds.includes(item.id)
 
           return (
@@ -805,76 +1010,58 @@ function NotificationToast({ notification, visible, onClose, onOpen }) {
   )
 }
 
-function ActiveNavCornerFrame() {
-  const cornerBase =
-    'pointer-events-none absolute h-6 w-6 border-white/95 opacity-100 drop-shadow-[0_0_8px_rgba(255,255,255,0.82)]'
-
-  return (
-    <>
-      <span
-        className={`${cornerBase} left-0 top-0 rounded-tl-[18px] border-l-[3px] border-t-[3px]`}
-      />
-      <span
-        className={`${cornerBase} right-0 top-0 rounded-tr-[18px] border-r-[3px] border-t-[3px]`}
-      />
-      <span
-        className={`${cornerBase} bottom-0 left-0 rounded-bl-[18px] border-b-[3px] border-l-[3px]`}
-      />
-      <span
-        className={`${cornerBase} bottom-0 right-0 rounded-br-[18px] border-b-[3px] border-r-[3px]`}
-      />
-    </>
-  )
-}
-
 function SidebarNavItem({ to, label, Icon, onClick }) {
   return (
     <NavLink key={to} to={to} onClick={onClick} className="block outline-none">
       {({ isActive }) => (
         <div
-         className={`group/navitem relative p-[4px] transition duration-300 ${
-            isActive ? 'scale-[1.01]' : 'hover:scale-[1.01]'
+          className={`group/navitem relative rounded-[24px] transition duration-300 ${
+            isActive
+              ? 'bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 p-[2px] shadow-[0_16px_34px_rgba(14,165,233,0.30)]'
+              : 'p-[2px] hover:translate-x-0.5'
           }`}
         >
-          {isActive && <ActiveNavCornerFrame />}
+          {isActive && (
+            <>
+              <span className="pointer-events-none absolute -left-1 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.95)]" />
+              <span className="pointer-events-none absolute -right-3 top-1/2 h-14 w-14 -translate-y-1/2 rounded-full bg-cyan-300/35 blur-2xl" />
+            </>
+          )}
 
           <div
-            style={
+            className={`relative z-10 flex items-center gap-3 overflow-hidden rounded-[22px] px-4 py-3 text-sm font-black transition duration-300 focus-within:ring-2 focus-within:ring-cyan-200/70 ${
               isActive
-                ? {
-                    backgroundColor: '#ffffff',
-                    color: '#0f2742',
-                    boxShadow:
-                      'inset 0 1px 0 rgba(255,255,255,0.95), 0 18px 34px rgba(15,23,42,0.18)',
-                  }
-                : undefined
-            }
-            className={`relative z-10 flex items-center gap-3 overflow-hidden rounded-[22px] px-4 py-3 text-sm font-bold transition duration-300 focus-within:ring-2 focus-within:ring-white/50 ${
-              isActive
-                ? '!bg-white !text-[#0f2742] dark:!bg-white dark:!text-[#0f2742]'
+                ? 'bg-gradient-to-r from-white via-cyan-50 to-sky-100 !text-black dark:from-white dark:via-cyan-50 dark:to-sky-100 dark:!text-black'
                 : 'text-white/75 hover:bg-white/10 hover:text-white'
             }`}
           >
+            {isActive && (
+              <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-cyan-400 via-sky-500 to-blue-600" />
+            )}
+
             <span
-              style={
+              className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border transition duration-300 ${
                 isActive
-                  ? {
-                      backgroundColor: '#f1f5f9',
-                      color: '#255f8f',
-                      boxShadow: 'inset 0 1px 2px rgba(15,23,42,0.06)',
-                    }
-                  : undefined
-              }
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-current transition duration-300 ${
-                isActive
-                  ? '!bg-slate-100 !text-[#255f8f] dark:!bg-slate-100 dark:!text-[#255f8f]'
-                  : 'bg-white/10 group-hover/navitem:bg-white/15'
+                  ? 'border-cyan-200 bg-gradient-to-br from-cyan-100 via-white to-sky-100 text-sky-700 shadow-[0_8px_18px_rgba(14,165,233,0.18)] dark:border-cyan-200 dark:from-cyan-100 dark:via-white dark:to-sky-100 dark:text-sky-700'
+                  : 'border-white/10 bg-white/10 text-white/80 group-hover/navitem:border-white/20 group-hover/navitem:bg-white/15 group-hover/navitem:text-white'
               }`}
             >
-              <Icon size={18} />
+              <Icon size={18} strokeWidth={isActive ? 2.4 : 2} />
             </span>
 
-            <span className="relative z-10">{label}</span>
+            <span
+              className={`relative z-10 min-w-0 flex-1 truncate ${
+                isActive ? '!text-black dark:!text-black' : ''
+              }`}
+            >
+              {label}
+            </span>
+
+            {isActive && (
+              <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-cyan-200 bg-white shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.85)]" />
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -901,6 +1088,11 @@ export default function AppShell({ children }) {
   const [loggingOut, setLoggingOut] = useState(false)
   const [theme, setTheme] = useState(getInitialTheme)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() =>
+    getInitialDisplaySetting('dengue-notifications-enabled', true)
+  )
+  const [notificationPreferenceLoaded, setNotificationPreferenceLoaded] = useState(false)
+  const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [readNotificationIds, setReadNotificationIds] = useState(getInitialReadNotifications)
@@ -941,23 +1133,66 @@ export default function AppShell({ children }) {
       ? 'CHO supervisor review workspace'
       : 'Butuan City CHO monitoring workspace'
 
-  const title =
-    navItems.find((item) => item.to === location.pathname)?.label || 'Dashboard'
+  const currentNavItem = navItems.find((item) => item.to === location.pathname)
+  const title = currentNavItem?.label || 'Dashboard'
+  const CurrentPageIcon = currentNavItem?.icon || LayoutDashboard
 
   const hasDengueData =
     dengueRecords.length > 0 || Number(sourceStatus?.dengue?.validCount || 0) > 0
 
   const hasBoundaryData = Number(sourceStatus?.boundary?.validCount || 0) > 0
 
-  const latestPeriod = useMemo(() => {
-    if (!dengueRecords.length) return 'No period'
-
-    const lastRecord = dengueRecords[dengueRecords.length - 1]
-    return getRecordPeriod(lastRecord) || 'Latest period'
-  }, [dengueRecords])
-
+  const latestPeriod = useMemo(
+    () => getLatestReportingPeriod(dengueRecords),
+    [dengueRecords]
+  )
 
   useEffect(() => {
+    let active = true
+    const cachedPreference = getInitialDisplaySetting(
+      'dengue-notifications-enabled',
+      true
+    )
+
+    async function loadNotificationPreference() {
+      try {
+        const result = await getNotificationPreferences()
+
+        if (!active) return
+
+        if (result?.has_saved_preference) {
+          setNotificationsEnabled(result.notifications_enabled !== false)
+        } else {
+          setNotificationsEnabled(cachedPreference)
+
+          // Migrate the existing browser choice to the signed-in account once.
+          updateNotificationPreferences(cachedPreference).catch(() => {})
+        }
+      } catch {
+        if (active) {
+          setNotificationsEnabled(cachedPreference)
+        }
+      } finally {
+        if (active) {
+          setNotificationPreferenceLoaded(true)
+        }
+      }
+    }
+
+    loadNotificationPreference()
+
+    return () => {
+      active = false
+    }
+  }, [session?.userId])
+
+  useEffect(() => {
+    if (!notificationPreferenceLoaded || !notificationsEnabled) {
+      setBackendNotifications([])
+      setBackendNotificationError('')
+      return undefined
+    }
+
     let active = true
     let refreshTimer = null
 
@@ -982,7 +1217,10 @@ export default function AppShell({ children }) {
     }
 
     loadBackendNotifications()
-    refreshTimer = window.setInterval(loadBackendNotifications, 30000)
+    refreshTimer = window.setInterval(
+      loadBackendNotifications,
+      NOTIFICATION_POLL_INTERVAL_MS
+    )
 
     return () => {
       active = false
@@ -992,6 +1230,8 @@ export default function AppShell({ children }) {
       }
     }
   }, [
+    notificationPreferenceLoaded,
+    notificationsEnabled,
     dengueRecords.length,
     riskRows.length,
     sourceStatus?.dengue?.validCount,
@@ -1011,16 +1251,18 @@ export default function AppShell({ children }) {
         label: 'Data ready',
         badge: 'Ready',
         chip: 'bg-emerald-50 text-brand-green dark:bg-emerald-500/10 dark:text-emerald-300',
-        badgeStyle: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+        badgeStyle: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/[0.15] dark:text-emerald-300',
       }
     : {
         label: 'Waiting for data',
         badge: 'Pending',
         chip: 'bg-amber-50 text-brand-orange dark:bg-amber-500/10 dark:text-amber-300',
-        badgeStyle: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+        badgeStyle: 'bg-amber-100 text-amber-700 dark:bg-amber-500/[0.15] dark:text-amber-300',
       }
 
   const notifications = useMemo(() => {
+    if (!notificationsEnabled) return []
+
     const items = []
 
     backendNotifications.forEach((item) => {
@@ -1041,10 +1283,11 @@ export default function AppShell({ children }) {
       })
     }
 
-    const highRiskRows = riskRows.filter((row) => row.risk === 'High')
-    const moderateRiskRows = riskRows.filter((row) => row.risk === 'Moderate')
-    const lowRiskRows = riskRows.filter((row) => row.risk === 'Low')
-    const topBarangay = riskRows[0]
+    const rankedRiskRows = [...riskRows].sort(compareCanonicalBarangayPriority)
+    const highRiskRows = rankedRiskRows.filter((row) => row.risk === 'High')
+    const moderateRiskRows = rankedRiskRows.filter((row) => row.risk === 'Moderate')
+    const lowRiskRows = rankedRiskRows.filter((row) => row.risk === 'Low')
+    const topBarangay = rankedRiskRows[0]
 
     if (!backendNotifications.length && !hasDengueData) {
       items.push({
@@ -1116,7 +1359,7 @@ export default function AppShell({ children }) {
       items.push({
         id: `top-priority-${topBarangay.barangay}-${topBarangay.risk}-${topBarangay.forecast}`,
         title: `Top priority: ${topBarangay.barangay}`,
-        message: `${topBarangay.forecast || 0} projected cases, ${topBarangay.totalCases || 0} historical cases, classified as ${topBarangay.risk} risk.`,
+        message: `${topBarangay.forecast || 0} projected cases, ${getCanonicalCombinedRiskScore(topBarangay)}/100 combined risk score, classified as ${topBarangay.risk} risk.`,
         type: topBarangay.risk === 'High' ? 'danger' : topBarangay.risk === 'Moderate' ? 'warning' : 'success',
         severity: topBarangay.risk === 'High' ? 'danger' : topBarangay.risk === 'Moderate' ? 'warning' : 'success',
         source: 'frontend-fallback',
@@ -1200,6 +1443,7 @@ export default function AppShell({ children }) {
       return true
     })
   }, [
+    notificationsEnabled,
     backendNotifications,
     backendNotificationError,
     hasDengueData,
@@ -1213,6 +1457,8 @@ export default function AppShell({ children }) {
   }, [notifications, readNotificationIds])
 
   useEffect(() => {
+    if (!notificationsEnabled) return undefined
+
     const nextToast = unreadNotifications.find((item) => item.id !== 'no-active-alerts')
 
     if (!nextToast || lastToastIdRef.current === nextToast.id) {
@@ -1238,7 +1484,7 @@ export default function AppShell({ children }) {
     return () => {
       window.clearTimeout(showTimer)
     }
-  }, [unreadNotifications])
+  }, [notificationsEnabled, unreadNotifications])
 
   useEffect(() => {
     return () => {
@@ -1288,6 +1534,25 @@ export default function AppShell({ children }) {
     document.documentElement.classList.toggle('dark', isDark)
     localStorage.setItem('dengue-theme-mode', theme)
   }, [theme, isDark])
+
+  useEffect(() => {
+    localStorage.setItem(
+      'dengue-notifications-enabled',
+      String(notificationsEnabled)
+    )
+
+    if (!notificationsEnabled) {
+      setNotificationsOpen(false)
+      setToastVisible(false)
+      setToastNotification(null)
+      lastToastIdRef.current = ''
+
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+        toastTimerRef.current = null
+      }
+    }
+  }, [notificationsEnabled])
 
   useEffect(() => {
     const root = document.documentElement
@@ -1370,22 +1635,30 @@ export default function AppShell({ children }) {
         width: var(--dengue-sidebar-width, 292px);
       }
 
+      @media (min-width: 1024px) {
+        .dengue-desktop-sidebar {
+          position: sticky !important;
+          top: 1.25rem !important;
+          align-self: flex-start !important;
+        }
+      }
+
       .dengue-scaled-content {
         --dengue-scale: var(--dengue-content-scale, 1);
       }
 
       .dengue-scaled-content [class*="text-[9px]"] {
-        font-size: clamp(0.56rem, calc(0.5625rem * var(--dengue-scale)), 1rem) !important;
-        line-height: clamp(0.9rem, calc(0.95rem * var(--dengue-scale)), 1.55rem) !important;
+        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1rem) !important;
+        line-height: clamp(1rem, calc(1rem * var(--dengue-scale)), 1.55rem) !important;
       }
 
       .dengue-scaled-content [class*="text-[10px]"] {
-        font-size: clamp(0.62rem, calc(0.625rem * var(--dengue-scale)), 1.08rem) !important;
+        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1.08rem) !important;
         line-height: clamp(0.95rem, calc(1rem * var(--dengue-scale)), 1.62rem) !important;
       }
 
       .dengue-scaled-content [class*="text-[11px]"] {
-        font-size: clamp(0.68rem, calc(0.6875rem * var(--dengue-scale)), 1.16rem) !important;
+        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1.16rem) !important;
         line-height: clamp(1rem, calc(1.05rem * var(--dengue-scale)), 1.72rem) !important;
       }
 
@@ -1436,6 +1709,12 @@ export default function AppShell({ children }) {
 
       .dengue-premium-panel {
         animation: dengue-panel-enter 180ms ease-out;
+      }
+
+      .dengue-premium-panel[data-dengue-floating-panel="true"] {
+        transform: translateZ(0);
+        isolation: isolate;
+        contain: layout paint;
       }
 
       @keyframes dengue-panel-enter {
@@ -1714,6 +1993,33 @@ export default function AppShell({ children }) {
     setReduceMotion(false)
   }
 
+  async function handleNotificationsEnabledChange(nextValueOrUpdater) {
+    if (notificationPreferenceSaving) return
+
+    const previousValue = notificationsEnabled
+    const nextValue =
+      typeof nextValueOrUpdater === 'function'
+        ? Boolean(nextValueOrUpdater(previousValue))
+        : Boolean(nextValueOrUpdater)
+
+    if (nextValue === previousValue) return
+
+    setNotificationsEnabled(nextValue)
+    setNotificationPreferenceSaving(true)
+
+    try {
+      const result = await updateNotificationPreferences(nextValue)
+      const savedValue = result?.notifications_enabled !== false
+
+      setNotificationsEnabled(savedValue)
+    } catch {
+      // Keep the browser and Supabase values consistent if saving fails.
+      setNotificationsEnabled(previousValue)
+    } finally {
+      setNotificationPreferenceSaving(false)
+    }
+  }
+
   function markNotificationAsRead(notificationId) {
     saveNotificationRead(notificationId).catch(() => {})
 
@@ -1800,10 +2106,20 @@ export default function AppShell({ children }) {
   }
   function handleOpenActionCommandCenter() {
   setMobileNavOpen(false)
-  navigate(currentRole === 'bhw' ? '/bhw' : '/forecast#decision-action-tracking')
+
+  const targetPath = currentRole === 'bhw'
+    ? '/bhw'
+    : currentRole === 'supervisor'
+      ? '/supervisor#response-action-center'
+      : '/forecast#decision-action-tracking'
+  const targetId = currentRole === 'supervisor'
+    ? 'response-action-center'
+    : 'decision-action-tracking'
+
+  navigate(targetPath)
 
   window.setTimeout(() => {
-    const targetElement = document.getElementById('decision-action-tracking')
+    const targetElement = document.getElementById(targetId)
 
     if (targetElement) {
       targetElement.scrollIntoView({
@@ -1815,10 +2131,11 @@ export default function AppShell({ children }) {
 }
 
   return (
-    <div className="relative min-h-screen bg-slate-100 px-3 pb-3 pt-[5.35rem] text-brand-text transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100 sm:px-5 sm:pb-5 sm:pt-[5.6rem] lg:px-6 lg:py-5">
-      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-blue-200/60 blur-3xl dark:bg-blue-500/10" />
-      <div className="pointer-events-none absolute -right-32 top-40 h-96 w-96 rounded-full bg-emerald-200/50 blur-3xl dark:bg-emerald-500/10" />
-      <div className="pointer-events-none absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-sky-100/70 blur-3xl dark:bg-sky-500/5" />
+    <div className="relative min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_8%_0%,rgba(56,189,248,0.08),transparent_30%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.055),transparent_26%),linear-gradient(180deg,#dbe5ea_0%,#e5ecef_42%,#dce5e9_100%)] px-3 pb-3 pt-[5.35rem] text-brand-text transition-colors duration-300 dark:bg-[radial-gradient(circle_at_8%_0%,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,#020617_0%,#07111f_48%,#020617_100%)] dark:text-slate-100 sm:px-5 sm:pb-5 sm:pt-[5.6rem] lg:px-6 lg:py-5">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:44px_44px] dark:opacity-[0.055] dark:[background-image:linear-gradient(rgba(255,255,255,0.35)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.35)_1px,transparent_1px)]" />
+      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-200/25 blur-3xl dark:bg-cyan-500/10" />
+      <div className="pointer-events-none absolute -right-32 top-40 h-96 w-96 rounded-full bg-emerald-200/20 blur-3xl dark:bg-emerald-500/10" />
+      <div className="pointer-events-none absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-sky-100/[0.28] blur-3xl dark:bg-sky-500/5" />
 
       {loggingOut && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md">
@@ -1848,31 +2165,31 @@ export default function AppShell({ children }) {
       />
 
       <div
-        className="dengue-mobile-topbar fixed left-3 right-3 z-[8500] overflow-visible rounded-[20px] border border-white/80 bg-white/92 px-2.5 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200/60 backdrop-blur-xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/92 dark:ring-white/5 sm:left-5 sm:right-5 lg:hidden"
+        className="dengue-mobile-topbar fixed left-3 right-3 z-[8500] overflow-visible rounded-[22px] border border-white/20 bg-[#071525]/95 px-2.5 py-2 shadow-[0_20px_50px_rgba(2,6,23,0.38)] ring-1 ring-cyan-300/10 backdrop-blur-2xl transition-colors duration-300 sm:left-5 sm:right-5 lg:hidden"
         style={{
           top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
           WebkitTransform: 'translateZ(0)',
           transform: 'translateZ(0)',
         }}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
 
         <div className="relative flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="dengue-mobile-icon-button flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-brand-text shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            className="dengue-mobile-icon-button flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.07] text-white shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100"
             aria-label="Open navigation menu"
           >
             <Menu size={20} />
           </button>
 
           <div className="min-w-0 flex-1 text-center">
-            <p className="truncate text-sm font-black leading-5 text-brand-text dark:text-slate-100">
+            <p className="truncate text-sm font-black leading-5 text-white">
               {title}
             </p>
 
-            <p className="truncate text-[11px] font-bold leading-4 text-brand-muted dark:text-slate-400">
+            <p className="truncate text-[11px] font-bold leading-4 text-cyan-100/60">
               Butuan City · {systemStatus.badge}
             </p>
           </div>
@@ -1888,8 +2205,8 @@ export default function AppShell({ children }) {
                 }}
                 className={`dengue-mobile-icon-button flex h-10 w-10 items-center justify-center rounded-2xl border shadow-sm transition hover:-translate-y-0.5 ${
                   settingsOpen
-                    ? 'border-brand-blue/30 bg-blue-50 text-brand-blue dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300'
-                    : 'border-slate-200 bg-white text-brand-muted hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                    ? 'border-cyan-300/40 bg-cyan-300/[0.15] text-cyan-100'
+                    : 'border-white/10 bg-white/[0.07] text-white/70 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100'
                 }`}
                 aria-label="Display settings"
                 title="Display settings"
@@ -1906,12 +2223,12 @@ export default function AppShell({ children }) {
                   setNotificationsOpen((current) => !current)
                   setSettingsOpen(false)
                 }}
-                className="dengue-mobile-icon-button relative flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                aria-label="Notifications"
+                className="dengue-mobile-icon-button relative flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.07] text-white/70 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100"
+                aria-label={notificationsEnabled ? 'Notifications' : 'Notifications are turned off'}
               >
-                <Bell size={17} />
+                {notificationsEnabled ? <Bell size={17} /> : <BellOff size={17} />}
 
-                {unreadNotifications.length > 0 && (
+                {notificationsEnabled && unreadNotifications.length > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white ring-2 ring-white dark:ring-slate-950">
                     {unreadNotifications.length}
                   </span>
@@ -1946,6 +2263,8 @@ export default function AppShell({ children }) {
             setHighContrast={setHighContrast}
             reduceMotion={reduceMotion}
             setReduceMotion={setReduceMotion}
+            notificationsEnabled={notificationsEnabled}
+            setNotificationsEnabled={handleNotificationsEnabledChange}
             onReset={handleResetDisplaySettings}
             onClose={() => setSettingsOpen(false)}
           />
@@ -1969,6 +2288,7 @@ export default function AppShell({ children }) {
             panelRef={notificationsPanelRef}
             mobile
             notifications={notifications}
+            notificationsEnabled={notificationsEnabled}
             readNotificationIds={readNotificationIds}
             markAllNotificationsAsRead={markAllNotificationsAsRead}
             handleNotificationClick={handleNotificationClick}
@@ -1987,12 +2307,12 @@ export default function AppShell({ children }) {
       )}
 
       <aside
-        className={`dengue-mobile-drawer fixed left-0 top-0 z-[100] flex h-full w-[78%] max-w-[300px] transform flex-col overflow-y-auto bg-gradient-to-b dengue-premium-scrollbar from-[#0b1733] via-brand-navy to-[#1e4770] px-5 py-6 text-white shadow-[0_28px_90px_rgba(15,23,42,0.42)] transition-transform duration-300 dark:border-r dark:border-slate-800 dark:from-[#0b1733] dark:via-brand-navy dark:to-[#1e4770] lg:hidden ${
+        className={`dengue-mobile-drawer fixed left-0 top-0 z-[100] flex h-full w-[82%] max-w-[320px] transform flex-col overflow-y-auto border-r border-white/10 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_30%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_30px_100px_rgba(2,6,23,0.62)] transition-transform duration-300 dengue-premium-scrollbar lg:hidden ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-0 h-60 w-60 rounded-full bg-emerald-400/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-0 h-60 w-60 rounded-full bg-emerald-400/[0.15] blur-3xl" />
 
         <div className="relative mb-8 flex shrink-0 items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -2012,14 +2332,14 @@ export default function AppShell({ children }) {
           <button
             type="button"
             onClick={() => setMobileNavOpen(false)}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white transition hover:bg-white/15"
+            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white transition hover:bg-white/20"
             aria-label="Close navigation menu"
           >
             <X size={20} />
           </button>
         </div>
 
-        <nav className="relative space-y-0.5 pr-1 overflow-hidden"> 
+        <nav className="relative space-y-0.5 pr-1 overflow-hidden">
           {filteredNavItems.map(({ to, label, icon: Icon }) => (
             <SidebarNavItem
               key={to}
@@ -2038,7 +2358,7 @@ export default function AppShell({ children }) {
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-white/15 bg-white/10 px-4 py-3 text-sm font-black text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-70"
+            className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-white/20 bg-white/10 px-4 py-3 text-sm font-black text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loggingOut ? (
               <>
@@ -2056,12 +2376,12 @@ export default function AppShell({ children }) {
           <button
   type="button"
   onClick={handleOpenActionCommandCenter}
-  className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/15"
+  className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
 >
   <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-sky-300/20 blur-2xl" />
 
   <div className="relative grid grid-cols-[auto_1fr] gap-3">
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/15 bg-white/10 text-white">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/20 bg-white/10 text-white">
       <ClipboardCheck className="h-5 w-5" />
     </div>
 
@@ -2084,51 +2404,44 @@ export default function AppShell({ children }) {
       </aside>
 
       <div className="dengue-layout-shell relative mx-auto flex w-full min-h-[calc(100vh-5.5rem)] items-start gap-5 sm:min-h-[calc(100vh-6rem)] lg:min-h-[calc(100vh-2.5rem)]">
-        <aside className="dengue-desktop-sidebar sticky top-5 z-[60] hidden h-[calc(100vh-2.5rem)] shrink-0 flex-col overflow-hidden rounded-[34px] border border-white/10 bg-gradient-to-b from-[#0b1733] via-brand-navy to-[#1e4770] px-5 py-6 text-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] ring-1 ring-white/10 transition-colors duration-300 dark:border-slate-800 dark:from-[#0b1733] dark:via-brand-navy dark:to-[#1e4770] lg:flex">
+        <aside className="dengue-desktop-sidebar sticky top-5 z-[60] hidden h-[calc(100vh-2.5rem)] shrink-0 self-start flex-col overflow-hidden rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_22%_0%,rgba(56,189,248,0.24),transparent_27%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_28px_86px_rgba(2,6,23,0.42)] ring-1 ring-cyan-300/10 transition-colors duration-300 lg:flex">
           <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-400/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 left-0 h-64 w-64 rounded-full bg-emerald-400/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 left-0 h-64 w-64 rounded-full bg-emerald-400/[0.15] blur-3xl" />
+          <div className="pointer-events-none absolute inset-0 opacity-[0.055] [background-image:linear-gradient(rgba(255,255,255,0.45)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.45)_1px,transparent_1px)] [background-size:36px_36px]" />
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
-          <div className="relative mb-8 flex shrink-0 items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-[24px] bg-white text-lg font-black text-brand-navy shadow-[0_14px_34px_rgba(255,255,255,0.14)]">
-              D
-            </div>
+          <div className="relative mb-5 overflow-hidden rounded-[28px] border border-white/20 bg-white/[0.08] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_38px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/[0.15] blur-2xl" />
+            <div className="relative flex items-center gap-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border border-cyan-100/40 bg-gradient-to-br from-white via-cyan-50 to-sky-100 text-lg font-black text-[#0b3556] shadow-[0_14px_34px_rgba(255,255,255,0.14)]">
+                D
+              </div>
 
-            <div>
-              <p className="text-lg font-black">Butuan City</p>
-
-              <p className="text-sm font-medium text-white/60">
-                {roleLabel}
-              </p>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60">Dengue intelligence</p>
+                <p className="mt-1 truncate text-lg font-black">Butuan City</p>
+                <p className="truncate text-xs font-semibold text-white/60">{roleLabel}</p>
+              </div>
             </div>
           </div>
 
-         <div className="relative mb-4 overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur">
-  <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-blue-300/20 blur-2xl" />
-  <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+          <div className="relative mb-4 overflow-hidden rounded-[26px] border border-white/20 bg-slate-950/20 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_14px_34px_rgba(2,6,23,0.16)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-cyan-300/[0.15] blur-2xl" />
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">Workspace status</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${hasDengueData ? 'bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]' : 'bg-amber-300 shadow-[0_0_14px_rgba(252,211,77,0.9)]'}`} />
+                  <span className="text-sm font-black text-white">{systemStatus.badge}</span>
+                </div>
+              </div>
 
-  <div className="relative grid grid-cols-2 gap-2">
-    <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2">
-      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">
-        Status
-      </p>
-
-      <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${systemStatus.badgeStyle}`}>
-        {systemStatus.badge}
-      </span>
-    </div>
-
-    <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2">
-      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">
-        Area
-      </p>
-
-      <span className="mt-1 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black text-white/75">
-        Butuan
-      </span>
-    </div>
-  </div>
-</div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-right">
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">Area</p>
+                <p className="mt-1 text-xs font-black text-cyan-100">Butuan City</p>
+              </div>
+            </div>
+          </div>
 
           <nav className="relative min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 dengue-premium-scrollbar">
             <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
@@ -2143,20 +2456,20 @@ export default function AppShell({ children }) {
           <div className="relative mt-auto shrink-0 space-y-3 pt-5">
             <ThemeModeSwitch isDark={isDark} onToggle={handleThemeToggle} />
 
-            
+
 
             <button
   type="button"
   onClick={handleOpenActionCommandCenter}
-  className="group relative w-full overflow-hidden rounded-[24px] border border-white/20 bg-white/10 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/15"
+  className="group relative w-full overflow-hidden rounded-[24px] border border-white/20 bg-white/10 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
 >
   <div className="relative grid grid-cols-[auto_1fr_auto] items-center gap-3">
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white">
       <ClipboardCheck className="h-5 w-5" />
     </div>
 
     <div className="min-w-0">
-      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/45">
+      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">
         Quick action
       </p>
 
@@ -2174,29 +2487,41 @@ export default function AppShell({ children }) {
         </aside>
 
         <main className="min-w-0 flex-1">
-          <div className="min-h-full rounded-[34px] border border-white/80 bg-white/85 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/80 dark:ring-white/5 sm:p-5 lg:p-6">
-            <header className="dengue-page-header relative z-[200] mb-6 overflow-visible rounded-[28px] border border-slate-200/80 bg-white/95 px-4 py-4 shadow-[0_16px_40px_rgba(15,23,42,0.10)] ring-1 ring-white/70 backdrop-blur-xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950/95 dark:ring-white/5 sm:px-5 sm:py-5">
-              <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-brand-blue/40 to-transparent" />
+          <div className="relative min-h-full overflow-visible rounded-[36px] border border-slate-300/80 bg-[rgba(234,239,242,0.92)] p-3 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-300/55 backdrop-blur-2xl transition-colors duration-300 dark:border-slate-800/90 dark:bg-slate-900/[0.78] dark:ring-white/5 sm:p-5 lg:p-6">
+            <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+            <header className="dengue-page-header relative z-[200] mb-6 overflow-visible rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_82%_0%,rgba(56,189,248,0.14),transparent_28%),linear-gradient(135deg,#050d19_0%,#07192b_55%,#0b2943_100%)] px-4 py-4 text-white shadow-[0_22px_58px_rgba(2,6,23,0.34)] ring-1 ring-cyan-300/10 backdrop-blur-2xl transition-colors duration-300 sm:px-5 sm:py-5">
+              <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+                <div className="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-cyan-400/10 blur-3xl" />
+                <div className="absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-emerald-400/10 blur-3xl" />
+                <div className="absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,0.45)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.45)_1px,transparent_1px)] [background-size:34px_34px]" />
+                <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+              </div>
 
               <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-                      Butuan City
-                    </span>
-
-                    <span className={`rounded-full px-3 py-1 text-[11px] font-black ${systemStatus.chip}`}>
-                      {systemStatus.label}
-                    </span>
+                <div className="flex min-w-0 items-start gap-3.5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 shadow-[0_12px_28px_rgba(14,165,233,0.16)]">
+                    <CurrentPageIcon size={22} strokeWidth={2.25} />
                   </div>
 
-                  <h1 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                    {title}
-                  </h1>
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                        Butuan City
+                      </span>
 
-                  <p className="text-sm leading-6 text-brand-muted dark:text-slate-400">
-                    Barangay-Level Dengue Outbreak Prevention System
-                  </p>
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${systemStatus.badgeStyle}`}>
+                        {systemStatus.label}
+                      </span>
+                    </div>
+
+                    <h1 className="text-2xl font-black tracking-[-0.035em] text-white sm:text-[1.7rem]">
+                      {title}
+                    </h1>
+
+                    <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-300">
+                      {workspaceLabel}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -2210,10 +2535,10 @@ export default function AppShell({ children }) {
                         setSettingsOpen((current) => !current)
                         setNotificationsOpen(false)
                       }}
-                      className={`relative rounded-2xl border p-3 shadow-sm transition hover:-translate-y-0.5 ${
+                      className={`relative flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm transition hover:-translate-y-0.5 ${
                         settingsOpen
-                          ? 'border-brand-blue/30 bg-blue-50 text-brand-blue dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300'
-                          : 'border-slate-200 bg-white text-brand-muted hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+                          ? 'border-cyan-300/40 bg-cyan-300/[0.15] text-cyan-100'
+                          : 'border-white/10 bg-white/[0.07] text-white/70 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100'
                       }`}
                       aria-label="Display settings"
                       title="Display settings"
@@ -2221,7 +2546,7 @@ export default function AppShell({ children }) {
                       <Settings size={18} />
                     </button>
 
-                    {settingsOpen && (
+                    {settingsOpen && typeof document !== 'undefined' && createPortal(
                       <DisplaySettingsPanel
                         panelRef={settingsPanelRef}
                         textScale={textScale}
@@ -2232,9 +2557,12 @@ export default function AppShell({ children }) {
                         setHighContrast={setHighContrast}
                         reduceMotion={reduceMotion}
                         setReduceMotion={setReduceMotion}
+                        notificationsEnabled={notificationsEnabled}
+                        setNotificationsEnabled={handleNotificationsEnabledChange}
                         onReset={handleResetDisplaySettings}
                         onClose={() => setSettingsOpen(false)}
-                      />
+                      />,
+                      document.body
                     )}
                   </div>
 
@@ -2246,13 +2574,13 @@ export default function AppShell({ children }) {
                         setNotificationsOpen((current) => !current)
                         setSettingsOpen(false)
                       }}
-                      className="relative rounded-2xl border border-slate-200 bg-white p-3 text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                      aria-label="Notifications"
+                      className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.07] text-white/70 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100"
+                      aria-label={notificationsEnabled ? 'Notifications' : 'Notifications are turned off'}
                     >
-                      <Bell size={18} />
+                      {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
 
-                      {unreadNotifications.length > 0 && (
-                        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-black text-white ring-2 ring-white dark:ring-slate-950">
+                      {notificationsEnabled && unreadNotifications.length > 0 && (
+                        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-black text-white ring-2 ring-[#071525]">
                           {unreadNotifications.length}
                         </span>
                       )}
@@ -2262,6 +2590,7 @@ export default function AppShell({ children }) {
                       <NotificationsPanel
                         panelRef={notificationsPanelRef}
                         notifications={notifications}
+                        notificationsEnabled={notificationsEnabled}
                         readNotificationIds={readNotificationIds}
                         markAllNotificationsAsRead={markAllNotificationsAsRead}
                         handleNotificationClick={handleNotificationClick}
@@ -2270,20 +2599,30 @@ export default function AppShell({ children }) {
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  <div
+                    role="status"
+                    className="flex min-h-11 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-slate-200 shadow-sm"
+                    aria-label={`Latest data period: ${latestPeriod}`}
+                    title={`Latest data period: ${latestPeriod}`}
                   >
-                    <CalendarDays size={16} />
-                    {latestPeriod}
-                    <ChevronDown size={14} />
-                  </button>
+                    <CalendarDays size={16} className="shrink-0 text-cyan-200" />
+
+                    <span className="min-w-0 leading-tight">
+                      <span className="block text-[9px] font-black uppercase tracking-[0.14em] text-white/45">
+                        Latest data
+                      </span>
+
+                      <span className="mt-0.5 block truncate text-sm font-black text-slate-100">
+                        {latestPeriod}
+                      </span>
+                    </span>
+                  </div>
 
                   <button
                     type="button"
                     onClick={handleLogout}
                     disabled={loggingOut}
-                    className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-black text-brand-red shadow-sm transition hover:-translate-y-0.5 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/15"
+                    className="flex min-h-11 items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm font-black text-rose-200 shadow-sm transition hover:-translate-y-0.5 hover:border-rose-300/30 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {loggingOut ? (
                       <>
@@ -2301,36 +2640,52 @@ export default function AppShell({ children }) {
               </div>
             </header>
 
-            <section className="dengue-mobile-page-summary relative z-[40] mb-2 overflow-hidden rounded-[18px] border border-white/80 bg-gradient-to-br from-white via-blue-50/70 to-slate-50 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 dark:border-slate-800 dark:from-slate-950 dark:via-blue-950/35 dark:to-slate-950 dark:ring-white/5 lg:hidden">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-sky-300/25 blur-2xl dark:bg-sky-500/10" />
+            <section className="dengue-mobile-page-summary relative z-[40] mb-2 overflow-hidden rounded-[20px] border border-white/10 bg-[radial-gradient(circle_at_88%_0%,rgba(56,189,248,0.15),transparent_30%),linear-gradient(135deg,#06111f_0%,#0a2037_100%)] p-3 text-white shadow-[0_16px_40px_rgba(2,6,23,0.28)] ring-1 ring-cyan-300/10 lg:hidden">
+              <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-cyan-300/10 blur-2xl" />
               <div className="relative flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-                      Butuan City
-                    </span>
-                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${systemStatus.chip}`}>
-                      {systemStatus.label}
-                    </span>
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
+                    <CurrentPageIcon size={17} />
                   </div>
 
-                  <h1 className="truncate text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                    {title}
-                  </h1>
+                  <div className="min-w-0">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100">
+                        Butuan City
+                      </span>
+                      <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${systemStatus.badgeStyle}`}>
+                        {systemStatus.label}
+                      </span>
+                    </div>
 
-                  <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
-                    Barangay dengue monitoring and response workspace.
-                  </p>
+                    <h1 className="truncate text-lg font-black tracking-tight text-white">
+                      {title}
+                    </h1>
+
+                    <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-5 text-slate-300">
+                      {workspaceLabel}
+                    </p>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-black text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                  aria-label="Current reporting period"
+                <div
+                  role="status"
+                  className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] px-2.5 py-2 text-slate-200 shadow-sm"
+                  aria-label={`Latest data period: ${latestPeriod}`}
+                  title={`Latest data period: ${latestPeriod}`}
                 >
-                  <CalendarDays size={14} />
-                  <span className="max-w-[86px] truncate">{latestPeriod}</span>
-                </button>
+                  <CalendarDays size={14} className="shrink-0 text-cyan-200" />
+
+                  <span className="min-w-0 leading-tight">
+                    <span className="block text-[8px] font-black uppercase tracking-[0.12em] text-white/45">
+                      Latest
+                    </span>
+
+                    <span className="mt-0.5 block max-w-[86px] truncate text-xs font-black text-slate-100">
+                      {latestPeriod}
+                    </span>
+                  </span>
+                </div>
               </div>
             </section>
 

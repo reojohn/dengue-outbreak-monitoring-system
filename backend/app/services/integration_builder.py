@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from math import cos, radians
+import re
 
 import pandas as pd
 from fastapi import HTTPException
@@ -262,7 +263,17 @@ def _parse_datetime(value):
     if not text:
         return None
 
-    # Treat epidemiological week labels separately; pandas may parse them oddly.
+    # Reporting-period labels are not exact dates. In particular, pandas reads
+    # ``2018-01`` as January 1, 2018 and would then invent epidemiological week
+    # 1. Keep monthly and weekly period labels out of the date parser so the
+    # original temporal granularity remains intact.
+    if re.fullmatch(r"\d{4}-(?:0[1-9]|1[0-2])", text):
+        return None
+
+    if re.fullmatch(r"\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])", text, flags=re.IGNORECASE):
+        return None
+
+    # Treat other epidemiological week labels separately; pandas may parse them oddly.
     if "W" in text.upper() and any(char.isdigit() for char in text):
         return None
 
@@ -299,23 +310,13 @@ def _extract_year_month_week_from_date(value):
 
 
 def _read_year_month_week(record):
-    date_value = _read_value(
-        record,
-        [
-            "date",
-            "reporting_date",
-            "reportingDate",
-            "case_date",
-            "caseDate",
-            "period",
-            "observation_date",
-            "observationDate",
-        ],
-    )
+    """Read temporal fields without turning a monthly period into a week.
 
-    date_year, date_month, date_week = _extract_year_month_week_from_date(date_value)
-
-    year = _to_int_or_none(
+    Explicit year/month/week columns take priority. A strict ``YYYY-MM`` period
+    or metadata marked monthly forces ``week`` to remain ``None``. Exact dates
+    may still provide an ISO week for genuine date-based or weekly datasets.
+    """
+    explicit_year = _to_int_or_none(
         _read_value(
             record,
             [
@@ -327,9 +328,8 @@ def _read_year_month_week(record):
                 "case_year",
             ],
         )
-    ) or date_year
-
-    month = _to_int_or_none(
+    )
+    explicit_month = _to_int_or_none(
         _read_value(
             record,
             [
@@ -341,9 +341,8 @@ def _read_year_month_week(record):
                 "case_month",
             ],
         )
-    ) or date_month
-
-    week = _to_int_or_none(
+    )
+    explicit_week = _to_int_or_none(
         _read_value(
             record,
             [
@@ -358,9 +357,59 @@ def _read_year_month_week(record):
                 "weekNumber",
             ],
         )
-    ) or date_week
+    )
 
-    return year, month, week
+    period_text = _safe_text(
+        _read_value(record, ["period", "reporting_period", "reportingPeriod"])
+    )
+    source_format = _safe_text(_read_value(record, ["source_format", "sourceFormat"])).lower()
+    temporal_granularity = _safe_text(
+        _read_value(record, ["temporal_granularity", "temporalGranularity"])
+    ).lower()
+
+    monthly_match = re.fullmatch(r"(\d{4})-(0[1-9]|1[0-2])", period_text)
+    is_monthly_source = (
+        source_format == "doh_monthly_summary"
+        or temporal_granularity.startswith("month")
+        or monthly_match is not None
+    )
+
+    if is_monthly_source:
+        period_year = int(monthly_match.group(1)) if monthly_match else None
+        period_month = int(monthly_match.group(2)) if monthly_match else None
+        return explicit_year or period_year, explicit_month or period_month, None
+
+    weekly_match = re.fullmatch(
+        r"(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])",
+        period_text,
+        flags=re.IGNORECASE,
+    )
+    if weekly_match:
+        return (
+            explicit_year or int(weekly_match.group(1)),
+            explicit_month,
+            explicit_week or int(weekly_match.group(2)),
+        )
+
+    date_value = _read_value(
+        record,
+        [
+            "date",
+            "reporting_date",
+            "reportingDate",
+            "case_date",
+            "caseDate",
+            "observation_date",
+            "observationDate",
+        ],
+    )
+    date_year, date_month, date_week = _extract_year_month_week_from_date(date_value)
+
+    return (
+        explicit_year or date_year,
+        explicit_month or date_month,
+        explicit_week or date_week,
+    )
 
 
 def _period_from_record(record):
@@ -1012,6 +1061,207 @@ def _summarize_matches(rows, *, weather_context=None, source_status=None):
     }
 
 
+
+def _is_doh_monthly_record(record):
+    return (
+        _safe_text(_read_value(record, ["source_format"])) == "doh_monthly_summary"
+        and _to_int_or_none(_read_value(record, ["year"])) is not None
+        and _to_int_or_none(_read_value(record, ["month"])) is not None
+    )
+
+
+def _prepare_doh_monthly_time_series(dengue_records, barangay_reference):
+    """Build one continuous monthly row per official mapped barangay.
+
+    The DOH workbook is a monthly summary report that lists barangays with
+    reported cases. When an official mapped barangay is absent from a complete
+    monthly report, that month represents zero reported cases for that barangay.
+    These derived zero rows are added only at integration time, after the
+    boundary file supplies the official barangay reference. Raw uploaded rows
+    remain unchanged and uncertain/non-official locations remain for review.
+    """
+    records = list(dengue_records or [])
+    doh_records = [record for record in records if _is_doh_monthly_record(record)]
+
+    if not doh_records:
+        return records, {
+            "doh_monthly_series_expanded": False,
+            "doh_zero_filled_row_count": 0,
+            "doh_aggregated_duplicate_row_count": 0,
+            "doh_unresolved_row_count": 0,
+        }
+
+    official_references = [
+        item
+        for item in (barangay_reference or {}).get("items", [])
+        if item.get("source") == "boundary" and item.get("barangay_key")
+    ]
+
+    if not official_references:
+        return records, {
+            "doh_monthly_series_expanded": False,
+            "doh_zero_filled_row_count": 0,
+            "doh_aggregated_duplicate_row_count": 0,
+            "doh_unresolved_row_count": 0,
+            "doh_zero_fill_note": "Boundary reference was unavailable, so no monthly zero rows were derived.",
+        }
+
+    resolve_cache = {}
+    grouped = {}
+    unresolved_records = []
+    periods = set()
+    matched_source_row_count = 0
+
+    for record in doh_records:
+        year = _to_int_or_none(_read_value(record, ["year"]))
+        month = _to_int_or_none(_read_value(record, ["month"]))
+
+        if year is None or month is None or not 1 <= month <= 12:
+            unresolved_records.append(record)
+            continue
+
+        periods.add((year, month))
+        resolved = _resolve_barangay_cached(record, barangay_reference, resolve_cache)
+
+        if resolved.get("match_status") not in BARANGAY_MATCHED_STATUSES:
+            unresolved_records.append(record)
+            continue
+
+        barangay_key = resolved.get("barangay_key")
+        group_key = (barangay_key, year, month)
+        cases = _to_int_or_none(
+            _read_value(
+                record,
+                [
+                    "cases",
+                    "case_count",
+                    "caseCount",
+                    "dengue_cases",
+                    "dengueCases",
+                    "confirmed_cases",
+                    "confirmedCases",
+                    "total_cases",
+                    "totalCases",
+                ],
+            )
+        ) or 0
+
+        matched_source_row_count += 1
+
+        if group_key not in grouped:
+            grouped[group_key] = {
+                **record,
+                "barangay": resolved.get("barangay"),
+                "barangay_key": barangay_key,
+                "barangay_raw": get_record_barangay_name(record),
+                "year": year,
+                "month": month,
+                "week": None,
+                "period": f"{year:04d}-{month:02d}",
+                "cases": cases,
+                "source_format": "doh_monthly_summary",
+                "temporal_granularity": "monthly",
+                "derived_zero": False,
+                "derived_zero_reason": "",
+                "source_row_count": 1,
+            }
+        else:
+            grouped[group_key]["cases"] = (
+                _to_int_or_none(grouped[group_key].get("cases")) or 0
+            ) + cases
+            grouped[group_key]["source_row_count"] = int(
+                grouped[group_key].get("source_row_count") or 1
+            ) + 1
+
+    if not periods:
+        return records, {
+            "doh_monthly_series_expanded": False,
+            "doh_zero_filled_row_count": 0,
+            "doh_aggregated_duplicate_row_count": 0,
+            "doh_unresolved_row_count": len(unresolved_records),
+        }
+
+    # The cleaned upload intentionally excludes unknown-location rows. A month
+    # containing only unknown locations would otherwise disappear from the
+    # timeline. Rebuild every calendar month between the first and last report
+    # period so the 2018-2025 DOH series remains continuous.
+    first_year, first_month = min(periods)
+    last_year, last_month = max(periods)
+    continuous_periods = []
+    cursor_year, cursor_month = first_year, first_month
+
+    while (cursor_year, cursor_month) <= (last_year, last_month):
+        continuous_periods.append((cursor_year, cursor_month))
+        if cursor_month == 12:
+            cursor_year += 1
+            cursor_month = 1
+        else:
+            cursor_month += 1
+
+    periods = set(continuous_periods)
+    zero_filled_count = 0
+
+    for reference in official_references:
+        barangay_key = reference.get("barangay_key")
+        official_name = reference.get("official_name") or barangay_key
+
+        for year, month in sorted(periods):
+            group_key = (barangay_key, year, month)
+
+            if group_key in grouped:
+                continue
+
+            grouped[group_key] = {
+                "barangay": official_name,
+                "barangay_key": barangay_key,
+                "barangay_raw": official_name,
+                "year": year,
+                "month": month,
+                "week": None,
+                "period": f"{year:04d}-{month:02d}",
+                "date": None,
+                "cases": 0,
+                "deaths": None,
+                "source_format": "doh_monthly_summary",
+                "temporal_granularity": "monthly",
+                "death_data_status": "not_provided",
+                "location_status": "barangay_reported",
+                "source_sheet": _safe_text(_read_value(doh_records[0], ["source_sheet"])),
+                "derived_zero": True,
+                "derived_zero_reason": (
+                    "Official barangay was not listed in the complete DOH monthly summary; "
+                    "interpreted as zero reported cases for this month."
+                ),
+                "source_row_count": 0,
+            }
+            zero_filled_count += 1
+
+    non_doh_records = [record for record in records if not _is_doh_monthly_record(record)]
+    expanded_records = list(grouped.values()) + unresolved_records + non_doh_records
+    expanded_records.sort(
+        key=lambda record: (
+            _to_int_or_none(_read_value(record, ["year"])) or 0,
+            _to_int_or_none(_read_value(record, ["month"])) or 0,
+            normalize_barangay_key(_read_value(record, ["barangay_key", "barangay"], "")),
+        )
+    )
+
+    duplicate_rows_aggregated = max(matched_source_row_count - len(grouped) + zero_filled_count, 0)
+
+    return expanded_records, {
+        "doh_monthly_series_expanded": True,
+        "doh_official_barangay_count": len(official_references),
+        "doh_monthly_period_count": len(periods),
+        "doh_expected_official_row_count": len(official_references) * len(periods),
+        "doh_zero_filled_row_count": zero_filled_count,
+        "doh_aggregated_duplicate_row_count": duplicate_rows_aggregated,
+        "doh_unresolved_row_count": len(unresolved_records),
+        "doh_zero_fill_note": (
+            "Zero rows were derived only for official boundary-matched barangays absent from a complete DOH monthly summary. "
+            "Uncertain locations were retained separately for review and were not assigned to a barangay."
+        ),
+    }
+
 def build_model_ready_dataset():
     sources = get_all_integration_sources()
     status = build_source_status_summary()
@@ -1035,6 +1285,10 @@ def build_model_ready_dataset():
     barangay_reference = build_barangay_reference(
         boundary_geojson=boundary_geojson,
         population_records=population_records,
+    )
+    dengue_records, doh_series_summary = _prepare_doh_monthly_time_series(
+        dengue_records,
+        barangay_reference,
     )
     resolve_cache = {}
     population_lookup = _build_population_lookup(population_records, barangay_reference, resolve_cache)
@@ -1069,7 +1323,10 @@ def build_model_ready_dataset():
             "barangay_original_key": resolved_barangay.get("original_barangay_key") or _record_key(record),
             "barangay_match_status": resolved_barangay.get("match_status"),
             "barangay_match_confidence": round(_to_number(resolved_barangay.get("match_confidence"), 0), 3),
-            "barangay_match_note": resolved_barangay.get("match_note"),
+            "barangay_match_note": (
+                _safe_text(_read_value(record, ["derived_zero_reason"]))
+                or resolved_barangay.get("match_note")
+            ),
             "period": period,
             "date": _date_key(_read_value(record, ["date", "reporting_date", "reportingDate", "case_date", "caseDate"])) or _safe_date(_read_value(record, ["date", "reporting_date", "reportingDate"])),
             "year": year,
@@ -1100,6 +1357,7 @@ def build_model_ready_dataset():
         weather_context=weather_context,
         source_status=status,
     )
+    summary.update(doh_series_summary)
 
     database_result = save_integration_result(
         integration_status=status,

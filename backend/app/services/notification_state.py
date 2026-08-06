@@ -243,6 +243,80 @@ def save_generated_notifications(notifications):
         return []
 
 
+def clear_generated_hotspot_notifications(integration_run_id=None):
+    """Remove cached hotspot alerts before saving a refreshed hotspot result."""
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    delete from public.notifications
+                    where coalesce(meta->>'auto_generated', 'false') = 'true'
+                      and category in (
+                        'confirmed_hotspot_detected',
+                        'emerging_hotspot_detected',
+                        'map_review_needed'
+                      )
+                      and (
+                        :integration_run_id is null
+                        or meta->>'integration_run_id' = :integration_run_id
+                      )
+                    """
+                ),
+                {
+                    "integration_run_id": str(integration_run_id) if integration_run_id else None,
+                },
+            )
+    except Exception:
+        pass
+
+
+def get_saved_hotspot_notifications(integration_run_id=None, limit: int = 10):
+    """Return previously generated hotspot alerts without recalculating hotspots."""
+    safe_limit = max(1, min(int(limit or 10), 30))
+
+    try:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    select
+                        notification_id,
+                        title,
+                        message,
+                        severity,
+                        category,
+                        target_page,
+                        target_hash,
+                        is_read,
+                        meta,
+                        created_at
+                    from public.notifications
+                    where coalesce(meta->>'auto_generated', 'false') = 'true'
+                      and category in (
+                        'confirmed_hotspot_detected',
+                        'emerging_hotspot_detected',
+                        'map_review_needed'
+                      )
+                      and (
+                        :integration_run_id is null
+                        or meta->>'integration_run_id' = :integration_run_id
+                      )
+                    order by created_at desc
+                    limit :limit
+                    """
+                ),
+                {
+                    "integration_run_id": str(integration_run_id) if integration_run_id else None,
+                    "limit": safe_limit,
+                },
+            ).mappings().all()
+
+        return [_row_to_notification(row) for row in rows]
+    except Exception:
+        return []
+
+
 def get_notification_events(limit: int = 10):
     safe_limit = max(1, min(int(limit or 10), 30))
 

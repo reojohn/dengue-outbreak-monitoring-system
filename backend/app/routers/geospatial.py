@@ -22,8 +22,18 @@ def get_geospatial_hotspots(
         le=8,
         description="Number of nearest barangays used when no barangay is inside the selected radius.",
     ),
+    force_refresh: bool = Query(
+        False,
+        description="Recalculate and replace the saved result for the latest integration run.",
+    ),
+    cached_only: bool = Query(
+        False,
+        description="Return only a saved hotspot result and never run the heavy calculation.",
+    ),
 ):
     return build_geospatial_hotspots(
         radius_km=radius_km,
         fallback_nearest_count=fallback_nearest_count,
+        force_refresh=force_refresh,
+        cached_only=cached_only,
     )

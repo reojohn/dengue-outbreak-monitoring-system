@@ -11,6 +11,8 @@ from app.services.barangay_normalizer import (
     canonicalize_barangay_name,
     normalize_barangay_key,
 )
+from app.services.doh_dengue_parser import detect_and_parse_doh_dengue_workbook
+from app.services.temporal_granularity import infer_forecast_period_metadata
 
 
 DENGUE_FIELD_ALIASES = {
@@ -769,19 +771,30 @@ async def read_tabular_file(file: UploadFile):
             if not workbook:
                 raise HTTPException(status_code=400, detail="Excel file does not contain readable sheets.")
 
-            scored_sheets = []
-            for sheet_name, raw_df in workbook.items():
-                raw_df = raw_df.dropna(how="all")
-                sheet_score = 0.0
-                for offset in range(min(30, len(raw_df))):
-                    sheet_score += score_possible_header_row(raw_df.iloc[offset].tolist())
+            # The official DOH workbook is a formatted monthly report, not a
+            # conventional row-based table. Detect it strictly and flatten it
+            # before falling back to the existing adaptive Excel reader.
+            doh_result = detect_and_parse_doh_dengue_workbook(workbook)
 
-                scored_sheets.append((sheet_score, sheet_name, raw_df))
+            if doh_result:
+                df, source_metadata = doh_result
+                selected_sheet_name = source_metadata.get("source_sheet", "DOH monthly report")
+                file_type = f"excel:{selected_sheet_name}:doh_monthly_summary"
+                df.attrs["source_metadata"] = source_metadata
+            else:
+                scored_sheets = []
+                for sheet_name, raw_df in workbook.items():
+                    raw_df = raw_df.dropna(how="all")
+                    sheet_score = 0.0
+                    for offset in range(min(30, len(raw_df))):
+                        sheet_score += score_possible_header_row(raw_df.iloc[offset].tolist())
 
-            scored_sheets.sort(key=lambda item: item[0], reverse=True)
-            _, selected_sheet_name, selected_raw_df = scored_sheets[0]
-            df = dataframe_from_raw_rows(selected_raw_df)
-            file_type = f"excel:{selected_sheet_name}"
+                    scored_sheets.append((sheet_score, sheet_name, raw_df))
+
+                scored_sheets.sort(key=lambda item: item[0], reverse=True)
+                _, selected_sheet_name, selected_raw_df = scored_sheets[0]
+                df = dataframe_from_raw_rows(selected_raw_df)
+                file_type = f"excel:{selected_sheet_name}"
 
         elif extension == ".json":
             records = read_json_records(content)
@@ -820,12 +833,28 @@ async def inspect_tabular_file(file: UploadFile):
         for column in df.columns
     }
 
+    source_metadata = dict(df.attrs.get("source_metadata", {}) or {})
     dengue_detection = detect_dengue_columns(df.columns, df)
+    if source_metadata.get("source_format") == "doh_monthly_summary":
+        dengue_detection = {
+            **dengue_detection,
+            **source_metadata,
+            "matched_fields": {
+                "barangay": "barangay",
+                "year": "year",
+                "month": "month",
+                "cases": "cases",
+                "deaths": "deaths",
+            },
+            "source_field_mapping": source_metadata.get("matched_fields", {}),
+            "standard_schema": DENGUE_STANDARD_SCHEMA,
+        }
 
     return {
         "message": "File inspected successfully.",
         "filename": filename,
         "file_type": file_type,
+        "source_metadata": source_metadata,
         "row_count": int(len(df)),
         "column_count": int(len(df.columns)),
         "columns": list(df.columns),
@@ -994,7 +1023,32 @@ def classify_historical_risk(total_cases: int):
 
 
 def prepare_clean_dengue_dataframe(df: pd.DataFrame):
+    source_metadata = dict(df.attrs.get("source_metadata", {}) or {})
+    is_doh_monthly = source_metadata.get("source_format") == "doh_monthly_summary"
+
     dengue_detection = detect_dengue_columns(df.columns, df)
+
+    if is_doh_monthly:
+        # The report parser has already converted the visual report into
+        # standard columns. Keep the source mapping for transparency while
+        # pointing the cleaner at the actual dataframe columns.
+        dengue_detection = {
+            **dengue_detection,
+            **source_metadata,
+            "dataset_type": "likely_dengue_dataset",
+            "readiness": "ready_for_cleaning",
+            "matched_fields": {
+                "barangay": "barangay",
+                "year": "year",
+                "month": "month",
+                "cases": "cases",
+                "deaths": "deaths",
+            },
+            "source_field_mapping": source_metadata.get("matched_fields", {}),
+            "missing_required_fields": [],
+            "confidence_score": 100,
+            "standard_schema": DENGUE_STANDARD_SCHEMA,
+        }
 
     if dengue_detection["readiness"] != "ready_for_cleaning":
         raise HTTPException(
@@ -1018,7 +1072,7 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
             detail="A dengue dataset must contain either a date column or year with month/week columns.",
         )
 
-    clean_df = pd.DataFrame()
+    clean_df = pd.DataFrame(index=df.index)
 
     barangay_text = (
         df[matched_fields["barangay"]]
@@ -1060,10 +1114,28 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
 
     clean_df["cases"] = df[matched_fields["cases"]].apply(parse_numeric_value)
 
-    if "deaths" in matched_fields:
+    if "deaths" in matched_fields and matched_fields["deaths"] in df.columns:
         clean_df["deaths"] = df[matched_fields["deaths"]].apply(parse_numeric_value)
     else:
-        clean_df["deaths"] = 0
+        # Preserve the old behavior for existing datasets. The DOH report is
+        # the exception because the source truly does not provide death data.
+        clean_df["deaths"] = pd.NA if is_doh_monthly else 0
+
+    optional_source_columns = [
+        "confirmed_cases",
+        "probable_cases",
+        "suspect_cases",
+        "reported_monthly_total",
+        "monthly_total_difference",
+        "source_format",
+        "temporal_granularity",
+        "death_data_status",
+        "location_status",
+        "source_sheet",
+    ]
+    for column in optional_source_columns:
+        if column in df.columns:
+            clean_df[column] = df[column]
 
     invalid_barangay = (
         clean_df["barangay_raw"].isna()
@@ -1072,15 +1144,21 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         .astype(str)
         .str.strip()
         .str.lower()
-        .isin(["nan", "none", "nat"])
+        .isin(["nan", "none", "nat", "unknown", "(blank)", "blank", "unspecified"])
     )
+
+    if "location_status" in clean_df.columns:
+        invalid_barangay = invalid_barangay | clean_df["location_status"].eq("unknown_or_blank")
 
     invalid_time = clean_df["year"].isna() | (
         clean_df["month"].isna() & clean_df["week"].isna()
     )
 
     invalid_cases = clean_df["cases"].isna() | (clean_df["cases"] < 0)
-    invalid_deaths = clean_df["deaths"].isna() | (clean_df["deaths"] < 0)
+    if is_doh_monthly:
+        invalid_deaths = clean_df["deaths"].notna() & (clean_df["deaths"] < 0)
+    else:
+        invalid_deaths = clean_df["deaths"].isna() | (clean_df["deaths"] < 0)
 
     invalid_rows = invalid_barangay | invalid_time | invalid_cases | invalid_deaths
 
@@ -1090,38 +1168,29 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
     for column in ["year", "month", "week", "cases", "deaths"]:
         valid_df[column] = valid_df[column].apply(convert_number)
 
-    valid_df = valid_df[
-        [
-            "barangay",
-            "barangay_key",
-            "barangay_raw",
-            "period",
-            "date",
-            "year",
-            "month",
-            "week",
-            "cases",
-            "deaths",
-        ]
+    standard_columns = [
+        "barangay",
+        "barangay_key",
+        "barangay_raw",
+        "period",
+        "date",
+        "year",
+        "month",
+        "week",
+        "cases",
+        "deaths",
     ]
+    result_columns = standard_columns + [
+        column for column in optional_source_columns if column in valid_df.columns
+    ]
+    valid_df = valid_df[result_columns]
 
     invalid_preview_df = clean_df[invalid_rows].copy()
-    invalid_preview_df["period"] = ""
-
-    invalid_preview_df = invalid_preview_df[
-        [
-            "barangay",
-            "barangay_key",
-            "barangay_raw",
-            "period",
-            "date",
-            "year",
-            "month",
-            "week",
-            "cases",
-            "deaths",
-        ]
+    invalid_preview_df["period"] = invalid_preview_df.apply(build_period, axis=1)
+    invalid_result_columns = standard_columns + [
+        column for column in optional_source_columns if column in invalid_preview_df.columns
     ]
+    invalid_preview_df = invalid_preview_df[invalid_result_columns]
 
     validation_summary = {
         "invalid_barangay_rows": int(invalid_barangay.sum()),
@@ -1133,14 +1202,29 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         else 0,
     }
 
+    if is_doh_monthly:
+        validation_summary.update({
+            "source_format": "doh_monthly_summary",
+            "temporal_granularity": "monthly",
+            "death_data_status": "not_provided",
+            "unknown_location_record_count": int(source_metadata.get("unknown_location_record_count", 0)),
+            "unknown_location_case_count": int(source_metadata.get("unknown_location_case_count", 0)),
+            "monthly_total_discrepancy_count": int(source_metadata.get("monthly_total_discrepancy_count", 0)),
+            "monthly_total_discrepancies": source_metadata.get("monthly_total_discrepancies", []),
+            "coverage_start": source_metadata.get("coverage_start", ""),
+            "coverage_end": source_metadata.get("coverage_end", ""),
+            "case_measure": source_metadata.get("case_measure", "Grand Total"),
+            "zero_fill_applied": False,
+        })
+
     return {
         "dengue_detection": dengue_detection,
+        "source_metadata": source_metadata,
         "valid_df": valid_df,
         "invalid_preview_df": invalid_preview_df,
         "invalid_rows": invalid_rows,
         "validation_summary": validation_summary,
     }
-
 
 def build_clean_dengue_result_from_dataframe(
     df: pd.DataFrame,
@@ -1163,15 +1247,25 @@ def build_clean_dengue_result_from_dataframe(
     invalid_preview_df = prepared["invalid_preview_df"]
     invalid_rows = prepared["invalid_rows"]
     validation_summary = prepared["validation_summary"]
+    source_metadata = prepared.get("source_metadata", {})
 
     cleaned_records = make_json_safe_records(valid_df)
     cleaned_preview = make_json_safe_records(valid_df.head(25))
     invalid_preview = make_json_safe_records(invalid_preview_df.head(25))
 
+    period_metadata = infer_forecast_period_metadata(valid_df, source_metadata)
+    validation_summary = {**validation_summary, **period_metadata}
+
     return {
         "message": "Dengue file cleaned successfully.",
         "filename": filename,
         "file_type": file_type,
+        "source_format": source_metadata.get("source_format", "standard_structured"),
+        "temporal_granularity": period_metadata["temporal_granularity"],
+        "forecast_period_unit": period_metadata["forecast_period_unit"],
+        "forecast_horizon_label": period_metadata["forecast_horizon_label"],
+        "granularity_detection_reason": period_metadata.get("granularity_detection_reason", ""),
+        "source_metadata": source_metadata,
         "original_row_count": int(len(df)),
         "valid_row_count": int(len(valid_df)),
         "invalid_row_count": int(invalid_rows.sum()),
@@ -1203,6 +1297,8 @@ async def summarize_dengue_file(file: UploadFile):
     invalid_preview_df = prepared["invalid_preview_df"]
     invalid_rows = prepared["invalid_rows"]
     validation_summary = prepared["validation_summary"]
+    source_metadata = prepared.get("source_metadata", {})
+    death_data_not_provided = source_metadata.get("death_data_status") == "not_provided"
 
     if valid_df.empty:
         raise HTTPException(
@@ -1229,6 +1325,8 @@ async def summarize_dengue_file(file: UploadFile):
     )
 
     summary_df["average_cases"] = summary_df["average_cases"].round(2)
+    if death_data_not_provided:
+        summary_df["total_deaths"] = None
     summary_df["historical_risk_level"] = summary_df["total_cases"].apply(
         classify_historical_risk
     )
@@ -1258,7 +1356,7 @@ async def summarize_dengue_file(file: UploadFile):
     barangay_summary = make_json_safe_records(summary_df)
 
     total_cases = int(valid_df["cases"].sum())
-    total_deaths = int(valid_df["deaths"].sum())
+    total_deaths = None if death_data_not_provided else int(valid_df["deaths"].sum())
     barangay_count = int(valid_df["barangay"].nunique())
 
     risk_counts = {
@@ -1277,6 +1375,10 @@ async def summarize_dengue_file(file: UploadFile):
         "barangay_count": barangay_count,
         "total_cases": total_cases,
         "total_deaths": total_deaths,
+        "death_data_status": source_metadata.get("death_data_status", "provided_or_defaulted"),
+        "source_format": source_metadata.get("source_format", "standard_structured"),
+        "temporal_granularity": infer_forecast_period_metadata(valid_df, source_metadata)["temporal_granularity"],
+        "source_metadata": source_metadata,
         "risk_counts": risk_counts,
         "validation_summary": validation_summary,
         "dengue_detection": dengue_detection,

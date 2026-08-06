@@ -1,5 +1,5 @@
 from fastapi import HTTPException, UploadFile
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 
 import numpy as np
@@ -30,11 +30,17 @@ from app.services.baseline_forecast import (
     get_recommendation,
     get_trend_direction,
 )
+from app.services.temporal_granularity import infer_forecast_period_metadata
 from app.services.file_inspector import (
     make_json_safe_records,
     prepare_clean_dengue_dataframe,
     read_tabular_file,
 )
+
+
+FORECAST_HORIZONS = (1, 2, 3, 4)
+TARGET_COLUMNS = [f"target_period_{horizon}" for horizon in FORECAST_HORIZONS]
+FORECAST_STRATEGY = "direct_multi_step"
 
 
 def _cap_outliers(series: pd.Series) -> pd.Series:
@@ -45,8 +51,11 @@ def _cap_outliers(series: pd.Series) -> pd.Series:
     return clean.clip(lower=0, upper=upper)
 
 
-def _build_ml_dataset(valid_df: pd.DataFrame) -> pd.DataFrame:
+def _build_ml_dataset(valid_df: pd.DataFrame, period_unit: str = "month") -> pd.DataFrame:
     df = valid_df.copy()
+
+    if period_unit == "month":
+        df["week"] = 0
 
     df["cases"] = _cap_outliers(df["cases"])
     df["sort_year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0)
@@ -60,12 +69,14 @@ def _build_ml_dataset(valid_df: pd.DataFrame) -> pd.DataFrame:
             by=["sort_year", "sort_month", "sort_week", "period"]
         ).reset_index(drop=True)
 
-        barangay_df["lag_1"] = barangay_df["cases"].shift(1)
-        barangay_df["lag_2"] = barangay_df["cases"].shift(2)
-        barangay_df["lag_3"] = barangay_df["cases"].shift(3)
-        barangay_df["rolling_mean_3"] = barangay_df["cases"].shift(1).rolling(3).mean()
-        barangay_df["rolling_sum_3"] = barangay_df["cases"].shift(1).rolling(3).sum()
-        barangay_df["target_next_cases"] = barangay_df["cases"].shift(-1)
+        barangay_df["lag_1"] = barangay_df["cases"]
+        barangay_df["lag_2"] = barangay_df["cases"].shift(1)
+        barangay_df["lag_3"] = barangay_df["cases"].shift(2)
+        barangay_df["rolling_mean_3"] = barangay_df["cases"].rolling(3).mean()
+        barangay_df["rolling_sum_3"] = barangay_df["cases"].rolling(3).sum()
+
+        for horizon in FORECAST_HORIZONS:
+            barangay_df[f"target_period_{horizon}"] = barangay_df["cases"].shift(-horizon)
 
         rows.append(barangay_df)
 
@@ -77,7 +88,7 @@ def _build_ml_dataset(valid_df: pd.DataFrame) -> pd.DataFrame:
             "lag_3",
             "rolling_mean_3",
             "rolling_sum_3",
-            "target_next_cases",
+            *TARGET_COLUMNS,
         ]
     )
 
@@ -168,7 +179,7 @@ def _model_display_name(model_key: str) -> str:
 
 
 def _risk_class_from_cases(cases):
-    return classify_forecast_risk(int(round(max(float(cases), 0))) * 4)
+    return classify_forecast_risk(int(round(max(float(cases), 0))))
 
 
 def _evaluate_regression_as_risk(y_true, y_pred):
@@ -249,8 +260,37 @@ def _selection_explanation(comparison):
         f"({best.get('rmse', 'N/A')}) and MAE ({best.get('mae', 'N/A')}) among the evaluated machine learning models."
     )
 
+def _average_feature_importance(models, feature_columns):
+    totals = {feature: 0.0 for feature in feature_columns}
+    valid_count = 0
+
+    for model in models:
+        items = _extract_feature_importance(model, feature_columns)
+        if not items:
+            continue
+        valid_count += 1
+        for item in items:
+            totals[item["feature"]] += float(item.get("importance") or 0)
+
+    if valid_count == 0:
+        return []
+
+    return sorted(
+        [
+            {
+                "feature": feature,
+                "label": _feature_label(feature),
+                "importance": round(totals[feature] / valid_count, 4),
+            }
+            for feature in feature_columns
+        ],
+        key=lambda item: item["importance"],
+        reverse=True,
+    )
+
+
 def _evaluate_models(ml_df: pd.DataFrame):
-    evaluated_at = datetime.utcnow().isoformat() if 'datetime' in globals() else ''
+    evaluated_at = datetime.utcnow().isoformat()
     total_started = time.perf_counter()
     feature_columns = [
         "sort_year",
@@ -274,38 +314,61 @@ def _evaluate_models(ml_df: pd.DataFrame):
         train_df = train_df.iloc[:-len(test_df)]
 
     if train_df.empty or test_df.empty:
-        raise ValueError("Not enough records for model testing.")
+        raise ValueError("Not enough records for direct multi-step model testing.")
 
     x_train = train_df[feature_columns]
-    y_train = train_df["target_next_cases"]
     x_test = test_df[feature_columns]
-    y_test = test_df["target_next_cases"]
-
     results = []
 
-    for model_key, model in _candidate_models().items():
+    for model_key in _candidate_models().keys():
         started = time.perf_counter()
-        model.fit(x_train, y_train)
-        predictions = np.maximum(model.predict(x_test), 0)
+        horizon_models = []
+        horizon_metrics = []
+        predicted_matrix = []
+        actual_matrix = []
+
+        for horizon, target_column in zip(FORECAST_HORIZONS, TARGET_COLUMNS):
+            model = _candidate_models()[model_key]
+            y_train = train_df[target_column]
+            y_test = test_df[target_column]
+            model.fit(x_train, y_train)
+            predictions = np.maximum(model.predict(x_test), 0)
+
+            try:
+                horizon_r2 = r2_score(y_test, predictions)
+            except Exception:
+                horizon_r2 = 0
+
+            horizon_metrics.append({
+                "horizon": horizon,
+                "target_column": target_column,
+                "mae": round(float(mean_absolute_error(y_test, predictions)), 4),
+                "rmse": round(float(mean_squared_error(y_test, predictions) ** 0.5), 4),
+                "r2": round(float(horizon_r2), 4),
+            })
+            horizon_models.append(model)
+            predicted_matrix.append(predictions)
+            actual_matrix.append(np.asarray(y_test, dtype=float))
+
+        predicted_matrix = np.vstack(predicted_matrix).T
+        actual_matrix = np.vstack(actual_matrix).T
+        predicted_totals = predicted_matrix.sum(axis=1)
+        actual_totals = actual_matrix.sum(axis=1)
         duration = time.perf_counter() - started
-
-        mae = mean_absolute_error(y_test, predictions)
-        rmse = mean_squared_error(y_test, predictions) ** 0.5
-
-        try:
-            r2 = r2_score(y_test, predictions)
-        except Exception:
-            r2 = 0
 
         results.append(
             {
                 "model_key": model_key,
                 "model_name": _model_display_name(model_key),
-                "model": model,
-                "mae": round(float(mae), 4),
-                "rmse": round(float(rmse), 4),
-                "r2": round(float(r2), 4),
-                **_evaluate_regression_as_risk(y_test, predictions),
+                "mae": round(float(np.mean([item["mae"] for item in horizon_metrics])), 4),
+                "rmse": round(float(np.mean([item["rmse"] for item in horizon_metrics])), 4),
+                "r2": round(float(np.mean([item["r2"] for item in horizon_metrics])), 4),
+                "cumulative_mae": round(float(mean_absolute_error(actual_totals, predicted_totals)), 4),
+                "cumulative_rmse": round(float(mean_squared_error(actual_totals, predicted_totals) ** 0.5), 4),
+                **_evaluate_regression_as_risk(actual_totals, predicted_totals),
+                "horizon_metrics": horizon_metrics,
+                "forecast_strategy": FORECAST_STRATEGY,
+                "forecast_horizon_periods": len(FORECAST_HORIZONS),
                 "status": "evaluated",
                 "random_state": RANDOM_STATE,
                 "train_test_split": TRAIN_TEST_SPLIT_LABEL,
@@ -315,23 +378,67 @@ def _evaluate_models(ml_df: pd.DataFrame):
                 "testing_row_count": int(len(test_df)),
                 "training_duration_seconds": round(float(duration), 4),
                 "evaluated_at": evaluated_at,
-                "feature_importance": _extract_feature_importance(model, feature_columns),
+                "feature_importance": _average_feature_importance(horizon_models, feature_columns),
             }
         )
 
-    results = sorted(results, key=lambda item: (item["rmse"], item["mae"]))
+    results = sorted(results, key=lambda item: (item["rmse"], item["mae"], item["cumulative_rmse"]))
     best = results[0]
 
-    final_model = _candidate_models()[best["model_key"]]
-    final_model.fit(ml_df[feature_columns], ml_df["target_next_cases"])
-    best["feature_importance"] = _extract_feature_importance(final_model, feature_columns) or best.get("feature_importance", [])
+    final_models = []
+    feature_importance_by_horizon = {}
+    for horizon, target_column in zip(FORECAST_HORIZONS, TARGET_COLUMNS):
+        model = _candidate_models()[best["model_key"]]
+        model.fit(ml_df[feature_columns], ml_df[target_column])
+        final_models.append(model)
+        feature_importance_by_horizon[str(horizon)] = _extract_feature_importance(model, feature_columns)
+
+    best["feature_importance"] = _average_feature_importance(final_models, feature_columns) or best.get("feature_importance", [])
+    best["feature_importance_by_horizon"] = feature_importance_by_horizon
     best["selection_confidence"] = _selection_confidence(results)
     best["selection_explanation"] = _selection_explanation(results)
     best["total_model_training_duration_seconds"] = round(float(time.perf_counter() - total_started), 4)
 
-    return best, results, final_model, feature_columns
+    model_artifact = {
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
+        "feature_columns": feature_columns,
+        "models": final_models,
+        "model_key": best["model_key"],
+        "model_name": best["model_name"],
+    }
 
-def _fallback_forecast(valid_df: pd.DataFrame):
+    return best, results, model_artifact, feature_columns
+
+def _future_period_label(latest_row, horizon: int, period_unit: str) -> str:
+    def safe_int(*values):
+        for value in values:
+            number = pd.to_numeric(value, errors="coerce")
+            if pd.notna(number) and np.isfinite(float(number)):
+                return int(float(number))
+        return 0
+
+    year = safe_int(latest_row.get("sort_year"), latest_row.get("year"))
+    month = safe_int(latest_row.get("sort_month"), latest_row.get("month"))
+    week = safe_int(latest_row.get("sort_week"), latest_row.get("week"))
+
+    if period_unit == "month" and year > 0 and 1 <= month <= 12:
+        month_index = (year * 12 + month - 1) + horizon
+        future_year, future_month_zero = divmod(month_index, 12)
+        return datetime(future_year, future_month_zero + 1, 1).strftime("%B %Y")
+
+    if period_unit == "week" and year > 0 and 1 <= week <= 53:
+        try:
+            future_date = datetime.fromisocalendar(year, week, 1) + timedelta(weeks=horizon)
+            iso_year, iso_week, _ = future_date.isocalendar()
+            return f"{iso_year}-W{iso_week:02d}"
+        except ValueError:
+            pass
+
+    return f"Period {horizon}"
+
+
+def _fallback_forecast(valid_df: pd.DataFrame, period_unit: str = "month"):
     forecast_rows = []
 
     working_df = valid_df.copy()
@@ -366,10 +473,22 @@ def _fallback_forecast(valid_df: pd.DataFrame):
             change_rate = 0
 
         capped_change_rate = max(min(change_rate, 0.30), -0.30)
-        forecast_next_period = max(round(recent_average * (1 + capped_change_rate)), 0)
-        forecast_next_4_periods = forecast_next_period * 4
-        risk_level = classify_forecast_risk(forecast_next_4_periods)
         latest_row = barangay_df.iloc[-1]
+        horizon_values = [
+            max(round(recent_average * ((1 + capped_change_rate) ** horizon)), 0)
+            for horizon in FORECAST_HORIZONS
+        ]
+        forecast_next_period = horizon_values[0]
+        forecast_next_4_periods = int(sum(horizon_values))
+        risk_level = classify_forecast_risk(forecast_next_4_periods)
+        forecast_period_predictions = [
+            {
+                "horizon": horizon,
+                "period": _future_period_label(latest_row, horizon, period_unit),
+                "predicted_cases": int(value),
+            }
+            for horizon, value in zip(FORECAST_HORIZONS, horizon_values)
+        ]
 
         forecast_rows.append(
             {
@@ -382,6 +501,8 @@ def _fallback_forecast(valid_df: pd.DataFrame):
                 "trend_direction": trend_direction,
                 "forecast_next_period": int(forecast_next_period),
                 "forecast_next_4_periods": int(forecast_next_4_periods),
+                "forecast_period_predictions": forecast_period_predictions,
+                "forecast_strategy": "trend_projection_fallback",
                 "risk_level": risk_level,
                 "recommendation": get_recommendation(risk_level, trend_direction),
                 "model_used": "fallback_trend_baseline",
@@ -411,6 +532,12 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
     invalid_rows = prepared["invalid_rows"]
     validation_summary = prepared["validation_summary"]
     dengue_detection = prepared["dengue_detection"]
+    source_metadata = prepared.get("source_metadata", {})
+
+    period_metadata = infer_forecast_period_metadata(valid_df, source_metadata)
+    period_unit = period_metadata["forecast_period_unit"]
+    temporal_granularity = period_metadata["temporal_granularity"]
+    forecast_horizon_label = period_metadata["forecast_horizon_label"]
 
     if valid_df.empty:
         raise HTTPException(
@@ -428,10 +555,10 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
     used_machine_learning = False
 
     try:
-        ml_df = _build_ml_dataset(valid_df)
+        ml_df = _build_ml_dataset(valid_df, period_unit)
 
         if len(ml_df) >= 30:
-            best, comparison, model, feature_columns = _evaluate_models(ml_df)
+            best, comparison, model_artifact, feature_columns = _evaluate_models(ml_df)
 
             selected_model_name = best["model_name"]
             selected_model_key = best["model_key"]
@@ -445,6 +572,15 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
                 "precision": best.get("precision", 0),
                 "recall": best.get("recall", 0),
                 "f1_score": best.get("f1_score", 0),
+                "cumulative_mae": best.get("cumulative_mae", 0),
+                "cumulative_rmse": best.get("cumulative_rmse", 0),
+                "horizon_metrics": best.get("horizon_metrics", []),
+                "forecast_strategy": FORECAST_STRATEGY,
+                "forecast_horizon_periods": len(FORECAST_HORIZONS),
+                "feature_importance": best.get("feature_importance", []),
+                "feature_importance_by_horizon": best.get("feature_importance_by_horizon", {}),
+                "selection_explanation": best.get("selection_explanation"),
+                "selection_confidence": best.get("selection_confidence"),
             }
             model_comparison = [
                 {
@@ -466,6 +602,11 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
                     "training_duration_seconds": item.get("training_duration_seconds", 0),
                     "evaluated_at": item.get("evaluated_at"),
                     "feature_importance": item.get("feature_importance", []),
+                    "horizon_metrics": item.get("horizon_metrics", []),
+                    "cumulative_mae": item.get("cumulative_mae", 0),
+                    "cumulative_rmse": item.get("cumulative_rmse", 0),
+                    "forecast_strategy": item.get("forecast_strategy", FORECAST_STRATEGY),
+                    "forecast_horizon_periods": item.get("forecast_horizon_periods", len(FORECAST_HORIZONS)),
                 }
                 for item in comparison
             ]
@@ -474,6 +615,8 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
             forecast_rows = []
 
             working_df = valid_df.copy()
+            if period_unit == "month":
+                working_df["week"] = 0
             working_df["cases"] = _cap_outliers(working_df["cases"])
             working_df["sort_year"] = pd.to_numeric(working_df["year"], errors="coerce").fillna(0)
             working_df["sort_month"] = pd.to_numeric(working_df["month"], errors="coerce").fillna(0)
@@ -516,8 +659,24 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
                     ]
                 )[feature_columns]
 
-                forecast_next_period = int(round(max(float(model.predict(prediction_input)[0]), 0)))
-                forecast_next_4_periods = forecast_next_period * 4
+                horizon_models = model_artifact.get("models") or []
+                if len(horizon_models) != len(FORECAST_HORIZONS):
+                    raise ValueError("Direct multi-step model artifact is incomplete.")
+
+                horizon_values = [
+                    int(round(max(float(horizon_model.predict(prediction_input)[0]), 0)))
+                    for horizon_model in horizon_models
+                ]
+                forecast_next_period = horizon_values[0]
+                forecast_next_4_periods = int(sum(horizon_values))
+                forecast_period_predictions = [
+                    {
+                        "horizon": horizon,
+                        "period": _future_period_label(latest_row, horizon, period_unit),
+                        "predicted_cases": int(value),
+                    }
+                    for horizon, value in zip(FORECAST_HORIZONS, horizon_values)
+                ]
                 risk_level = classify_forecast_risk(forecast_next_4_periods)
 
                 forecast_rows.append(
@@ -531,16 +690,18 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
                         "trend_direction": trend_direction,
                         "forecast_next_period": int(forecast_next_period),
                         "forecast_next_4_periods": int(forecast_next_4_periods),
+                        "forecast_period_predictions": forecast_period_predictions,
+                        "forecast_strategy": FORECAST_STRATEGY,
                         "risk_level": risk_level,
                         "recommendation": get_recommendation(risk_level, trend_direction),
                         "model_used": selected_model_name,
                     }
                 )
         else:
-            forecast_rows = _fallback_forecast(valid_df)
+            forecast_rows = _fallback_forecast(valid_df, period_unit)
 
     except Exception:
-        forecast_rows = _fallback_forecast(valid_df)
+        forecast_rows = _fallback_forecast(valid_df, period_unit)
 
     risk_priority = {"High": 3, "Moderate": 2, "Low": 1}
 
@@ -556,6 +717,9 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
 
     for index, row in enumerate(forecast_rows, start=1):
         row["priority_rank"] = index
+        row["forecast_period_unit"] = period_unit
+        row["forecast_horizon_periods"] = 4
+        row["forecast_horizon_label"] = forecast_horizon_label
 
     risk_counts = {
         "High": sum(1 for row in forecast_rows if row["risk_level"] == "High"),
@@ -581,14 +745,29 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
         "barangay_count": int(valid_df["barangay"].nunique()),
         "total_forecast_next_4_periods": int(total_forecast_next_4_periods),
         "risk_counts": risk_counts,
-        "validation_summary": validation_summary,
+        "validation_summary": {
+            **validation_summary,
+            "source_format": source_metadata.get("source_format", "standard_structured"),
+            "temporal_granularity": temporal_granularity,
+            "forecast_period_unit": period_unit,
+            "forecast_horizon_periods": 4,
+            "forecast_horizon_label": forecast_horizon_label,
+            "forecast_strategy": FORECAST_STRATEGY if used_machine_learning else "trend_projection_fallback",
+            "forecast_method": "direct_multi_step" if used_machine_learning else "trend_projection_fallback",
+        },
+        "source_format": source_metadata.get("source_format", "standard_structured"),
+        "temporal_granularity": temporal_granularity,
+        "forecast_period_unit": period_unit,
+        "forecast_horizon_periods": 4,
+        "forecast_horizon_label": forecast_horizon_label,
+        "source_metadata": source_metadata,
         "dengue_detection": dengue_detection,
         "cleaned_preview": make_json_safe_records(valid_df.head(25)),
         "forecast_results": forecast_rows,
         "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
         "model_name": f"auto_selected_{selected_model_key}",
         "model_display_name": selected_model_name,
-        "model_version": "v1",
+        "model_version": "v3-direct-multistep-granularity-aware",
         "is_machine_learning": bool(used_machine_learning),
         "model_metrics": model_metrics,
         "model_comparison": model_comparison,
@@ -597,6 +776,12 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
         "selection_confidence": model_metrics.get("selection_confidence"),
         "random_state": RANDOM_STATE,
         "train_test_split": TRAIN_TEST_SPLIT_LABEL,
+        "forecast_strategy": FORECAST_STRATEGY if used_machine_learning else "trend_projection_fallback",
+        "forecast_method": (
+            "Four horizon-specific direct models generate Periods 1 through 4 separately; their predictions are summed for cumulative risk classification."
+            if used_machine_learning
+            else "A four-period trend projection fallback was used because there were not enough model-ready records."
+        ),
     }
 
 async def generate_auto_ml_dengue_forecast(file: UploadFile):

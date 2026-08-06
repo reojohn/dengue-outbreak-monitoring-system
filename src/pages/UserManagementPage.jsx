@@ -37,6 +37,11 @@ import {
 } from '../services/api'
 import { getAuthSession } from '../utils/auth'
 
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('en-PH').format(Number(value || 0))
+}
+
 const roleOptions = [
   {
     value: 'cho',
@@ -135,7 +140,7 @@ function getRoleIconWrapClass(role) {
   return 'from-slate-600 to-slate-800 shadow-slate-500/20'
 }
 
-function StatusMessage({ type, children }) {
+function StatusMessage({ type = 'success', children }) {
   if (!children) return null
 
   const isError = type === 'error'
@@ -157,33 +162,68 @@ function StatusMessage({ type, children }) {
   )
 }
 
-function StatCard({ icon: Icon, label, value, helper, className = '' }) {
-  return (
-    <div
-      className={`relative overflow-hidden rounded-[20px] border border-white/70 bg-white/80 p-3 sm:rounded-[28px] sm:p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/60 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/70 dark:ring-white/5 ${className}`}
-    >
-      <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-cyan-300/20 blur-2xl dark:bg-cyan-500/10" />
+function StatCard({ icon: Icon, label, value, helper, tone = 'cyan', className = '' }) {
+  const themes = {
+    cyan: {
+      surface: 'border-cyan-200/70 bg-gradient-to-br from-cyan-50/95 via-white to-blue-50/80 dark:border-cyan-400/20 dark:from-cyan-500/10 dark:via-slate-950 dark:to-blue-500/5',
+      icon: 'from-cyan-400 to-blue-500 shadow-cyan-500/20',
+      line: 'from-cyan-500 via-sky-400 to-blue-500',
+      glow: 'bg-cyan-300/25 dark:bg-cyan-500/10',
+      meter: 'from-cyan-500 to-blue-500',
+    },
+    emerald: {
+      surface: 'border-emerald-200/70 bg-gradient-to-br from-emerald-50/95 via-white to-teal-50/80 dark:border-emerald-400/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5',
+      icon: 'from-emerald-400 to-teal-500 shadow-emerald-500/20',
+      line: 'from-emerald-500 via-teal-400 to-cyan-400',
+      glow: 'bg-emerald-300/25 dark:bg-emerald-500/10',
+      meter: 'from-emerald-500 to-teal-500',
+    },
+    blue: {
+      surface: 'border-blue-200/70 bg-gradient-to-br from-blue-50/95 via-white to-indigo-50/80 dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-indigo-500/5',
+      icon: 'from-blue-500 to-indigo-500 shadow-blue-500/20',
+      line: 'from-blue-500 via-indigo-400 to-cyan-400',
+      glow: 'bg-blue-300/25 dark:bg-blue-500/10',
+      meter: 'from-blue-500 to-indigo-500',
+    },
+    rose: {
+      surface: 'border-rose-200/70 bg-gradient-to-br from-rose-50/95 via-white to-orange-50/80 dark:border-rose-400/20 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5',
+      icon: 'from-rose-500 to-orange-500 shadow-rose-500/20',
+      line: 'from-rose-500 via-orange-400 to-amber-400',
+      glow: 'bg-rose-300/25 dark:bg-rose-500/10',
+      meter: 'from-rose-500 to-orange-500',
+    },
+  }
+  const theme = themes[tone] || themes.cyan
 
-      <div className="relative flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 sm:h-12 sm:w-12 items-center justify-center rounded-[14px] bg-gradient-to-br from-cyan-400 sm:rounded-[20px] to-blue-500 text-white shadow-[0_14px_30px_rgba(14,165,233,0.24)]">
-          <Icon className="h-5 w-5" />
+  return (
+    <article
+      className={`group relative min-h-[160px] overflow-hidden rounded-[24px] border p-4 shadow-[0_18px_48px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_68px_rgba(15,23,42,0.15)] dark:ring-white/5 sm:rounded-[30px] sm:p-5 ${theme.surface} ${className}`}
+    >
+      <div className={`pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${theme.glow}`} />
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
+      <div className="pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full border border-white/70 opacity-60 dark:border-white/5" />
+
+      <div className="relative flex h-full flex-col">
+        <div className="flex items-start justify-between gap-4">
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] bg-gradient-to-br text-white shadow-lg sm:h-12 sm:w-12 sm:rounded-[19px] ${theme.icon}`}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <span className="rounded-full border border-white/80 bg-white/[0.07]5 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm dark:border-white/5 dark:bg-white/5 dark:text-slate-400">
+            Live
+          </span>
         </div>
 
-        <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-            {label}
-          </p>
-          <p className="mt-1 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
-            {value}
-          </p>
-          {helper && (
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              {helper}
-            </p>
-          )}
+        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="mt-1 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white sm:text-3xl">{value}</p>
+
+        <div className="mt-auto pt-4">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/80 shadow-inner dark:bg-slate-800">
+            <div className={`h-full w-[72%] rounded-full bg-gradient-to-r ${theme.meter}`} />
+          </div>
+          {helper && <p className="mt-3 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-400">{helper}</p>}
         </div>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -299,7 +339,7 @@ function SearchableDropdown({
           }`}
         >
           <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
-          <div className="pointer-events-none absolute -bottom-12 left-6 h-28 w-28 rounded-full bg-blue-300/15 blur-3xl dark:bg-blue-500/10" />
+          <div className="pointer-events-none absolute -bottom-12 left-6 h-28 w-28 rounded-full bg-blue-300/[0.15] blur-3xl dark:bg-blue-500/10" />
 
           <div className="relative border-b border-slate-100 bg-gradient-to-br from-cyan-50 via-white to-slate-50 p-3 dark:border-slate-800 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
             <div className="relative">
@@ -579,10 +619,13 @@ export default function UserManagementPage() {
   const [form, setForm] = useState(initialForm)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [auditExpanded, setAuditExpanded] = useState(false)
 
   const activeCount = users.filter((user) => user.is_active !== false).length
   const bhwCount = users.filter((user) => user.role === 'bhw').length
   const inactiveCount = users.length - activeCount
+  const activeRate = users.length ? Math.round((activeCount / users.length) * 100) : 0
+  const roleCoverage = new Set(users.map((user) => user.role).filter(Boolean)).size
 
   const sortedUsers = useMemo(() => {
     const search = searchTerm.trim().toLowerCase()
@@ -747,55 +790,152 @@ export default function UserManagementPage() {
 
   return (
     <div className="user-mobile-compact space-y-6">
-      <section className="relative overflow-hidden rounded-[24px] border border-white/70 bg-gradient-to-br from-slate-950 via-[#0f2d4f] to-[#0ea5e9] p-4 text-white sm:rounded-[36px] sm:p-6 shadow-[0_28px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/20 sm:p-8">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-12 h-72 w-72 rounded-full bg-emerald-300/20 blur-3xl" />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.07)_1px,transparent_1px)] bg-[size:22px_22px] opacity-25" />
+      <section className="user-hero-panel relative isolate overflow-hidden rounded-[34px] border border-white/10 bg-[#061321] text-white shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_22%,rgba(34,211,238,0.23),transparent_27%),radial-gradient(circle_at_92%_92%,rgba(99,102,241,0.18),transparent_28%),linear-gradient(104deg,rgba(2,6,23,0.99)_0%,rgba(4,18,33,0.96)_48%,rgba(7,34,56,0.84)_100%)]" />
+          <div className="absolute inset-0 opacity-[0.14] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
+          <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
+          <div className="absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-violet-500/[0.15] blur-3xl" />
+          <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/55 to-transparent" />
+        </div>
 
-        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/30 bg-white/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-cyan-100 backdrop-blur">
-              <ShieldCheck className="h-4 w-4" />
-              Secure Administration
+        <div className="relative z-10 grid min-h-[450px] gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(330px,0.65fr)] lg:items-center lg:p-10 xl:p-12">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur-xl">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Identity and access command center
+              </span>
+              <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-100">
+                PostgreSQL secured
+              </span>
             </div>
 
-            <h1 className="mt-5 text-2xl font-black tracking-tight sm:text-5xl">
-              User Management
+            <h1 className="mt-6 max-w-3xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
+              Manage every account from one secure workspace.
             </h1>
 
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-cyan-50/85 sm:mt-4 sm:text-base sm:leading-7">
-              Create Supabase-backed user accounts, assign access levels, connect BHW users to barangays, reset passwords, and control active access for the dengue monitoring system.
+            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
+              Create authorized accounts, assign role-based access, connect BHW users to barangays, reset credentials, and review account activity without leaving the administration workspace.
             </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+  type="button"
+  onClick={loadAll}
+  disabled={loading}
+  style={{
+    backgroundColor: loading ? '#e2e8f0' : '#ffffff',
+    color: loading ? '#64748b' : '#0f172a',
+  }}
+  className="relative z-20 inline-flex items-center justify-center gap-2 rounded-[18px] border border-white px-4 py-2.5 text-xs font-black shadow-[0_16px_36px_rgba(2,6,23,0.22)] transition hover:-translate-y-0.5 hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-100 sm:rounded-[22px] sm:px-5 sm:py-3 sm:text-sm"
+>
+  {loading ? (
+    <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+  ) : (
+    <RefreshCcw className="h-4 w-4 text-slate-700" />
+  )}
+
+  <span>{loading ? 'Refreshing records...' : 'Refresh records'}</span>
+</button>
+              <button
+                type="button"
+                onClick={() => setAuditExpanded(true)}
+                className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[18px] border border-cyan-300/20 bg-cyan-300/10 px-5 py-3 text-sm font-black text-cyan-50 transition hover:-translate-y-0.5 hover:bg-cyan-300/[0.15]"
+              >
+                <Activity className="h-4 w-4" />
+                Open audit trail
+              </button>
+            </div>
+
+            <div className="user-hero-metrics mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Registered users', value: formatNumber(users.length), helper: 'All system accounts', icon: UsersRound },
+                { label: 'Active access', value: `${activeRate}%`, helper: `${activeCount} accounts enabled`, icon: UserCheck },
+                { label: 'Role coverage', value: `${roleCoverage}/5`, helper: 'Access groups represented', icon: Shield },
+              ].map((item) => {
+                const Icon = item.icon
+                return (
+                  <div key={item.label} className="group/hero-metric relative overflow-hidden rounded-[22px] border border-white/[0.15] bg-gradient-to-br from-white/[0.12] via-slate-950/[0.35] to-cyan-400/[0.07] p-4 shadow-[0_16px_36px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30">
+                    <div className="flex items-center gap-2 text-slate-300">
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="text-[9px] font-black uppercase tracking-[0.15em]">{item.label}</span>
+                    </div>
+                    <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">{item.value}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-400">{item.helper}</p>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={loadAll}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-[18px] border border-white/20 bg-white/12 px-4 py-2.5 text-xs sm:rounded-[22px] sm:px-5 sm:py-3 sm:text-sm font-black text-white shadow-[0_18px_40px_rgba(0,0,0,0.16)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-            Refresh records
-          </button>
+          <div className="w-full justify-self-end lg:max-w-[390px]">
+            <div className="group relative overflow-hidden rounded-[32px] border border-cyan-300/20 bg-gradient-to-br from-slate-950/80 via-slate-950/[0.66] to-cyan-950/[0.48] p-5 shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 sm:p-6">
+              <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-400/[0.12] blur-3xl" />
+
+              <div className="relative flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/70">Access health</p>
+                  <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-white">{activeRate}% active</h2>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">Current account availability</p>
+                </div>
+
+                <div
+                  className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(34,211,238,0.18)]"
+                  style={{ background: `conic-gradient(#22d3ee ${activeRate * 3.6}deg, rgba(255,255,255,0.10) 0deg)` }}
+                >
+                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
+                    <span className="text-2xl font-black leading-none">{activeCount}</span>
+                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">active</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative mt-5 grid grid-cols-2 gap-2.5">
+                <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Inactive</p>
+                  <p className="mt-1 text-lg font-black text-white">{inactiveCount}</p>
+                </div>
+                <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Audit events</p>
+                  <p className="mt-1 text-lg font-black text-white">{auditLogs.length}</p>
+                </div>
+              </div>
+
+              <div className="relative mt-5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-2.5 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500" style={{ width: `${activeRate}%` }} />
+              </div>
+
+              <p className="relative mt-4 text-xs font-semibold leading-5 text-slate-400">
+                Administrators can create, update, disable, reset, and remove accounts based on operational requirements.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={UsersRound} label="Total users" value={users.length} helper="All registered accounts" />
-        <StatCard icon={CheckCircle2} label="Active" value={activeCount} helper="Can sign in" />
-        <StatCard icon={UserCheck} label="BHW accounts" value={bhwCount} helper="Barangay-assigned users" />
-        <StatCard icon={AlertCircle} label="Inactive" value={inactiveCount} helper="Temporarily disabled" />
+      <div className="user-stat-grid grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={UsersRound} label="Total users" value={formatNumber(users.length)} helper="All registered accounts." tone="cyan" />
+        <StatCard icon={CheckCircle2} label="Active" value={formatNumber(activeCount)} helper="Accounts currently allowed to sign in." tone="emerald" />
+        <StatCard icon={UserCheck} label="BHW accounts" value={formatNumber(bhwCount)} helper="Users connected to barangay assignments." tone="blue" />
+        <StatCard icon={AlertCircle} label="Inactive" value={formatNumber(inactiveCount)} helper="Accounts temporarily disabled." tone="rose" />
       </div>
 
       <div className="relative z-[50] grid gap-6 xl:grid-cols-[0.85fr_1.45fr]">
         <form
           onSubmit={handleSubmit}
-          className="relative z-[80] overflow-visible rounded-[22px] border border-white/70 bg-white/90 p-4 sm:rounded-[34px] sm:p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5"
+          className="user-form-panel group relative z-[80] overflow-visible rounded-[24px] border border-cyan-200/70 bg-gradient-to-br from-white/95 via-white/90 to-cyan-50/70 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 backdrop-blur-xl dark:border-cyan-400/20 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-cyan-950/30 dark:ring-white/5 sm:rounded-[34px] sm:p-6"
         >
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-500" />
           <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
+          <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035]" />
 
           <div className="relative mb-3 flex items-center justify-between gap-3 sm:mb-5">
-            <div>
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] bg-gradient-to-br from-cyan-400 to-blue-500 text-white shadow-[0_14px_30px_rgba(14,165,233,0.24)]">
+                {editingUserId ? <Edit3 className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              </div>
+              <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
                 {editingUserId ? 'Edit Account' : 'Create Account'}
               </p>
@@ -807,6 +947,7 @@ export default function UserManagementPage() {
               <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6 dark:text-slate-400">
                 {editingUserId ? 'Modify account information and access status.' : 'Issue credentials for authorized system access.'}
               </p>
+              </div>
             </div>
 
             {editingUserId && (
@@ -933,30 +1074,32 @@ export default function UserManagementPage() {
           </div>
         </form>
 
-        <section className="relative z-[40] overflow-visible rounded-[22px] border border-white/70 bg-white/90 p-4 sm:rounded-[34px] sm:p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5">
+        <section className="user-list-panel group relative z-[40] overflow-visible rounded-[24px] border border-blue-200/70 bg-gradient-to-br from-white/95 via-white/90 to-blue-50/70 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 backdrop-blur-xl dark:border-blue-400/20 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-blue-950/30 dark:ring-white/5 sm:rounded-[34px] sm:p-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-400 to-cyan-400" />
           <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-blue-300/20 blur-3xl dark:bg-blue-500/10" />
+          <div className="pointer-events-none absolute inset-0 opacity-[0.02] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:36px_36px] dark:opacity-[0.035]" />
 
           <div className="relative mb-3 flex flex-col gap-3 sm:mb-5 sm:gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
-                Supabase Accounts
+                Local PostgreSQL Accounts
               </p>
               <h2 className="mt-2 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
                 Registered users
               </h2>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <div className="relative self-start">
+  <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-                <input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10 sm:w-64"
-                  placeholder="Search users..."
-                />
-              </div>
+  <input
+    value={searchTerm}
+    onChange={(event) => setSearchTerm(event.target.value)}
+    className="h-[50px] w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10 sm:w-64"
+    placeholder="Search users..."
+  />
+</div>
 
               <div className="relative z-[70] min-w-0 sm:w-[260px]">
                 <RoleFilterSelect
@@ -996,11 +1139,13 @@ export default function UserManagementPage() {
                   return (
                     <div
                       key={user.id}
-                      className="group relative overflow-hidden rounded-[20px] border border-slate-200 bg-white p-3 sm:rounded-[28px] sm:p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_20px_45px_rgba(15,23,42,0.10)] dark:border-slate-800 dark:bg-slate-900/80 dark:hover:border-cyan-400/25"
+                      className="group/user relative overflow-hidden rounded-[22px] border border-white/80 bg-gradient-to-br from-white via-white to-slate-50/80 p-3 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70 transition duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.13)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:ring-white/5 dark:hover:border-cyan-400/25 sm:rounded-[28px] sm:p-4"
                     >
-                      <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+                      <div className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${getRoleIconWrapClass(user.role)}`} />
+                      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/10 blur-3xl dark:bg-cyan-500/5" />
+                      <div className="relative flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
                         <div className="flex min-w-0 items-start gap-4">
-                          <div className="flex h-10 w-10 shrink-0 sm:h-14 sm:w-14 items-center justify-center rounded-[16px] bg-gradient-to-br from-slate-900 sm:rounded-[22px] to-blue-600 text-base font-black text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] dark:from-cyan-500 dark:to-blue-500">
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] bg-gradient-to-br text-base font-black text-white shadow-lg sm:h-14 sm:w-14 sm:rounded-[22px] ${getRoleIconWrapClass(user.role)}`}>
                             {String(user.full_name || user.email || 'U').slice(0, 1).toUpperCase()}
                           </div>
 
@@ -1101,51 +1246,88 @@ export default function UserManagementPage() {
         </section>
       </div>
 
-      <section className="relative z-0 overflow-hidden rounded-[22px] border border-white/70 bg-white/90 p-4 sm:rounded-[34px] sm:p-6 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/85 dark:ring-white/5">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-slate-300/20 blur-3xl dark:bg-blue-500/10" />
+      <section className="user-audit-panel group relative z-0 overflow-hidden rounded-[24px] border border-violet-200/70 bg-gradient-to-br from-white/95 via-white/90 to-violet-50/70 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 backdrop-blur-xl dark:border-violet-400/20 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-violet-950/25 dark:ring-white/5 sm:rounded-[34px]">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-indigo-400 to-cyan-400" />
+        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-violet-300/20 blur-3xl dark:bg-violet-500/10" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035]" />
 
-        <div className="relative mb-5 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-[20px] bg-gradient-to-br from-slate-800 to-slate-600 text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] dark:from-cyan-500 dark:to-blue-500">
-            <Activity className="h-5 w-5" />
-          </div>
+        <button
+          type="button"
+          onClick={() => setAuditExpanded((current) => !current)}
+          className="relative flex w-full items-center justify-between gap-4 p-4 text-left transition hover:bg-white/40 dark:hover:bg-white/[0.025] sm:p-6"
+          aria-expanded={auditExpanded}
+          aria-controls="user-audit-log-trail"
+        >
+          <span className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] bg-gradient-to-br from-violet-500 to-indigo-500 text-white shadow-[0_14px_30px_rgba(99,102,241,0.24)] sm:h-12 sm:w-12 sm:rounded-[20px]">
+              <Activity className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Audit log trail</span>
+              <span className="mt-1 block text-lg font-black tracking-tight text-slate-950 dark:text-white sm:text-xl">Recent account activity</span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                Review account creation, edits, access changes, password resets, and administrative activity.
+              </span>
+            </span>
+          </span>
 
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-              Audit Log
-            </p>
-            <h2 className="text-xl font-black text-slate-950 dark:text-white">
-              Recent account activity
-            </h2>
-          </div>
-        </div>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="hidden rounded-full border border-violet-200 bg-white/80 px-3 py-1.5 text-xs font-black text-violet-700 shadow-sm dark:border-violet-400/20 dark:bg-slate-950 dark:text-violet-300 sm:inline-flex">
+              {auditLogs.length} record{auditLogs.length === 1 ? '' : 's'}
+            </span>
+            <span className={`flex h-10 w-10 items-center justify-center rounded-full border transition duration-300 ${auditExpanded ? 'rotate-180 border-violet-300 bg-violet-500 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]' : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}>
+              <ChevronDown className="h-4 w-4" />
+            </span>
+          </span>
+        </button>
 
-        <div className="relative grid gap-3">
-          {auditLogs.length === 0 ? (
-            <p className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50 p-4 sm:rounded-[24px] sm:p-5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50">
-              No user audit records yet.
-            </p>
-          ) : (
-            auditLogs.slice(0, 8).map((log) => (
-              <div
-                key={log.id || `${log.action}-${log.created_at}`}
-                className="rounded-[18px] border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 sm:rounded-[24px] sm:p-4 text-sm shadow-sm dark:border-slate-800 dark:from-slate-900/80 dark:to-slate-950"
-              >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="font-black capitalize text-slate-900 dark:text-white">
-                    {String(log.action || '').replaceAll('_', ' ')}
-                  </p>
-                  <p className="text-xs font-semibold text-slate-500">
-                    {formatDate(log.created_at)}
-                  </p>
-                </div>
-
-                <p className="mt-1 text-slate-600 dark:text-slate-300">
-                  {log.details || 'Account activity recorded.'}
-                </p>
+        {auditExpanded && (
+          <div id="user-audit-log-trail" className="relative border-t border-violet-100/80 p-4 dark:border-violet-400/10 sm:p-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                <Clock3 className="h-4 w-4 text-violet-500" />
+                Latest recorded actions
               </div>
-            ))
-          )}
-        </div>
+              <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                Showing up to 10 events
+              </span>
+            </div>
+
+            <div className="user-audit-scroll relative grid max-h-[520px] gap-3 overflow-y-auto pr-1">
+              {auditLogs.length === 0 ? (
+                <div className="rounded-[22px] border border-dashed border-slate-300 bg-white/[0.07]0 p-7 text-center dark:border-slate-700 dark:bg-slate-900/50">
+                  <Activity className="mx-auto h-8 w-8 text-slate-400" />
+                  <p className="mt-3 text-sm font-black text-slate-700 dark:text-slate-200">No user audit records yet</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Account changes will appear here after administrators perform an action.</p>
+                </div>
+              ) : (
+                auditLogs.slice(0, 10).map((log, index) => (
+                  <article
+                    key={log.id || `${log.action}-${log.created_at}`}
+                    className="group/log relative overflow-hidden rounded-[22px] border border-white/80 bg-gradient-to-br from-white via-white to-violet-50/60 p-4 shadow-[0_10px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/60 transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_18px_40px_rgba(15,23,42,0.10)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-violet-950/20 dark:ring-white/5"
+                  >
+                    <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-violet-500 via-indigo-400 to-cyan-400" />
+                    <div className="flex items-start gap-3 pl-1">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-violet-500/10 text-xs font-black text-violet-700 ring-1 ring-violet-400/20 dark:text-violet-300">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="font-black capitalize text-slate-900 dark:text-white">{String(log.action || '').replace(/_/g, ' ')}</p>
+                          <p className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            {formatDate(log.created_at)}
+                          </p>
+                        </div>
+                        <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{log.details || 'Account activity recorded.'}</p>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
 
@@ -1195,18 +1377,80 @@ export default function UserManagementPage() {
             line-height: 1.35rem;
           }
 
+
+
+          .user-mobile-compact .user-hero-panel {
+            border-radius: 1.45rem !important;
+          }
+
+          .user-mobile-compact .user-hero-panel > .relative.grid {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            padding: 1rem !important;
+          }
+
+          .user-mobile-compact .user-hero-panel h1 {
+            font-size: 1.65rem !important;
+            line-height: 1.06 !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: .45rem !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics > div {
+            border-radius: 1rem !important;
+            padding: .65rem !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics p:last-child {
+            display: none !important;
+          }
+
+          .user-mobile-compact .user-stat-grid article {
+            min-height: 132px !important;
+            padding: .75rem !important;
+          }
+
+          .user-mobile-compact .user-audit-panel button {
+            padding: .9rem !important;
+          }
+
           .user-mobile-compact [class*="shadow-[0_24px_70px"],
           .user-mobile-compact [class*="shadow-[0_28px_80px"] {
             box-shadow: 0 14px 34px rgba(15,23,42,.12);
           }
         }
+
+        .user-audit-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(124, 58, 237, 0.72) transparent;
+          overscroll-behavior: contain;
+        }
+
+        .user-audit-scroll::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .user-audit-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .user-audit-scroll::-webkit-scrollbar-thumb {
+          border: 2px solid transparent;
+          border-radius: 999px;
+          background: linear-gradient(180deg, rgba(139, 92, 246, 0.9), rgba(59, 130, 246, 0.65));
+          background-clip: padding-box;
+        }
+
       `}</style>
 
       {resetUser && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <form
             onSubmit={handleResetPassword}
-            className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-white/10 bg-white p-4 sm:rounded-[34px] sm:p-6 shadow-2xl dark:bg-slate-950"
+            className="relative w-full max-w-md overflow-hidden rounded-[26px] border border-cyan-200/70 bg-gradient-to-br from-white via-white to-cyan-50 p-4 shadow-[0_34px_100px_rgba(2,6,23,0.45)] ring-1 ring-white/80 dark:border-cyan-400/20 dark:from-slate-950 dark:via-slate-950 dark:to-cyan-950/30 dark:ring-white/5 sm:rounded-[34px] sm:p-6"
           >
             <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
 
@@ -1267,4 +1511,3 @@ export default function UserManagementPage() {
     </div>
   )
 }
-``

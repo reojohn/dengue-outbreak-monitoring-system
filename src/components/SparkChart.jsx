@@ -14,7 +14,7 @@ function formatValue(value) {
 export default function SparkChart({
   values = [],
   labels = [],
-  title = 'Weekly dengue case values',
+  title = 'Dengue case values',
   emptyLabel = 'No chart data available yet',
   loading = false,
 }) {
@@ -46,7 +46,7 @@ export default function SparkChart({
 
     return {
       value,
-      label: labels[index] || `W${index + 1}`,
+      label: labels[index] || `P${index + 1}`,
       x,
       y,
     }

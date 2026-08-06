@@ -6,7 +6,9 @@ from sqlalchemy import text
 from app.database import engine
 from app.services.baseline_forecast import classify_forecast_risk
 from app.services.notification_state import (
+    clear_generated_hotspot_notifications,
     get_notification_events,
+    get_saved_hotspot_notifications,
     save_generated_notifications,
 )
 
@@ -104,6 +106,100 @@ def _format_names(rows, key="barangay", limit=3):
     return ", ".join(visible) + suffix
 
 
+def _forecast_risk_priority(value):
+    risk = _safe_text(value).lower()
+
+    if risk == "high":
+        return 3
+
+    if risk == "moderate":
+        return 2
+
+    if risk == "low":
+        return 1
+
+    return 0
+
+
+def _forecast_high_environment(row):
+    rainfall = _safe_number(row.get("average_rainfall"), 0)
+    temperature = _safe_number(row.get("average_temperature"), 0)
+    humidity = _safe_number(row.get("average_humidity"), 0)
+
+    scores = []
+
+    if rainfall > 0:
+        scores.append(3 if rainfall >= 10 else 2 if rainfall >= 4 else 1)
+
+    if temperature > 0:
+        if 24 <= temperature <= 32:
+            scores.append(3)
+        elif 20 <= temperature < 24 or 32 < temperature <= 35:
+            scores.append(2)
+        else:
+            scores.append(1)
+
+    if humidity > 0:
+        scores.append(3 if humidity >= 75 else 2 if humidity >= 60 else 1)
+
+    if not scores:
+        environment = _safe_text(row.get("environmental_suitability")).lower()
+        return "highly suitable" in environment or "high environmental" in environment
+
+    return round((sum(scores) / (len(scores) * 3)) * 100) >= 70
+
+
+def _forecast_response_priority(row):
+    risk = _safe_text(row.get("risk_level")).lower()
+    trend = _safe_text(row.get("trend_direction")).lower()
+    density_label = _safe_text(row.get("density_level")).lower()
+    density = _safe_number(row.get("density"), 0)
+    forecast = _safe_number(row.get("forecast_next_4_periods"), 0)
+
+    is_increasing = "increasing" in trend
+    is_high_environment = _forecast_high_environment(row)
+    is_dense = (
+        density >= 3000
+        or "very high" in density_label
+        or "high density" in density_label
+    )
+
+    if risk == "high" and (
+        is_increasing or is_high_environment or is_dense or forecast >= 60
+    ):
+        return 7
+
+    if risk == "high":
+        return 6
+
+    if risk == "moderate" and is_increasing and (is_high_environment or is_dense):
+        return 5
+
+    if risk == "moderate" and (is_increasing or is_high_environment):
+        return 4
+
+    if risk == "moderate":
+        return 3
+
+    if risk == "low" and (is_increasing or is_high_environment):
+        return 2
+
+    if risk == "low":
+        return 1
+
+    return 0
+
+
+def _forecast_priority_sort_key(row):
+    return (
+        -_forecast_risk_priority(row.get("risk_level")),
+        -_safe_number(row.get("combined_risk_score"), 0),
+        -_forecast_response_priority(row),
+        -_safe_number(row.get("forecast_next_4_periods"), 0),
+        _safe_text(row.get("barangay")).lower(),
+    )
+
+
 def _get_latest_forecast_from_database():
     try:
         with engine.connect() as connection:
@@ -125,7 +221,10 @@ def _get_latest_forecast_from_database():
                         completed_at,
                         created_by
                     from public.forecast_runs
-                    order by started_at desc
+                    where status = 'completed'
+                    order by
+                        coalesce(completed_at, started_at) desc,
+                        started_at desc
                     limit 1
                     """
                 )
@@ -152,12 +251,28 @@ def _get_latest_forecast_from_database():
                         forecast_next_4_periods,
                         risk_level,
                         risk_score,
+                        combined_risk_score,
+                        environmental_suitability,
+                        density_level,
+                        average_rainfall,
+                        average_temperature,
+                        average_humidity,
+                        density,
                         recommendation,
                         priority_rank,
                         created_at
                     from public.forecast_results
                     where forecast_run_id = :forecast_run_id
-                    order by priority_rank asc nulls last, forecast_next_4_periods desc
+                    order by
+                        case risk_level
+                            when 'High' then 3
+                            when 'Moderate' then 2
+                            when 'Low' then 1
+                            else 0
+                        end desc,
+                        combined_risk_score desc nulls last,
+                        forecast_next_4_periods desc,
+                        barangay asc
                     """
                 ),
                 {"forecast_run_id": run["forecast_run_id"]},
@@ -184,11 +299,24 @@ def _get_latest_forecast_from_database():
                 "forecast_next_4_periods": _safe_number(row["forecast_next_4_periods"], 0),
                 "risk_level": row["risk_level"],
                 "risk_score": _safe_number(row["risk_score"], 0),
+                "combined_risk_score": _safe_number(row["combined_risk_score"], 0),
+                "multi_source_risk_score": _safe_number(row["combined_risk_score"], 0),
+                "environmental_suitability": row["environmental_suitability"],
+                "density_level": row["density_level"],
+                "average_rainfall": _safe_number(row["average_rainfall"], 0),
+                "average_temperature": _safe_number(row["average_temperature"], 0),
+                "average_humidity": _safe_number(row["average_humidity"], 0),
+                "density": _safe_number(row["density"], 0),
                 "recommendation": row["recommendation"],
                 "priority_rank": row["priority_rank"],
                 "created_at": str(row["created_at"]) if row["created_at"] else None,
             }
         )
+
+    forecast_rows.sort(key=_forecast_priority_sort_key)
+
+    for index, row in enumerate(forecast_rows, start=1):
+        row["priority_rank"] = index
 
     return {
         "filename": "latest_saved_forecast_from_database",
@@ -673,17 +801,14 @@ def _merged_dataset_notifications(summary):
     return notifications
 
 
-def _hotspot_notifications():
-    try:
-        from app.services.geospatial_hotspot import build_geospatial_hotspots
-
-        result = build_geospatial_hotspots(radius_km=3.0, fallback_nearest_count=3)
-    except Exception:
+def _hotspot_notifications_from_result(result):
+    if not isinstance(result, dict):
         return []
 
     hotspots = result.get("hotspots") or []
     summary = result.get("summary") or {}
     level_counts = summary.get("level_counts") or {}
+    integration_run_id = result.get("integration_run_id")
     notifications = []
 
     confirmed_rows = [
@@ -719,6 +844,7 @@ def _hotspot_notifications():
                     "confirmed_hotspot_count": len(confirmed_rows),
                     "barangays": [row.get("barangay") for row in confirmed_rows],
                     "level_counts": level_counts,
+                    "integration_run_id": integration_run_id,
                     "data_source": result.get("data_source", "supabase_integrated_dataset_rows"),
                     "boundary_source": result.get("boundary_source", "supabase_postgis"),
                 },
@@ -742,6 +868,7 @@ def _hotspot_notifications():
                     "emerging_hotspot_count": len(emerging_rows),
                     "barangays": [row.get("barangay") for row in emerging_rows],
                     "level_counts": level_counts,
+                    "integration_run_id": integration_run_id,
                     "data_source": result.get("data_source", "supabase_integrated_dataset_rows"),
                     "boundary_source": result.get("boundary_source", "supabase_postgis"),
                 },
@@ -764,12 +891,24 @@ def _hotspot_notifications():
                 meta={
                     "review_count": len(review_rows),
                     "barangays": [row.get("barangay") for row in review_rows],
+                    "integration_run_id": integration_run_id,
                     "data_source": result.get("data_source", "supabase_integrated_dataset_rows"),
                     "boundary_source": result.get("boundary_source", "supabase_postgis"),
                 },
             )
         )
 
+    return notifications
+
+
+def save_hotspot_notifications(result):
+    """Replace cached alerts using an already-computed hotspot result."""
+    integration_run_id = result.get("integration_run_id") if isinstance(result, dict) else None
+    clear_generated_hotspot_notifications(integration_run_id)
+
+    notifications = _hotspot_notifications_from_result(result)
+    if notifications:
+        save_generated_notifications(notifications)
     return notifications
 
 
@@ -780,12 +919,22 @@ def build_backend_notifications():
 
     notifications = []
     notifications.extend(_forecast_notifications(forecast_result))
-    notifications.extend(_hotspot_notifications())
     notifications.extend(_source_quality_notifications(status))
     notifications.extend(_merged_dataset_notifications(integration_summary))
 
     save_generated_notifications(notifications)
 
+    latest_integration_run_id = (
+        integration_summary.get("integration_run_id")
+        if isinstance(integration_summary, dict)
+        else None
+    )
+    notifications.extend(
+        get_saved_hotspot_notifications(
+            integration_run_id=latest_integration_run_id,
+            limit=10,
+        )
+    )
     notifications.extend(get_notification_events(limit=10))
 
     if not notifications:
@@ -834,11 +983,11 @@ def build_backend_notifications():
             "uploads": "supabase_dataset_uploads",
             "forecast": "supabase_forecast_runs_and_results",
             "integration": "supabase_integrated_dataset_rows",
-            "hotspots": "supabase_integrated_dataset_rows_and_postgis_boundaries",
+            "hotspots": "cached_supabase_hotspot_notifications",
             "events": "supabase_notifications",
         },
         "notification_count": len(deduped),
         "unread_count": len([item for item in deduped if not item.get("read")]),
-        "persistence": "database-backed alerts generated from Supabase data and saved notification events",
+        "persistence": "database-backed alerts with cached hotspot notifications; notification polling does not recalculate hotspots",
         "notifications": deduped[:30],
     }

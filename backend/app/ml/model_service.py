@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ except Exception:  # Optional advanced model. The system still runs without it.
 from app.database import engine
 from app.services.baseline_forecast import classify_forecast_risk, get_recommendation, get_trend_direction
 from app.services.database_forecasts import save_forecast_result
+from app.services.temporal_granularity import infer_forecast_period_metadata
 
 
 FEATURE_COLUMNS = [
@@ -43,6 +44,11 @@ FEATURE_COLUMNS = [
     "population", "density",
 ]
 
+FORECAST_HORIZONS = (1, 2, 3, 4)
+TARGET_COLUMNS = [f"target_period_{horizon}" for horizon in FORECAST_HORIZONS]
+FORECAST_STRATEGY = "direct_multi_step"
+MODEL_VERSION = "v3-direct-multistep-granularity-aware"
+
 MODEL_DIR = Path(__file__).resolve().parent.parent / "trained_models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -50,6 +56,12 @@ RANDOM_STATE = 42
 TRAIN_RATIO = 0.8
 TEST_RATIO = 0.2
 TRAIN_TEST_SPLIT_LABEL = "80% / 20%"
+
+MODEL_READY_BARANGAY_STATUSES = {
+    "psgc_matched",
+    "exact_matched",
+    "auto_matched",
+}
 
 
 def _to_json(value: Any) -> str:
@@ -124,6 +136,9 @@ def _get_saved_model_run(integration_run_id: str):
     if not _is_saved_model_complete(row):
         return None
 
+    if str(row.get("model_version") or "") != MODEL_VERSION:
+        return None
+
     return row
 
 
@@ -151,6 +166,9 @@ def _saved_model_response(row):
         "random_state": RANDOM_STATE,
         "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "used_cached_model": True,
+        "forecast_strategy": (row["metrics"] or {}).get("forecast_strategy", FORECAST_STRATEGY),
+        "forecast_horizon_periods": int((row["metrics"] or {}).get("forecast_horizon_periods", len(FORECAST_HORIZONS))),
+        "model_version": row["model_version"],
     }
 
 
@@ -165,6 +183,7 @@ def _load_integrated_dataframe(integration_run_id=None):
         rows = connection.execute(text("""
             select
                 integration_run_id, barangay, barangay_key, period,
+                barangay_match_status, boundary_match_status,
                 year, month, week, cases,
                 rainfall, temperature, humidity,
                 population, density, boundary_area_sqkm
@@ -177,6 +196,31 @@ def _load_integrated_dataframe(integration_run_id=None):
         raise HTTPException(status_code=400, detail="The latest integrated dataset has no rows available.")
 
     return pd.DataFrame([dict(row) for row in rows]), str(integration_run_id)
+
+
+def _filter_model_ready_barangays(df: pd.DataFrame) -> pd.DataFrame:
+    """Exclude unresolved or boundary-unmatched locations from model training.
+
+    Review rows remain stored in PostgreSQL, but they must not become an
+    artificial barangay time series or an un-mappable forecast result.
+    """
+    working = df.copy()
+
+    if "barangay_match_status" in working.columns:
+        statuses = working["barangay_match_status"].fillna("").astype(str)
+        matched_mask = statuses.isin(MODEL_READY_BARANGAY_STATUSES)
+        working = working[matched_mask].copy()
+
+    if "boundary_match_status" in working.columns:
+        boundary_status = working["boundary_match_status"].fillna("").astype(str).str.lower()
+        working = working[boundary_status.ne("unmatched")].copy()
+
+    return working
+
+
+def _infer_forecast_period_metadata(df: pd.DataFrame) -> dict:
+    """Infer the reporting cadence from actual row spacing, not week presence."""
+    return infer_forecast_period_metadata(df)
 
 
 MODEL_DISPLAY_NAMES = {
@@ -285,6 +329,12 @@ def _is_saved_model_complete(row) -> bool:
     if not available_keys.issubset(comparison_keys):
         return False
 
+    metrics = row.get("metrics") or {}
+    if metrics.get("forecast_strategy") != FORECAST_STRATEGY:
+        return False
+    if int(metrics.get("forecast_horizon_periods") or 0) != len(FORECAST_HORIZONS):
+        return False
+
     # Runs created before the explainability upgrade do not contain per-model
     # feature importance, reproducibility fields, or training metadata. Mark
     # those cached rows as stale so the next automatic forecast writes complete
@@ -303,8 +353,12 @@ def _is_saved_model_complete(row) -> bool:
     return True
 
 
-def _prepare_ml_dataframe(df: pd.DataFrame):
-    working = df.copy()
+def _prepare_ml_dataframe(df: pd.DataFrame, period_metadata: dict | None = None):
+    working = _filter_model_ready_barangays(df)
+    period_metadata = period_metadata or _infer_forecast_period_metadata(working)
+
+    if period_metadata.get("forecast_period_unit") == "month":
+        working["week"] = 0
 
     for column in ["year", "month", "week", "cases", "rainfall", "temperature", "humidity", "population", "density", "boundary_area_sqkm"]:
         working[column] = pd.to_numeric(working.get(column), errors="coerce").fillna(0)
@@ -319,18 +373,23 @@ def _prepare_ml_dataframe(df: pd.DataFrame):
     for _, group_df in working.groupby("barangay_key"):
         barangay_df = group_df.sort_values(["year", "month", "week", "period"]).reset_index(drop=True)
 
-        barangay_df["lag_1"] = barangay_df["cases"].shift(1)
-        barangay_df["lag_2"] = barangay_df["cases"].shift(2)
-        barangay_df["lag_3"] = barangay_df["cases"].shift(3)
-        barangay_df["moving_average_3"] = barangay_df["cases"].shift(1).rolling(3).mean()
-        barangay_df["moving_average_6"] = barangay_df["cases"].shift(1).rolling(6).mean()
-        barangay_df["rolling_sum_3"] = barangay_df["cases"].shift(1).rolling(3).sum()
-        barangay_df["target_next_cases"] = barangay_df["cases"].shift(-1)
+        # The forecast origin is the current row. Therefore lag_1 must be the
+        # latest observed case count, lag_2 the preceding period, and so on.
+        # This matches how the live forecast input is constructed.
+        barangay_df["lag_1"] = barangay_df["cases"]
+        barangay_df["lag_2"] = barangay_df["cases"].shift(1)
+        barangay_df["lag_3"] = barangay_df["cases"].shift(2)
+        barangay_df["moving_average_3"] = barangay_df["cases"].rolling(3).mean()
+        barangay_df["moving_average_6"] = barangay_df["cases"].rolling(6).mean()
+        barangay_df["rolling_sum_3"] = barangay_df["cases"].rolling(3).sum()
+
+        for horizon in FORECAST_HORIZONS:
+            barangay_df[f"target_period_{horizon}"] = barangay_df["cases"].shift(-horizon)
 
         model_rows.append(barangay_df)
 
     ml_df = pd.concat(model_rows, ignore_index=True)
-    ml_df = ml_df.dropna(subset=FEATURE_COLUMNS + ["target_next_cases"])
+    ml_df = ml_df.dropna(subset=FEATURE_COLUMNS + TARGET_COLUMNS)
 
     if len(ml_df) < 30:
         raise HTTPException(status_code=400, detail=f"Not enough model-ready records. Found {len(ml_df)}.")
@@ -339,7 +398,8 @@ def _prepare_ml_dataframe(df: pd.DataFrame):
 
 
 def _risk_class_from_cases(cases):
-    return classify_forecast_risk(int(round(max(float(cases), 0))) * 4)
+    """Classify an already-cumulative four-period case total."""
+    return classify_forecast_risk(int(round(max(float(cases), 0))))
 
 
 def _evaluate_regression_as_risk(y_true, y_pred):
@@ -352,6 +412,32 @@ def _evaluate_regression_as_risk(y_true, y_pred):
         "recall": round(float(recall_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
         "f1_score": round(float(f1_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
     }
+
+
+def _average_feature_importance(models, feature_columns):
+    per_model = [_extract_feature_importance(model, feature_columns) for model in models]
+    totals = {feature: 0.0 for feature in feature_columns}
+    valid_count = 0
+
+    for items in per_model:
+        if not items:
+            continue
+        valid_count += 1
+        for item in items:
+            totals[item["feature"]] += float(item.get("importance") or 0)
+
+    if valid_count == 0:
+        return []
+
+    averaged = [
+        {
+            "feature": feature,
+            "label": _feature_label(feature),
+            "importance": round(totals[feature] / valid_count, 4),
+        }
+        for feature in feature_columns
+    ]
+    return sorted(averaged, key=lambda item: item["importance"], reverse=True)
 
 
 
@@ -456,15 +542,15 @@ def _selection_explanation(comparison):
     runner_up = comparison[1] if len(comparison) > 1 else None
 
     explanation = (
-        f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest RMSE "
+        f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest average four-horizon RMSE "
         f"({best.get('rmse', 'N/A')}) and MAE ({best.get('mae', 'N/A')}) among the evaluated machine learning models. "
-        "Lower RMSE and MAE indicate smaller forecasting errors, so the system automatically used this model for the dengue forecast."
+        "Each candidate was evaluated separately for Periods 1 through 4, and lower average RMSE and MAE indicate smaller multi-step forecasting errors."
     )
 
     if runner_up:
         explanation += (
             f" The next closest model was {runner_up.get('model_name', 'the runner-up model')} "
-            f"with RMSE {runner_up.get('rmse', 'N/A')} and MAE {runner_up.get('mae', 'N/A')}."
+            f"with average RMSE {runner_up.get('rmse', 'N/A')} and MAE {runner_up.get('mae', 'N/A')}."
         )
 
     return explanation
@@ -491,6 +577,8 @@ def _training_summary(training_result: dict, model_run_id: str | None = None, in
         "evaluated_at": training_result.get("evaluated_at"),
         "selection_confidence": confidence,
         "selection_explanation": _selection_explanation(comparison),
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
     }
 
 def _train_and_select_model(ml_df: pd.DataFrame):
@@ -507,37 +595,69 @@ def _train_and_select_model(ml_df: pd.DataFrame):
         test_df = train_df.tail(test_size)
         train_df = train_df.iloc[:-test_size]
 
+    if train_df.empty or test_df.empty:
+        raise HTTPException(status_code=400, detail="Not enough records for direct multi-step model testing.")
+
     x_train = train_df[FEATURE_COLUMNS]
-    y_train = train_df["target_next_cases"]
     x_test = test_df[FEATURE_COLUMNS]
-    y_test = test_df["target_next_cases"]
 
     comparison = []
-    trained_models = {}
 
-    for model_key, model in _candidate_models().items():
+    for model_key in _candidate_models().keys():
         model_started = time.perf_counter()
-        model.fit(x_train, y_train)
-        predictions = np.maximum(model.predict(x_test), 0)
+        horizon_models = []
+        horizon_metrics = []
+        predicted_matrix = []
+        actual_matrix = []
+
+        for horizon, target_column in zip(FORECAST_HORIZONS, TARGET_COLUMNS):
+            model = _candidate_models()[model_key]
+            y_train = train_df[target_column]
+            y_test = test_df[target_column]
+
+            model.fit(x_train, y_train)
+            predictions = np.maximum(model.predict(x_test), 0)
+
+            mae = mean_absolute_error(y_test, predictions)
+            rmse = mean_squared_error(y_test, predictions) ** 0.5
+            try:
+                r2 = r2_score(y_test, predictions)
+            except Exception:
+                r2 = 0
+
+            horizon_metrics.append({
+                "horizon": horizon,
+                "target_column": target_column,
+                "mae": round(float(mae), 4),
+                "rmse": round(float(rmse), 4),
+                "r2": round(float(r2), 4),
+            })
+            horizon_models.append(model)
+            predicted_matrix.append(predictions)
+            actual_matrix.append(np.asarray(y_test, dtype=float))
+
+        predicted_matrix = np.vstack(predicted_matrix).T
+        actual_matrix = np.vstack(actual_matrix).T
+        predicted_totals = predicted_matrix.sum(axis=1)
+        actual_totals = actual_matrix.sum(axis=1)
         model_duration = time.perf_counter() - model_started
 
-        mae = mean_absolute_error(y_test, predictions)
-        rmse = mean_squared_error(y_test, predictions) ** 0.5
-
-        try:
-            r2 = r2_score(y_test, predictions)
-        except Exception:
-            r2 = 0
-
-        feature_importance = _extract_feature_importance(model, FEATURE_COLUMNS)
+        average_mae = float(np.mean([item["mae"] for item in horizon_metrics]))
+        average_rmse = float(np.mean([item["rmse"] for item in horizon_metrics]))
+        average_r2 = float(np.mean([item["r2"] for item in horizon_metrics]))
 
         comparison.append({
             "model_key": model_key,
             "model_name": _model_display_name(model_key),
-            "mae": round(float(mae), 4),
-            "rmse": round(float(rmse), 4),
-            "r2": round(float(r2), 4),
-            **_evaluate_regression_as_risk(y_test, predictions),
+            "mae": round(average_mae, 4),
+            "rmse": round(average_rmse, 4),
+            "r2": round(average_r2, 4),
+            "cumulative_mae": round(float(mean_absolute_error(actual_totals, predicted_totals)), 4),
+            "cumulative_rmse": round(float(mean_squared_error(actual_totals, predicted_totals) ** 0.5), 4),
+            **_evaluate_regression_as_risk(actual_totals, predicted_totals),
+            "horizon_metrics": horizon_metrics,
+            "forecast_strategy": FORECAST_STRATEGY,
+            "forecast_horizon_periods": len(FORECAST_HORIZONS),
             "status": "evaluated",
             "random_state": RANDOM_STATE,
             "train_test_split": TRAIN_TEST_SPLIT_LABEL,
@@ -547,41 +667,59 @@ def _train_and_select_model(ml_df: pd.DataFrame):
             "testing_row_count": int(len(test_df)),
             "training_duration_seconds": round(float(model_duration), 4),
             "evaluated_at": evaluated_at,
-            "feature_importance": feature_importance,
+            "feature_importance": _average_feature_importance(horizon_models, FEATURE_COLUMNS),
         })
-        trained_models[model_key] = model
 
-    comparison = sorted(comparison, key=lambda item: (item["rmse"], item["mae"]))
+    comparison = sorted(comparison, key=lambda item: (item["rmse"], item["mae"], item["cumulative_rmse"]))
     best = {
         **comparison[0],
         "selection_confidence": _selection_confidence(comparison),
         "selection_explanation": _selection_explanation(comparison),
     }
 
-    final_model = _candidate_models()[best["model_key"]]
     final_started = time.perf_counter()
-    final_model.fit(ml_df[FEATURE_COLUMNS], ml_df["target_next_cases"])
-    final_duration = time.perf_counter() - final_started
+    final_models = []
+    feature_importance_by_horizon = {}
 
-    final_feature_importance = _extract_feature_importance(final_model, FEATURE_COLUMNS)
+    for horizon, target_column in zip(FORECAST_HORIZONS, TARGET_COLUMNS):
+        model = _candidate_models()[best["model_key"]]
+        model.fit(ml_df[FEATURE_COLUMNS], ml_df[target_column])
+        final_models.append(model)
+        feature_importance_by_horizon[str(horizon)] = _extract_feature_importance(model, FEATURE_COLUMNS)
+
+    final_duration = time.perf_counter() - final_started
+    final_feature_importance = _average_feature_importance(final_models, FEATURE_COLUMNS)
     best["feature_importance"] = final_feature_importance or best.get("feature_importance", [])
+    best["feature_importance_by_horizon"] = feature_importance_by_horizon
     best["final_training_duration_seconds"] = round(float(final_duration), 4)
+
+    model_artifact = {
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
+        "feature_columns": FEATURE_COLUMNS,
+        "models": final_models,
+        "model_key": best["model_key"],
+        "model_name": best["model_name"],
+    }
 
     total_duration = time.perf_counter() - training_started
 
     return {
         "best": best,
         "comparison": comparison,
-        "model": final_model,
+        "model": model_artifact,
         "train_count": len(train_df),
         "test_count": len(test_df),
         "feature_importance": best.get("feature_importance", []),
+        "feature_importance_by_horizon": feature_importance_by_horizon,
         "feature_importance_by_model": {
             item["model_key"]: item.get("feature_importance", [])
             for item in comparison
         },
         "total_duration_seconds": round(float(total_duration), 4),
         "evaluated_at": evaluated_at,
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
     }
 
 def _save_model_run(training_result: dict, integration_run_id: str):
@@ -606,7 +744,7 @@ def _save_model_run(training_result: dict, integration_run_id: str):
             "integration_run_id": integration_run_id,
             "best_model_key": best["model_key"],
             "best_model_name": best["model_name"],
-            "model_version": "v1",
+                "model_version": MODEL_VERSION,
             "status": "completed",
             "training_row_count": training_result["train_count"],
             "testing_row_count": training_result["test_count"],
@@ -626,13 +764,17 @@ def _save_model_run(training_result: dict, integration_run_id: str):
         "integration_run_id": integration_run_id,
         "best_model_key": best["model_key"],
         "best_model_name": best["model_name"],
-        "model_version": "v1",
+        "model_version": MODEL_VERSION,
         "metrics": best,
         "model_metrics": best,
         "model_comparison": training_result["comparison"],
         "feature_columns": FEATURE_COLUMNS,
         "feature_importance": training_result["feature_importance"],
         "feature_importance_by_model": training_result.get("feature_importance_by_model", {}),
+        "feature_importance_by_horizon": training_result.get("feature_importance_by_horizon", {}),
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
+        **(training_result.get("period_metadata") or {}),
         "training_summary": _training_summary(training_result, model_run_id, integration_run_id),
         "selection_explanation": _selection_explanation(training_result.get("comparison") or []),
         "selection_confidence": _selection_confidence(training_result.get("comparison") or []),
@@ -647,16 +789,34 @@ def _save_model_run(training_result: dict, integration_run_id: str):
     return model_run_id
 
 
-def train_latest_model(force_retrain=False):
-    _, integration_run_id = _load_integrated_dataframe()
+def train_latest_model(
+    force_retrain=False,
+    dataframe=None,
+    integration_run_id=None,
+):
+    integration_run_id = integration_run_id or _get_latest_integration_run_id()
 
+    if not integration_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No integrated dataset found. Please upload and combine the datasets first.",
+        )
+
+    integration_run_id = str(integration_run_id)
     saved_row = _get_saved_model_run(integration_run_id)
     if saved_row and not force_retrain:
         return _saved_model_response(saved_row)
 
-    df, integration_run_id = _load_integrated_dataframe(integration_run_id)
-    ml_df = _prepare_ml_dataframe(df)
+    if dataframe is None:
+        dataframe, integration_run_id = _load_integrated_dataframe(integration_run_id)
+
+    period_metadata = _infer_forecast_period_metadata(dataframe)
+    ml_df = _prepare_ml_dataframe(dataframe, period_metadata)
     training_result = _train_and_select_model(ml_df)
+    training_result["period_metadata"] = period_metadata
+    training_result["best"].update(period_metadata)
+    for comparison_item in training_result.get("comparison", []):
+        comparison_item.update(period_metadata)
     model_run_id = _save_model_run(training_result, integration_run_id)
 
     return {
@@ -677,24 +837,37 @@ def train_latest_model(force_retrain=False):
         "training_row_count": training_result["train_count"],
         "testing_row_count": training_result["test_count"],
         "used_cached_model": False,
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
+        "model_version": MODEL_VERSION,
     }
 
 
 def evaluate_latest_model():
-    _, integration_run_id = _load_integrated_dataframe()
-    saved_row = _get_saved_model_run(integration_run_id)
+    integration_run_id = _get_latest_integration_run_id()
+
+    if not integration_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No integrated dataset found. Please upload and combine the datasets first.",
+        )
+
+    saved_row = _get_saved_model_run(str(integration_run_id))
 
     if saved_row:
         return _saved_model_response(saved_row)
 
-    return train_latest_model()
+    return train_latest_model(integration_run_id=str(integration_run_id))
 
 
-def _load_model_and_metadata(integration_run_id: str):
+def _load_model_and_metadata(integration_run_id: str, dataframe=None):
     saved_row = _get_saved_model_run(integration_run_id)
 
     if not saved_row:
-        training_response = train_latest_model()
+        training_response = train_latest_model(
+            dataframe=dataframe,
+            integration_run_id=integration_run_id,
+        )
         saved_row = _get_saved_model_run(integration_run_id)
 
         if not saved_row:
@@ -720,18 +893,81 @@ def _load_model_and_metadata(integration_run_id: str):
         "random_state": RANDOM_STATE,
         "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "used_cached_model": True,
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_horizon_periods": len(FORECAST_HORIZONS),
     }
 
 
-def forecast_with_latest_model():
-    df, integration_run_id = _load_integrated_dataframe()
-    artifact = _load_model_and_metadata(integration_run_id)
+def _future_period_label(latest_row, horizon: int, period_unit: str) -> str:
+    def safe_int(value):
+        number = _to_float(value, 0)
+        if pd.isna(number) or not np.isfinite(number):
+            return 0
+        return int(number)
 
-    model = artifact["model"]
+    year = safe_int(latest_row.get("year"))
+    month = safe_int(latest_row.get("month"))
+    week = safe_int(latest_row.get("week"))
+
+    if period_unit == "month" and year > 0 and 1 <= month <= 12:
+        month_index = (year * 12 + (month - 1)) + horizon
+        future_year, future_month_zero = divmod(month_index, 12)
+        future_month = future_month_zero + 1
+        return datetime(future_year, future_month, 1).strftime("%B %Y")
+
+    if period_unit == "week" and year > 0 and 1 <= week <= 53:
+        try:
+            future_date = datetime.fromisocalendar(year, week, 1) + timedelta(weeks=horizon)
+            iso_year, iso_week, _ = future_date.isocalendar()
+            return f"{iso_year}-W{iso_week:02d}"
+        except ValueError:
+            pass
+
+    return f"Period {horizon}"
+
+
+def forecast_with_latest_model(
+    dataframe=None,
+    integration_run_id=None,
+    artifact=None,
+):
+    if dataframe is None:
+        dataframe, integration_run_id = _load_integrated_dataframe(integration_run_id)
+    elif not integration_run_id:
+        integration_run_id = _get_latest_integration_run_id()
+
+    if not integration_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No integrated dataset found. Please upload and combine the datasets first.",
+        )
+
+    df = dataframe
+    integration_run_id = str(integration_run_id)
+    period_metadata = _infer_forecast_period_metadata(df)
+    artifact = artifact or _load_model_and_metadata(
+        integration_run_id,
+        dataframe=df,
+    )
+
+    model_artifact = artifact["model"]
     best = artifact["best"]
     model_run_id = artifact["model_run_id"]
 
-    working = df.copy()
+    if not isinstance(model_artifact, dict) or model_artifact.get("forecast_strategy") != FORECAST_STRATEGY:
+        raise HTTPException(
+            status_code=500,
+            detail="The saved model is not a direct multi-step artifact. Retrain the latest model before forecasting.",
+        )
+
+    horizon_models = model_artifact.get("models") or []
+    if len(horizon_models) != len(FORECAST_HORIZONS):
+        raise HTTPException(status_code=500, detail="The saved direct multi-step model does not contain all four horizon models.")
+
+    working = _filter_model_ready_barangays(df)
+
+    if period_metadata.get("forecast_period_unit") == "month":
+        working["week"] = 0
 
     for column in ["year", "month", "week", "cases", "rainfall", "temperature", "humidity", "population", "density", "boundary_area_sqkm"]:
         working[column] = pd.to_numeric(working.get(column), errors="coerce").fillna(0)
@@ -774,8 +1010,20 @@ def forecast_with_latest_model():
             "density": _to_float(latest_row["density"]),
         }])[FEATURE_COLUMNS]
 
-        forecast_next_period = int(round(max(float(model.predict(prediction_input)[0]), 0)))
-        forecast_next_4_periods = forecast_next_period * 4
+        horizon_values = [
+            int(round(max(float(horizon_model.predict(prediction_input)[0]), 0)))
+            for horizon_model in horizon_models
+        ]
+        forecast_next_period = horizon_values[0]
+        forecast_next_4_periods = int(sum(horizon_values))
+        forecast_period_predictions = [
+            {
+                "horizon": horizon,
+                "period": _future_period_label(latest_row, horizon, period_metadata["forecast_period_unit"]),
+                "predicted_cases": int(value),
+            }
+            for horizon, value in zip(FORECAST_HORIZONS, horizon_values)
+        ]
         risk_level = classify_forecast_risk(forecast_next_4_periods)
         trend_direction = get_trend_direction(recent_average, previous_average)
 
@@ -790,6 +1038,11 @@ def forecast_with_latest_model():
             "trend_direction": trend_direction,
             "forecast_next_period": forecast_next_period,
             "forecast_next_4_periods": forecast_next_4_periods,
+            "forecast_period_predictions": forecast_period_predictions,
+            "forecast_strategy": FORECAST_STRATEGY,
+            "forecast_period_unit": period_metadata["forecast_period_unit"],
+            "forecast_horizon_periods": period_metadata["forecast_horizon_periods"],
+            "forecast_horizon_label": period_metadata["forecast_horizon_label"],
             "risk_level": risk_level,
             "recommendation": get_recommendation(risk_level, trend_direction),
             "model_used": best.get("model_name", "Auto-selected model"),
@@ -824,12 +1077,16 @@ def forecast_with_latest_model():
         "validation_summary": {
             "source": "latest integrated dataset",
             "generated_at": datetime.utcnow().isoformat(),
+            "forecast_strategy": FORECAST_STRATEGY,
+            "forecast_method": "direct_multi_step",
+            **period_metadata,
         },
+        **period_metadata,
         "forecast_results": forecast_rows,
         "invalid_preview": [],
         "model_name": f"auto_selected_{best.get('model_key', 'model')}",
         "model_display_name": best.get("model_name", "Auto-selected model"),
-        "model_version": "v1",
+        "model_version": MODEL_VERSION,
         "is_machine_learning": True,
         "model_metrics": best,
         "model_comparison": artifact["comparison"],
@@ -842,6 +1099,8 @@ def forecast_with_latest_model():
         "train_test_split": TRAIN_TEST_SPLIT_LABEL,
         "model_run_id": model_run_id,
         "used_cached_model": artifact["used_cached_model"],
+        "forecast_strategy": FORECAST_STRATEGY,
+        "forecast_method": "Four horizon-specific direct models generate Periods 1 through 4 separately; their predictions are summed for cumulative risk classification.",
     }
 
     database_forecast = save_forecast_result(
@@ -856,8 +1115,36 @@ def forecast_with_latest_model():
 
 
 def auto_run_latest_model():
-    training_result = train_latest_model()
-    forecast_result = forecast_with_latest_model()
+    integration_run_id = _get_latest_integration_run_id()
+
+    if not integration_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No integrated dataset found. Please upload and combine the datasets first.",
+        )
+
+    integration_run_id = str(integration_run_id)
+    saved_row = _get_saved_model_run(integration_run_id)
+    dataframe = None
+
+    if saved_row:
+        training_result = _saved_model_response(saved_row)
+    else:
+        dataframe, integration_run_id = _load_integrated_dataframe(integration_run_id)
+        training_result = train_latest_model(
+            dataframe=dataframe,
+            integration_run_id=integration_run_id,
+        )
+
+    if dataframe is None:
+        dataframe, integration_run_id = _load_integrated_dataframe(integration_run_id)
+
+    artifact = _load_model_and_metadata(integration_run_id)
+    forecast_result = forecast_with_latest_model(
+        dataframe=dataframe,
+        integration_run_id=integration_run_id,
+        artifact=artifact,
+    )
 
     forecast_result["auto_run"] = {
         "message": "Automatic model training, evaluation, and forecasting completed.",
@@ -875,9 +1162,10 @@ def get_latest_metrics():
         row = connection.execute(text("""
             select *
             from public.model_training_runs
+            where model_version = :model_version
             order by created_at desc
             limit 1
-        """)).mappings().first()
+        """), {"model_version": MODEL_VERSION}).mappings().first()
 
     if not row:
         return {

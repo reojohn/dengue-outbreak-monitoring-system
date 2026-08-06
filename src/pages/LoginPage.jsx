@@ -23,6 +23,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { loginUser } from '../services/api'
 import { getAuthSession, getRoleHome } from '../utils/auth'
+import dengueBackground from '../assets/dengue.png'
 
 const items = [
   {
@@ -362,7 +363,19 @@ export default function LoginPage() {
       </button>
 
       <div className="relative grid w-full max-w-6xl grid-cols-1 overflow-hidden rounded-[34px] border border-white/10 bg-white/5 shadow-2xl backdrop-blur-2xl animate-slideIn lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden min-h-[690px] flex-col justify-center overflow-hidden bg-white/5 p-10 text-white lg:flex xl:p-12">
+        <section
+          className="relative hidden min-h-[690px] flex-col justify-center overflow-hidden p-10 text-white lg:flex xl:p-12"
+          style={{
+            backgroundImage: `url(${dengueBackground})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(2,12,30,0.34)_0%,rgba(3,17,43,0.48)_30%,rgba(4,20,50,0.68)_68%,rgba(2,8,23,0.86)_100%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,rgba(34,211,238,0.10),transparent_34%),radial-gradient(circle_at_50%_78%,rgba(37,99,235,0.12),transparent_38%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-slate-950/10" />
+
           {scanStage > 0 && (
             <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.16)_1px,transparent_1px)] bg-[size:18px_18px] opacity-25 animate-pulse" />
           )}
@@ -370,14 +383,14 @@ export default function LoginPage() {
           <div className="absolute left-1/2 top-10 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
 
           <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-slate-950/45 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-cyan-100 shadow-[0_10px_28px_rgba(2,6,23,0.24)] backdrop-blur-md">
               <Radar className="h-3.5 w-3.5" />
               Secure Access
             </div>
 
             <div className="mt-8 flex justify-center">
               <div
-                className={`relative flex h-52 w-52 items-center justify-center rounded-full border ${currentRoleVisual.ring} ${currentRoleVisual.bg} shadow-[0_0_70px_rgba(34,211,238,0.16)] transition-all duration-300`}
+                className={`relative flex h-52 w-52 items-center justify-center rounded-full border ${currentRoleVisual.ring} ${currentRoleVisual.bg} bg-slate-950/28 shadow-[0_0_70px_rgba(34,211,238,0.18),0_18px_42px_rgba(2,6,23,0.34)] backdrop-blur-sm transition-all duration-300`}
               >
                 <div className={`absolute inset-4 rounded-full border ${currentRoleVisual.ring}`} />
                 <div className={`absolute inset-8 rounded-full border ${currentRoleVisual.ring}`} />
@@ -410,12 +423,12 @@ export default function LoginPage() {
 
             {!isSigningIn && (
               <>
-                <h1 className="mt-8 text-center text-4xl font-black leading-tight tracking-tight xl:text-[46px]">
-                  Barangay-Level Dengue Outbreak Prevention System
+                <h1 className="mt-8 text-center text-4xl font-black leading-tight tracking-tight text-white drop-shadow-[0_5px_20px_rgba(2,6,23,0.95)] xl:text-[46px]">
+                  Barangay-Level Dengue Outbreak Response System
                 </h1>
 
-                <p className="mx-auto mt-5 max-w-md text-center text-base leading-8 text-slate-300">
-                  Secure prototype access for dengue data upload, risk forecasting, GIS hotspot mapping, and monitoring reports.
+                <p className="mx-auto mt-5 max-w-md text-center text-base font-medium leading-8 text-slate-100 drop-shadow-[0_3px_12px_rgba(2,6,23,0.95)]">
+                  Secure access for dengue data upload, predictive forecasting, GIS hotspot mapping, decision support, and response coordination.
                 </p>
               </>
             )}
@@ -428,7 +441,7 @@ export default function LoginPage() {
                   return (
                     <div
                       key={item.title}
-                      className="rounded-[24px] border border-white/10 bg-white/5 p-4 backdrop-blur"
+                      className="rounded-[24px] border border-cyan-300/15 bg-slate-950/48 p-4 shadow-[0_16px_42px_rgba(2,6,23,0.28)] ring-1 ring-white/5 backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-slate-950/58"
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-300">
@@ -440,7 +453,7 @@ export default function LoginPage() {
                             {item.title}
                           </p>
 
-                          <p className="mt-1 text-sm leading-6 text-slate-400">
+                          <p className="mt-1 text-sm leading-6 text-slate-200/85">
                             {item.description}
                           </p>
                         </div>
@@ -453,7 +466,7 @@ export default function LoginPage() {
 
             {roleHint && (
               <div
-                className={`mx-auto mt-7 w-fit rounded-full border px-4 py-2 text-sm animate-fade ${getRoleBadgeStyle(roleHint)}`}
+                className={`mx-auto mt-7 w-fit rounded-full border px-4 py-2 text-sm shadow-[0_12px_30px_rgba(2,6,23,0.32)] backdrop-blur-md animate-fade ${getRoleBadgeStyle(roleHint)}`}
               >
                 SELECTED ROLE:{' '}
                 <b>{getRoleLabel(roleHint).toUpperCase()}</b>

@@ -20,7 +20,13 @@ import {
   Radar,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
-import { riskStyles } from '../utils/analytics'
+import {
+  compareCanonicalBarangayPriority,
+  computeDecisionSupport,
+  getCanonicalCombinedRiskScore,
+  riskStyles,
+} from '../utils/analytics'
+import DecisionActionTracker from '../components/DecisionActionTracker'
 import aiGif from '../assets/ai.gif'
 
 function formatNumber(value) {
@@ -49,26 +55,7 @@ function getModelName(result) {
 }
 
 function getRowScore(row) {
-  const rawScore =
-    row?.score ??
-    row?.riskScore ??
-    row?.risk_score ??
-    row?.riskPercent ??
-    row?.risk_percentage ??
-    row?.priorityScore ??
-    row?.priority_score
-
-  const score = Number(rawScore)
-
-  if (Number.isFinite(score) && score > 0) {
-    return score <= 1 ? score * 100 : score
-  }
-
-  if (row?.risk === 'High') return 90
-  if (row?.risk === 'Moderate') return 60
-  if (row?.risk === 'Low') return 30
-
-  return 0
+  return getCanonicalCombinedRiskScore(row)
 }
 
 function getRowCases(row) {
@@ -85,293 +72,453 @@ function getRowCases(row) {
   )
 }
 
+
+function normalizeSavedRisk(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+
+  if (normalized === 'high') return 'High'
+  if (normalized === 'moderate') return 'Moderate'
+  if (normalized === 'low') return 'Low'
+
+  return 'Low'
+}
+
+function buildSavedForecastRows(backendForecastResult = null) {
+  const backendRows = Array.isArray(backendForecastResult?.forecast_results)
+    ? backendForecastResult.forecast_results
+    : []
+
+  return backendRows.map((row) => {
+    const forecast = Number(
+      row?.forecast_next_4_periods ??
+        row?.forecasted_cases ??
+        row?.predicted_cases ??
+        row?.forecast ??
+        0
+    )
+
+    const risk = normalizeSavedRisk(row?.risk_level ?? row?.risk)
+    const combinedRiskScore = getCanonicalCombinedRiskScore(row)
+    const trendDirection = row?.trend_direction || row?.trend || 'Stable'
+
+    const rowData = {
+      ...row,
+      barangay: row?.barangay || 'Unspecified barangay',
+      risk,
+      score: combinedRiskScore,
+      riskScore: combinedRiskScore,
+      combinedRiskScore,
+      combined_risk_score: combinedRiskScore,
+      multiSourceRiskScore: combinedRiskScore,
+      multi_source_risk_score: combinedRiskScore,
+      forecast,
+      forecastedCases: forecast,
+      predictedCases: forecast,
+      currentCases: Number(row?.forecast_next_period || 0),
+      previousCases: Number(row?.previous_average_cases || 0),
+      totalCases: Number(row?.historical_total_cases || 0),
+      trend: trendDirection,
+      trendLabel: trendDirection,
+      trendDirection,
+      population: Number(row?.population || 0),
+      density: Number(row?.density || 0),
+      averageRainfall: Number(row?.average_rainfall || 0),
+      averageTemperature: Number(row?.average_temperature || 0),
+      averageHumidity: Number(row?.average_humidity || 0),
+      environmentalSuitability: row?.environmental_suitability || '',
+      rainfallPressure: row?.rainfall_pressure || '',
+      temperatureSuitability: row?.temperature_suitability || '',
+      humiditySuitability: row?.humidity_suitability || '',
+      populationExposure: row?.population_exposure || '',
+      densityLevel: row?.density_level || '',
+      riskComponents: row?.risk_components || {},
+      priorityRank: Number(row?.priority_rank || 0),
+      priority_rank: Number(row?.priority_rank || 0),
+    }
+
+    const decisionSupport = computeDecisionSupport(rowData)
+
+    return {
+      ...rowData,
+      responsePriority: decisionSupport.priority,
+      decisionScore: decisionSupport.score,
+      decisionSupport: {
+        ...decisionSupport,
+        summary:
+          row?.recommendation ||
+          decisionSupport.summary,
+        multiSourceRiskScore: combinedRiskScore,
+        riskScore: combinedRiskScore,
+      },
+    }
+  })
+}
+
+function sortSupervisorRows(rows = []) {
+  return [...rows]
+    .sort(compareCanonicalBarangayPriority)
+    .map((row, index) => ({
+      ...row,
+      priorityRank: index + 1,
+      priority_rank: index + 1,
+      canonicalPriorityRank: index + 1,
+    }))
+}
+
 function getTopPriority(rows) {
-  return rows.find((row) => row.risk === 'High') || rows[0] || null
+  return rows[0] || null
 }
 
 function getRiskTone(risk) {
   if (risk === 'High') {
     return {
-      label: 'Priority Response',
+      label: 'Priority response',
+      status: 'Immediate intervention required',
       icon: ShieldAlert,
       gradient: 'from-rose-500 via-red-500 to-orange-400',
-      soft: 'from-rose-50 via-white to-orange-50 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/10',
+      line: 'from-rose-600 via-orange-400 to-amber-300',
+      surface:
+        'border-rose-300/70 bg-gradient-to-br from-rose-50/95 via-white to-orange-50/75 dark:border-rose-400/25 dark:from-rose-500/[0.12] dark:via-slate-950 dark:to-orange-500/5',
+      heroSurface: 'from-[#16070e] via-[#250a13] to-[#3b121b]',
+      heroCard: 'from-[#14060c]/95 via-[#220a12]/92 to-[#3a111a]/78',
       text: 'text-rose-600 dark:text-rose-300',
-      border: 'border-rose-200 dark:border-rose-500/25',
-      chip: 'border-rose-300/50 bg-rose-500/10 text-rose-700 dark:text-rose-200',
+      chip:
+        'border-rose-300/70 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/[0.12] dark:text-rose-100',
+      glow: 'bg-rose-500/[0.20]',
+      ring: '#f43f5e',
     }
   }
 
   if (risk === 'Moderate') {
     return {
-      label: 'Watch Closely',
+      label: 'Watch closely',
+      status: 'Preventive monitoring advised',
       icon: AlertTriangle,
       gradient: 'from-amber-400 via-orange-400 to-yellow-300',
-      soft: 'from-amber-50 via-white to-yellow-50 dark:from-amber-500/10 dark:via-slate-950 dark:to-yellow-500/10',
+      line: 'from-amber-600 via-orange-400 to-yellow-300',
+      surface:
+        'border-amber-300/70 bg-gradient-to-br from-amber-50/95 via-white to-yellow-50/75 dark:border-amber-400/25 dark:from-amber-500/[0.12] dark:via-slate-950 dark:to-yellow-500/5',
+      heroSurface: 'from-[#170e06] via-[#281507] to-[#3d2608]',
+      heroCard: 'from-[#140b05]/95 via-[#231305]/92 to-[#3d2608]/78',
       text: 'text-amber-600 dark:text-amber-300',
-      border: 'border-amber-200 dark:border-amber-500/25',
-      chip: 'border-amber-300/50 bg-amber-500/10 text-amber-700 dark:text-amber-200',
+      chip:
+        'border-amber-300/70 bg-amber-50 text-amber-700 dark:border-amber-400/25 dark:bg-amber-500/[0.12] dark:text-amber-100',
+      glow: 'bg-amber-500/[0.20]',
+      ring: '#f59e0b',
     }
   }
 
   return {
-    label: 'Stable Monitoring',
+    label: 'Stable monitoring',
+    status: 'Routine surveillance',
     icon: CheckCircle2,
     gradient: 'from-emerald-400 via-teal-400 to-cyan-300',
-    soft: 'from-emerald-50 via-white to-cyan-50 dark:from-emerald-500/10 dark:via-slate-950 dark:to-cyan-500/10',
+    line: 'from-emerald-600 via-teal-400 to-cyan-300',
+    surface:
+      'border-emerald-300/70 bg-gradient-to-br from-emerald-50/95 via-white to-teal-50/75 dark:border-emerald-400/25 dark:from-emerald-500/[0.12] dark:via-slate-950 dark:to-teal-500/5',
+    heroSurface: 'from-[#06150f] via-[#082018] to-[#0b3529]',
+    heroCard: 'from-[#05130f]/95 via-[#08211a]/92 to-[#0c372b]/78',
     text: 'text-emerald-600 dark:text-emerald-300',
-    border: 'border-emerald-200 dark:border-emerald-500/25',
-    chip: 'border-emerald-300/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200',
+    chip:
+      'border-emerald-300/70 bg-emerald-50 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-500/[0.12] dark:text-emerald-100',
+    glow: 'bg-emerald-500/[0.20]',
+    ring: '#10b981',
   }
 }
 
-function StatCard({ icon: Icon, label, value, helper, tone = 'blue' }) {
-  const tones = {
-    rose: 'from-rose-500/12 via-white to-orange-500/10 text-rose-500 dark:via-slate-900',
-    amber: 'from-amber-500/12 via-white to-yellow-500/10 text-amber-500 dark:via-slate-900',
-    emerald: 'from-emerald-500/12 via-white to-cyan-500/10 text-emerald-500 dark:via-slate-900',
-    blue: 'from-blue-500/12 via-white to-cyan-500/10 text-blue-500 dark:via-slate-900',
+function getVisualTheme(tone = 'blue') {
+  const themes = {
+    blue: {
+      surface:
+        'border-blue-200/70 bg-gradient-to-br from-blue-50/95 via-white to-cyan-50/75 dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5',
+      icon:
+        'border-blue-200 bg-white text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200',
+      line: 'from-blue-600 via-cyan-400 to-sky-300',
+      glow: 'bg-blue-400/20',
+      meter: 'from-blue-600 via-sky-400 to-cyan-300',
+    },
+    rose: {
+      surface:
+        'border-rose-200/70 bg-gradient-to-br from-rose-50/95 via-white to-orange-50/75 dark:border-rose-400/20 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5',
+      icon:
+        'border-rose-200 bg-white text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200',
+      line: 'from-rose-600 via-orange-400 to-amber-300',
+      glow: 'bg-rose-400/20',
+      meter: 'from-rose-600 via-orange-400 to-amber-300',
+    },
+    amber: {
+      surface:
+        'border-amber-200/70 bg-gradient-to-br from-amber-50/95 via-white to-orange-50/75 dark:border-amber-400/20 dark:from-amber-500/10 dark:via-slate-950 dark:to-orange-500/5',
+      icon:
+        'border-amber-200 bg-white text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200',
+      line: 'from-amber-600 via-orange-400 to-yellow-300',
+      glow: 'bg-amber-400/20',
+      meter: 'from-amber-600 via-orange-400 to-yellow-300',
+    },
+    emerald: {
+      surface:
+        'border-emerald-200/70 bg-gradient-to-br from-emerald-50/95 via-white to-teal-50/75 dark:border-emerald-400/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5',
+      icon:
+        'border-emerald-200 bg-white text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200',
+      line: 'from-emerald-600 via-teal-400 to-cyan-300',
+      glow: 'bg-emerald-400/20',
+      meter: 'from-emerald-600 via-teal-400 to-cyan-300',
+    },
+    indigo: {
+      surface:
+        'border-indigo-200/70 bg-gradient-to-br from-indigo-50/95 via-white to-blue-50/75 dark:border-indigo-400/20 dark:from-indigo-500/10 dark:via-slate-950 dark:to-blue-500/5',
+      icon:
+        'border-indigo-200 bg-white text-indigo-700 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-200',
+      line: 'from-indigo-600 via-blue-400 to-cyan-300',
+      glow: 'bg-indigo-400/20',
+      meter: 'from-indigo-600 via-blue-400 to-cyan-300',
+    },
+    slate: {
+      surface:
+        'border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-white to-blue-50/60 dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/20',
+      icon:
+        'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
+      line: 'from-slate-600 via-blue-400 to-transparent',
+      glow: 'bg-slate-400/15',
+      meter: 'from-slate-600 via-blue-400 to-cyan-300',
+    },
   }
 
-  return (
-    <div className="group relative overflow-hidden rounded-[30px] border border-white/80 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:shadow-[0_26px_60px_rgba(15,23,42,0.14)] dark:border-slate-800 dark:bg-slate-900">
-      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${tones[tone] || tones.blue} opacity-100`} />
-      <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/50 blur-2xl dark:bg-sky-500/10" />
+  return themes[tone] || themes.blue
+}
 
-      <div className="relative">
-        <div className="flex items-start justify-between gap-3">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-[20px] bg-white shadow-sm ring-1 ring-slate-200/70 ${tones[tone] || tones.blue} dark:bg-slate-950 dark:ring-slate-700`}>
-            <Icon className="h-5 w-5" />
+function SectionBadge({ icon: Icon = Sparkles, children, tone = 'blue' }) {
+  const theme = getVisualTheme(tone)
+
+  return (
+    <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.17em] shadow-sm ${theme.icon}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {children}
+    </div>
+  )
+}
+
+function PremiumPanel({ children, tone = 'blue', className = '' }) {
+  const theme = getVisualTheme(tone)
+
+  return (
+    <section className={`group relative overflow-hidden rounded-[34px] border p-6 shadow-[0_22px_68px_rgba(15,23,42,0.08)] ring-1 ring-white/80 backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_30px_82px_rgba(15,23,42,0.13)] dark:ring-white/5 ${theme.surface} ${className}`}>
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
+      <div className={`pointer-events-none absolute -right-24 -top-24 h-60 w-60 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-110 ${theme.glow}`} />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035] dark:[background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)]" />
+      <div className="relative z-[1]">{children}</div>
+    </section>
+  )
+}
+
+function StatCard({ icon: Icon, label, value, helper, tone = 'blue', percent = 72 }) {
+  const theme = getVisualTheme(tone)
+
+  return (
+    <article className={`group relative min-h-[190px] overflow-hidden rounded-[30px] border p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)] ring-1 ring-white/75 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_68px_rgba(15,23,42,0.15)] dark:ring-white/5 ${theme.surface}`}>
+      <div className={`pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${theme.glow}`} />
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
+      <div className="pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full border border-white/70 opacity-60 dark:border-white/5" />
+
+      <div className="relative flex h-full flex-col">
+        <div className="flex items-start justify-between gap-4">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-[0_12px_28px_rgba(15,23,42,0.08)] ${theme.icon}`}>
+            <Icon className="h-5 w-5" strokeWidth={2.25} />
           </div>
 
-          <span className="rounded-full border border-white/70 bg-white/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-400">
+          <span className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm dark:border-white/5 dark:bg-white/5 dark:text-slate-400">
             Live
           </span>
         </div>
 
-        <p className="mt-4 text-sm font-black text-brand-muted dark:text-slate-400">
-          {label}
-        </p>
+        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="mt-1 text-3xl font-black tracking-[-0.05em] text-slate-950 dark:text-white">{value}</p>
 
-        <p className="mt-1 text-3xl font-black tracking-tight text-brand-text dark:text-white">
-          {value}
-        </p>
+        <div className="mt-auto pt-4">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/80 shadow-inner dark:bg-slate-800">
+            <div className={`h-full rounded-full bg-gradient-to-r ${theme.meter}`} style={{ width: `${Math.max(6, Math.min(100, percent))}%` }} />
+          </div>
+          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-400">{helper}</p>
+        </div>
+      </div>
+    </article>
+  )
+}
 
-        <p className="mt-2 text-xs font-bold leading-5 text-brand-muted dark:text-slate-400">
-          {helper}
-        </p>
+function ActionLink({ to, icon: Icon, title, helper, tone = 'blue' }) {
+  const theme = getVisualTheme(tone)
+
+  return (
+    <Link to={to} className={`group relative overflow-hidden rounded-[28px] border p-5 shadow-[0_16px_42px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.14)] dark:ring-white/5 ${theme.surface}`}>
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
+      <div className={`pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${theme.glow}`} />
+
+      <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border shadow-sm ${theme.icon}`}>
+        <Icon className="h-5 w-5" />
       </div>
 
+      <h3 className="mt-4 text-lg font-black tracking-tight text-brand-text dark:text-white">{title}</h3>
+      <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">{helper}</p>
 
-      <style>{`
-        @media (max-width: 639px) {
-          .supervisor-mobile-compact {
-            --sv-card-radius: 20px;
-            --sv-card-pad: 0.85rem;
-          }
+      <span className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white/75 text-slate-500 shadow-sm transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+        <ArrowUpRight className="h-4 w-4" />
+      </span>
+    </Link>
+  )
+}
 
-          .supervisor-mobile-compact > * + * {
-            margin-top: 0.9rem !important;
-          }
+function SupervisorPageStyles() {
+  return (
+    <style>{`
+      .supervisor-table-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(56, 189, 248, 0.85) rgba(15, 23, 42, 0.08);
+      }
 
-          .supervisor-hero-panel,
-          .supervisor-ai-panel,
-          .supervisor-ranking-panel,
-          .supervisor-priority-panel,
-          .supervisor-reminder-panel {
-            border-radius: 22px !important;
-            padding: 0.9rem !important;
-          }
+      .supervisor-table-scroll::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
 
-          .supervisor-hero-panel h1 {
-            margin-top: 0.75rem !important;
-            font-size: 1.55rem !important;
-            line-height: 1.12 !important;
-          }
+      .supervisor-table-scroll::-webkit-scrollbar-track {
+        border-radius: 999px;
+        background: rgba(226, 232, 240, 0.65);
+      }
 
-          .supervisor-hero-panel p,
-          .supervisor-ai-panel p,
-          .supervisor-ranking-panel p,
-          .supervisor-priority-panel p,
-          .supervisor-reminder-panel p {
-            line-height: 1.45 !important;
-          }
+      .supervisor-table-scroll::-webkit-scrollbar-thumb {
+        border: 2px solid rgba(241, 245, 249, 0.85);
+        border-radius: 999px;
+        background: linear-gradient(180deg, #67e8f9, #2563eb);
+        box-shadow: 0 0 18px rgba(14, 165, 233, 0.30);
+      }
 
-          .supervisor-hero-metrics {
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-            gap: 0.5rem !important;
-          }
+      html.dark .supervisor-table-scroll::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.75);
+      }
 
-          .supervisor-hero-metrics > div {
-            border-radius: 16px !important;
-            padding: 0.65rem !important;
-            min-width: 0 !important;
-          }
+      html.dark .supervisor-table-scroll::-webkit-scrollbar-thumb {
+        border-color: rgba(15, 23, 42, 0.9);
+      }
 
-          .supervisor-hero-metrics p:first-child,
-          .supervisor-ai-fields p:first-child,
-          .supervisor-stat-grid p:first-of-type {
-            font-size: 0.56rem !important;
-            letter-spacing: 0.09em !important;
-          }
-
-          .supervisor-hero-metrics p:nth-child(2) {
-            font-size: 1.15rem !important;
-            line-height: 1.15 !important;
-          }
-
-          .supervisor-hero-metrics p:last-child {
-            display: none !important;
-          }
-
-          .supervisor-hero-panel .rounded-[32px] {
-            border-radius: 20px !important;
-            padding: 0.85rem !important;
-          }
-
-          .supervisor-hero-panel .rounded-[32px] h2 {
-            font-size: 1.15rem !important;
-            line-height: 1.2 !important;
-          }
-
-          .supervisor-hero-panel .rounded-[32px] .h-14.w-14 {
-            height: 2.5rem !important;
-            width: 2.5rem !important;
-            border-radius: 16px !important;
-          }
-
-          .supervisor-ai-panel .h-24.w-24,
-          .supervisor-ai-panel .sm\:h-28.sm\:w-28 {
-            height: 4.5rem !important;
-            width: 4.5rem !important;
-            border-radius: 18px !important;
-          }
-
-          .supervisor-ai-panel h2 {
-            font-size: 1.25rem !important;
-            line-height: 1.2 !important;
-          }
-
-          .supervisor-ai-fields {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 0.55rem !important;
-          }
-
-          .supervisor-ai-fields > div {
-            border-radius: 16px !important;
-            padding: 0.65rem !important;
-          }
-
-          .supervisor-ai-fields p:last-child {
-            font-size: 0.92rem !important;
-          }
-
-          .supervisor-stat-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 0.65rem !important;
-          }
-
-          .supervisor-stat-grid > div {
-            border-radius: 20px !important;
-            padding: 0.75rem !important;
-            min-height: 132px !important;
-          }
-
-          .supervisor-stat-grid .h-12.w-12 {
-            height: 2.35rem !important;
-            width: 2.35rem !important;
-            border-radius: 14px !important;
-          }
-
-          .supervisor-stat-grid p:nth-of-type(2) {
-            font-size: 1.55rem !important;
-            line-height: 1.1 !important;
-          }
-
-          .supervisor-stat-grid p:nth-of-type(3) {
-            margin-top: 0.35rem !important;
-            font-size: 0.68rem !important;
-            line-height: 1.35 !important;
-          }
-
-          .supervisor-ranking-panel h2,
-          .supervisor-priority-panel h2 {
-            font-size: 1.15rem !important;
-            line-height: 1.2 !important;
-          }
-
-          .supervisor-ranking-panel .h-12.w-12,
-          .supervisor-priority-panel .h-12.w-12 {
-            height: 2.4rem !important;
-            width: 2.4rem !important;
-            border-radius: 14px !important;
-          }
-
-          .supervisor-table-scroll {
-            max-height: 360px !important;
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-          }
-
-          .supervisor-table-scroll table {
-            min-width: 660px !important;
-            font-size: 0.75rem !important;
-          }
-
-          .supervisor-table-scroll th,
-          .supervisor-table-scroll td {
-            padding: 0.55rem 0.65rem !important;
-          }
-
-          .supervisor-priority-panel .space-y-3 > p {
-            border-radius: 16px !important;
-            padding: 0.75rem !important;
-            font-size: 0.78rem !important;
-            line-height: 1.45 !important;
-          }
-
-          .supervisor-action-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-            gap: 0.55rem !important;
-          }
-
-          .supervisor-action-grid > a {
-            border-radius: 18px !important;
-            padding: 0.75rem !important;
-            min-height: 126px !important;
-          }
-
-          .supervisor-action-grid svg.mb-3 {
-            margin-bottom: 0.45rem !important;
-            height: 1.2rem !important;
-            width: 1.2rem !important;
-          }
-
-          .supervisor-action-grid p {
-            display: none !important;
-          }
-
-          .supervisor-action-grid div {
-            font-size: 0.72rem !important;
-            line-height: 1.25 !important;
-            align-items: flex-start !important;
-          }
-
-          .supervisor-reminder-panel {
-            padding: 0.85rem !important;
-          }
-
-          .supervisor-reminder-panel h3 {
-            font-size: 1rem !important;
-          }
-
-          .supervisor-reminder-panel p {
-            margin-top: 0.5rem !important;
-            font-size: 0.78rem !important;
-          }
+      @media (max-width: 639px) {
+        .supervisor-mobile-compact,
+        .supervisor-mobile-compact * {
+          min-width: 0;
         }
-      `}</style>
-    </div>
+
+        .supervisor-mobile-compact {
+          width: 100%;
+          max-width: 100vw;
+          overflow-x: hidden;
+        }
+
+        .supervisor-mobile-compact > * + * {
+          margin-top: 0.9rem !important;
+        }
+
+        .supervisor-hero-panel {
+          border-radius: 22px !important;
+        }
+
+        .supervisor-hero-panel > .relative.grid {
+          min-height: auto !important;
+          grid-template-columns: minmax(0, 1fr) !important;
+          gap: 0.85rem !important;
+          padding: 0.9rem !important;
+        }
+
+        .supervisor-hero-panel h1 {
+          margin-top: 0.8rem !important;
+          font-size: 1.55rem !important;
+          line-height: 1.08 !important;
+        }
+
+        .supervisor-hero-panel p {
+          font-size: 0.76rem !important;
+          line-height: 1.4 !important;
+        }
+
+        .supervisor-hero-metrics {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          gap: 0.45rem !important;
+        }
+
+        .supervisor-hero-metrics > div {
+          border-radius: 15px !important;
+          padding: 0.55rem !important;
+        }
+
+        .supervisor-hero-metrics p:first-child {
+          font-size: 0.62rem !important;
+          letter-spacing: 0.08em !important;
+        }
+
+        .supervisor-hero-metrics p:nth-child(2) {
+          font-size: 1rem !important;
+        }
+
+        .supervisor-stat-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 0.65rem !important;
+        }
+
+        .supervisor-stat-grid > article {
+          min-height: 150px !important;
+          border-radius: 20px !important;
+          padding: 0.75rem !important;
+        }
+
+        .supervisor-ai-panel,
+        .supervisor-ranking-panel,
+        .supervisor-priority-panel,
+        .supervisor-reminder-panel {
+          border-radius: 22px !important;
+          padding: 0.9rem !important;
+        }
+
+        .supervisor-ai-panel .ai-visual {
+          height: 4.7rem !important;
+          width: 4.7rem !important;
+          border-radius: 18px !important;
+        }
+
+        .supervisor-table-scroll {
+          max-height: 380px !important;
+          overflow-x: auto !important;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .supervisor-table-scroll table {
+          min-width: 720px !important;
+          font-size: 0.75rem !important;
+        }
+
+        .supervisor-table-scroll th,
+        .supervisor-table-scroll td {
+          padding: 0.6rem 0.65rem !important;
+        }
+
+        .supervisor-action-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          gap: 0.55rem !important;
+        }
+
+        .supervisor-action-grid > a {
+          min-height: 126px !important;
+          border-radius: 18px !important;
+          padding: 0.75rem !important;
+        }
+
+        .supervisor-action-grid p {
+          display: none !important;
+        }
+
+        .supervisor-action-grid h3 {
+          font-size: 0.76rem !important;
+          line-height: 1.25 !important;
+        }
+      }
+    `}</style>
   )
 }
 
@@ -383,9 +530,17 @@ export default function SupervisorPage() {
     backendForecastResult,
   } = useData()
 
+  const savedForecastRows = useMemo(() => {
+    return buildSavedForecastRows(backendForecastResult)
+  }, [backendForecastResult])
+
+  const displayRows = savedForecastRows.length > 0
+    ? savedForecastRows
+    : riskRows
+
   const sortedRows = useMemo(() => {
-    return [...riskRows].sort((a, b) => getRowScore(b) - getRowScore(a))
-  }, [riskRows])
+    return sortSupervisorRows(displayRows)
+  }, [displayRows])
 
   const highRows = sortedRows.filter((row) => row.risk === 'High')
   const moderateRows = sortedRows.filter((row) => row.risk === 'Moderate')
@@ -403,263 +558,280 @@ export default function SupervisorPage() {
   const averageScore = totalBarangays
     ? Math.round(sortedRows.reduce((sum, row) => sum + getRowScore(row), 0) / totalBarangays)
     : 0
+  const topScore = Math.max(0, Math.min(100, Math.round(getRowScore(topPriority || {}))))
+  const totalProjectedCases = sortedRows.reduce((sum, row) => sum + Number(getRowCases(row) || 0), 0)
+  const analysisReady = modelName !== 'No forecast method selected yet'
+  const topThree = sortedRows.slice(0, 3)
 
   return (
-    <div className="supervisor-mobile-compact space-y-6">
-      <section className="supervisor-hero-panel relative overflow-hidden rounded-[38px] border border-white/80 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6 text-white shadow-[0_28px_80px_rgba(15,23,42,0.26)] ring-1 ring-white/10">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 left-10 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
+    <div className="supervisor-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(99,102,241,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-7 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(99,102,241,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
+      <section className="supervisor-hero-panel relative isolate overflow-hidden rounded-[38px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.32)] ring-1 ring-white/10 sm:rounded-[40px]">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+          <div className="absolute inset-0 bg-[linear-gradient(112deg,#020617_0%,#061321_48%,#0b1f34_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_24%,rgba(56,189,248,0.16),transparent_27%),radial-gradient(circle_at_94%_92%,rgba(59,130,246,0.13),transparent_28%)]" />
+          <div className="absolute inset-0 opacity-[0.12] [background-image:linear-gradient(rgba(255,255,255,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.07)_1px,transparent_1px)] [background-size:42px_42px]" />
+          <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
+        </div>
 
-        <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr] xl:items-center">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
-              <Radar className="h-3.5 w-3.5" />
-              Supervisor Command Review
+        <div className="relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(330px,0.62fr)] lg:items-center lg:p-10 xl:min-h-[550px] xl:p-12">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur-xl">
+                <Radar className="h-3.5 w-3.5" />
+                Supervisor command center
+              </span>
+
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.07] px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-slate-200 backdrop-blur-xl">
+                <span className={`h-2 w-2 rounded-full ${analysisReady ? 'bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]' : 'bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.9)]'}`} />
+                {analysisReady ? 'Analysis online' : 'Awaiting forecast'}
+              </span>
             </div>
 
-            <h1 className="mt-5 max-w-4xl text-3xl font-black tracking-tight sm:text-4xl">
-              City-Wide Dengue Situation Review
+            <h1 className="mt-6 max-w-3xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
+              City-wide dengue oversight for faster coordinated decisions.
             </h1>
 
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">
-              Supervisor workspace for reviewing barangay risk levels, checking forecast readiness,
-              identifying high-priority areas, and supporting resource allocation decisions.
+            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
+              Review barangay risk levels, forecast readiness, response assignments, and resource priorities from one coordinated supervisor workspace.
             </p>
 
-            <div className="supervisor-hero-metrics mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Barangays</p>
-                <p className="mt-1 text-2xl font-black">{formatNumber(totalBarangays)}</p>
-              </div>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                to="#response-action-center"
+                style={{
+                  backgroundColor: '#ffffff',
+                  color: '#0f172a',
+                }}
+                className="relative z-20 inline-flex items-center justify-center gap-2 rounded-2xl border border-white px-5 py-3 text-sm font-black shadow-[0_14px_34px_rgba(255,255,255,0.18)] transition duration-200 hover:-translate-y-0.5 hover:brightness-95"
+              >
+                Review response actions
+                <ClipboardCheck className="h-4 w-4 text-slate-700" />
+              </Link>
 
-              <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Avg. Score</p>
-                <p className="mt-1 text-2xl font-black">{averageScore}/100</p>
-              </div>
+              <Link to="/map" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/[0.15] bg-white/[0.08] px-5 py-3 text-sm font-black text-white shadow-lg backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/[0.14]">
+                Open hotspot map
+                <MapPinned className="h-4 w-4" />
+              </Link>
+            </div>
 
-              <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50">Data Sources</p>
-                <p className="mt-1 text-2xl font-black">{readySources}/4</p>
-              </div>
+            <div className="supervisor-hero-metrics mt-7 grid max-w-2xl gap-3 sm:grid-cols-4">
+              {[
+                { label: 'Barangays', value: formatNumber(totalBarangays), icon: Users },
+                { label: 'Average score', value: `${averageScore}/100`, icon: Activity },
+                { label: 'Ready sources', value: `${readySources}/4`, icon: Database },
+                { label: 'Projected cases', value: formatNumber(totalProjectedCases || dashboardStats?.fourWeekForecast || 0), icon: TrendingUp },
+              ].map((item) => {
+                const Icon = item.icon
+
+                return (
+                  <div key={item.label} className="group/hero-metric relative overflow-hidden rounded-[22px] border border-white/[0.15] bg-gradient-to-br from-white/[0.12] via-slate-950/[0.35] to-cyan-400/[0.07] p-4 shadow-[0_16px_36px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30">
+                    <div className="flex items-center gap-2 text-slate-300">
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="text-[9px] font-black uppercase tracking-[0.15em]">{item.label}</span>
+                    </div>
+                    <p className="mt-2 text-xl font-black tracking-[-0.04em] text-white">{item.value}</p>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
-          <div className={`relative overflow-hidden rounded-[32px] border ${topTone.border} bg-gradient-to-br ${topTone.soft} p-5 text-brand-text shadow-[0_22px_60px_rgba(15,23,42,0.20)] dark:text-white`}>
-            <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-white/40 blur-3xl dark:bg-cyan-400/10" />
+          <div className="w-full self-end justify-self-end lg:max-w-[410px]">
+            <div className={`group/top-priority relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${topTone.heroCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.54)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
+              <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${topTone.gradient}`} />
+              <div className={`pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full ${topTone.glow} blur-3xl`} />
 
-            <div className="relative flex items-start gap-4">
-              <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br ${topTone.gradient} text-white shadow-[0_18px_36px_rgba(15,23,42,0.22)]`}>
-                <TopToneIcon className="h-6 w-6" />
-              </div>
-
-              <div className="min-w-0">
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
-                  Top Priority Barangay
-                </p>
-
-                <h2 className="mt-2 text-2xl font-black">
-                  {topPriority?.barangay || 'No barangay ranked yet'}
-                </h2>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className={`rounded-full border px-3 py-1 text-xs font-black ${topTone.chip}`}>
-                    {topPriority?.risk || 'Pending'} Risk
-                  </span>
-
-                  <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-black text-brand-text dark:border-slate-700 dark:bg-slate-950/70 dark:text-white">
-                    Score {Math.round(getRowScore(topPriority || {}))}/100
-                  </span>
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/70">Current top priority</p>
+                  <h2 className="mt-2 truncate text-3xl font-black tracking-[-0.04em]">{topPriority?.barangay || 'No barangay ranked'}</h2>
+                  <p className={`mt-1 text-sm font-black ${topTone.text}`}>{topPriority?.risk || 'Pending'} risk</p>
                 </div>
 
-                <p className="mt-4 text-sm font-bold leading-6 text-brand-muted dark:text-slate-300">
-                  {topTone.label}. Review this barangay first when preparing intervention priorities and field coordination.
-                </p>
+                <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(56,189,248,0.18)]" style={{ background: `conic-gradient(${topTone.ring} ${topScore * 3.6}deg, rgba(255,255,255,0.10) 0deg)` }}>
+                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
+                    <span className="text-2xl font-black leading-none">{topScore}</span>
+                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">of 100</span>
+                  </div>
+                </div>
               </div>
+
+              <p className="relative mt-4 text-sm font-semibold leading-6 text-slate-300">
+                {topTone.label}. Review this barangay first when preparing intervention priorities and field coordination.
+              </p>
+
+              <div className="relative mt-5 grid grid-cols-2 gap-2.5">
+                <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Projected cases</p>
+                  <p className="mt-1 text-lg font-black text-white">{formatNumber(getRowCases(topPriority || {}))}</p>
+                </div>
+                <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Response mode</p>
+                  <p className="mt-1 text-sm font-black leading-6 text-white">{topTone.status}</p>
+                </div>
+              </div>
+
+              <div className="relative mt-5 overflow-hidden rounded-full bg-white/10">
+                <div className={`h-2.5 rounded-full bg-gradient-to-r ${topTone.gradient}`} style={{ width: `${Math.max(5, topScore)}%` }} />
+              </div>
+
+              <Link to="/forecast" className="relative mt-5 flex w-full items-center justify-between rounded-[18px] border border-cyan-300/[0.15] bg-cyan-300/10 px-4 py-3 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.15]">
+                Open full forecast review
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="supervisor-ai-panel relative overflow-hidden rounded-[34px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-indigo-500/10">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-sky-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-indigo-400/10 blur-3xl" />
-
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <PremiumPanel tone="indigo" className="supervisor-ai-panel p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[26px] border border-white/80 bg-black shadow-[0_18px_40px_rgba(15,23,42,0.24)] ring-1 ring-slate-200/70 sm:h-28 sm:w-28 dark:border-slate-700 dark:ring-white/10">
+            <div className="ai-visual relative h-28 w-28 shrink-0 overflow-hidden rounded-[28px] border border-indigo-300/30 bg-black shadow-[0_24px_56px_rgba(15,23,42,0.28)] ring-1 ring-white/70 dark:ring-white/10">
               <img src={aiGif} alt="AI model" className="h-full w-full object-cover" />
+              <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/15" />
             </div>
 
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
-                <Sparkles className="h-3.5 w-3.5" />
-                Best forecast method selected
-              </div>
-
-              <p className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-400">
-                Model Used
-              </p>
-
-              <h2 className="mt-1 text-2xl font-black text-brand-text dark:text-white">
-                {modelName}
-              </h2>
-
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-300">
-                Version v1. This method was selected because it gave the most reliable result using the latest uploaded files.
+            <div className="min-w-0">
+              <SectionBadge icon={Sparkles} tone="emerald">Forecast intelligence online</SectionBadge>
+              <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Selected model</p>
+              <h2 className="mt-1 break-words text-2xl font-black tracking-tight text-brand-text dark:text-white">{modelName}</h2>
+              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-brand-muted dark:text-slate-300">
+                This method was selected from the latest model evaluation and is being used for the current city-wide barangay forecast.
               </p>
             </div>
           </div>
 
-          <div className="supervisor-ai-fields grid w-full gap-3 sm:grid-cols-2 lg:w-auto">
-            <div className="rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
-                Forecast Status
-              </p>
-              <p className="mt-1 text-lg font-black text-brand-text dark:text-white">
-                {modelName === 'No forecast method selected yet' ? 'Pending' : 'Ready'}
-              </p>
-            </div>
-
-            <div className="rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-400">
-                Review Mode
-              </p>
-              <p className="mt-1 text-lg font-black text-brand-text dark:text-white">
-                City-wide
-              </p>
-            </div>
+          <div className="grid w-full gap-3 sm:grid-cols-3 lg:w-auto lg:min-w-[430px]">
+            {[
+              { label: 'Forecast status', value: analysisReady ? 'Ready' : 'Pending', icon: CheckCircle2 },
+              { label: 'Review mode', value: 'City-wide', icon: Building2 },
+              { label: 'Priority rows', value: formatNumber(Math.min(sortedRows.length, 10)), icon: Target },
+            ].map((item) => {
+              const Icon = item.icon
+              return (
+                <div key={item.label} className="rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/5">
+                  <Icon className="h-4 w-4 text-indigo-500 dark:text-indigo-300" />
+                  <p className="mt-3 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{item.label}</p>
+                  <p className="mt-1 text-lg font-black text-brand-text dark:text-white">{item.value}</p>
+                </div>
+              )
+            })}
           </div>
         </div>
-      </section>
+      </PremiumPanel>
 
       <section className="supervisor-stat-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={ShieldAlert}
-          label="High Risk"
-          value={formatNumber(dashboardStats.highRiskCount || highRows.length)}
-          helper="Barangays requiring priority response."
-          tone="rose"
-        />
-
-        <StatCard
-          icon={AlertTriangle}
-          label="Moderate Risk"
-          value={formatNumber(dashboardStats.moderateRiskCount || moderateRows.length)}
-          helper="Barangays that need close monitoring."
-          tone="amber"
-        />
-
-        <StatCard
-          icon={CheckCircle2}
-          label="Low Risk"
-          value={formatNumber(dashboardStats.lowRiskCount || lowRows.length)}
-          helper="Barangays under routine surveillance."
-          tone="emerald"
-        />
-
-        <StatCard
-          icon={Database}
-          label="Ready Sources"
-          value={`${readySources}/4`}
-          helper="Uploaded files available for review."
-          tone="blue"
-        />
+        <StatCard icon={ShieldAlert} label="High risk" value={formatNumber(highRows.length)} helper="Barangays requiring priority response." tone="rose" percent={(highRows.length / Math.max(totalBarangays, 1)) * 100} />
+        <StatCard icon={AlertTriangle} label="Moderate risk" value={formatNumber(moderateRows.length)} helper="Barangays that need close preventive monitoring." tone="amber" percent={(moderateRows.length / Math.max(totalBarangays, 1)) * 100} />
+        <StatCard icon={CheckCircle2} label="Low risk" value={formatNumber(lowRows.length)} helper="Barangays under routine surveillance." tone="emerald" percent={(lowRows.length / Math.max(totalBarangays, 1)) * 100} />
+        <StatCard icon={Database} label="Ready sources" value={`${readySources}/4`} helper="Uploaded files available for supervisor review." tone="blue" percent={(readySources / 4) * 100} />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="supervisor-ranking-panel relative overflow-hidden rounded-[34px] border border-white/80 bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
-          <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl dark:bg-blue-500/10" />
-
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[20px] bg-blue-50 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-                <BarChart3 className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h2 className="text-xl font-black text-brand-text dark:text-white">
-                  Barangay Risk Ranking
-                </h2>
-                <p className="text-sm font-bold text-brand-muted dark:text-slate-400">
-                  Scroll to review all priority barangays.
-                </p>
-              </div>
+      <section id="response-action-center" className="scroll-mt-24">
+        <PremiumPanel tone="blue" className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <SectionBadge icon={ClipboardCheck} tone="blue">Response coordination workspace</SectionBadge>
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-white">Assign and monitor response actions</h2>
+              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">
+                Create actions for priority barangays, assign responsible staff, set due dates, update progress, and record follow-up remarks.
+              </p>
             </div>
 
-            <span className="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-              {formatNumber(totalBarangays)} barangays
+            <span className="w-fit rounded-full border border-blue-200 bg-white/85 px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm dark:border-blue-400/20 dark:bg-white/5 dark:text-blue-300">
+              {formatNumber(Math.min(sortedRows.length, 10))} priority suggestions
             </span>
           </div>
 
-          <div className="relative mt-5 overflow-hidden rounded-[26px] border border-slate-200 dark:border-slate-700">
-            <div className="supervisor-table-scroll max-h-[520px] overflow-auto">
-              <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.14em] text-brand-muted shadow-sm dark:bg-slate-950 dark:text-slate-400">
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {topThree.length ? topThree.map((row, index) => {
+              const riskTone = getRiskTone(row.risk)
+              return (
+                <div key={`${row.barangay}-${index}`} className={`relative overflow-hidden rounded-[24px] border p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] ${riskTone.surface}`}>
+                  <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskTone.line}`} />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Priority #{index + 1}</p>
+                      <p className="mt-1 truncate text-base font-black text-brand-text dark:text-white">{row.barangay}</p>
+                    </div>
+                    <span className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${riskTone.chip}`}>{row.risk}</span>
+                  </div>
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <p className="text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">{Math.round(getRowScore(row))}<span className="text-xs text-slate-400">/100</span></p>
+                    <p className="text-xs font-black text-slate-500 dark:text-slate-400">{formatNumber(getRowCases(row))} cases</p>
+                  </div>
+                </div>
+              )
+            }) : (
+              <div className="rounded-[22px] border border-dashed border-slate-300 p-5 text-sm font-semibold text-brand-muted dark:border-slate-700 dark:text-slate-400 sm:col-span-3">No priority barangays are available yet.</div>
+            )}
+          </div>
+
+          <div className="mt-5 rounded-[28px] border border-white/80 bg-white/75 p-3 shadow-inner dark:border-white/10 dark:bg-slate-950/60 sm:p-4">
+            <DecisionActionTracker priorityRows={sortedRows.slice(0, 10)} />
+          </div>
+        </PremiumPanel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+        <PremiumPanel tone="blue" className="supervisor-ranking-panel p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <SectionBadge icon={BarChart3} tone="blue">City-wide risk ranking</SectionBadge>
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-white">Barangay priority ranking</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Sorted by saved priority rank, risk level, risk score, and projected cases.</p>
+            </div>
+
+            <span className="w-fit rounded-full border border-blue-200 bg-white/85 px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm dark:border-blue-400/20 dark:bg-white/5 dark:text-blue-300">{formatNumber(totalBarangays)} barangays</span>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 shadow-inner dark:border-slate-700 dark:bg-slate-950/70">
+            <div className="supervisor-table-scroll max-h-[560px] overflow-auto">
+              <table className="w-full min-w-[820px] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-50/95 text-[10px] uppercase tracking-[0.14em] text-brand-muted shadow-sm backdrop-blur dark:bg-slate-950/95 dark:text-slate-400">
                   <tr>
-                    <th className="px-4 py-3">Rank</th>
-                    <th className="px-4 py-3">Barangay</th>
-                    <th className="px-4 py-3">Risk</th>
-                    <th className="px-4 py-3">Score</th>
-                    <th className="px-4 py-3">Cases</th>
-                    <th className="px-4 py-3">Priority</th>
+                    <th className="px-4 py-3.5">Rank</th>
+                    <th className="px-4 py-3.5">Barangay</th>
+                    <th className="px-4 py-3.5">Risk</th>
+                    <th className="px-4 py-3.5">Risk score</th>
+                    <th className="px-4 py-3.5">Cases</th>
+                    <th className="px-4 py-3.5">Response</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {sortedRows.map((row, index) => {
-                    const style = riskStyles[row.risk] || riskStyles.Low
+                    const badgeStyle = riskStyles[row.risk] || riskStyles.Low
                     const score = Math.round(getRowScore(row))
                     const cases = getRowCases(row)
-                    const width = `${Math.min(100, Math.max(0, score))}%`
+                    const riskTone = getRiskTone(row.risk)
 
                     return (
-                      <tr
-                        key={`${row.barangay}-${index}`}
-                        className="transition hover:bg-slate-50/90 dark:hover:bg-slate-800/60"
-                      >
-                        <td className="px-4 py-3">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-brand-text dark:bg-slate-800 dark:text-white">
-                            {index + 1}
-                          </span>
+                      <tr key={`${row.barangay}-${index}`} className="group/row transition hover:bg-slate-50/90 dark:hover:bg-slate-800/60">
+                        <td className="px-4 py-3.5">
+                          <span className={`inline-flex h-9 w-9 items-center justify-center rounded-[14px] bg-gradient-to-br ${riskTone.gradient} text-xs font-black text-white shadow-[0_8px_20px_rgba(15,23,42,0.14)]`}>{index + 1}</span>
                         </td>
-
-                        <td className="px-4 py-3 font-black text-brand-text dark:text-white">
-                          {row.barangay}
+                        <td className="px-4 py-3.5">
+                          <p className="font-black text-brand-text dark:text-white">{row.barangay}</p>
+                          <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Priority rank {Number(row?.priorityRank ?? row?.priority_rank ?? index + 1)}</p>
                         </td>
-
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full border px-3 py-1 text-xs font-black ${style.badge}`}>
-                            {row.risk}
-                          </span>
+                        <td className="px-4 py-3.5">
+                          <span className={`rounded-full border px-3 py-1 text-xs font-black ${badgeStyle.badge}`}>{row.risk}</span>
                         </td>
-
-                        <td className="px-4 py-3">
-                          <div className="min-w-[150px]">
-                            <div className="flex items-center justify-between text-xs font-black">
-                              <span>{score}/100</span>
-                            </div>
-                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                              <div
-                                className={`h-full rounded-full ${
-                                  row.risk === 'High'
-                                    ? 'bg-gradient-to-r from-rose-500 to-orange-400'
-                                    : row.risk === 'Moderate'
-                                      ? 'bg-gradient-to-r from-amber-400 to-yellow-300'
-                                      : 'bg-gradient-to-r from-emerald-400 to-cyan-300'
-                                }`}
-                                style={{ width }}
-                              />
+                        <td className="px-4 py-3.5">
+                          <div className="min-w-[170px]">
+                            <div className="flex items-center justify-between text-xs font-black text-brand-text dark:text-white"><span>{score}/100</span></div>
+                            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100 shadow-inner dark:bg-slate-800">
+                              <div className={`h-full rounded-full bg-gradient-to-r ${riskTone.gradient}`} style={{ width: `${Math.max(4, Math.min(100, score))}%` }} />
                             </div>
                           </div>
                         </td>
-
-                        <td className="px-4 py-3 font-bold">
-                          {formatNumber(cases)}
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-brand-muted dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                        <td className="px-4 py-3.5 font-black text-brand-text dark:text-white">{formatNumber(cases)}</td>
+                        <td className="px-4 py-3.5">
+                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
                             {row.risk === 'High' ? 'Immediate' : row.risk === 'Moderate' ? 'Monitor' : 'Routine'}
                           </span>
                         </td>
@@ -668,141 +840,63 @@ export default function SupervisorPage() {
                   })}
 
                   {sortedRows.length === 0 && (
-                    <tr>
-                      <td colSpan="6" className="px-4 py-10 text-center text-sm font-bold text-brand-muted dark:text-slate-400">
-                        No priority barangay list is available yet.
-                      </td>
-                    </tr>
+                    <tr><td colSpan="6" className="px-4 py-12 text-center text-sm font-semibold text-brand-muted dark:text-slate-400">No priority barangay list is available yet.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
-
-          <style>{`
-            .supervisor-table-scroll {
-              scrollbar-width: thin;
-              scrollbar-color: rgba(56, 189, 248, 0.9) rgba(15, 23, 42, 0.10);
-            }
-
-            .supervisor-table-scroll::-webkit-scrollbar {
-              width: 10px;
-              height: 10px;
-            }
-
-            .supervisor-table-scroll::-webkit-scrollbar-track {
-              background: linear-gradient(180deg, rgba(226,232,240,0.78), rgba(241,245,249,0.42));
-              border-radius: 999px;
-            }
-
-            .supervisor-table-scroll::-webkit-scrollbar-thumb {
-              background: linear-gradient(180deg, #7dd3fc, #2563eb);
-              border-radius: 999px;
-              border: 2px solid rgba(241, 245, 249, 0.85);
-              box-shadow: 0 0 18px rgba(14,165,233,0.35);
-            }
-
-            .supervisor-table-scroll::-webkit-scrollbar-thumb:hover {
-              background: linear-gradient(180deg, #bae6fd, #3b82f6);
-            }
-
-            html.dark .supervisor-table-scroll::-webkit-scrollbar-track {
-              background: rgba(15,23,42,0.72);
-            }
-
-            html.dark .supervisor-table-scroll::-webkit-scrollbar-thumb {
-              border-color: rgba(15,23,42,0.9);
-            }
-          `}</style>
-        </div>
+        </PremiumPanel>
 
         <div className="space-y-5">
-          <div className="supervisor-priority-panel relative overflow-hidden rounded-[34px] border border-white/80 bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
-            <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-500/10" />
+          <PremiumPanel tone="emerald" className="supervisor-priority-panel p-5 sm:p-6">
+            <SectionBadge icon={ClipboardCheck} tone="emerald">Planning priorities</SectionBadge>
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-white">Supervisor decision guide</h2>
 
-            <div className="relative flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-[20px] bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
-                <ClipboardCheck className="h-5 w-5" />
-              </div>
-
-              <h2 className="text-xl font-black text-brand-text dark:text-white">
-                Planning Priorities
-              </h2>
+            <div className="mt-5 space-y-3">
+              {[
+                { number: '01', title: 'Immediate response', text: 'Prioritize high-risk barangays for cleanup, vector control, field validation, and public advisories.', tone: 'rose' },
+                { number: '02', title: 'Preventive monitoring', text: 'Review moderate-risk barangays for early warning, inspections, and possible escalation.', tone: 'amber' },
+                { number: '03', title: 'Evidence-based allocation', text: 'Use forecast results, reports, and map context before assigning staff, supplies, and schedules.', tone: 'blue' },
+              ].map((item) => {
+                const theme = getVisualTheme(item.tone)
+                return (
+                  <div key={item.number} className={`relative overflow-hidden rounded-[24px] border p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] ${theme.surface}`}>
+                    <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${theme.line}`} />
+                    <div className="flex items-start gap-3">
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-xs font-black ${theme.icon}`}>{item.number}</span>
+                      <div>
+                        <p className="text-sm font-black text-brand-text dark:text-white">{item.title}</p>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">{item.text}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-
-            <div className="relative mt-5 space-y-3 text-sm font-bold leading-6">
-              <p className="rounded-[22px] border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4 text-rose-700 shadow-sm dark:border-rose-500/20 dark:from-rose-500/10 dark:to-slate-950 dark:text-rose-200">
-                Prioritize high-risk barangays for cleanup, vector control, and public advisories.
-              </p>
-
-              <p className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 text-amber-700 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:to-slate-950 dark:text-amber-200">
-                Review moderate-risk barangays for early warning and weekly inspection.
-              </p>
-
-              <p className="rounded-[22px] border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 text-blue-700 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-slate-950 dark:text-blue-200">
-                Use reports and maps as supporting evidence for resource allocation.
-              </p>
-            </div>
-          </div>
+          </PremiumPanel>
 
           <div className="supervisor-action-grid grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <Link
-              to="/map"
-              className="group relative overflow-hidden rounded-[26px] border border-slate-200 bg-white p-5 font-black shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-[0_22px_50px_rgba(37,99,235,0.16)] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/30"
-            >
-              <MapPinned className="mb-3 h-6 w-6 text-blue-500" />
-              <div className="flex items-center justify-between gap-3">
-                Open Map
-                <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </div>
-              <p className="mt-2 text-sm font-bold leading-6 text-brand-muted dark:text-slate-400">
-                Review hotspot distribution.
-              </p>
-            </Link>
-
-            <Link
-              to="/forecast"
-              className="group relative overflow-hidden rounded-[26px] border border-slate-200 bg-white p-5 font-black shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-[0_22px_50px_rgba(16,185,129,0.16)] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-500/30"
-            >
-              <TrendingUp className="mb-3 h-6 w-6 text-emerald-500" />
-              <div className="flex items-center justify-between gap-3">
-                Review Forecast
-                <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </div>
-              <p className="mt-2 text-sm font-bold leading-6 text-brand-muted dark:text-slate-400">
-                Review the selected forecast results.
-              </p>
-            </Link>
-
-            <Link
-              to="/reports"
-              className="group relative overflow-hidden rounded-[26px] border border-slate-200 bg-white p-5 font-black shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-indigo-200 hover:shadow-[0_22px_50px_rgba(99,102,241,0.16)] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500/30"
-            >
-              <FileText className="mb-3 h-6 w-6 text-indigo-500" />
-              <div className="flex items-center justify-between gap-3">
-                Open Reports
-                <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </div>
-              <p className="mt-2 text-sm font-bold leading-6 text-brand-muted dark:text-slate-400">
-                Use summaries for planning.
-              </p>
-            </Link>
+            <ActionLink to="/map" icon={MapPinned} title="Open hotspot map" helper="Review hotspot distribution and neighboring risk context." tone="blue" />
+            <ActionLink to="/forecast" icon={TrendingUp} title="Review forecast" helper="Inspect the selected model results and barangay projections." tone="emerald" />
+            <ActionLink to="/reports" icon={FileText} title="Open reports" helper="Use saved summaries as supporting evidence for planning." tone="indigo" />
           </div>
 
-          <div className="supervisor-reminder-panel rounded-[34px] border border-white/80 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-blue-950/30">
-            <div className="flex items-center gap-3">
-              <Building2 className="h-5 w-5 text-blue-500" />
-              <h3 className="text-lg font-black text-brand-text dark:text-white">
-                Supervisor Reminder
-              </h3>
+          <PremiumPanel tone="slate" className="supervisor-reminder-panel p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-blue-200 bg-white text-blue-700 shadow-sm dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-brand-text dark:text-white">Supervisor reminder</h3>
+                <p className="mt-2 text-sm font-semibold leading-7 text-brand-muted dark:text-slate-400">Check forecast results against CHO and barangay field reports before assigning supplies or posting public advisories.</p>
+              </div>
             </div>
-
-            <p className="mt-3 text-sm font-bold leading-7 text-brand-muted dark:text-slate-400">
-              Check the forecast against CHO field reports before assigning supplies or posting public advisories.
-            </p>
-          </div>
+          </PremiumPanel>
         </div>
       </section>
+
+      <SupervisorPageStyles />
     </div>
   )
 }

@@ -47,6 +47,14 @@ def normalize_barangay_key(value) -> str:
         return ""
 
     text = remove_accents(text).lower()
+    # DOH reports commonly append a redundant Poblacion/barangay number,
+    # for example "Buhangin Pob. (Bgy. 19)". Remove only that report
+    # annotation so the same official barangay is not counted twice.
+    text = re.sub(
+        r"\(\s*(?:bgy|brgy|barangay)\.?\s*\d+(?:\s*-\s*[^)]*)?\)",
+        " ",
+        text,
+    )
     text = re.sub(r"\bbarangay\b", " ", text)
     text = re.sub(r"\bbrgy\.?\b", " ", text)
     text = re.sub(r"\bbrg\.?\b", " ", text)
@@ -56,6 +64,7 @@ def normalize_barangay_key(value) -> str:
     text = re.sub(r"\bkm\.?(\d+)\b", r"km \1", text)
     text = re.sub(r"[^a-z0-9]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+(?:pob|poblacion)$", "", text).strip()
 
     return text
 

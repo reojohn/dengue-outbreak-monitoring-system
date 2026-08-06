@@ -37,7 +37,7 @@ const tileLayers = {
   },
 }
 
-const riskTheme = {
+const forecastRiskTheme = {
   High: {
     fill: '#ef4444',
     border: '#fecdd3',
@@ -64,6 +64,71 @@ const riskTheme = {
   },
 }
 
+const hotspotTheme = {
+  'Confirmed Hotspot': {
+    fill: '#e11d48',
+    border: '#fda4af',
+    selected: '#38bdf8',
+    label: 'Confirmed hotspot',
+  },
+  'Emerging Hotspot': {
+    fill: '#f97316',
+    border: '#fdba74',
+    selected: '#38bdf8',
+    label: 'Emerging hotspot',
+  },
+  'Watch Area': {
+    fill: '#eab308',
+    border: '#fde047',
+    selected: '#38bdf8',
+    label: 'Watch area',
+  },
+  'Low Spatial Concern': {
+    fill: '#10b981',
+    border: '#6ee7b7',
+    selected: '#38bdf8',
+    label: 'Low spatial concern',
+  },
+  'Needs Map Review': {
+    fill: '#3b82f6',
+    border: '#93c5fd',
+    selected: '#38bdf8',
+    label: 'Needs map review',
+  },
+  'Not checked': {
+    fill: '#64748b',
+    border: '#94a3b8',
+    selected: '#38bdf8',
+    label: 'Not checked',
+  },
+  None: {
+    fill: '#64748b',
+    border: '#94a3b8',
+    selected: '#38bdf8',
+    label: 'No hotspot data',
+  },
+}
+
+const riskTheme = forecastRiskTheme
+
+function getLayerValue(row, layerMode = 'forecast') {
+  if (layerMode === 'hotspot') {
+    if (row?.hotspot_level) return row.hotspot_level
+    if (row?.hotspotLevel) return row.hotspotLevel
+    if (row?.has_map_boundary === false) return 'Needs Map Review'
+    return ''
+  }
+
+  return row?.risk || ''
+}
+
+function getLayerTheme(row, layerMode = 'forecast') {
+  const value = getLayerValue(row, layerMode)
+  const theme = layerMode === 'hotspot' ? hotspotTheme : forecastRiskTheme
+
+  return theme[value] || theme.None
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
 }
@@ -88,6 +153,31 @@ function formatRiskScore(value) {
   return `${Math.round(number)}/100`
 }
 
+function getCombinedRiskScore(row = null, decisionSupport = null) {
+  const candidates = [
+    row?.combinedRiskScore,
+    row?.combined_risk_score,
+    row?.multiSourceRiskScore,
+    row?.multi_source_risk_score,
+    row?.overallRiskScore,
+    row?.overall_risk_score,
+    row?.riskScore,
+    row?.risk_score,
+    decisionSupport?.multiSourceRiskScore,
+    decisionSupport?.riskScore,
+  ]
+
+  for (const value of candidates) {
+    const number = Number(value)
+
+    if (Number.isFinite(number)) {
+      return number
+    }
+  }
+
+  return 0
+}
+
 function getLabelValue(value, fallback = 'Not available') {
   const text = String(value || '').trim()
 
@@ -103,20 +193,42 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;')
 }
 
+const BARANGAY_NAME_ALIASES = {
+  'agusan pequenio': 'agusan pequeno',
+  'agusan pequino': 'agusan pequeno',
+  'baan km3': 'baan km 3',
+  'baan kilometer 3': 'baan km 3',
+  'brgy baan km 3': 'baan km 3',
+  'datu silongan': 'silongan',
+  'fort poyohon new asia': 'port poyohon',
+  'fort poyohon': 'port poyohon',
+  'new society village poblacion': 'new society village',
+  nsv: 'new society village',
+  'sto nino': 'santo nino',
+  'st nino': 'santo nino',
+}
+
 function normalizeBarangayName(value = '') {
-  return String(value)
+  const normalized = String(value)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/ñ/g, 'n')
     .replace(/\(.*?\)/g, ' ')
     .replace(/\bpob\.?\b/gi, ' ')
     .replace(/\bbgy\.?\b/gi, ' ')
+    .replace(/\bbrgy\.?\b/gi, ' ')
     .replace(/\bbarangay\b/gi, ' ')
+    .replace(/\bsto\.?\b/gi, 'santo')
+    .replace(/\bst\.?\b/gi, 'santo')
+    .replace(/\bkilometer\b/gi, 'km')
+    .replace(/\bkm\.?(\d+)\b/gi, 'km $1')
     .replace(/\./g, ' ')
     .replace(/[^a-zA-Z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
+
+  return BARANGAY_NAME_ALIASES[normalized] || normalized
 }
 
 function compactBarangayName(value = '') {
@@ -464,11 +576,10 @@ function getDecisionSupport(row) {
     row?.humiditySuitability ||
     'Humidity data unavailable'
 
-  const multiSourceRiskScore =
-    row?.multiSourceRiskScore ??
-    row?.riskScore ??
-    decisionSupport.multiSourceRiskScore ??
-    0
+  const multiSourceRiskScore = getCombinedRiskScore(
+    row,
+    decisionSupport
+  )
 
   return {
     summary,
@@ -527,7 +638,7 @@ function getFallbackPoint(row, index, total) {
   ]
 }
 
-function buildTooltipHtml({ feature, row }) {
+function buildTooltipHtml({ feature, row, layerMode = 'forecast' }) {
   const barangay = row?.barangay || getFeatureName(feature)
   const risk = row?.risk || 'No risk data'
   const forecast = row?.forecast ?? 0
@@ -535,29 +646,48 @@ function buildTooltipHtml({ feature, row }) {
   const decision = getDecisionSupport(row)
   const area = Number(feature?.properties?.area_sqkm || 0)
   const code = getFeatureCode(feature)
+  const hotspotLevel = row?.hotspot_level || row?.hotspotLevel || 'Not checked'
+  const hotspotScore = row?.hotspot_score ?? row?.hotspotScore ?? 0
+  const nearbyInfluence = row?.neighbor_influence_score ?? row?.neighborInfluenceScore ?? 0
+  const primaryLabel = layerMode === 'hotspot' ? 'Hotspot level' : 'Risk level'
+  const primaryValue = layerMode === 'hotspot' ? hotspotLevel : risk
 
   return `
     <div class="risk-tooltip-card">
       <div class="risk-tooltip-title">${escapeHtml(barangay)}</div>
 
       <div class="risk-tooltip-row">
-        <span>Risk level</span>
-        <strong>${escapeHtml(risk)}</strong>
+        <span>${escapeHtml(primaryLabel)}</span>
+        <strong>${escapeHtml(primaryValue)}</strong>
       </div>
 
-      <div class="risk-tooltip-row">
-        <span>Multi-source score</span>
-        <strong>${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</strong>
-      </div>
+      ${
+        layerMode === 'hotspot'
+          ? `
+            <div class="risk-tooltip-row">
+              <span>Hotspot score</span>
+              <strong>${escapeHtml(formatRiskScore(hotspotScore))}</strong>
+            </div>
+            <div class="risk-tooltip-row">
+              <span>Nearby influence</span>
+              <strong>${escapeHtml(formatRiskScore(nearbyInfluence))}</strong>
+            </div>
+            <div class="risk-tooltip-row">
+              <span>Forecast risk</span>
+              <strong>${escapeHtml(risk)}</strong>
+            </div>
+          `
+          : `
+            <div class="risk-tooltip-row">
+              <span>Combined risk score</span>
+              <strong>${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</strong>
+            </div>
+          `
+      }
 
       <div class="risk-tooltip-row">
         <span>DSS priority</span>
         <strong>${escapeHtml(decision.priority)}</strong>
-      </div>
-
-      <div class="risk-tooltip-row">
-        <span>Environment</span>
-        <strong>${escapeHtml(decision.environmentalSuitability)}</strong>
       </div>
 
       <div class="risk-tooltip-row">
@@ -640,7 +770,7 @@ function buildDetailedPopupHtml({ feature, row, populationRow }) {
   const barangay = row?.barangay || getFeatureName(feature)
   const risk = row?.risk || 'No risk data'
   const colors = getRiskColors(row?.risk)
-  const totalCases = Number(row?.totalCases || row?.cases || row?.currentCases || 0)
+  const totalCases = Number(row?.totalCases || row?.cases || 0)
   const forecast = Number(row?.forecast || row?.forecastedCases || row?.predictedCases || 0)
   const area = getAreaValue({ row, feature })
   const population = getPopulationValue({ row, feature, populationRow })
@@ -669,7 +799,7 @@ function buildDetailedPopupHtml({ feature, row, populationRow }) {
       <div class="barangay-decision-banner ${priorityClassName}">
         <span>Decision Support Priority</span>
         <strong>${escapeHtml(decision.priority)}</strong>
-        <small>Decision score: ${escapeHtml(formatNumber(decision.score))} points · Multi-source score: ${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</small>
+        <small>Decision score: ${escapeHtml(formatNumber(decision.score))} points · Combined risk score: ${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</small>
       </div>
 
       <div class="barangay-detail-grid">
@@ -694,7 +824,7 @@ function buildDetailedPopupHtml({ feature, row, populationRow }) {
         </div>
 
         <div class="barangay-detail-stat">
-          <span>Multi-source score</span>
+          <span>Combined risk score</span>
           <strong>${escapeHtml(formatRiskScore(decision.multiSourceRiskScore))}</strong>
         </div>
 
@@ -872,6 +1002,8 @@ export default function LeafletRiskMap({
   mapStyle = 'dark',
   layoutKey = '',
   showDetailsPanel = false,
+  layerMode = 'forecast',
+  matchedLabel = '',
 }) {
   const {
     boundaryRecords = [],
@@ -908,15 +1040,15 @@ export default function LeafletRiskMap({
   const mapKey = useMemo(() => {
     const boundaryCount = boundaryGeoJson?.features?.length || 0
     const riskHash = rows
-      .map((row) => `${row.barangay}-${row.risk}-${row.forecast}-${row.responsePriority}-${row.multiSourceRiskScore || row.riskScore || 0}-${row.environmentalSuitability || ''}`)
+      .map((row) => `${row.barangay}-${row.risk}-${row.forecast}-${row.responsePriority}-${getCombinedRiskScore(row)}-${row.environmentalSuitability || ''}-${row.hotspot_level || row.hotspotLevel || ''}-${row.hotspot_score || row.hotspotScore || 0}-${row.neighbor_influence_score || row.neighborInfluenceScore || 0}`)
       .join('|')
 
-    return `${selected}-${boundaryCount}-${riskHash}-${mapStyle}-${layoutKey}-${showDetailsPanel ? 'popup' : 'external'}`
-  }, [selected, rows, boundaryGeoJson, mapStyle, layoutKey, showDetailsPanel])
+    return `${selected}-${boundaryCount}-${riskHash}-${mapStyle}-${layoutKey}-${layerMode}-${showDetailsPanel ? 'popup' : 'external'}`
+  }, [selected, rows, boundaryGeoJson, mapStyle, layoutKey, layerMode, showDetailsPanel])
 
   function getFeatureStyle(feature) {
     const row = getRiskRowForFeature(feature, riskItems)
-    const colors = getRiskColors(row?.risk)
+    const colors = getLayerTheme(row, layerMode)
     const featureName = getFeatureName(feature)
 
     const isSelected =
@@ -953,7 +1085,7 @@ export default function LeafletRiskMap({
     const populationRow = getPopulationRowForFeature(feature, row, populationItems)
     const barangay = row?.barangay || getFeatureName(feature)
 
-    layer.bindTooltip(buildTooltipHtml({ feature, row }), {
+    layer.bindTooltip(buildTooltipHtml({ feature, row, layerMode }), {
       sticky: true,
       direction: 'top',
       opacity: 1,
@@ -986,7 +1118,7 @@ export default function LeafletRiskMap({
         }
       },
       mouseover: () => {
-        const colors = getRiskColors(row?.risk)
+        const colors = getLayerTheme(row, layerMode)
 
         layer.setStyle({
           color: '#e0f2fe',
@@ -1049,9 +1181,13 @@ export default function LeafletRiskMap({
         {!boundaryGeoJson?.features?.length &&
           rows.map((row, index) => {
             const position = getFallbackPoint(row, index, rows.length)
-            const colors = getRiskColors(row.risk)
+            const colors = getLayerTheme(row, layerMode)
             const isSelected = namesMatch(selected, row.barangay)
-            const normalRadius = isSelected ? 16 : row.risk === 'High' ? 12 : 10
+            const layerValue = getLayerValue(row, layerMode)
+            const elevated = layerMode === 'hotspot'
+              ? layerValue === 'Confirmed Hotspot' || layerValue === 'Emerging Hotspot'
+              : row.risk === 'High'
+            const normalRadius = isSelected ? 16 : elevated ? 12 : 10
             const decision = getDecisionSupport(row)
 
             return (
@@ -1117,7 +1253,7 @@ export default function LeafletRiskMap({
 
         <p className="mt-0.5 text-xs text-slate-400">
           {matchedFeatureCount > 0
-            ? `${formatNumber(matchedFeatureCount)} matched with risk data`
+            ? `${formatNumber(matchedFeatureCount)} ${matchedLabel || (layerMode === 'hotspot' ? 'matched with hotspot data' : 'matched with forecast data')}`
             : boundaryGeoJson?.features?.length
               ? 'Boundary-only view'
               : 'Using fallback points'}
@@ -1134,8 +1270,8 @@ export default function LeafletRiskMap({
         </p>
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex flex-wrap gap-2">
-        {Object.entries(riskTheme)
+      <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
+        {Object.entries(layerMode === 'hotspot' ? hotspotTheme : forecastRiskTheme)
           .filter(([key]) => key !== 'None')
           .map(([key, theme]) => (
             <div
