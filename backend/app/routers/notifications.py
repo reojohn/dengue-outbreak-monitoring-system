@@ -24,6 +24,8 @@ class NotificationEventRequest(BaseModel):
     to: str = "/dashboard"
     hash: str = "dashboard-summary"
     meta: Optional[Dict[str, Any]] = None
+    recipient_role: Optional[str] = None
+    recipient_user_id: Optional[str] = None
 
 
 class NotificationPreferenceUpdate(BaseModel):
@@ -60,11 +62,63 @@ def ensure_notification_preferences_table() -> None:
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                create table if not exists public.notifications (
+                    notification_id uuid primary key,
+                    title text not null,
+                    message text not null,
+                    severity text not null default 'info',
+                    category text not null default 'system_event',
+                    target_page text,
+                    target_hash text,
+                    is_read boolean not null default false,
+                    meta jsonb not null default '{}'::jsonb,
+                    created_at timestamptz not null default now(),
+                    recipient_role text,
+                    recipient_user_id uuid references public.app_users(id) on delete cascade
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                alter table public.notifications
+                add column if not exists recipient_role text
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                alter table public.notifications
+                add column if not exists recipient_user_id uuid references public.app_users(id) on delete cascade
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                create index if not exists notifications_recipient_role_idx
+                on public.notifications (recipient_role, created_at desc)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                create index if not exists notifications_recipient_user_idx
+                on public.notifications (recipient_user_id, created_at desc)
+                """
+            )
+        )
 
 
 @router.get("")
-def get_notifications():
-    return build_backend_notifications()
+def get_notifications(current_user=Depends(get_current_user)):
+    return build_backend_notifications(current_user=current_user)
 
 
 @router.get("/preferences")
@@ -142,8 +196,17 @@ def update_notification_preferences(
 
 
 @router.post("/events")
-def create_notification_event(payload: NotificationEventRequest):
-    event = add_notification_event(payload.model_dump())
+def create_notification_event(
+    payload: NotificationEventRequest,
+    current_user=Depends(get_current_user),
+):
+    event_payload = payload.model_dump()
+    event_payload["meta"] = {
+        **(event_payload.get("meta") or {}),
+        "created_by_user_id": str(current_user["id"]),
+        "created_by_role": current_user.get("role"),
+    }
+    event = add_notification_event(event_payload)
 
     return {
         "message": "Notification event recorded.",

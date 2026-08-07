@@ -285,6 +285,8 @@ export async function createBackendNotificationEvent({
   to = '/dashboard',
   hash = 'dashboard-summary',
   meta = {},
+  recipientRole = null,
+  recipientUserId = null,
 }) {
   const response = await apiFetch(`${API_BASE_URL}/notifications/events`, {
     method: 'POST',
@@ -299,9 +301,64 @@ export async function createBackendNotificationEvent({
       to,
       hash,
       meta,
+      recipient_role: recipientRole,
+      recipient_user_id: recipientUserId,
     }),
   })
 
+  return handleApiResponse(response)
+}
+
+export async function getCurrentFieldUpdate({ barangay, reportingDate }) {
+  const params = new URLSearchParams({
+    barangay: String(barangay || ''),
+    reporting_date: String(reportingDate || ''),
+  })
+  const response = await apiFetch(`${API_BASE_URL}/field-updates/current?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+export async function getFieldUpdates({ status = '', barangay = '', reportingDate = '', limit = 100 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (status) params.set('status', status)
+  if (barangay) params.set('barangay', barangay)
+  if (reportingDate) params.set('reporting_date', reportingDate)
+  const response = await apiFetch(`${API_BASE_URL}/field-updates?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+export async function getFieldUpdate(fieldUpdateId) {
+  const response = await apiFetch(`${API_BASE_URL}/field-updates/${fieldUpdateId}`)
+  return handleApiResponse(response)
+}
+
+export async function saveFieldUpdateDraft(payload) {
+  const response = await apiFetch(`${API_BASE_URL}/field-updates/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleApiResponse(response)
+}
+
+export async function submitFieldUpdate(payload) {
+  const response = await apiFetch(`${API_BASE_URL}/field-updates/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleApiResponse(response)
+}
+
+export async function reviewFieldUpdate(fieldUpdateId, { status, supervisorComment = '' }) {
+  const response = await apiFetch(`${API_BASE_URL}/field-updates/${fieldUpdateId}/review`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status,
+      supervisor_comment: supervisorComment,
+    }),
+  })
   return handleApiResponse(response)
 }
 

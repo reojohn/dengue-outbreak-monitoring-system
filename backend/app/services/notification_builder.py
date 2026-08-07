@@ -78,6 +78,8 @@ def _notification(
     hash="dashboard-summary",
     timestamp=None,
     meta=None,
+    recipient_role=None,
+    recipient_user_id=None,
 ):
     return {
         "id": notification_id,
@@ -91,6 +93,8 @@ def _notification(
         "to": to,
         "hash": hash,
         "read": False,
+        "recipient_role": recipient_role,
+        "recipient_user_id": str(recipient_user_id) if recipient_user_id else None,
         "meta": meta or {},
     }
 
@@ -912,7 +916,54 @@ def save_hotspot_notifications(result):
     return notifications
 
 
-def build_backend_notifications():
+def _overdue_field_update_notifications(current_user=None):
+    if (current_user or {}).get("role") != "admin":
+        return []
+
+    try:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    select field_update_id, barangay, reporting_date, completed_count,
+                           total_tasks, status, submitted_by
+                    from public.field_updates
+                    where reporting_date < (now() at time zone 'Asia/Manila')::date
+                      and completed_count < total_tasks
+                      and status in ('Draft', 'Submitted', 'Follow-up Required')
+                    order by reporting_date asc
+                    limit 20
+                    """
+                )
+            ).mappings().all()
+    except Exception:
+        return []
+
+    return [
+        _notification(
+            notification_id=f"field-update-overdue-{row['field_update_id']}",
+            title="Incomplete barangay checklist is overdue",
+            message=(
+                f"{row['barangay']} has an incomplete {row['reporting_date']} field update "
+                f"({row['completed_count']} of {row['total_tasks']} activities completed)."
+            ),
+            severity="warning",
+            category="barangay_field_update_overdue",
+            to="/supervisor",
+            hash="barangay-field-updates",
+            recipient_role="admin",
+            meta={
+                "field_update_id": str(row["field_update_id"]),
+                "barangay": row["barangay"],
+                "reporting_date": str(row["reporting_date"]),
+                "status": row["status"],
+            },
+        )
+        for row in rows
+    ]
+
+
+def build_backend_notifications(current_user=None):
     status = _get_source_status_from_database()
     forecast_result = _get_latest_forecast_from_database()
     integration_summary = _get_latest_integrated_dataset_summary()
@@ -921,6 +972,7 @@ def build_backend_notifications():
     notifications.extend(_forecast_notifications(forecast_result))
     notifications.extend(_source_quality_notifications(status))
     notifications.extend(_merged_dataset_notifications(integration_summary))
+    notifications.extend(_overdue_field_update_notifications(current_user))
 
     save_generated_notifications(notifications)
 
@@ -935,7 +987,13 @@ def build_backend_notifications():
             limit=10,
         )
     )
-    notifications.extend(get_notification_events(limit=10))
+    notifications.extend(
+        get_notification_events(
+            limit=10,
+            recipient_role=(current_user or {}).get("role"),
+            recipient_user_id=(current_user or {}).get("id"),
+        )
+    )
 
     if not notifications:
         notifications.append(

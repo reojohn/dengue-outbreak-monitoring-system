@@ -12,6 +12,9 @@ import {
   Droplets,
   FileText,
   Home,
+  Loader2,
+  Save,
+  Send,
   MapPinned,
   Megaphone,
   Search,
@@ -20,6 +23,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import { getCurrentFieldUpdate, saveFieldUpdateDraft, submitFieldUpdate } from '../services/api'
 import { getAuthSession } from '../utils/auth'
 import { getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
 
@@ -568,6 +572,172 @@ function getCases(row) {
     row?.total_cases ??
     0
   )
+}
+
+
+function parseForecastPeriodPredictions(row) {
+  const rawPredictions =
+    row?.forecast_period_predictions ??
+    row?.forecastPeriodPredictions ??
+    []
+
+  if (Array.isArray(rawPredictions)) {
+    return rawPredictions
+  }
+
+  if (typeof rawPredictions === 'string' && rawPredictions.trim()) {
+    try {
+      const parsed = JSON.parse(rawPredictions)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+function formatForecastPeriodLabel(value = '', horizon = 1, latestPeriod = '') {
+  const rawValue = String(value || '').trim()
+
+  const monthlyMatch = rawValue.match(/^(\d{4})-(0[1-9]|1[0-2])$/)
+
+  if (monthlyMatch) {
+    const date = new Date(Date.UTC(
+      Number(monthlyMatch[1]),
+      Number(monthlyMatch[2]) - 1,
+      1
+    ))
+
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date)
+  }
+
+  if (rawValue) {
+    return rawValue
+  }
+
+  const latestMonthlyMatch = String(latestPeriod || '')
+    .trim()
+    .match(/^(\d{4})-(0[1-9]|1[0-2])$/)
+
+  if (latestMonthlyMatch) {
+    const date = new Date(Date.UTC(
+      Number(latestMonthlyMatch[1]),
+      Number(latestMonthlyMatch[2]) - 1 + Math.max(1, Number(horizon || 1)),
+      1
+    ))
+
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date)
+  }
+
+  return `Forecast period ${Math.max(1, Number(horizon || 1))}`
+}
+
+function getDirectForecastHorizons(row) {
+  if (!row) return []
+
+  const latestPeriod =
+    row?.latest_period ??
+    row?.latestPeriod ??
+    ''
+
+  return parseForecastPeriodPredictions(row)
+    .map((item, index) => {
+      const horizon = Math.max(
+        1,
+        Number(item?.horizon ?? item?.forecast_horizon ?? index + 1) || index + 1
+      )
+
+      const rawCases =
+        item?.predicted_cases ??
+        item?.predictedCases ??
+        item?.forecast_cases ??
+        item?.forecastCases ??
+        item?.cases
+
+      const numericCases = Number(rawCases)
+
+      if (!Number.isFinite(numericCases)) {
+        return null
+      }
+
+      return {
+        horizon,
+        period: formatForecastPeriodLabel(
+          item?.period ?? item?.forecast_period ?? item?.date ?? '',
+          horizon,
+          latestPeriod
+        ),
+        predicted_cases: Math.max(0, Math.round(numericCases)),
+        source: 'direct_multi_step',
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.horizon - b.horizon)
+    .slice(0, 4)
+}
+
+function getHorizonRowsFromForecastRows(rows = [], barangayName = '', latestPeriod = '') {
+  const barangayKey = normalizeName(barangayName)
+
+  if (!barangayKey || !Array.isArray(rows)) return []
+
+  return rows
+    .filter((row) => normalizeName(row?.barangay) === barangayKey)
+    .map((row, index) => {
+      const explicitHorizon = Number(
+        row?.horizon ??
+        row?.forecast_horizon ??
+        row?.forecastHorizon ??
+        0
+      )
+
+      const rawPeriod =
+        row?.period ??
+        row?.forecast_period ??
+        row?.forecastPeriod ??
+        row?.date ??
+        ''
+
+      const hasHorizonIdentity = explicitHorizon > 0 || String(rawPeriod || '').trim()
+
+      if (!hasHorizonIdentity) {
+        return null
+      }
+
+      const rawCases =
+        row?.predicted_cases ??
+        row?.predictedCases ??
+        row?.forecast_cases ??
+        row?.forecastCases ??
+        row?.cases
+
+      const numericCases = Number(rawCases)
+
+      if (!Number.isFinite(numericCases)) {
+        return null
+      }
+
+      const horizon = explicitHorizon > 0 ? explicitHorizon : index + 1
+
+      return {
+        horizon,
+        period: formatForecastPeriodLabel(rawPeriod, horizon, latestPeriod),
+        predicted_cases: Math.max(0, Math.round(numericCases)),
+        source: 'horizon_row',
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.horizon - b.horizon)
+    .slice(0, 4)
 }
 
 function getScore(row) {
@@ -1491,24 +1661,57 @@ export default function BHWPage() {
     )).length
   }, [riskRows, savedForecastRows])
 
-  const localForecasts = forecastRows
-    .filter((row) => normalizeName(row.barangay) === normalizeName(barangayName))
-    .slice(0, 6)
+  const selectedSavedForecastRow = useMemo(() => {
+    const activeKey = normalizeName(barangayName)
 
-  const fallbackForecasts = localForecasts.length
-    ? localForecasts
-    : predictedCases
-      ? [
-          { period: 'Period 1', predicted_cases: Math.round(predictedCases * 0.85) },
-          { period: 'Period 2', predicted_cases: Math.round(predictedCases) },
-          { period: 'Period 3', predicted_cases: Math.round(predictedCases * 1.08) },
-          { period: 'Period 4', predicted_cases: Math.round(predictedCases * 0.95) },
-        ]
-      : []
+    if (!activeKey) return null
+
+    return (
+      savedForecastRows.find((row) => normalizeName(row?.barangay) === activeKey) ||
+      null
+    )
+  }, [barangayName, savedForecastRows])
+
+  const localForecasts = useMemo(() => {
+    const directHorizons = getDirectForecastHorizons(
+      selectedSavedForecastRow || barangayRisk
+    )
+
+    if (directHorizons.length) {
+      return directHorizons
+    }
+
+    const latestPeriod =
+      selectedSavedForecastRow?.latest_period ??
+      selectedSavedForecastRow?.latestPeriod ??
+      barangayRisk?.latest_period ??
+      barangayRisk?.latestPeriod ??
+      ''
+
+    return getHorizonRowsFromForecastRows(
+      forecastRows,
+      barangayName,
+      latestPeriod
+    )
+  }, [
+    barangayName,
+    barangayRisk,
+    forecastRows,
+    selectedSavedForecastRow,
+  ])
+
+  const localForecastTotal = localForecasts.reduce(
+    (total, row) => total + Number(row?.predicted_cases || 0),
+    0
+  )
+
+  const localForecastMatchesCumulative =
+    localForecasts.length === 4 &&
+    Math.abs(localForecastTotal - Number(predictedCases || 0)) < 0.5
 
   const maxForecast = Math.max(
     1,
-    ...fallbackForecasts.map((row) => Number(row.predicted_cases || row.predictedCases || row.cases || 0))
+    ...localForecasts.map((row) => Number(row?.predicted_cases || 0))
   )
 
   const checklist = [
@@ -1525,21 +1728,71 @@ export default function BHWPage() {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
-  const fieldStorageKey = `dengue-bhw-field-update:${normalizeName(barangayName)}:${todayKey}`
-  const [fieldUpdate, setFieldUpdate] = useState({ tasks: {}, note: '', savedAt: '' })
+  const emptyFieldUpdate = {
+    fieldUpdateId: '',
+    tasks: {},
+    note: '',
+    status: 'Draft',
+    savedAt: '',
+    submittedAt: '',
+    supervisorComment: '',
+    isUrgent: false,
+    suspectedSymptoms: false,
+    suppliesNeeded: false,
+    assistanceNeeded: false,
+  }
+  const [fieldUpdate, setFieldUpdate] = useState(emptyFieldUpdate)
   const [fieldSaveMessage, setFieldSaveMessage] = useState('')
+  const [fieldSaveTone, setFieldSaveTone] = useState('info')
+  const [fieldUpdateBusy, setFieldUpdateBusy] = useState('')
+  const [isLoadingFieldUpdate, setIsLoadingFieldUpdate] = useState(true)
+  const canEditFieldUpdate = currentRole === 'bhw' && !['Submitted', 'Reviewed'].includes(fieldUpdate.status)
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(fieldStorageKey) || 'null')
-      setFieldUpdate(saved && typeof saved === 'object' ? saved : { tasks: {}, note: '', savedAt: '' })
-    } catch {
-      setFieldUpdate({ tasks: {}, note: '', savedAt: '' })
+    let active = true
+
+    async function loadFieldUpdate() {
+      if (!barangayName || barangayName === 'Select a barangay') return
+      setIsLoadingFieldUpdate(true)
+      setFieldSaveMessage('')
+      try {
+        const result = await getCurrentFieldUpdate({
+          barangay: barangayName,
+          reportingDate: todayKey,
+        })
+        if (!active) return
+        const saved = result?.field_update
+        setFieldUpdate(saved ? {
+          fieldUpdateId: saved.field_update_id || '',
+          tasks: saved.tasks || {},
+          note: saved.observation_note || '',
+          status: saved.status || 'Draft',
+          savedAt: saved.saved_at || '',
+          submittedAt: saved.submitted_at || '',
+          supervisorComment: saved.supervisor_comment || '',
+          isUrgent: Boolean(saved.is_urgent),
+          suspectedSymptoms: Boolean(saved.suspected_symptoms),
+          suppliesNeeded: Boolean(saved.supplies_needed),
+          assistanceNeeded: Boolean(saved.assistance_needed),
+        } : { ...emptyFieldUpdate })
+      } catch (error) {
+        if (!active) return
+        setFieldUpdate({ ...emptyFieldUpdate })
+        setFieldSaveTone('error')
+        setFieldSaveMessage(error?.message || 'The field update could not be loaded from Supabase.')
+      } finally {
+        if (active) setIsLoadingFieldUpdate(false)
+      }
     }
-    setFieldSaveMessage('')
-  }, [fieldStorageKey])
+
+    loadFieldUpdate()
+    return () => {
+      active = false
+    }
+  }, [barangayName, todayKey])
 
   function toggleFieldTask(taskId) {
+    if (!canEditFieldUpdate) return
     setFieldUpdate((current) => ({
       ...current,
       tasks: {
@@ -1550,22 +1803,73 @@ export default function BHWPage() {
     setFieldSaveMessage('')
   }
 
-  function saveFieldUpdate() {
-    const savedUpdate = {
-      ...fieldUpdate,
-      savedAt: new Date().toISOString(),
+  function buildFieldUpdatePayload() {
+    return {
       barangay: barangayName,
-      reportingDate: todayKey,
-      risk,
-      predictedCases: Number(predictedCases || 0),
+      reporting_date: todayKey,
+      tasks: Object.fromEntries(checklist.map((item) => [item.id, Boolean(fieldUpdate.tasks?.[item.id])])),
+      total_tasks: checklist.length,
+      observation_note: fieldUpdate.note || '',
+      risk_level: risk,
+      predicted_cases: Number(predictedCases || 0),
+      is_urgent: Boolean(fieldUpdate.isUrgent),
+      suspected_symptoms: Boolean(fieldUpdate.suspectedSymptoms),
+      supplies_needed: Boolean(fieldUpdate.suppliesNeeded),
+      assistance_needed: Boolean(fieldUpdate.assistanceNeeded),
     }
+  }
 
+  function applySavedFieldUpdate(saved) {
+    setFieldUpdate((current) => ({
+      ...current,
+      fieldUpdateId: saved?.field_update_id || current.fieldUpdateId,
+      tasks: saved?.tasks || current.tasks,
+      note: saved?.observation_note ?? current.note,
+      status: saved?.status || current.status,
+      savedAt: saved?.saved_at || current.savedAt,
+      submittedAt: saved?.submitted_at || current.submittedAt,
+      supervisorComment: saved?.supervisor_comment || '',
+      isUrgent: Boolean(saved?.is_urgent),
+      suspectedSymptoms: Boolean(saved?.suspected_symptoms),
+      suppliesNeeded: Boolean(saved?.supplies_needed),
+      assistanceNeeded: Boolean(saved?.assistance_needed),
+    }))
+  }
+
+  async function saveFieldUpdate() {
+    if (!canEditFieldUpdate) return
+    setFieldUpdateBusy('draft')
+    setFieldSaveMessage('')
     try {
-      localStorage.setItem(fieldStorageKey, JSON.stringify(savedUpdate))
-      setFieldUpdate(savedUpdate)
-      setFieldSaveMessage('Field update saved on this device. Open Reports when you are ready to prepare the official summary.')
-    } catch {
-      setFieldSaveMessage('The update could not be saved in this browser. Please copy the note before leaving the page.')
+      const result = await saveFieldUpdateDraft(buildFieldUpdatePayload())
+      applySavedFieldUpdate(result?.field_update)
+      setFieldSaveTone('success')
+      setFieldSaveMessage('Draft saved to Supabase. No notification was sent.')
+    } catch (error) {
+      setFieldSaveTone('error')
+      setFieldSaveMessage(error?.message || 'The draft could not be saved.')
+    } finally {
+      setFieldUpdateBusy('')
+    }
+  }
+
+  async function submitToSupervisor() {
+    if (!canEditFieldUpdate) return
+    const incomplete = completedTaskCount < checklist.length
+    if (incomplete && !window.confirm(`Only ${completedTaskCount} of ${checklist.length} activities are complete. Submit this update anyway?`)) return
+
+    setFieldUpdateBusy('submit')
+    setFieldSaveMessage('')
+    try {
+      const result = await submitFieldUpdate(buildFieldUpdatePayload())
+      applySavedFieldUpdate(result?.field_update)
+      setFieldSaveTone('success')
+      setFieldSaveMessage('Field update submitted. The supervisor received one notification.')
+    } catch (error) {
+      setFieldSaveTone('error')
+      setFieldSaveMessage(error?.message || 'The field update could not be submitted.')
+    } finally {
+      setFieldUpdateBusy('')
     }
   }
 
@@ -1643,7 +1947,7 @@ export default function BHWPage() {
 
             <div className="bhw-mobile-grid-3 mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
               {[
-                { label: 'Expected cases', value: formatNumber(predictedCases), helper: 'Latest barangay forecast', icon: Activity },
+                { label: 'Expected cases', value: formatNumber(predictedCases), helper: 'Cumulative four-horizon forecast', icon: Activity },
                 { label: 'Risk score', value: `${score}/100`, helper: 'Combined risk value', icon: ShieldAlert },
                 { label: 'City hotspots', value: formatNumber(cityHighRiskCount), helper: 'High-risk barangays', icon: MapPinned },
               ].map((item) => {
@@ -1724,7 +2028,7 @@ export default function BHWPage() {
       </section>
 
       <section className="bhw-mobile-grid-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={ShieldAlert} label="Expected cases" value={formatNumber(predictedCases)} helper="Latest forecast for the selected barangay." tone="rose" />
+        <MetricCard icon={ShieldAlert} label="Expected cases" value={formatNumber(predictedCases)} helper="Cumulative forecast across the four direct horizons." tone="rose" />
         <MetricCard icon={Activity} label="Risk score" value={`${score}/100`} helper="Saved multi-source barangay risk value." tone="blue" />
         <MetricCard icon={TrendingUp} label="Trend records" value={formatNumber(weeklyTotals.length)} helper="Available historical and projected reporting points." tone="amber" />
         <MetricCard icon={MapPinned} label="City hotspots" value={formatNumber(cityHighRiskCount)} helper="High-risk barangays across the city workspace." tone="sky" />
@@ -1855,26 +2159,54 @@ export default function BHWPage() {
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Next four reporting periods</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Direct multi-step forecast</p>
               <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Local forecast timeline</h2>
             </div>
           </div>
 
+          <div className="mt-3 rounded-[20px] border border-blue-200/70 bg-blue-50/70 px-4 py-3 text-xs font-semibold leading-5 text-blue-800 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
+            {localForecasts.length === 4 ? (
+              <>
+                These are the saved direct multi-step horizon predictions for {barangayName}. The four values total{' '}
+                <span className="font-black">{formatNumber(localForecastTotal)} cases</span>
+                {localForecastMatchesCumulative
+                  ? ', matching the cumulative barangay forecast.'
+                  : '.'}
+              </>
+            ) : (
+              <>
+                Direct horizon predictions are not available for this barangay yet. The workspace will not invent period values from the cumulative forecast.
+              </>
+            )}
+          </div>
+
           <div className="mt-5 space-y-3">
-            {fallbackForecasts.length ? (
-              fallbackForecasts.map((row, index) => {
-                const cases = Number(row.predicted_cases || row.predictedCases || row.cases || 0)
-                const width = Math.min(100, Math.max(8, Math.round((cases / maxForecast) * 100)))
+            {localForecasts.length ? (
+              localForecasts.map((row, index) => {
+                const cases = Number(row?.predicted_cases || 0)
+                const width = Math.min(
+                  100,
+                  Math.max(8, Math.round((cases / maxForecast) * 100))
+                )
 
                 return (
-                  <div key={`${row.period || row.date || index}`} className="group/forecast relative overflow-hidden rounded-[24px] border border-blue-200/60 bg-gradient-to-r from-blue-50/90 via-white to-cyan-50/70 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:shadow-md dark:border-blue-400/[0.15] dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5">
+                  <div key={`${row.period || index}-${row.horizon || index + 1}`} className="group/forecast relative overflow-hidden rounded-[24px] border border-blue-200/60 bg-gradient-to-r from-blue-50/90 via-white to-cyan-50/70 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:shadow-md dark:border-blue-400/[0.15] dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] bg-blue-600 text-sm font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.22)]">{index + 1}</div>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] bg-blue-600 text-sm font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.22)]">
+                        {row.horizon || index + 1}
+                      </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-3 text-sm">
-                          <span className="truncate font-black text-brand-text dark:text-slate-100">{row.period || row.date || `Forecast ${index + 1}`}</span>
-                          <span className="shrink-0 font-black text-brand-text dark:text-slate-100">{formatNumber(cases)} cases</span>
+                          <span className="truncate font-black text-brand-text dark:text-slate-100">
+                            {row.period || `Forecast period ${index + 1}`}
+                          </span>
+                          <span className="shrink-0 font-black text-brand-text dark:text-slate-100">
+                            {formatNumber(cases)} cases
+                          </span>
                         </div>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-600/70 dark:text-blue-300/70">
+                          Horizon {row.horizon || index + 1} · Direct multi-step prediction
+                        </p>
                         <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white shadow-inner dark:bg-slate-800">
                           <div className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-cyan-300" style={{ width: `${width}%` }} />
                         </div>
@@ -1884,7 +2216,9 @@ export default function BHWPage() {
                 )
               })
             ) : (
-              <div className="rounded-[24px] border border-dashed border-slate-300 p-5 text-sm font-bold leading-6 text-brand-muted dark:border-slate-700 dark:text-slate-400">No barangay forecast is available yet. Ask the CHO account to run the dengue forecast first.</div>
+              <div className="rounded-[24px] border border-dashed border-slate-300 p-5 text-sm font-bold leading-6 text-brand-muted dark:border-slate-700 dark:text-slate-400">
+                No direct barangay horizon forecast is available yet. Ask the CHO account to run the latest dengue forecast so the four saved CatBoost horizon predictions can be displayed here.
+              </div>
             )}
           </div>
         </PremiumPanel>
@@ -1925,7 +2259,8 @@ export default function BHWPage() {
                   key={item.id}
                   type="button"
                   onClick={() => toggleFieldTask(item.id)}
-                  className={`group/task relative flex w-full items-center gap-3 overflow-hidden rounded-[24px] border px-4 py-3.5 text-left shadow-[0_10px_26px_rgba(15,23,42,0.05)] transition duration-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-400/20 ${done ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-teal-50 hover:-translate-y-0.5 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5' : 'border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/50 hover:-translate-y-0.5 hover:border-blue-200 dark:border-slate-700 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20'}`}
+                  disabled={!canEditFieldUpdate || isLoadingFieldUpdate}
+                  className={`group/task relative flex w-full disabled:cursor-not-allowed disabled:opacity-70 items-center gap-3 overflow-hidden rounded-[24px] border px-4 py-3.5 text-left shadow-[0_10px_26px_rgba(15,23,42,0.05)] transition duration-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-400/20 ${done ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-teal-50 hover:-translate-y-0.5 dark:border-emerald-500/25 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5' : 'border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/50 hover:-translate-y-0.5 hover:border-blue-200 dark:border-slate-700 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20'}`}
                   aria-pressed={done}
                 >
                   <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${done ? 'bg-emerald-600 text-white shadow-[0_10px_24px_rgba(5,150,105,0.22)]' : 'bg-white text-slate-500 shadow-sm dark:bg-slate-800 dark:text-slate-400'}`}>{done ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}</span>
@@ -1948,6 +2283,7 @@ export default function BHWPage() {
                 setFieldUpdate((current) => ({ ...current, note: event.target.value }))
                 setFieldSaveMessage('')
               }}
+              disabled={!canEditFieldUpdate || isLoadingFieldUpdate}
               rows={4}
               maxLength={1200}
               placeholder="Example: Inspected Purok 3. Two uncovered water containers were emptied. Barangay cleanup requested for Friday."
@@ -1956,13 +2292,50 @@ export default function BHWPage() {
             <span className="mt-1 block text-right text-xs font-bold text-brand-muted dark:text-slate-500">{String(fieldUpdate.note || '').length}/1200</span>
           </label>
 
-          {fieldSaveMessage && (
-            <div className="mt-4 rounded-[20px] border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold leading-6 text-blue-700 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-200">{fieldSaveMessage}</div>
+          <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+            <p className="text-sm font-black text-brand-text dark:text-white">Escalation details</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">Mark only the conditions observed today. Urgent or High Risk submissions are also surfaced to the administrator.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {[
+                ['isUrgent', 'Urgent issue'],
+                ['suspectedSymptoms', 'Suspected dengue symptoms'],
+                ['suppliesNeeded', 'Supplies are needed'],
+                ['assistanceNeeded', 'Immediate assistance is needed'],
+              ].map(([key, label]) => (
+                <label key={key} className={`flex items-center gap-3 rounded-[16px] border px-3 py-2.5 text-xs font-black transition ${fieldUpdate[key] ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200' : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'} ${!canEditFieldUpdate ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                  <input type="checkbox" checked={Boolean(fieldUpdate[key])} disabled={!canEditFieldUpdate || isLoadingFieldUpdate} onChange={(event) => {
+                    setFieldUpdate((current) => ({ ...current, [key]: event.target.checked }))
+                    setFieldSaveMessage('')
+                  }} className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500" />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {fieldUpdate.status && (
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-black">
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">Status: {fieldUpdate.status}</span>
+              {fieldUpdate.supervisorComment && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">Supervisor: {fieldUpdate.supervisorComment}</span>}
+            </div>
           )}
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={saveFieldUpdate} className="flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-500 px-4 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(37,99,235,0.30)]"><CheckCircle2 className="h-5 w-5" />Save field update</button>
-            <Link to="/reports" className="flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-center text-sm font-black text-brand-text shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><FileText className="h-5 w-5" />Prepare official report</Link>
+          {fieldSaveMessage && (
+            <div className={`mt-4 rounded-[20px] border px-4 py-3 text-sm font-bold leading-6 ${fieldSaveTone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200' : fieldSaveTone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200' : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-200'}`}>{fieldSaveMessage}</div>
+          )}
+
+          {currentRole !== 'bhw' && (
+            <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold leading-6 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">This is a read-only preview. Only the BHW assigned to this barangay can save or submit its daily field update.</div>
+          )}
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <button type="button" onClick={saveFieldUpdate} disabled={!canEditFieldUpdate || Boolean(fieldUpdateBusy) || isLoadingFieldUpdate} className="flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] border border-blue-200 bg-white px-4 py-3 text-sm font-black text-blue-700 shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/25 dark:bg-slate-950 dark:text-blue-200">{fieldUpdateBusy === 'draft' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Save Draft</button>
+            <button type="button" onClick={submitToSupervisor} disabled={!canEditFieldUpdate || Boolean(fieldUpdateBusy) || isLoadingFieldUpdate} className="flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-500 px-4 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60">{fieldUpdateBusy === 'submit' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}Submit to Supervisor</button>
+            {fieldUpdate.fieldUpdateId && fieldUpdate.status !== 'Draft' ? (
+              <Link to={`/reports?field_update_id=${encodeURIComponent(fieldUpdate.fieldUpdateId)}`} className="flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-center text-sm font-black text-brand-text shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><FileText className="h-5 w-5" />Prepare Official Report</Link>
+            ) : (
+              <button type="button" disabled className="flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] border border-slate-200 bg-slate-100 px-4 py-3 text-center text-sm font-black text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500"><FileText className="h-5 w-5" />Submit Before Reporting</button>
+            )}
           </div>
         </PremiumPanel>
 

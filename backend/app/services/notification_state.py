@@ -7,7 +7,6 @@ from sqlalchemy import text
 
 from app.database import engine
 
-
 _NOTIFICATION_EVENTS = []
 
 
@@ -25,7 +24,6 @@ def _to_json(value):
 
 def _row_to_notification(row):
     meta = row.get("meta") or {}
-
     if isinstance(meta, str):
         try:
             meta = json.loads(meta)
@@ -49,6 +47,8 @@ def _row_to_notification(row):
         "hash": target_hash,
         "timestamp": str(row.get("created_at")) if row.get("created_at") else now_iso(),
         "read": bool(row.get("is_read")),
+        "recipient_role": row.get("recipient_role"),
+        "recipient_user_id": str(row.get("recipient_user_id")) if row.get("recipient_user_id") else None,
         "meta": meta,
     }
 
@@ -66,19 +66,18 @@ def _fallback_add_notification_event(payload: dict):
         "hash": payload.get("hash") or "dashboard-summary",
         "timestamp": payload.get("timestamp") or now_iso(),
         "read": False,
+        "recipient_role": payload.get("recipient_role"),
+        "recipient_user_id": str(payload.get("recipient_user_id")) if payload.get("recipient_user_id") else None,
         "meta": payload.get("meta") or {},
     }
-
     _NOTIFICATION_EVENTS.insert(0, event)
     del _NOTIFICATION_EVENTS[30:]
-
     return deepcopy(event)
 
 
 def add_notification_event(payload: dict):
     notification_key = payload.get("id") or f"event-{uuid4().hex}"
     severity = payload.get("severity") or payload.get("type") or "info"
-
     meta = {
         **(payload.get("meta") or {}),
         "notification_key": notification_key,
@@ -86,36 +85,20 @@ def add_notification_event(payload: dict):
         "source": payload.get("source") or "backend_event",
     }
 
-    notification_id = _stable_uuid(notification_key)
-
     try:
         with engine.begin() as connection:
             row = connection.execute(
                 text(
                     """
                     insert into public.notifications (
-                        notification_id,
-                        title,
-                        message,
-                        severity,
-                        category,
-                        target_page,
-                        target_hash,
-                        is_read,
-                        meta,
-                        created_at
+                        notification_id, title, message, severity, category,
+                        target_page, target_hash, is_read, meta, created_at,
+                        recipient_role, recipient_user_id
                     )
                     values (
-                        :notification_id,
-                        :title,
-                        :message,
-                        :severity,
-                        :category,
-                        :target_page,
-                        :target_hash,
-                        false,
-                        cast(:meta as jsonb),
-                        now()
+                        :notification_id, :title, :message, :severity, :category,
+                        :target_page, :target_hash, false, cast(:meta as jsonb), now(),
+                        :recipient_role, :recipient_user_id
                     )
                     on conflict (notification_id)
                     do update set
@@ -125,22 +108,16 @@ def add_notification_event(payload: dict):
                         category = excluded.category,
                         target_page = excluded.target_page,
                         target_hash = excluded.target_hash,
-                        meta = excluded.meta
-                    returning
-                        notification_id,
-                        title,
-                        message,
-                        severity,
-                        category,
-                        target_page,
-                        target_hash,
-                        is_read,
-                        meta,
-                        created_at
+                        meta = excluded.meta,
+                        recipient_role = excluded.recipient_role,
+                        recipient_user_id = excluded.recipient_user_id
+                    returning notification_id, title, message, severity, category,
+                              target_page, target_hash, is_read, meta, created_at,
+                              recipient_role, recipient_user_id
                     """
                 ),
                 {
-                    "notification_id": notification_id,
+                    "notification_id": _stable_uuid(notification_key),
                     "title": payload.get("title") or "System notification",
                     "message": payload.get("message") or "A system event was recorded.",
                     "severity": severity,
@@ -148,9 +125,10 @@ def add_notification_event(payload: dict):
                     "target_page": payload.get("to") or "/dashboard",
                     "target_hash": payload.get("hash") or "dashboard-summary",
                     "meta": _to_json(meta),
+                    "recipient_role": payload.get("recipient_role"),
+                    "recipient_user_id": payload.get("recipient_user_id") or None,
                 },
             ).mappings().first()
-
         return _row_to_notification(row)
     except Exception:
         return _fallback_add_notification_event(payload)
@@ -161,46 +139,29 @@ def save_generated_notifications(notifications):
         return []
 
     saved = []
-
     try:
         with engine.begin() as connection:
             for item in notifications:
                 notification_key = item.get("id") or f"generated-{uuid4().hex}"
                 severity = item.get("severity") or item.get("type") or "info"
-
                 meta = {
                     **(item.get("meta") or {}),
                     "notification_key": notification_key,
                     "auto_generated": True,
                     "source": item.get("source") or "backend",
                 }
-
                 row = connection.execute(
                     text(
                         """
                         insert into public.notifications (
-                            notification_id,
-                            title,
-                            message,
-                            severity,
-                            category,
-                            target_page,
-                            target_hash,
-                            is_read,
-                            meta,
-                            created_at
+                            notification_id, title, message, severity, category,
+                            target_page, target_hash, is_read, meta, created_at,
+                            recipient_role, recipient_user_id
                         )
                         values (
-                            :notification_id,
-                            :title,
-                            :message,
-                            :severity,
-                            :category,
-                            :target_page,
-                            :target_hash,
-                            false,
-                            cast(:meta as jsonb),
-                            now()
+                            :notification_id, :title, :message, :severity, :category,
+                            :target_page, :target_hash, false, cast(:meta as jsonb), now(),
+                            :recipient_role, :recipient_user_id
                         )
                         on conflict (notification_id)
                         do update set
@@ -210,18 +171,12 @@ def save_generated_notifications(notifications):
                             category = excluded.category,
                             target_page = excluded.target_page,
                             target_hash = excluded.target_hash,
-                            meta = excluded.meta
-                        returning
-                            notification_id,
-                            title,
-                            message,
-                            severity,
-                            category,
-                            target_page,
-                            target_hash,
-                            is_read,
-                            meta,
-                            created_at
+                            meta = excluded.meta,
+                            recipient_role = excluded.recipient_role,
+                            recipient_user_id = excluded.recipient_user_id
+                        returning notification_id, title, message, severity, category,
+                                  target_page, target_hash, is_read, meta, created_at,
+                                  recipient_role, recipient_user_id
                         """
                     ),
                     {
@@ -233,18 +188,17 @@ def save_generated_notifications(notifications):
                         "target_page": item.get("to") or "/dashboard",
                         "target_hash": item.get("hash") or "dashboard-summary",
                         "meta": _to_json(meta),
+                        "recipient_role": item.get("recipient_role"),
+                        "recipient_user_id": item.get("recipient_user_id") or None,
                     },
                 ).mappings().first()
-
                 saved.append(_row_to_notification(row))
-
         return saved
     except Exception:
         return []
 
 
 def clear_generated_hotspot_notifications(integration_run_id=None):
-    """Remove cached hotspot alerts before saving a refreshed hotspot result."""
     try:
         with engine.begin() as connection:
             connection.execute(
@@ -252,56 +206,30 @@ def clear_generated_hotspot_notifications(integration_run_id=None):
                     """
                     delete from public.notifications
                     where coalesce(meta->>'auto_generated', 'false') = 'true'
-                      and category in (
-                        'confirmed_hotspot_detected',
-                        'emerging_hotspot_detected',
-                        'map_review_needed'
-                      )
-                      and (
-                        :integration_run_id is null
-                        or meta->>'integration_run_id' = :integration_run_id
-                      )
+                      and category in ('confirmed_hotspot_detected', 'emerging_hotspot_detected', 'map_review_needed')
+                      and (:integration_run_id is null or meta->>'integration_run_id' = :integration_run_id)
                     """
                 ),
-                {
-                    "integration_run_id": str(integration_run_id) if integration_run_id else None,
-                },
+                {"integration_run_id": str(integration_run_id) if integration_run_id else None},
             )
     except Exception:
         pass
 
 
 def get_saved_hotspot_notifications(integration_run_id=None, limit: int = 10):
-    """Return previously generated hotspot alerts without recalculating hotspots."""
     safe_limit = max(1, min(int(limit or 10), 30))
-
     try:
         with engine.connect() as connection:
             rows = connection.execute(
                 text(
                     """
-                    select
-                        notification_id,
-                        title,
-                        message,
-                        severity,
-                        category,
-                        target_page,
-                        target_hash,
-                        is_read,
-                        meta,
-                        created_at
+                    select notification_id, title, message, severity, category,
+                           target_page, target_hash, is_read, meta, created_at,
+                           recipient_role, recipient_user_id
                     from public.notifications
                     where coalesce(meta->>'auto_generated', 'false') = 'true'
-                      and category in (
-                        'confirmed_hotspot_detected',
-                        'emerging_hotspot_detected',
-                        'map_review_needed'
-                      )
-                      and (
-                        :integration_run_id is null
-                        or meta->>'integration_run_id' = :integration_run_id
-                      )
+                      and category in ('confirmed_hotspot_detected', 'emerging_hotspot_detected', 'map_review_needed')
+                      and (:integration_run_id is null or meta->>'integration_run_id' = :integration_run_id)
                     order by created_at desc
                     limit :limit
                     """
@@ -311,50 +239,52 @@ def get_saved_hotspot_notifications(integration_run_id=None, limit: int = 10):
                     "limit": safe_limit,
                 },
             ).mappings().all()
-
         return [_row_to_notification(row) for row in rows]
     except Exception:
         return []
 
 
-def get_notification_events(limit: int = 10):
-    safe_limit = max(1, min(int(limit or 10), 30))
+def _is_visible_to(event, recipient_role=None, recipient_user_id=None):
+    target_role = event.get("recipient_role")
+    target_user = event.get("recipient_user_id")
+    if target_role and target_role != recipient_role:
+        return False
+    if target_user and str(target_user) != str(recipient_user_id or ""):
+        return False
+    return True
 
+
+def get_notification_events(limit: int = 10, recipient_role=None, recipient_user_id=None):
+    safe_limit = max(1, min(int(limit or 10), 30))
     try:
         with engine.connect() as connection:
             rows = connection.execute(
                 text(
                     """
-                    select
-                        notification_id,
-                        title,
-                        message,
-                        severity,
-                        category,
-                        target_page,
-                        target_hash,
-                        is_read,
-                        meta,
-                        created_at
+                    select notification_id, title, message, severity, category,
+                           target_page, target_hash, is_read, meta, created_at,
+                           recipient_role, recipient_user_id
                     from public.notifications
                     where coalesce(meta->>'auto_generated', 'false') <> 'true'
+                      and (recipient_role is null or recipient_role = :recipient_role)
+                      and (recipient_user_id is null or recipient_user_id = :recipient_user_id)
                     order by created_at desc
                     limit :limit
                     """
                 ),
                 {
+                    "recipient_role": recipient_role,
+                    "recipient_user_id": str(recipient_user_id) if recipient_user_id else None,
                     "limit": safe_limit,
                 },
             ).mappings().all()
-
-        database_events = [_row_to_notification(row) for row in rows]
-
-        if database_events:
-            return database_events
+        return [_row_to_notification(row) for row in rows]
     except Exception:
-        pass
-
-    return deepcopy(_NOTIFICATION_EVENTS[:safe_limit])
+        return [
+            deepcopy(item)
+            for item in _NOTIFICATION_EVENTS
+            if _is_visible_to(item, recipient_role, recipient_user_id)
+        ][:safe_limit]
 
 
 def clear_notification_events():
@@ -370,7 +300,5 @@ def clear_notification_events():
             )
     except Exception:
         pass
-
     _NOTIFICATION_EVENTS.clear()
-
     return []

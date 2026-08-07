@@ -4,7 +4,7 @@ import os
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, decision_actions, forecasts, geospatial, integration, models, notifications, reports, uploads, workspace, sessions
+from app.routers import auth, decision_actions, field_updates, forecasts, geospatial, integration, models, notifications, reports, uploads, workspace, sessions
 from sqlalchemy import text
 from app.database import engine, test_database_connection
 from app.auth_security import require_roles
@@ -49,6 +49,7 @@ app.include_router(models.router, dependencies=[Depends(require_roles("cho", "ad
 app.include_router(geospatial.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(notifications.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(decision_actions.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin"))])
+app.include_router(field_updates.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin"))])
 app.include_router(reports.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(workspace.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(sessions.router)
@@ -58,6 +59,7 @@ app.include_router(sessions.router)
 def startup_auth_setup():
     ensure_auth_tables()
     notifications.ensure_notification_preferences_table()
+    field_updates.ensure_field_updates_table()
 
 
 @app.get("/")

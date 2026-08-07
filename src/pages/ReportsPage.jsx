@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
@@ -30,8 +31,9 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getGeospatialHotspots, getLatestModelMetrics, saveGeneratedReport } from '../services/api'
+import { createBackendNotificationEvent, getFieldUpdate, getGeospatialHotspots, getLatestModelMetrics, saveGeneratedReport } from '../services/api'
 import reportsHeroBackground from '../assets/reports.png'
+import FieldUpdateReportCard from '../components/FieldUpdateReportCard'
 
 const REPORT_TITLE = 'Four-Month Dengue Response Planning Report'
 const REPORT_EXPORT_BASENAME = 'dengue-four-month-response-planning-report'
@@ -2637,7 +2639,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           ${limitationHtml || '<li>No limitations recorded.</li>'}
         </ul>
 
-        
+
       </body>
     </html>
   `
@@ -3122,7 +3124,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
     ['Top humidity suitability', getMultiSourceProfile(topBarangay).humiditySuitability],
     ['Top response summary', topDecision.summary || 'No recommendation available'],
-    
+
   ])
 
   summarySheet['!cols'] = [{ wch: 34 }, { wch: 110 }]
@@ -4547,6 +4549,11 @@ function MetadataDetailList({
 }
 
 export default function ReportsPage() {
+  const [searchParams] = useSearchParams()
+  const selectedFieldUpdateId = searchParams.get('field_update_id') || ''
+  const [selectedFieldUpdate, setSelectedFieldUpdate] = useState(null)
+  const [isLoadingSelectedFieldUpdate, setIsLoadingSelectedFieldUpdate] = useState(false)
+  const [selectedFieldUpdateError, setSelectedFieldUpdateError] = useState('')
   const [format, setFormat] = useState('pdf')
   const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
   const [expandedPriorityBarangay, setExpandedPriorityBarangay] = useState(null)
@@ -4575,6 +4582,37 @@ export default function ReportsPage() {
     addActivityLog,
     boundaryRecords = [],
   } = data
+
+  useEffect(() => {
+    let active = true
+
+    async function loadSelectedFieldUpdate() {
+      if (!selectedFieldUpdateId) {
+        setSelectedFieldUpdate(null)
+        setSelectedFieldUpdateError('')
+        return
+      }
+
+      setIsLoadingSelectedFieldUpdate(true)
+      setSelectedFieldUpdateError('')
+      try {
+        const result = await getFieldUpdate(selectedFieldUpdateId)
+        if (!active) return
+        setSelectedFieldUpdate(result?.field_update || null)
+      } catch (error) {
+        if (!active) return
+        setSelectedFieldUpdate(null)
+        setSelectedFieldUpdateError(error?.message || 'The submitted field update could not be loaded.')
+      } finally {
+        if (active) setIsLoadingSelectedFieldUpdate(false)
+      }
+    }
+
+    loadSelectedFieldUpdate()
+    return () => {
+      active = false
+    }
+  }, [selectedFieldUpdateId])
 
   const populationRecords = useMemo(() => {
     const candidates = [
@@ -5172,6 +5210,14 @@ const exportPayload = {
           }
         }
       `}</style>
+
+      {selectedFieldUpdateId && (
+        <FieldUpdateReportCard
+          fieldUpdate={selectedFieldUpdate}
+          isLoading={isLoadingSelectedFieldUpdate}
+          error={selectedFieldUpdateError}
+        />
+      )}
 
       <section className="reports-hero-panel relative isolate overflow-hidden rounded-[38px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.34)] ring-1 ring-white/10 sm:rounded-[40px]">
         <img

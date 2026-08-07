@@ -163,6 +163,61 @@ function getForecastPeriodDisplay(backendForecastResult = null) {
   }
 }
 
+function buildDashboardChartLabels({
+  values = [],
+  usingBackendForecast = false,
+  backendForecastResult = null,
+  forecastPeriodDisplay = {},
+}) {
+  if (!usingBackendForecast) {
+    return values.map((_, index) => `W${index + 1}`)
+  }
+
+  const forecastCount = Math.max(values.length - 2, 0)
+  const forecastRows = Array.isArray(backendForecastResult?.forecast_results)
+    ? backendForecastResult.forecast_results
+    : []
+  const latestPeriod = forecastRows
+    .map((row) => String(row?.latest_period || row?.latestPeriod || '').trim())
+    .find(Boolean)
+
+  if (
+    forecastPeriodDisplay?.unit === 'month' &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(latestPeriod || '')
+  ) {
+    const [year, month] = latestPeriod.split('-').map(Number)
+    const monthFormatter = new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+
+    return [
+      'Earlier 3-mo avg',
+      'Latest 3-mo avg',
+      ...Array.from({ length: forecastCount }, (_, index) => {
+        const forecastDate = new Date(Date.UTC(year, month + index, 1))
+        return monthFormatter.format(forecastDate)
+      }),
+    ]
+  }
+
+  const periodName =
+    forecastPeriodDisplay?.unit === 'week'
+      ? 'wk'
+      : forecastPeriodDisplay?.unit === 'day'
+        ? 'day'
+        : 'period'
+
+  return [
+    `Earlier 3-${periodName} avg`,
+    `Latest 3-${periodName} avg`,
+    ...Array.from({ length: forecastCount }, (_, index) => {
+      return `${forecastPeriodDisplay?.prefix || 'P'}${index + 1}`
+    }),
+  ]
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
 }
@@ -188,8 +243,12 @@ function formatDecimal(value, decimals = 2) {
   }).format(number)
 }
 
-function getTrendStatus(values = []) {
-  if (!values.length) {
+function getTrendStatus(values = [], forecastStartIndex = 0, labels = []) {
+  const numericValues = values
+    .map((value) => Math.max(0, toNumber(value)))
+    .filter((value) => Number.isFinite(value))
+
+  if (!numericValues.length) {
     return {
       label: 'No trend data',
       description: 'Upload dengue records to show trend movement.',
@@ -198,13 +257,88 @@ function getTrendStatus(values = []) {
     }
   }
 
-  const latest = Number(values[values.length - 1] || 0)
-  const previous = Number(values[values.length - 2] || 0)
+  const validForecastStart = Math.max(
+    0,
+    Math.min(Number(forecastStartIndex || 0), numericValues.length)
+  )
+
+  if (validForecastStart > 0 && validForecastStart < numericValues.length) {
+    const recentAverage = numericValues[validForecastStart - 1]
+    const forecastValues = numericValues.slice(validForecastStart)
+    const firstForecast = forecastValues[0]
+    const finalForecast = forecastValues[forecastValues.length - 1]
+    const firstForecastLabel =
+      labels[validForecastStart] || 'the first forecast period'
+    const finalForecastLabel =
+      labels[numericValues.length - 1] || 'the final forecast period'
+    const differenceFromRecent = firstForecast - recentAverage
+    const tolerance = Math.max(1, recentAverage * 0.05)
+
+    if (differenceFromRecent > tolerance && finalForecast < firstForecast) {
+      return {
+        label: 'Near-term increase',
+        description: `Cases are projected to rise from the latest average of ${formatNumber(
+          recentAverage
+        )} to ${formatNumber(firstForecast)} in ${firstForecastLabel}, then ease to ${formatNumber(
+          finalForecast
+        )} by ${finalForecastLabel}.`,
+        style:
+          'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+      }
+    }
+
+    if (differenceFromRecent > tolerance) {
+      return {
+        label: 'Increasing outlook',
+        description: `Cases are projected to increase from the latest average of ${formatNumber(
+          recentAverage
+        )} to ${formatNumber(firstForecast)} in ${firstForecastLabel}.`,
+        style:
+          'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
+      }
+    }
+
+    if (differenceFromRecent < -tolerance && finalForecast > firstForecast) {
+      return {
+        label: 'Initial decline, later rise',
+        description: `Cases are projected to fall to ${formatNumber(
+          firstForecast
+        )} in ${firstForecastLabel}, then rise to ${formatNumber(
+          finalForecast
+        )} by ${finalForecastLabel}.`,
+        style:
+          'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+      }
+    }
+
+    if (differenceFromRecent < -tolerance) {
+      return {
+        label: 'Decreasing outlook',
+        description: `Cases are projected to decline from the latest average of ${formatNumber(
+          recentAverage
+        )} to ${formatNumber(firstForecast)} in ${firstForecastLabel}.`,
+        style:
+          'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+      }
+    }
+
+    return {
+      label: 'Stable near-term outlook',
+      description: `The first forecast remains close to the latest average, with ${formatNumber(
+        firstForecast
+      )} cases projected for ${firstForecastLabel}.`,
+      style:
+        'border-sky-100 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300',
+    }
+  }
+
+  const latest = numericValues[numericValues.length - 1]
+  const previous = numericValues[numericValues.length - 2] ?? latest
 
   if (latest > previous) {
     return {
       label: 'Rising',
-      description: 'Latest projected value is higher than the previous value.',
+      description: 'The latest recorded value is higher than the previous value.',
       style:
         'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
     }
@@ -213,7 +347,7 @@ function getTrendStatus(values = []) {
   if (latest < previous) {
     return {
       label: 'Decreasing',
-      description: 'Latest projected value is lower than the previous value.',
+      description: 'The latest recorded value is lower than the previous value.',
       style:
         'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
     }
@@ -221,7 +355,7 @@ function getTrendStatus(values = []) {
 
   return {
     label: 'Stable',
-    description: 'Latest projected value is unchanged from the previous value.',
+    description: 'The latest recorded value is unchanged from the previous value.',
     style:
       'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
   }
@@ -1822,6 +1956,8 @@ function ThreeDTrendChart({
   values = [],
   labels = [],
   title = 'Dengue case trend',
+  subtitle = 'Case movement across historical and projected reporting periods',
+  historicalLegendLabel = '3-period averages',
   forecastStartIndex = 0,
 }) {
   const chart = useMemo(() => {
@@ -1856,6 +1992,9 @@ function ThreeDTrendChart({
     const forecastBoundaryX = hasForecastSplit
       ? points[validForecastStart].x
       : left
+    const forecastSplitX = hasForecastSplit
+      ? (points[validForecastStart - 1].x + points[validForecastStart].x) / 2
+      : left
     const forecastBoundaryPercent = Math.max(
       0,
       Math.min(100, ((forecastBoundaryX - left) / (right - left)) * 100)
@@ -1886,6 +2025,7 @@ function ThreeDTrendChart({
       ticks,
       hasForecastSplit,
       validForecastStart,
+      forecastSplitX,
       transitionStart,
       transitionEnd,
     }
@@ -1909,7 +2049,7 @@ function ThreeDTrendChart({
         >
           <title>{title}</title>
           <desc>
-            A three-dimensional styled dengue trend chart showing historical and projected case values.
+            A three-dimensional styled citywide dengue outlook comparing historical averages with independent forecast values.
           </desc>
 
           <defs>
@@ -2066,8 +2206,51 @@ function ThreeDTrendChart({
             fontWeight="600"
             fontFamily="Inter, ui-sans-serif, system-ui"
           >
-            Case movement across historical and projected reporting periods
+            {subtitle}
           </text>
+
+          {chart.hasForecastSplit && (
+            <g>
+              <text
+                x={(chart.left + chart.forecastSplitX) / 2}
+                y="132"
+                textAnchor="middle"
+                fill="#fbbf24"
+                fillOpacity="0.9"
+                fontSize="11"
+                fontWeight="900"
+                letterSpacing="1.4"
+                fontFamily="Inter, ui-sans-serif, system-ui"
+              >
+                HISTORICAL SUMMARY
+              </text>
+
+              <text
+                x={(chart.forecastSplitX + chart.right) / 2}
+                y="132"
+                textAnchor="middle"
+                fill="#67e8f9"
+                fillOpacity="0.9"
+                fontSize="11"
+                fontWeight="900"
+                letterSpacing="1.4"
+                fontFamily="Inter, ui-sans-serif, system-ui"
+              >
+                FORECAST
+              </text>
+
+              <line
+                x1={chart.forecastSplitX}
+                y1="148"
+                x2={chart.forecastSplitX}
+                y2={chart.baseline}
+                stroke="#cbd5e1"
+                strokeOpacity="0.22"
+                strokeWidth="1.5"
+                strokeDasharray="5 8"
+              />
+            </g>
+          )}
 
           <text
             x="38"
@@ -2273,20 +2456,65 @@ function ThreeDTrendChart({
             )
           })}
 
-          <g transform={`translate(350 ${chart.baseline + 150})`}>
-            <rect x="0" y="-14" width="22" height="14" rx="4" fill="url(#trend-line-gradient)" />
-            <rect x="0" y="-14" width="22" height="14" rx="4" fill="none" stroke="#bae6fd" strokeOpacity="0.5" />
-            <text
-              x="34"
-              y="-2"
-              fill="#e2e8f0"
-              fontSize="14"
-              fontWeight="800"
-              fontFamily="Inter, ui-sans-serif, system-ui"
-            >
-              Dengue cases
-            </text>
-          </g>
+          {chart.hasForecastSplit ? (
+            <>
+              <g transform={`translate(205 ${chart.baseline + 150})`}>
+                <rect x="0" y="-14" width="22" height="14" rx="4" fill="#f59e0b" />
+                <rect x="0" y="-14" width="22" height="14" rx="4" fill="none" stroke="#fed7aa" strokeOpacity="0.65" />
+                <text
+                  x="34"
+                  y="-2"
+                  fill="#e2e8f0"
+                  fontSize="14"
+                  fontWeight="800"
+                  fontFamily="Inter, ui-sans-serif, system-ui"
+                >
+                  {historicalLegendLabel}
+                </text>
+              </g>
+
+              <g transform={`translate(475 ${chart.baseline + 150})`}>
+                <rect x="0" y="-14" width="22" height="14" rx="4" fill="#22d3ee" />
+                <rect x="0" y="-14" width="22" height="14" rx="4" fill="none" stroke="#bae6fd" strokeOpacity="0.65" />
+                <text
+                  x="34"
+                  y="-2"
+                  fill="#e2e8f0"
+                  fontSize="14"
+                  fontWeight="800"
+                  fontFamily="Inter, ui-sans-serif, system-ui"
+                >
+                  Forecast cases
+                </text>
+              </g>
+
+              <text
+                x="735"
+                y={chart.baseline + 148}
+                fill="#94a3b8"
+                fontSize="12"
+                fontWeight="700"
+                fontFamily="Inter, ui-sans-serif, system-ui"
+              >
+                Predicted, not guaranteed
+              </text>
+            </>
+          ) : (
+            <g transform={`translate(350 ${chart.baseline + 150})`}>
+              <rect x="0" y="-14" width="22" height="14" rx="4" fill="url(#trend-line-gradient)" />
+              <rect x="0" y="-14" width="22" height="14" rx="4" fill="none" stroke="#bae6fd" strokeOpacity="0.5" />
+              <text
+                x="34"
+                y="-2"
+                fill="#e2e8f0"
+                fontSize="14"
+                fontWeight="800"
+                fontFamily="Inter, ui-sans-serif, system-ui"
+              >
+                Dengue cases
+              </text>
+            </g>
+          )}
         </svg>
       </div>
     </div>
@@ -2447,18 +2675,18 @@ export default function DashboardPage() {
     : dashboardStats?.weeklyTotals || []
 
   const forecastPeriodDisplay = getForecastPeriodDisplay(backendForecastResult)
-  const dashboardChartLabels = usingBackendForecast
-    ? [
-        'Prev avg',
-        'Recent avg',
-        ...Array.from({ length: Math.max(weeklyTotals.length - 2, 0) }, (_, index) => {
-          return `${forecastPeriodDisplay.prefix}${index + 1}`
-        }),
-      ]
-    : weeklyTotals.map((_, index) => `W${index + 1}`)
+  const dashboardChartLabels = buildDashboardChartLabels({
+    values: weeklyTotals,
+    usingBackendForecast,
+    backendForecastResult,
+    forecastPeriodDisplay,
+  })
   const dashboardChartTitle = usingBackendForecast
-    ? `${forecastPeriodDisplay.adjective} dengue case trend`
+    ? 'Citywide dengue case outlook'
     : 'Weekly dengue case values'
+  const dashboardChartSubtitle = usingBackendForecast
+    ? `Historical 3-${forecastPeriodDisplay.singular} averages and independent ${forecastPeriodDisplay.adjective.toLowerCase()} forecasts across all barangays`
+    : 'Case movement across the latest reporting periods'
   const forecastHorizonPeriods = Number(
     backendForecastResult?.forecast_horizon_periods ||
       backendForecastResult?.validation_summary?.forecast_horizon_periods ||
@@ -2508,7 +2736,11 @@ export default function DashboardPage() {
   const priority = canonicalPriorityRows.slice(0, 5)
 
   const latestLogs = activityLogs.slice(0, 3)
-  const trendStatus = getTrendStatus(weeklyTotals)
+  const trendStatus = getTrendStatus(
+    weeklyTotals,
+    usingBackendForecast ? 2 : 0,
+    dashboardChartLabels
+  )
 
   const highRiskCount = displayRiskRows.length
     ? displayRiskRows.filter((row) => row.risk === 'High').length
@@ -3023,12 +3255,12 @@ export default function DashboardPage() {
               </SectionBadge>
 
               <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                Dengue trend
+                Citywide dengue outlook
               </h3>
 
-              <p className="mt-1 max-w-xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {usingBackendForecast
-                  ? `Values show the previous average, recent average, and the projected ${forecastPeriodDisplay.plural} from the latest analysis.`
+                  ? `Combined totals across all barangays compare the earlier and latest three-${forecastPeriodDisplay.singular} averages with independent predictions for the next ${forecastHorizonPeriods} ${forecastHorizonPeriods === 1 ? forecastPeriodDisplay.singular : forecastPeriodDisplay.plural}.`
                   : 'Weekly case values are recalculated from uploaded or sample dengue records.'}
               </p>
             </div>
@@ -3043,7 +3275,7 @@ export default function DashboardPage() {
     <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">
-          Dengue case values
+          Citywide case outlook
         </p>
 
         <p className="mt-1 text-xs text-slate-400">
@@ -3052,7 +3284,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold text-cyan-200">
-        {usingBackendForecast ? 'Latest analysis' : 'Last 6 periods'}
+        {usingBackendForecast ? 'Citywide • Latest analysis' : 'Last 6 periods'}
       </div>
     </div>
 
@@ -3062,6 +3294,8 @@ export default function DashboardPage() {
           values={weeklyTotals}
           labels={dashboardChartLabels}
           title={dashboardChartTitle}
+          subtitle={dashboardChartSubtitle}
+          historicalLegendLabel={`3-${forecastPeriodDisplay.singular} averages`}
           forecastStartIndex={usingBackendForecast ? 2 : 0}
         />
       ) : (

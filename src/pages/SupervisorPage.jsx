@@ -27,6 +27,7 @@ import {
   riskStyles,
 } from '../utils/analytics'
 import DecisionActionTracker from '../components/DecisionActionTracker'
+import FieldUpdateReviewPanel from '../components/FieldUpdateReviewPanel'
 import aiGif from '../assets/ai.gif'
 
 function formatNumber(value) {
@@ -775,6 +776,8 @@ export default function SupervisorPage() {
           </div>
         </PremiumPanel>
       </section>
+
+      <FieldUpdateReviewPanel />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <PremiumPanel tone="blue" className="supervisor-ranking-panel p-5 sm:p-6">

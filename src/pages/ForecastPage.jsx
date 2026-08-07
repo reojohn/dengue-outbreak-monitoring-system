@@ -174,6 +174,210 @@ function getForecastPeriodDisplay(backendForecastResult = null) {
   }
 }
 
+function formatForecastPeriodLabel(value = '', fallbackLabel = '') {
+  const rawValue = String(value || '').trim()
+
+  if (!rawValue) return fallbackLabel
+
+  const monthMatch = rawValue.match(/^(\d{4})-(0[1-9]|1[0-2])$/)
+
+  if (monthMatch) {
+    const date = new Date(
+      Date.UTC(Number(monthMatch[1]), Number(monthMatch[2]) - 1, 1)
+    )
+
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date)
+  }
+
+  const weekMatch = rawValue.match(/^(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])$/i)
+
+  if (weekMatch) {
+    return `${weekMatch[1]} W${Number(weekMatch[2])}`
+  }
+
+  const dayMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+  if (dayMatch) {
+    const date = new Date(
+      Date.UTC(
+        Number(dayMatch[1]),
+        Number(dayMatch[2]) - 1,
+        Number(dayMatch[3])
+      )
+    )
+
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date)
+  }
+
+  if (/^forecast\s+(month|week|day|period)\s+\d+$/i.test(rawValue)) {
+    return fallbackLabel || rawValue
+  }
+
+  return rawValue
+}
+
+function buildForecastChartLabels({
+  values = [],
+  computedPeriods = [],
+  backendForecastResult = null,
+  forecastPeriodDisplay = {},
+}) {
+  const count = values.length
+
+  if (!count) return []
+
+  const periodLabels = Array.from({ length: count }, (_, index) => {
+    const rawPeriod = computedPeriods[index]?.period
+    const fallback = `${forecastPeriodDisplay?.prefix || 'P'}${index + 1}`
+
+    return formatForecastPeriodLabel(rawPeriod, fallback)
+  })
+
+  const hasSpecificPeriodLabels = periodLabels.some((label, index) => {
+    return label !== `${forecastPeriodDisplay?.prefix || 'P'}${index + 1}`
+  })
+
+  if (hasSpecificPeriodLabels) {
+    return periodLabels
+  }
+
+  const forecastRows = Array.isArray(backendForecastResult?.forecast_results)
+    ? backendForecastResult.forecast_results
+    : []
+  const latestPeriod = forecastRows
+    .map((row) => String(row?.latest_period || row?.latestPeriod || '').trim())
+    .find(Boolean)
+
+  if (
+    forecastPeriodDisplay?.unit === 'month' &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(latestPeriod || '')
+  ) {
+    const [year, month] = latestPeriod.split('-').map(Number)
+    const formatter = new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+
+    return Array.from({ length: count }, (_, index) => {
+      return formatter.format(new Date(Date.UTC(year, month + index, 1)))
+    })
+  }
+
+  return periodLabels
+}
+
+function getForecastChartStatus(values = [], labels = []) {
+  const numericValues = values.map((value) => Math.max(0, toNumber(value)))
+
+  if (!numericValues.length) {
+    return {
+      label: 'No forecast data',
+      description: 'Process dengue records to generate the citywide forecast outlook.',
+      style:
+        'border-slate-600/40 bg-slate-800/70 text-slate-300',
+    }
+  }
+
+  if (numericValues.length === 1) {
+    return {
+      label: 'Single-period outlook',
+      description: `${labels[0] || 'The forecast period'} has ${formatNumber(
+        numericValues[0]
+      )} projected citywide cases.`,
+      style:
+        'border-blue-400/20 bg-blue-400/10 text-blue-200',
+    }
+  }
+
+  const firstValue = numericValues[0]
+  const finalValue = numericValues[numericValues.length - 1]
+  const maximumValue = Math.max(...numericValues)
+  const minimumValue = Math.min(...numericValues)
+  const maximumIndex = numericValues.indexOf(maximumValue)
+  const minimumIndex = numericValues.indexOf(minimumValue)
+  const lastIndex = numericValues.length - 1
+  const tolerance = Math.max(1, firstValue * 0.05)
+  const firstLabel = labels[0] || 'the first forecast period'
+  const finalLabel = labels[lastIndex] || 'the final forecast period'
+
+  if (
+    maximumIndex > 0 &&
+    maximumIndex < lastIndex &&
+    maximumValue - firstValue > tolerance &&
+    maximumValue - finalValue > tolerance
+  ) {
+    return {
+      label: 'Mid-horizon peak',
+      description: `Citywide cases rise from ${formatNumber(
+        firstValue
+      )} in ${firstLabel} to a peak of ${formatNumber(maximumValue)} in ${
+        labels[maximumIndex] || `period ${maximumIndex + 1}`
+      }, then ease to ${formatNumber(finalValue)} by ${finalLabel}.`,
+      style:
+        'border-amber-400/20 bg-amber-400/10 text-amber-200',
+    }
+  }
+
+  if (
+    minimumIndex > 0 &&
+    minimumIndex < lastIndex &&
+    firstValue - minimumValue > tolerance &&
+    finalValue - minimumValue > tolerance
+  ) {
+    return {
+      label: 'Mid-horizon dip',
+      description: `Citywide cases fall from ${formatNumber(
+        firstValue
+      )} in ${firstLabel} to ${formatNumber(minimumValue)} in ${
+        labels[minimumIndex] || `period ${minimumIndex + 1}`
+      }, then recover to ${formatNumber(finalValue)} by ${finalLabel}.`,
+      style:
+        'border-blue-400/20 bg-blue-400/10 text-blue-200',
+    }
+  }
+
+  if (finalValue > firstValue + tolerance) {
+    return {
+      label: 'Increasing outlook',
+      description: `Citywide cases are projected to increase from ${formatNumber(
+        firstValue
+      )} in ${firstLabel} to ${formatNumber(finalValue)} by ${finalLabel}.`,
+      style:
+        'border-rose-400/20 bg-rose-400/10 text-rose-200',
+    }
+  }
+
+  if (finalValue < firstValue - tolerance) {
+    return {
+      label: 'Decreasing outlook',
+      description: `Citywide cases are projected to decrease from ${formatNumber(
+        firstValue
+      )} in ${firstLabel} to ${formatNumber(finalValue)} by ${finalLabel}.`,
+      style:
+        'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+    }
+  }
+
+  return {
+    label: 'Stable outlook',
+    description: `Citywide cases remain relatively stable, from ${formatNumber(
+      firstValue
+    )} in ${firstLabel} to ${formatNumber(finalValue)} by ${finalLabel}.`,
+    style:
+      'border-cyan-400/20 bg-cyan-400/10 text-cyan-200',
+  }
+}
+
 function hasMetricValue(value) {
   const number = Number(value)
   return Number.isFinite(number)
@@ -1306,6 +1510,7 @@ function getResponsePriorityValue(priority = '') {
 function getRowRiskScore(row = {}) {
   return getCanonicalCombinedRiskScore(row)
 }
+
 
 function getRiskComponentItems(row = {}) {
   const components = row?.riskComponents || row?.risk_components || {}
@@ -2845,7 +3050,7 @@ function SummaryBarangayListModal({
                       <p className="mt-1 text-xs font-black text-slate-800 dark:text-slate-200">{formatNumber(row.totalCases || 0)} cases</p>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/70">
-                      <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-400">Priority points</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-400">Decision score</p>
                       <p className="mt-1 text-xs font-black text-slate-800 dark:text-slate-200">{formatNumber(row.decisionScore || 0)} points</p>
                     </div>
                   </div>
@@ -2946,8 +3151,8 @@ function getNiceChartMaximum(value) {
 function ForecastThreeDTrendChart({
   values = [],
   labels = [],
-  title = 'Projected dengue case trend',
-  subtitle = 'Projected dengue case values for the selected planning scenario',
+  title = 'Citywide dengue forecast outlook',
+  subtitle = 'Combined predicted case totals across all barangays for each future period',
 }) {
   const chart = useMemo(() => {
     const numericValues = values.map((value) => Math.max(0, toNumber(value)))
@@ -3347,7 +3552,7 @@ function ForecastThreeDTrendChart({
             </g>
           ))}
 
-          <g transform={`translate(350 ${chart.baseline + 150})`}>
+          <g transform={`translate(265 ${chart.baseline + 150})`}>
             <rect
               x="0"
               y="-14"
@@ -3374,9 +3579,20 @@ function ForecastThreeDTrendChart({
               fontWeight="800"
               fontFamily="Inter, ui-sans-serif, system-ui"
             >
-              Projected dengue cases
+              Citywide forecast cases
             </text>
           </g>
+
+          <text
+            x="700"
+            y={chart.baseline + 148}
+            fill="#94a3b8"
+            fontSize="12"
+            fontWeight="700"
+            fontFamily="Inter, ui-sans-serif, system-ui"
+          >
+            Predicted, not guaranteed
+          </text>
         </svg>
       </div>
     </div>
@@ -3562,9 +3778,16 @@ export default function ForecastPage() {
     weatherRecords,
   ])
 
-  const forecastChartLabels = projectedWeeklyValues.map((_, index) => {
-    return `${forecastPeriodDisplay.prefix}${index + 1}`
+  const forecastChartLabels = buildForecastChartLabels({
+    values: projectedWeeklyValues,
+    computedPeriods,
+    backendForecastResult,
+    forecastPeriodDisplay,
   })
+  const forecastChartStatus = getForecastChartStatus(
+    projectedWeeklyValues,
+    forecastChartLabels
+  )
 
   const filteredForecastRows = useMemo(() => {
     const searchValue = normalizeBarangayName(barangaySearch)
@@ -5554,28 +5777,47 @@ const activeModelComparison = (() => {
           )}
 
           <div className="mt-5 overflow-hidden rounded-[30px] border border-cyan-400/15 bg-gradient-to-b from-[#061321] via-[#06111d] to-[#020817] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_70px_rgba(2,8,23,0.42)] sm:p-5">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300/80">
-                  Expected citywide {forecastPeriodDisplay.adjective.toLowerCase()} case values
+                  Citywide forecast outlook
                 </p>
-                <p className="mt-1 text-sm text-slate-400">
-                  Aggregated case pattern across all barangays for the selected planning scenario.
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">
+                  Each point is the combined predicted dengue case total across all barangays for one future {forecastPeriodDisplay.singular} under the {selectedMode.label.toLowerCase()} scenario.
                 </p>
               </div>
 
-              <div className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-black text-cyan-200">
-                {computedPeriods.length} {computedPeriods.length === 1 ? forecastPeriodDisplay.singular : forecastPeriodDisplay.plural} forecast
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <span className={`w-fit rounded-full border px-3 py-1 text-[11px] font-black ${forecastChartStatus.style}`}>
+                  {forecastChartStatus.label}
+                </span>
+                <span className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-black text-cyan-200">
+                  {computedPeriods.length} {computedPeriods.length === 1 ? forecastPeriodDisplay.singular : forecastPeriodDisplay.plural} forecast
+                </span>
               </div>
             </div>
+
+            {projectedWeeklyValues.length > 0 && (
+              <div className="mb-4 flex flex-col gap-2 rounded-[20px] border border-white/10 bg-white/[0.05] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+                  <p className="text-xs font-semibold leading-5 text-slate-300">
+                    {forecastChartStatus.description}
+                  </p>
+                </div>
+                <span className="w-fit shrink-0 rounded-full border border-slate-600/50 bg-slate-950/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Predicted, not guaranteed
+                </span>
+              </div>
+            )}
 
             <div className="forecast-3d-chart-wrap h-[430px] sm:h-[500px]">
               {projectedWeeklyValues.length > 0 ? (
                 <ForecastThreeDTrendChart
                   values={projectedWeeklyValues}
                   labels={forecastChartLabels}
-                  title={`Citywide ${forecastPeriodDisplay.adjective.toLowerCase()} dengue case trend`}
-                  subtitle={`Projected citywide cases across the next ${computedPeriods.length} ${computedPeriods.length === 1 ? forecastPeriodDisplay.singular : forecastPeriodDisplay.plural}`}
+                  title="Citywide dengue forecast outlook"
+                  subtitle={`Combined ${forecastPeriodDisplay.adjective.toLowerCase()} predictions across all barangays under the ${selectedMode.label.toLowerCase()} scenario`}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center rounded-[24px] border border-dashed border-slate-700 bg-slate-950 px-5 text-center text-sm leading-6 text-slate-400">
@@ -5906,7 +6148,7 @@ const activeModelComparison = (() => {
                       <div className="mobile-field-grid-4 mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            Priority points
+                            Decision score
                           </p>
                           <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                             {formatNumber(row.decisionScore)} points
@@ -5924,7 +6166,7 @@ const activeModelComparison = (() => {
 
                         <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
                           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            Total
+                            HISTORICAL TOTAL
                           </p>
                           <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
                             {formatNumber(row.totalCases)} cases
