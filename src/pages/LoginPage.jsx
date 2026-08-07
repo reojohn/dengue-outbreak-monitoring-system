@@ -24,6 +24,7 @@ import { useData } from '../context/DataContext'
 import { loginUser } from '../services/api'
 import { getAuthSession, getRoleHome } from '../utils/auth'
 import dengueBackground from '../assets/dengue.png'
+import denguePageBackground from '../assets/denguebg.png'
 
 const items = [
   {
@@ -199,7 +200,7 @@ function getRoleVisual(role) {
 export default function LoginPage() {
   const existingSession = getAuthSession()
   const navigate = useNavigate()
-  const { addActivityLog } = useData()
+  const { addActivityLog, refreshAuthenticatedWorkspace } = useData()
 
   const [selectedRole, setSelectedRole] = useState('cho')
   const [email, setEmail] = useState('cityhealth@butuan.gov.ph')
@@ -326,6 +327,13 @@ export default function LoginPage() {
       `${displayName} accessed the dengue monitoring system.`
     )
 
+    // DataProvider is already mounted on the login page. Its protected
+    // database requests therefore ran before a token existed. Refresh the
+    // small persisted state now that authentication is available so the
+    // dashboard and Forecast workflow status are correct without a manual
+    // browser refresh.
+    await refreshAuthenticatedWorkspace?.({ silent: true })
+
     navigate(getRoleHome(authenticatedUser.role), { replace: true })
   } catch (loginError) {
     setError(loginError.message || 'Login failed. Please try again.')
@@ -336,21 +344,29 @@ export default function LoginPage() {
 
   return (
     <div
-      className={`relative flex min-h-screen items-center justify-center overflow-hidden p-4 transition-colors duration-300 sm:p-6 ${
-        theme === 'dark'
-          ? 'bg-[radial-gradient(circle_at_top,_#0a0f1f,_#050816,_#000000)]'
-          : 'bg-slate-200'
-      }`}
+      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#061426] p-4 transition-colors duration-300 sm:p-6"
+      style={{
+        backgroundImage: `url(${denguePageBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed',
+      }}
     >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute h-full w-full animate-pulse bg-[radial-gradient(circle,_rgba(0,255,255,0.15)_0%,_transparent_70%)] opacity-30" />
-        <div className="absolute -top-24 left-1/2 h-[460px] w-[460px] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-[300px] w-[300px] rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="absolute bottom-[-120px] left-[-120px] h-[320px] w-[320px] rounded-full bg-emerald-500/10 blur-3xl" />
-      </div>
+      {/* Clean readability treatment over denguebg.png.
+          The image stays visible while the login card remains easy to read. */}
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,8,23,0.68)_0%,rgba(2,12,30,0.52)_38%,rgba(3,15,35,0.42)_62%,rgba(2,8,23,0.62)_100%)]" />
+      <div
+        className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${
+          theme === 'dark'
+            ? 'bg-slate-950/18'
+            : 'bg-slate-950/8'
+        }`}
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,transparent_0%,rgba(2,8,23,0.06)_42%,rgba(2,8,23,0.42)_100%)]" />
 
       <div
-        className={`pointer-events-none absolute inset-0 animate-gradient bg-gradient-to-br ${roleTheme} opacity-20 blur-3xl`}
+        className={`pointer-events-none absolute inset-0 animate-gradient bg-gradient-to-br ${roleTheme} opacity-[0.07]`}
       />
 
       <button
@@ -362,7 +378,7 @@ export default function LoginPage() {
         {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
       </button>
 
-      <div className="relative grid w-full max-w-6xl grid-cols-1 overflow-hidden rounded-[34px] border border-white/10 bg-white/5 shadow-2xl backdrop-blur-2xl animate-slideIn lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative grid w-full max-w-6xl grid-cols-1 overflow-hidden rounded-[34px] border border-white/15 bg-slate-950/25 shadow-[0_32px_100px_rgba(2,6,23,0.48)] ring-1 ring-white/5 backdrop-blur-xl animate-slideIn lg:grid-cols-[1.05fr_0.95fr]">
         <section
           className="relative hidden min-h-[690px] flex-col justify-center overflow-hidden p-10 text-white lg:flex xl:p-12"
           style={{
@@ -563,10 +579,10 @@ export default function LoginPage() {
           </div>
         </section>
 
-        <section className="flex min-h-[690px] items-center justify-center bg-black/20 p-5 backdrop-blur-xl sm:p-7 lg:p-10">
+        <section className="flex min-h-[690px] items-center justify-center bg-slate-950/38 p-5 backdrop-blur-xl sm:p-7 lg:p-10">
           <form
             onSubmit={handleSubmit}
-            className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-2xl sm:p-8"
+            className="w-full max-w-md rounded-[30px] border border-white/12 bg-slate-900/58 p-6 shadow-[0_24px_70px_rgba(2,6,23,0.38)] ring-1 ring-white/5 backdrop-blur-2xl sm:p-8"
           >
             <div className="mb-7 text-center">
               <div

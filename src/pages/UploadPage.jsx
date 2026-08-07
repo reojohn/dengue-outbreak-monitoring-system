@@ -2851,6 +2851,10 @@ export default function UploadPage() {
     setPreviewPage(1)
   }, [selected, previewRows.length])
 
+  const savedForecastWorkflowReady =
+    Array.isArray(backendForecastResult?.forecast_results) &&
+    backendForecastResult.forecast_results.length > 0
+
   const checklist = [
     {
       label: 'Historical dengue data available',
@@ -2870,7 +2874,7 @@ export default function UploadPage() {
     },
     {
       label: 'Forecast workflow ready',
-      ready: riskRows.length > 0,
+      ready: savedForecastWorkflowReady || riskRows.length > 0,
     },
   ]
 

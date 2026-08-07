@@ -44,6 +44,7 @@ import {
   logoutUser,
 } from '../services/api'
 import { compareCanonicalBarangayPriority, getCanonicalCombinedRiskScore } from '../utils/analytics'
+import dengueLogo from '../assets/logodengue.png'
 
 const navItems = [
   { to: '/dashboard', label: 'Situation Overview', icon: LayoutDashboard, roles: ['cho', 'supervisor', 'admin', 'viewer'] },
@@ -224,20 +225,46 @@ function getRecordPeriodInfo(record = {}) {
   return null
 }
 
-function getLatestReportingPeriod(records = []) {
-  let latestPeriod = null
+function getYearFromPeriodValue(value) {
+  const period = parseDatePeriod(value)
+
+  if (!period) return null
+
+  const date = new Date(period.sortValue)
+  const year = date.getUTCFullYear()
+
+  return getValidYear(year)
+}
+
+function getReportingYearRange(records = []) {
+  let firstYear = null
+  let lastYear = null
 
   records.forEach((record) => {
     const period = getRecordPeriodInfo(record)
 
     if (!period) return
 
-    if (!latestPeriod || period.sortValue > latestPeriod.sortValue) {
-      latestPeriod = period
-    }
+    const year = getValidYear(new Date(period.sortValue).getUTCFullYear())
+
+    if (!year) return
+
+    if (firstYear === null || year < firstYear) firstYear = year
+    if (lastYear === null || year > lastYear) lastYear = year
   })
 
-  return latestPeriod?.label || 'No data period'
+  return { firstYear, lastYear }
+}
+
+function formatYearRange(firstYear, lastYear) {
+  if (firstYear && lastYear) {
+    return firstYear === lastYear ? String(firstYear) : `${firstYear}-${lastYear}`
+  }
+
+  if (firstYear) return String(firstYear)
+  if (lastYear) return String(lastYear)
+
+  return 'No data range'
 }
 
 function getInitialTheme() {
@@ -1012,54 +1039,90 @@ function NotificationToast({ notification, visible, onClose, onOpen }) {
 
 function SidebarNavItem({ to, label, Icon, onClick }) {
   return (
-    <NavLink key={to} to={to} onClick={onClick} className="block outline-none">
+    <NavLink
+      key={to}
+      to={to}
+      onClick={onClick}
+      className="block outline-none"
+    >
       {({ isActive }) => (
         <div
           className={`group/navitem relative rounded-[24px] transition duration-300 ${
             isActive
-              ? 'bg-gradient-to-r from-cyan-300 via-sky-300 to-blue-400 p-[2px] shadow-[0_16px_34px_rgba(14,165,233,0.30)]'
+              ? 'p-[2px]'
               : 'p-[2px] hover:translate-x-0.5'
           }`}
         >
           {isActive && (
-            <>
-              <span className="pointer-events-none absolute -left-1 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.95)]" />
-              <span className="pointer-events-none absolute -right-3 top-1/2 h-14 w-14 -translate-y-1/2 rounded-full bg-cyan-300/35 blur-2xl" />
-            </>
+            <span className="pointer-events-none absolute -left-1 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-cyan-400" />
           )}
 
           <div
-            className={`relative z-10 flex items-center gap-3 overflow-hidden rounded-[22px] px-4 py-3 text-sm font-black transition duration-300 focus-within:ring-2 focus-within:ring-cyan-200/70 ${
+            className={`relative z-10 flex items-center gap-3 overflow-hidden rounded-[22px] px-4 py-3 text-sm font-black transition duration-300 ${
               isActive
-                ? 'bg-gradient-to-r from-white via-cyan-50 to-sky-100 !text-black dark:from-white dark:via-cyan-50 dark:to-sky-100 dark:!text-black'
+                ? '!text-black'
                 : 'text-white/75 hover:bg-white/10 hover:text-white'
             }`}
+            style={
+              isActive
+                ? {
+                    backgroundColor: '#ffffff',
+                    backgroundImage: 'none',
+                    boxShadow: 'none',
+                    filter: 'none',
+                  }
+                : undefined
+            }
           >
             {isActive && (
-              <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-cyan-400 via-sky-500 to-blue-600" />
+              <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-cyan-400" />
             )}
 
             <span
               className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border transition duration-300 ${
                 isActive
-                  ? 'border-cyan-200 bg-gradient-to-br from-cyan-100 via-white to-sky-100 text-sky-700 shadow-[0_8px_18px_rgba(14,165,233,0.18)] dark:border-cyan-200 dark:from-cyan-100 dark:via-white dark:to-sky-100 dark:text-sky-700'
+                  ? 'border-cyan-200 text-sky-700'
                   : 'border-white/10 bg-white/10 text-white/80 group-hover/navitem:border-white/20 group-hover/navitem:bg-white/15 group-hover/navitem:text-white'
               }`}
+              style={
+                isActive
+                  ? {
+                      backgroundColor: '#ffffff',
+                      backgroundImage: 'none',
+                      boxShadow: 'none',
+                    }
+                  : undefined
+              }
             >
               <Icon size={18} strokeWidth={isActive ? 2.4 : 2} />
             </span>
 
             <span
               className={`relative z-10 min-w-0 flex-1 truncate ${
-                isActive ? '!text-black dark:!text-black' : ''
+                isActive ? '!text-black' : ''
               }`}
+              style={
+                isActive
+                  ? {
+                      color: '#000000',
+                      textShadow: 'none',
+                      filter: 'none',
+                    }
+                  : undefined
+              }
             >
               {label}
             </span>
 
             {isActive && (
-              <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-cyan-200 bg-white shadow-sm">
-                <span className="h-2 w-2 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.85)]" />
+              <span
+                className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-cyan-300"
+                style={{
+                  backgroundColor: '#ffffff',
+                  boxShadow: 'none',
+                }}
+              >
+                <span className="h-2 w-2 rounded-full bg-cyan-500" />
               </span>
             )}
           </div>
@@ -1142,10 +1205,43 @@ export default function AppShell({ children }) {
 
   const hasBoundaryData = Number(sourceStatus?.boundary?.validCount || 0) > 0
 
-  const latestPeriod = useMemo(
-    () => getLatestReportingPeriod(dengueRecords),
-    [dengueRecords]
-  )
+  const dataRange = useMemo(() => {
+    const dengueStatus = sourceStatus?.dengue || {}
+    const coverageStart = dengueStatus.coverageStart || dengueStatus.coverage_start || ''
+    const coverageEnd = dengueStatus.coverageEnd || dengueStatus.coverage_end || ''
+    const coverageStartYear = getYearFromPeriodValue(coverageStart)
+    const coverageEndYear = getYearFromPeriodValue(coverageEnd)
+
+    // Prefer the tiny persisted upload metadata. DataContext already restores
+    // these two coverage values after login, so this stays dynamic without
+    // downloading the dengue preview again or adding any extra Supabase egress.
+    if (coverageStartYear || coverageEndYear) {
+      return formatYearRange(coverageStartYear, coverageEndYear)
+    }
+
+    const loadedRange = getReportingYearRange(dengueRecords)
+
+    if (loadedRange.firstYear || loadedRange.lastYear) {
+      return formatYearRange(loadedRange.firstYear, loadedRange.lastYear)
+    }
+
+    // Last-resort fallback for older saved workspaces that do not yet contain
+    // upload coverage metadata. The saved forecast only exposes the latest
+    // historical period, so show that year rather than an incorrect range.
+    const savedForecastRows = Array.isArray(backendForecastResult?.forecast_results)
+      ? backendForecastResult.forecast_results
+      : []
+    const forecastYears = savedForecastRows
+      .map((row) => getYearFromPeriodValue(row?.latest_period || row?.latestPeriod || ''))
+      .filter(Boolean)
+
+    if (forecastYears.length > 0) {
+      const latestForecastYear = Math.max(...forecastYears)
+      return String(latestForecastYear)
+    }
+
+    return 'No data range'
+  }, [dengueRecords, sourceStatus, backendForecastResult])
 
   useEffect(() => {
     let active = true
@@ -2316,9 +2412,11 @@ export default function AppShell({ children }) {
 
         <div className="relative mb-8 flex shrink-0 items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[22px] bg-white text-lg font-black text-brand-navy shadow-sm">
-              D
-            </div>
+            <img
+              src={dengueLogo}
+              alt="Dengue Intelligence"
+              className="h-[72px] w-[72px] shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(2,6,23,0.30)]"
+            />
 
             <div>
               <p className="text-lg font-black">Butuan City</p>
@@ -2413,9 +2511,11 @@ export default function AppShell({ children }) {
           <div className="relative mb-5 overflow-hidden rounded-[28px] border border-white/20 bg-white/[0.08] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_18px_38px_rgba(2,6,23,0.18)] backdrop-blur-xl">
             <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/[0.15] blur-2xl" />
             <div className="relative flex items-center gap-3">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border border-cyan-100/40 bg-gradient-to-br from-white via-cyan-50 to-sky-100 text-lg font-black text-[#0b3556] shadow-[0_14px_34px_rgba(255,255,255,0.14)]">
-                D
-              </div>
+              <img
+                src={dengueLogo}
+                alt="Dengue Intelligence"
+                className="h-[82px] w-[82px] shrink-0 object-contain drop-shadow-[0_12px_22px_rgba(2,6,23,0.32)]"
+              />
 
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60">Dengue intelligence</p>
@@ -2602,18 +2702,18 @@ export default function AppShell({ children }) {
                   <div
                     role="status"
                     className="flex min-h-11 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-slate-200 shadow-sm"
-                    aria-label={`Latest data period: ${latestPeriod}`}
-                    title={`Latest data period: ${latestPeriod}`}
+                    aria-label={`Dataset range: ${dataRange}`}
+                    title={`Dataset range: ${dataRange}`}
                   >
                     <CalendarDays size={16} className="shrink-0 text-cyan-200" />
 
                     <span className="min-w-0 leading-tight">
                       <span className="block text-[9px] font-black uppercase tracking-[0.14em] text-white/45">
-                        Latest data
+                        Data range
                       </span>
 
                       <span className="mt-0.5 block truncate text-sm font-black text-slate-100">
-                        {latestPeriod}
+                        {dataRange}
                       </span>
                     </span>
                   </div>
@@ -2671,18 +2771,18 @@ export default function AppShell({ children }) {
                 <div
                   role="status"
                   className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] px-2.5 py-2 text-slate-200 shadow-sm"
-                  aria-label={`Latest data period: ${latestPeriod}`}
-                  title={`Latest data period: ${latestPeriod}`}
+                  aria-label={`Dataset range: ${dataRange}`}
+                  title={`Dataset range: ${dataRange}`}
                 >
                   <CalendarDays size={14} className="shrink-0 text-cyan-200" />
 
                   <span className="min-w-0 leading-tight">
                     <span className="block text-[8px] font-black uppercase tracking-[0.12em] text-white/45">
-                      Latest
+                      Range
                     </span>
 
                     <span className="mt-0.5 block max-w-[86px] truncate text-xs font-black text-slate-100">
-                      {latestPeriod}
+                      {dataRange}
                     </span>
                   </span>
                 </div>

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { computeDecisionSupport, computeMultiSourceRisk } from '../utils/analytics'
+import { getAuthSession } from '../utils/auth'
 import {
   buildBackendIntegrationDataset,
   getBackendIntegrationStatus,
@@ -285,6 +286,18 @@ function normalizeDatabaseUploadStatus(upload = {}, fallback = {}, datasetType =
     datasetType: upload.dataset_type || upload.datasetType || fallback.datasetType || datasetType,
     fileType: upload.file_type || upload.fileType || fallback.fileType || '',
     status: upload.status || fallback.status || '',
+    coverageStart:
+      upload.coverage_start ||
+      upload.coverageStart ||
+      fallback.coverageStart ||
+      fallback.coverage_start ||
+      '',
+    coverageEnd:
+      upload.coverage_end ||
+      upload.coverageEnd ||
+      fallback.coverageEnd ||
+      fallback.coverage_end ||
+      '',
     uploadedAt,
     uploaded_at: uploadedAt,
     uploadDateTime: uploadedAt,
@@ -1702,7 +1715,7 @@ export function DataProvider({ children }) {
     setWorkspace(normalizeWorkspace(emptyWorkspace))
   }
 
-  async function loadLatestUploadDatabaseStatus({ silent = false } = {}) {
+  async function loadLatestUploadDatabaseStatus({ silent = false, includePreview = true } = {}) {
     try {
       const result = await getUploadDatabaseStatus()
       const uploads = result?.uploads || {}
@@ -1712,10 +1725,12 @@ export function DataProvider({ children }) {
 
       let previewResult = null
 
-      try {
-        previewResult = await getUploadDatabasePreview(100)
-      } catch {
-        previewResult = null
+      if (includePreview) {
+        try {
+          previewResult = await getUploadDatabasePreview(100)
+        } catch {
+          previewResult = null
+        }
       }
 
       const previewRows = previewResult?.previews || {}
@@ -1994,6 +2009,55 @@ export function DataProvider({ children }) {
     }
   }
 
+  async function refreshAuthenticatedWorkspace({ silent = true } = {}) {
+    const session = getAuthSession()
+
+    if (!session) {
+      return {
+        refreshed: false,
+        reason: 'not_authenticated',
+      }
+    }
+
+    const role = String(session.role || '').toLowerCase()
+    const tasks = []
+
+    // Keep the login bootstrap intentionally light. The dashboard only needs
+    // upload metadata plus the saved forecast. Full dataset previews are loaded
+    // later when the user actually opens Data Upload.
+    if (role === 'cho' || role === 'admin') {
+      tasks.push(
+        loadLatestUploadDatabaseStatus({
+          silent,
+          includePreview: false,
+        })
+      )
+
+      // Load the saved boundary once so the map is also ready after login,
+      // without downloading the integrated dataset preview.
+      tasks.push(loadLatestSavedBoundaryGeoJson({ silent }))
+    }
+
+    if (role === 'cho' || role === 'supervisor' || role === 'admin') {
+      tasks.push(loadLatestSavedForecast({ silent }))
+    }
+
+    if (!tasks.length) {
+      return {
+        refreshed: true,
+        requestCount: 0,
+      }
+    }
+
+    const results = await Promise.allSettled(tasks)
+
+    return {
+      refreshed: true,
+      requestCount: tasks.length,
+      fulfilledCount: results.filter((result) => result.status === 'fulfilled').length,
+    }
+  }
+
   async function resetBackendIntegration() {
     const result = await resetBackendIntegrationWorkspace()
 
@@ -2014,12 +2078,12 @@ export function DataProvider({ children }) {
 
   useEffect(() => {
     if (!workspaceHydrated) return
+    if (!getAuthSession()) return
 
-    loadLatestUploadDatabaseStatus({ silent: true })
-    syncBackendIntegrationStatus({ silent: true })
-    loadLatestBackendIntegrationDataset({ silent: true })
-    loadLatestSavedBoundaryGeoJson({ silent: true })
-    loadLatestSavedForecast({ silent: true })
+    // When the app is opened while already signed in, restore only the small
+    // pieces of persisted state needed by the dashboard and workflow status.
+    // Data Upload fetches its preview rows lazily when that page is opened.
+    refreshAuthenticatedWorkspace({ silent: true })
   }, [workspaceHydrated])
 
   const riskRows = useMemo(() => {
@@ -2100,6 +2164,7 @@ export function DataProvider({ children }) {
     loadLatestBackendIntegrationDataset,
     loadLatestSavedBoundaryGeoJson,
     loadLatestSavedForecast,
+    refreshAuthenticatedWorkspace,
     resetBackendIntegration,
 
     resetSampleData: clearWorkspace,

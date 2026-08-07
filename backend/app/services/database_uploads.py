@@ -155,6 +155,14 @@ def get_latest_dataset_uploads() -> dict:
                     original_row_count,
                     valid_row_count,
                     invalid_row_count,
+                    coalesce(
+                        nullif(detection_result->>'coverage_start', ''),
+                        nullif(validation_summary->>'coverage_start', '')
+                    ) as coverage_start,
+                    coalesce(
+                        nullif(detection_result->>'coverage_end', ''),
+                        nullif(validation_summary->>'coverage_end', '')
+                    ) as coverage_end,
                     uploaded_at
                 from public.dataset_uploads
                 order by dataset_type, uploaded_at desc
@@ -162,6 +170,40 @@ def get_latest_dataset_uploads() -> dict:
         )
 
         rows = result.mappings().all()
+
+        # Keep forecast readiness lightweight. The Upload page already calls this
+        # endpoint when it opens, so include only a tiny persisted-forecast status
+        # instead of making the browser download the full forecast just to decide
+        # whether the workflow checklist is ready.
+        forecast_result = connection.execute(
+            text("""
+                select
+                    runs.forecast_run_id,
+                    runs.integration_run_id,
+                    runs.dengue_upload_id,
+                    runs.completed_at,
+                    integration.dengue_upload_id as integration_dengue_upload_id,
+                    integration.weather_upload_id as integration_weather_upload_id,
+                    integration.population_upload_id as integration_population_upload_id,
+                    integration.boundary_upload_id as integration_boundary_upload_id,
+                    (
+                        select count(*)
+                        from public.forecast_results results
+                        where results.forecast_run_id = runs.forecast_run_id
+                    ) as result_count
+                from public.forecast_runs runs
+                left join public.integration_runs integration
+                    on integration.integration_run_id = runs.integration_run_id
+                where runs.status = 'completed'
+                order by
+                    runs.completed_at desc nulls last,
+                    runs.started_at desc nulls last,
+                    runs.forecast_run_id desc
+                limit 1
+            """)
+        )
+
+        latest_forecast = forecast_result.mappings().first()
 
     uploads = {}
 
@@ -177,10 +219,25 @@ def get_latest_dataset_uploads() -> dict:
             "original_row_count": row["original_row_count"],
             "valid_row_count": row["valid_row_count"],
             "invalid_row_count": row["invalid_row_count"],
+            # Only expose the two tiny coverage values needed by the header.
+            # This reuses the existing database-status request and avoids
+            # downloading dengue rows just to calculate the displayed range.
+            "coverage_start": row["coverage_start"] or "",
+            "coverage_end": row["coverage_end"] or "",
             "uploaded_at": str(row["uploaded_at"]),
         }
 
     required_types = ["dengue", "weather", "population", "boundary"]
+    forecast_result_count = int(latest_forecast["result_count"] or 0) if latest_forecast else 0
+
+    forecast_matches_current_uploads = False
+
+    if latest_forecast and all(item in uploads for item in required_types):
+        forecast_matches_current_uploads = all(
+            str(latest_forecast[f"integration_{dataset_type}_upload_id"] or "")
+            == str(uploads[dataset_type].get("upload_id") or "")
+            for dataset_type in required_types
+        )
 
     return {
         "required_types": required_types,
@@ -188,6 +245,17 @@ def get_latest_dataset_uploads() -> dict:
         "completed_types": [item for item in required_types if item in uploads],
         "missing_types": [item for item in required_types if item not in uploads],
         "all_required_uploaded": all(item in uploads for item in required_types),
+        "forecast_status": {
+            "ready": forecast_result_count > 0 and forecast_matches_current_uploads,
+            "result_count": forecast_result_count,
+            "matches_current_uploads": forecast_matches_current_uploads,
+            "forecast_run_id": str(latest_forecast["forecast_run_id"]) if latest_forecast else None,
+            "completed_at": (
+                str(latest_forecast["completed_at"])
+                if latest_forecast and latest_forecast["completed_at"]
+                else None
+            ),
+        },
     }
 
 
