@@ -297,36 +297,21 @@ def _risk_priority_value(value: Any) -> int:
 
 
 def _is_high_environment_for_priority(row: dict) -> bool:
-    rainfall = _to_float(row.get("average_rainfall"), 0) or 0
-    temperature = _to_float(row.get("average_temperature"), 0) or 0
-    humidity = _to_float(row.get("average_humidity"), 0) or 0
+    """Use the same environmental scoring bands that are persisted in forecast results."""
+    rainfall_score, _ = _score_rainfall(row.get("average_rainfall"))
+    temperature_score, _ = _score_temperature(row.get("average_temperature"))
+    humidity_score, _ = _score_humidity(row.get("average_humidity"))
+    environmental_score = rainfall_score + temperature_score + humidity_score
 
-    scores = []
+    if environmental_score > 0:
+        return environmental_score >= 24
 
-    if rainfall > 0:
-        scores.append(3 if rainfall >= 10 else 2 if rainfall >= 4 else 1)
-
-    if temperature > 0:
-        if 24 <= temperature <= 32:
-            scores.append(3)
-        elif 20 <= temperature < 24 or 32 < temperature <= 35:
-            scores.append(2)
-        else:
-            scores.append(1)
-
-    if humidity > 0:
-        scores.append(3 if humidity >= 75 else 2 if humidity >= 60 else 1)
-
-    if not scores:
-        environment = str(
-            row.get("environmental_suitability")
-            or row.get("environmentalSuitability")
-            or ""
-        ).strip().lower()
-        return "highly suitable" in environment or "high environmental" in environment
-
-    normalized_score = round((sum(scores) / (len(scores) * 3)) * 100)
-    return normalized_score >= 70
+    environment = str(
+        row.get("environmental_suitability")
+        or row.get("environmentalSuitability")
+        or ""
+    ).strip().lower()
+    return "highly suitable" in environment or "high environmental" in environment
 
 
 def _canonical_response_priority_value(row: dict) -> int:
@@ -340,9 +325,11 @@ def _canonical_response_priority_value(row: dict) -> int:
 
     is_increasing = "increasing" in trend
     is_high_environment = _is_high_environment_for_priority(row)
+    density_score, _ = _score_density(density)
     is_dense = (
-        density >= 3000
-        or "very high" in density_label
+        density_score >= 5
+        or "very dense" in density_label
+        or "dense barangay" in density_label
         or "high density" in density_label
     )
 
@@ -350,7 +337,7 @@ def _canonical_response_priority_value(row: dict) -> int:
         is_increasing
         or is_high_environment
         or is_dense
-        or forecast >= 60
+        or forecast >= 90
     ):
         return 7
 
@@ -840,7 +827,7 @@ def get_latest_forecast_result_from_database() -> dict:
     validation_summary = forecast_run["validation_summary"] or {}
     forecast_period_unit = validation_summary.get("forecast_period_unit", "period")
     forecast_horizon_periods = int(validation_summary.get("forecast_horizon_periods", 4) or 4)
-    forecast_horizon_label = validation_summary.get("forecast_horizon_label") or "Next 4 reporting periods"
+    forecast_horizon_label = validation_summary.get("forecast_horizon_label") or "4-period forecast after latest available data"
     temporal_granularity = validation_summary.get("temporal_granularity", "reporting_period")
 
     forecast_results = []
@@ -981,7 +968,7 @@ def get_latest_forecast_result_from_database() -> dict:
         ),
         "forecast_strategy": validation_summary.get("forecast_strategy"),
         "model_version": forecast_run["model_version"] or "v1",
-        "risk_thresholds": "High risk: 60 and above; Moderate risk: 25 to 59; Low risk: below 25.",
+        "risk_thresholds": "Forecast case-risk thresholds for the cumulative four-period prediction: High = 60 or more predicted cases; Moderate = 25 to 59; Low = fewer than 25. The 0-100 combined prioritization score is a separate multi-source decision-support measure.",
         "forecast_window": forecast_horizon_label,
         "temporal_granularity": temporal_granularity,
         "forecast_period_unit": forecast_period_unit,

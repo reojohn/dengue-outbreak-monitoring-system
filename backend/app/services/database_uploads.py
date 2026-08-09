@@ -11,6 +11,71 @@ def _to_json(value: Any) -> str:
     return json.dumps(value or {}, default=str)
 
 
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _build_validation_counts(dataset_type: str, summary: dict | None, invalid_row_count: int) -> dict:
+    """Return tiny, non-overlapping issue counts for the upload workspace."""
+    summary = summary or {}
+    invalid_total = max(0, _safe_int(invalid_row_count))
+
+    if dataset_type == "dengue":
+        unresolved = min(invalid_total, _safe_int(summary.get("invalid_barangay_rows")))
+        duplicate = 0
+        other_invalid = max(0, invalid_total - unresolved - duplicate)
+        return {
+            "unresolved_or_missing": unresolved,
+            "other_invalid": other_invalid,
+            "duplicates": duplicate,
+            "source_discrepancies": _safe_int(summary.get("monthly_total_discrepancy_count")),
+            "unknown_location_cases": _safe_int(summary.get("unknown_location_case_count")),
+        }
+
+    if dataset_type == "weather":
+        duplicates = min(invalid_total, _safe_int(summary.get("duplicate_weather_rows")))
+        return {
+            "unresolved_or_missing": 0,
+            "other_invalid": max(0, invalid_total - duplicates),
+            "duplicates": duplicates,
+            "source_discrepancies": 0,
+            "unknown_location_cases": 0,
+        }
+
+    if dataset_type == "population":
+        unresolved = min(invalid_total, _safe_int(summary.get("invalid_barangay_rows")))
+        duplicates = min(max(0, invalid_total - unresolved), _safe_int(summary.get("duplicate_barangay_rows")))
+        return {
+            "unresolved_or_missing": unresolved,
+            "other_invalid": max(0, invalid_total - unresolved - duplicates),
+            "duplicates": duplicates,
+            "source_discrepancies": 0,
+            "unknown_location_cases": 0,
+        }
+
+    if dataset_type == "boundary":
+        unresolved = min(invalid_total, _safe_int(summary.get("missing_barangay_name_rows")))
+        duplicates = min(max(0, invalid_total - unresolved), _safe_int(summary.get("duplicate_boundary_rows")))
+        return {
+            "unresolved_or_missing": unresolved,
+            "other_invalid": max(0, invalid_total - unresolved - duplicates),
+            "duplicates": duplicates,
+            "source_discrepancies": 0,
+            "unknown_location_cases": 0,
+        }
+
+    return {
+        "unresolved_or_missing": 0,
+        "other_invalid": invalid_total,
+        "duplicates": 0,
+        "source_discrepancies": 0,
+        "unknown_location_cases": 0,
+    }
+
+
 _DATASET_UPLOADS_SCHEMA_READY = False
 _DATASET_UPLOADS_SCHEMA_LOCK = Lock()
 
@@ -155,6 +220,7 @@ def get_latest_dataset_uploads() -> dict:
                     original_row_count,
                     valid_row_count,
                     invalid_row_count,
+                    validation_summary,
                     coalesce(
                         nullif(detection_result->>'coverage_start', ''),
                         nullif(validation_summary->>'coverage_start', '')
@@ -205,6 +271,59 @@ def get_latest_dataset_uploads() -> dict:
 
         latest_forecast = forecast_result.mappings().first()
 
+        integration_result = connection.execute(
+            text("""
+                select
+                    integration_run_id, dengue_upload_id, weather_upload_id,
+                    population_upload_id, boundary_upload_id, row_count, summary, created_at
+                from public.integration_runs
+                where status = 'completed'
+                order by created_at desc, integration_run_id desc
+                limit 1
+            """)
+        )
+        latest_integration = integration_result.mappings().first()
+        integration_counts = None
+        if latest_integration:
+            integration_counts = connection.execute(
+                text("""
+                    select
+                        count(*) as integrated_row_count,
+                        count(distinct barangay_key) filter (
+                            where barangay_match_status in ('psgc_matched', 'exact_matched', 'auto_matched')
+                        ) as dengue_barangay_count,
+                        count(distinct barangay_key) filter (
+                            where barangay_match_status in ('psgc_matched', 'exact_matched', 'auto_matched')
+                              and population_match_status in ('matched', 'psgc_matched')
+                        ) as dengue_population_matched_count,
+                        count(distinct barangay_key) filter (
+                            where barangay_match_status in ('psgc_matched', 'exact_matched', 'auto_matched')
+                              and boundary_match_status in ('matched', 'psgc_matched')
+                        ) as dengue_boundary_matched_count,
+                        count(distinct barangay_key) filter (
+                            where population_match_status in ('matched', 'psgc_matched')
+                        ) as population_barangay_count,
+                        count(distinct barangay_key) filter (
+                            where boundary_match_status in ('matched', 'psgc_matched')
+                        ) as boundary_barangay_count,
+                        count(distinct barangay_key) filter (
+                            where barangay_match_status in ('psgc_matched', 'exact_matched', 'auto_matched')
+                              and population_match_status in ('matched', 'psgc_matched')
+                              and boundary_match_status in ('matched', 'psgc_matched')
+                        ) as shared_barangay_count,
+                        count(*) filter (where weather_match_status <> 'unavailable') as weather_matched_rows,
+                        min(report_date) filter (
+                            where barangay_match_status in ('psgc_matched', 'exact_matched', 'auto_matched')
+                        ) as dengue_coverage_start,
+                        max(report_date) filter (
+                            where barangay_match_status in ('psgc_matched', 'exact_matched', 'auto_matched')
+                        ) as dengue_coverage_end
+                    from public.integrated_dataset_rows
+                    where integration_run_id = :integration_run_id
+                """),
+                {"integration_run_id": latest_integration["integration_run_id"]},
+            ).mappings().first()
+
     uploads = {}
 
     for row in rows:
@@ -219,6 +338,11 @@ def get_latest_dataset_uploads() -> dict:
             "original_row_count": row["original_row_count"],
             "valid_row_count": row["valid_row_count"],
             "invalid_row_count": row["invalid_row_count"],
+            "validation_counts": _build_validation_counts(
+                dataset_type,
+                row["validation_summary"] if isinstance(row["validation_summary"], dict) else {},
+                row["invalid_row_count"],
+            ),
             # Only expose the two tiny coverage values needed by the header.
             # This reuses the existing database-status request and avoids
             # downloading dengue rows just to calculate the displayed range.
@@ -231,6 +355,14 @@ def get_latest_dataset_uploads() -> dict:
     forecast_result_count = int(latest_forecast["result_count"] or 0) if latest_forecast else 0
 
     forecast_matches_current_uploads = False
+    integration_matches_current_uploads = False
+
+    if latest_integration and all(item in uploads for item in required_types):
+        integration_matches_current_uploads = all(
+            str(latest_integration[f"{dataset_type}_upload_id"] or "")
+            == str(uploads[dataset_type].get("upload_id") or "")
+            for dataset_type in required_types
+        )
 
     if latest_forecast and all(item in uploads for item in required_types):
         forecast_matches_current_uploads = all(
@@ -239,12 +371,96 @@ def get_latest_dataset_uploads() -> dict:
             for dataset_type in required_types
         )
 
+    integration_readiness = None
+    if latest_integration and integration_counts and integration_matches_current_uploads:
+        total_integrated = _safe_int(integration_counts["integrated_row_count"])
+        dengue_barangays = _safe_int(integration_counts["dengue_barangay_count"])
+        dengue_population = _safe_int(integration_counts["dengue_population_matched_count"])
+        dengue_boundary = _safe_int(integration_counts["dengue_boundary_matched_count"])
+        population_barangays = _safe_int(integration_counts["population_barangay_count"])
+        boundary_barangays = _safe_int(integration_counts["boundary_barangay_count"])
+        shared_barangays = _safe_int(integration_counts["shared_barangay_count"])
+        weather_matched = _safe_int(integration_counts["weather_matched_rows"])
+        weather_ready = total_integrated > 0 and weather_matched == total_integrated
+        forecast_ready = forecast_result_count > 0 and forecast_matches_current_uploads
+
+        checks = [
+            {
+                "id": "dengue-population-match",
+                "label": "Dengue barangays matched with population",
+                "ready": dengue_barangays > 0 and dengue_population == dengue_barangays,
+                "value": f"{dengue_population}/{dengue_barangays}",
+                "detail": "Authoritative count from the latest integrated dataset.",
+                "missingPreview": [],
+            },
+            {
+                "id": "dengue-boundary-match",
+                "label": "Dengue barangays matched with boundary layer",
+                "ready": dengue_barangays > 0 and dengue_boundary == dengue_barangays,
+                "value": f"{dengue_boundary}/{dengue_barangays}",
+                "detail": "Authoritative count from the latest integrated dataset.",
+                "missingPreview": [],
+            },
+            {
+                "id": "population-boundary-match",
+                "label": "Population barangays matched with boundary layer",
+                "ready": population_barangays > 0 and shared_barangays == population_barangays,
+                "value": f"{shared_barangays}/{population_barangays}",
+                "detail": "Authoritative count from the latest integrated dataset.",
+                "missingPreview": [],
+            },
+            {
+                "id": "weather-coverage",
+                "label": "Weather context available for integrated rows",
+                "ready": weather_ready,
+                "value": f"{weather_matched}/{total_integrated}",
+                "detail": "Weather-match status is summarized in the database; no full dataset download is required.",
+                "missingPreview": [],
+            },
+            {
+                "id": "forecast-rows-ready",
+                "label": "Forecast and DSS rows generated",
+                "ready": forecast_ready,
+                "value": f"{forecast_result_count} barangay rows",
+                "detail": "Saved forecast results match the current four uploaded sources." if forecast_ready else "A matching saved forecast has not been generated yet.",
+                "missingPreview": [],
+            },
+        ]
+        ready_count = sum(1 for check in checks if check["ready"])
+        integration_readiness = {
+            "status": "Ready" if ready_count == len(checks) else "Needs Review",
+            "score": round((ready_count / len(checks)) * 100) if checks else 0,
+            "readyCount": ready_count,
+            "checkCount": len(checks),
+            "allSourcesLoaded": True,
+            "checks": checks,
+            "summary": {
+                "dengueBarangayCount": dengue_barangays,
+                "populationBarangayCount": population_barangays,
+                "boundaryBarangayCount": boundary_barangays,
+                "sharedBarangayCount": shared_barangays,
+                "forecastAreaCount": forecast_result_count,
+                "integratedRowCount": total_integrated,
+                "weatherMatchedRowCount": weather_matched,
+                "dengueDateCoverage": f"{integration_counts['dengue_coverage_start'] or ''} to {integration_counts['dengue_coverage_end'] or ''}",
+                "weatherDateCoverage": uploads.get("weather", {}).get("coverage_start", "") + " to " + uploads.get("weather", {}).get("coverage_end", ""),
+                "riskRowCount": forecast_result_count,
+            },
+        }
+
     return {
         "required_types": required_types,
         "uploads": uploads,
         "completed_types": [item for item in required_types if item in uploads],
         "missing_types": [item for item in required_types if item not in uploads],
         "all_required_uploaded": all(item in uploads for item in required_types),
+        "integration_status": {
+            "ready": bool(integration_matches_current_uploads),
+            "matches_current_uploads": integration_matches_current_uploads,
+            "integration_run_id": str(latest_integration["integration_run_id"]) if latest_integration else None,
+            "row_count": _safe_int(latest_integration["row_count"]) if latest_integration else 0,
+        },
+        "integration_readiness": integration_readiness,
         "forecast_status": {
             "ready": forecast_result_count > 0 and forecast_matches_current_uploads,
             "result_count": forecast_result_count,

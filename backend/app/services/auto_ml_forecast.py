@@ -30,7 +30,10 @@ from app.services.baseline_forecast import (
     get_recommendation,
     get_trend_direction,
 )
-from app.services.temporal_granularity import infer_forecast_period_metadata
+from app.services.temporal_granularity import (
+    build_leakage_safe_chronological_split,
+    infer_forecast_period_metadata,
+)
 from app.services.file_inspector import (
     make_json_safe_records,
     prepare_clean_dengue_dataframe,
@@ -96,7 +99,7 @@ def _build_ml_dataset(valid_df: pd.DataFrame, period_unit: str = "month") -> pd.
 
 
 RANDOM_STATE = 42
-TRAIN_TEST_SPLIT_LABEL = "80% / 20%"
+TRAIN_TEST_SPLIT_LABEL = "Chronological 80/20 origin split + 4-period leakage guard"
 TRAIN_RATIO = 0.8
 TEST_RATIO = 0.2
 
@@ -247,8 +250,13 @@ def _selection_confidence(comparison):
     margin = max(0, (runner_rmse - best_rmse) / runner_rmse) if runner_rmse > 0 and best_rmse > 0 else 0
     f1_component = max(0, min(float(best.get("f1_score") or 0), 1))
     score = int(round(min(98, max(50, 62 + (margin * 180) + (f1_component * 22)))))
-    label = "High confidence" if score >= 85 else "Moderate confidence" if score >= 70 else "Review recommended"
-    return {"score": score, "label": label, "margin_percent": round(margin * 100, 2)}
+    label = "Strong selection" if score >= 85 else "Moderate selection" if score >= 70 else "Review recommended"
+    return {
+        "score": score,
+        "label": label,
+        "margin_percent": round(margin * 100, 2),
+        "summary": "Heuristic model-selection strength based on relative RMSE advantage and risk-class F1; it is not a probability that the forecast is correct.",
+    }
 
 
 def _selection_explanation(comparison):
@@ -289,7 +297,7 @@ def _average_feature_importance(models, feature_columns):
     )
 
 
-def _evaluate_models(ml_df: pd.DataFrame):
+def _evaluate_models(ml_df: pd.DataFrame, period_unit: str = "month"):
     evaluated_at = datetime.utcnow().isoformat()
     total_started = time.perf_counter()
     feature_columns = [
@@ -304,17 +312,15 @@ def _evaluate_models(ml_df: pd.DataFrame):
     ]
 
     ml_df = ml_df.sort_values(by=["sort_year", "sort_month", "sort_week", "barangay"])
-    split_index = max(int(len(ml_df) * TRAIN_RATIO), 1)
-
-    train_df = ml_df.iloc[:split_index]
-    test_df = ml_df.iloc[split_index:]
-
-    if test_df.empty:
-        test_df = train_df.tail(max(1, min(10, len(train_df))))
-        train_df = train_df.iloc[:-len(test_df)]
-
-    if train_df.empty or test_df.empty:
-        raise ValueError("Not enough records for direct multi-step model testing.")
+    train_df, test_df, split_metadata = build_leakage_safe_chronological_split(
+        ml_df,
+        period_unit=period_unit,
+        train_ratio=TRAIN_RATIO,
+        leakage_guard_periods=max(FORECAST_HORIZONS),
+        year_column="sort_year",
+        month_column="sort_month",
+        week_column="sort_week",
+    )
 
     x_train = train_df[feature_columns]
     x_test = test_df[feature_columns]
@@ -374,6 +380,8 @@ def _evaluate_models(ml_df: pd.DataFrame):
                 "train_test_split": TRAIN_TEST_SPLIT_LABEL,
                 "train_ratio": TRAIN_RATIO,
                 "test_ratio": TEST_RATIO,
+                "split_metadata": split_metadata,
+                "risk_class_metric_scope": "Accuracy, precision, recall, and F1 compare predicted versus actual cumulative four-period risk classes; they are not case-count regression accuracy.",
                 "training_row_count": int(len(train_df)),
                 "testing_row_count": int(len(test_df)),
                 "training_duration_seconds": round(float(duration), 4),
@@ -558,7 +566,7 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
         ml_df = _build_ml_dataset(valid_df, period_unit)
 
         if len(ml_df) >= 30:
-            best, comparison, model_artifact, feature_columns = _evaluate_models(ml_df)
+            best, comparison, model_artifact, feature_columns = _evaluate_models(ml_df, period_unit)
 
             selected_model_name = best["model_name"]
             selected_model_key = best["model_key"]
@@ -581,6 +589,8 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
                 "feature_importance_by_horizon": best.get("feature_importance_by_horizon", {}),
                 "selection_explanation": best.get("selection_explanation"),
                 "selection_confidence": best.get("selection_confidence"),
+                "split_metadata": best.get("split_metadata", {}),
+                "risk_class_metric_scope": best.get("risk_class_metric_scope", ""),
             }
             model_comparison = [
                 {
@@ -607,6 +617,8 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
                     "cumulative_rmse": item.get("cumulative_rmse", 0),
                     "forecast_strategy": item.get("forecast_strategy", FORECAST_STRATEGY),
                     "forecast_horizon_periods": item.get("forecast_horizon_periods", len(FORECAST_HORIZONS)),
+                    "split_metadata": item.get("split_metadata", {}),
+                    "risk_class_metric_scope": item.get("risk_class_metric_scope", ""),
                 }
                 for item in comparison
             ]
@@ -767,7 +779,7 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
         "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
         "model_name": f"auto_selected_{selected_model_key}",
         "model_display_name": selected_model_name,
-        "model_version": "v3-direct-multistep-granularity-aware",
+        "model_version": "v4-chronological-leakage-safe",
         "is_machine_learning": bool(used_machine_learning),
         "model_metrics": model_metrics,
         "model_comparison": model_comparison,

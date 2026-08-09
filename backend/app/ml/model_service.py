@@ -33,7 +33,10 @@ except Exception:  # Optional advanced model. The system still runs without it.
 from app.database import engine
 from app.services.baseline_forecast import classify_forecast_risk, get_recommendation, get_trend_direction
 from app.services.database_forecasts import save_forecast_result
-from app.services.temporal_granularity import infer_forecast_period_metadata
+from app.services.temporal_granularity import (
+    build_leakage_safe_chronological_split,
+    infer_forecast_period_metadata,
+)
 
 
 FEATURE_COLUMNS = [
@@ -47,7 +50,7 @@ FEATURE_COLUMNS = [
 FORECAST_HORIZONS = (1, 2, 3, 4)
 TARGET_COLUMNS = [f"target_period_{horizon}" for horizon in FORECAST_HORIZONS]
 FORECAST_STRATEGY = "direct_multi_step"
-MODEL_VERSION = "v3-direct-multistep-granularity-aware"
+MODEL_VERSION = "v4-chronological-leakage-safe"
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "trained_models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -55,7 +58,7 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 RANDOM_STATE = 42
 TRAIN_RATIO = 0.8
 TEST_RATIO = 0.2
-TRAIN_TEST_SPLIT_LABEL = "80% / 20%"
+TRAIN_TEST_SPLIT_LABEL = "Chronological 80/20 origin split + 4-period leakage guard"
 
 MODEL_READY_BARANGAY_STATUSES = {
     "psgc_matched",
@@ -499,7 +502,7 @@ def _selection_confidence(comparison):
             "score": 0,
             "label": "Unavailable",
             "margin_percent": 0,
-            "summary": "Model confidence is unavailable because no comparison results were produced.",
+            "summary": "Model selection strength is unavailable because no comparison results were produced.",
         }
 
     best = comparison[0]
@@ -515,15 +518,15 @@ def _selection_confidence(comparison):
     score = int(round(min(98, max(50, 62 + (margin * 180) + (f1_component * 22)))))
 
     if score >= 85:
-        label = "High confidence"
+        label = "Strong selection"
     elif score >= 70:
-        label = "Moderate confidence"
+        label = "Moderate selection"
     else:
         label = "Review recommended"
 
     summary = (
         f"{best.get('model_name', 'The selected model')} was selected because it produced the lowest RMSE"
-        f" and MAE among the evaluated algorithms."
+        f" and MAE among the evaluated algorithms. This heuristic selection-strength score is not a probability that the forecast is correct."
     )
 
     return {
@@ -579,24 +582,28 @@ def _training_summary(training_result: dict, model_run_id: str | None = None, in
         "selection_explanation": _selection_explanation(comparison),
         "forecast_strategy": FORECAST_STRATEGY,
         "forecast_horizon_periods": len(FORECAST_HORIZONS),
+        "split_metadata": training_result.get("split_metadata") or best.get("split_metadata") or {},
+        "risk_class_metric_scope": "Accuracy, precision, recall, and F1 are calculated after cumulative four-period cases are converted to Low, Moderate, and High risk classes.",
     }
 
-def _train_and_select_model(ml_df: pd.DataFrame):
+def _train_and_select_model(ml_df: pd.DataFrame, period_metadata: dict | None = None):
     evaluated_at = datetime.utcnow().isoformat()
     training_started = time.perf_counter()
+    period_metadata = period_metadata or _infer_forecast_period_metadata(ml_df)
     ml_df = ml_df.sort_values(["year", "month", "week", "barangay"])
 
-    split_index = max(int(len(ml_df) * TRAIN_RATIO), 1)
-    train_df = ml_df.iloc[:split_index].copy()
-    test_df = ml_df.iloc[split_index:].copy()
-
-    if test_df.empty:
-        test_size = max(1, min(10, len(train_df) // 4))
-        test_df = train_df.tail(test_size)
-        train_df = train_df.iloc[:-test_size]
-
-    if train_df.empty or test_df.empty:
-        raise HTTPException(status_code=400, detail="Not enough records for direct multi-step model testing.")
+    try:
+        train_df, test_df, split_metadata = build_leakage_safe_chronological_split(
+            ml_df,
+            period_unit=period_metadata.get("forecast_period_unit", "month"),
+            train_ratio=TRAIN_RATIO,
+            leakage_guard_periods=max(FORECAST_HORIZONS),
+            year_column="year",
+            month_column="month",
+            week_column="week",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     x_train = train_df[FEATURE_COLUMNS]
     x_test = test_df[FEATURE_COLUMNS]
@@ -663,6 +670,8 @@ def _train_and_select_model(ml_df: pd.DataFrame):
             "train_test_split": TRAIN_TEST_SPLIT_LABEL,
             "train_ratio": TRAIN_RATIO,
             "test_ratio": TEST_RATIO,
+            "split_metadata": split_metadata,
+            "risk_class_metric_scope": "Accuracy, precision, recall, and F1 compare predicted versus actual cumulative four-period risk classes; they are not case-count regression accuracy.",
             "training_row_count": int(len(train_df)),
             "testing_row_count": int(len(test_df)),
             "training_duration_seconds": round(float(model_duration), 4),
@@ -720,6 +729,7 @@ def _train_and_select_model(ml_df: pd.DataFrame):
         "evaluated_at": evaluated_at,
         "forecast_strategy": FORECAST_STRATEGY,
         "forecast_horizon_periods": len(FORECAST_HORIZONS),
+        "split_metadata": split_metadata,
     }
 
 def _save_model_run(training_result: dict, integration_run_id: str):
@@ -812,7 +822,7 @@ def train_latest_model(
 
     period_metadata = _infer_forecast_period_metadata(dataframe)
     ml_df = _prepare_ml_dataframe(dataframe, period_metadata)
-    training_result = _train_and_select_model(ml_df)
+    training_result = _train_and_select_model(ml_df, period_metadata)
     training_result["period_metadata"] = period_metadata
     training_result["best"].update(period_metadata)
     for comparison_item in training_result.get("comparison", []):

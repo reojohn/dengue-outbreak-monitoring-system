@@ -303,7 +303,7 @@ def _parse_sheet(sheet_name: str, raw_df: pd.DataFrame) -> tuple[pd.DataFrame, d
         "temporal_granularity": "monthly",
         "forecast_period_unit": "month",
         "forecast_horizon_periods": 4,
-        "forecast_horizon_label": "Next 4 months",
+        "forecast_horizon_label": "4-month forecast after latest available data",
         "case_measure": "Grand Total",
         "death_data_status": "not_provided",
         "matched_fields": {
