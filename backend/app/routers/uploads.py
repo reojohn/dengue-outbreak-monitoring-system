@@ -6,10 +6,8 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, File, UploadFile
 
-from app.services.auto_ml_forecast import generate_auto_ml_dengue_forecast, generate_auto_ml_dengue_forecast_from_dataframe
 from app.services.boundary_inspector import validate_boundary_file
 from app.services.database_boundaries import get_latest_boundary_geojson, save_boundary_geojson
-from app.services.database_forecasts import save_forecast_result
 from app.services.database_uploads import get_latest_dataset_previews, get_latest_dataset_uploads, save_dataset_upload
 from app.services.file_inspector import (
     build_clean_dengue_result_from_dataframe,
@@ -19,7 +17,7 @@ from app.services.file_inspector import (
     read_tabular_file,
     summarize_dengue_file,
 )
-from app.services.integration_state import set_integration_source, set_latest_forecast_result
+from app.services.integration_state import set_integration_source
 from app.services.population_inspector import validate_population_file
 from app.services.weather_inspector import validate_weather_file
 
@@ -274,7 +272,13 @@ def _save_dengue_upload(clean_result: dict, fallback_filename: str):
     )
 
 
-async def _process_dengue_forecast_bytes(content: bytes, filename: str):
+async def _process_dengue_validation_bytes(content: bytes, filename: str):
+    """Validate and save dengue data without launching a standalone forecast.
+
+    Forecasting is intentionally deferred until the four-source integrated dataset
+    is ready. This keeps model selection authoritative and prevents the dengue
+    upload path from creating a competing single-source forecast.
+    """
     upload_file = _upload_from_bytes(filename, content)
     df, file_type, resolved_filename = await read_tabular_file(upload_file)
     prepared = prepare_clean_dengue_dataframe(df)
@@ -284,30 +288,18 @@ async def _process_dengue_forecast_bytes(content: bytes, filename: str):
         filename=resolved_filename or filename,
         prepared=prepared,
     )
-    result = generate_auto_ml_dengue_forecast_from_dataframe(
-        df,
-        file_type=file_type,
-        filename=resolved_filename or filename,
-        prepared=prepared,
-    )
 
     _store_dengue_result(clean_result)
-    set_latest_forecast_result(result)
-
     upload_id = _save_dengue_upload(clean_result, filename)
-    forecast_database_result = save_forecast_result(
-        forecast_result=result,
-        dengue_upload_id=upload_id,
+
+    clean_result["database_upload_id"] = upload_id
+    clean_result["forecast_deferred"] = True
+    clean_result["message"] = (
+        "Dengue source validated and saved. Forecasting will run after dengue, "
+        "weather, population, and boundary sources are integrated."
     )
 
-    result["database_upload_id"] = upload_id
-    result["database_forecast"] = forecast_database_result
-    result["database_forecast_run_id"] = forecast_database_result.get("forecast_run_id")
-    result["cleaned_preview"] = clean_result.get("cleaned_preview", [])
-    result["invalid_preview"] = clean_result.get("invalid_preview", result.get("invalid_preview", []))
-    result["standard_columns"] = clean_result.get("standard_columns", [])
-
-    return _compact_validation_response(result)
+    return _compact_validation_response(clean_result)
 
 
 async def _process_population_bytes(content: bytes, filename: str):
@@ -375,13 +367,23 @@ async def summarize_dengue_upload(file: UploadFile = File(...)):
     return await summarize_dengue_file(file)
 
 
-@router.post("/forecast-dengue")
-async def forecast_dengue_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+@router.post("/validate-dengue")
+async def validate_dengue_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     filename = file.filename or "dengue_dataset"
     content = await file.read()
     job_id = _start_upload_job("dengue", filename, len(content))
-    background_tasks.add_task(_run_upload_job, job_id, _process_dengue_forecast_bytes, content, filename)
+    background_tasks.add_task(_run_upload_job, job_id, _process_dengue_validation_bytes, content, filename)
     return _processing_response(job_id, "dengue", filename, len(content))
+
+
+@router.post("/forecast-dengue")
+async def forecast_dengue_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """Backward-compatible alias for older frontends.
+
+    This endpoint now validates/saves only. The authoritative forecast is created
+    by /models/auto-run after the four-source integration completes.
+    """
+    return await validate_dengue_upload(background_tasks, file)
 
 
 @router.post("/validate-population")
@@ -423,28 +425,13 @@ async def upload_dengue_source(file: UploadFile = File(...)):
         filename=resolved_filename or filename,
         prepared=prepared,
     )
-    forecast_result = generate_auto_ml_dengue_forecast_from_dataframe(
-        df,
-        file_type=file_type,
-        filename=resolved_filename or filename,
-        prepared=prepared,
-    )
 
     _store_dengue_result(clean_result)
-    set_latest_forecast_result(forecast_result)
-
     upload_id = _save_dengue_upload(clean_result, filename)
 
-    forecast_database_result = save_forecast_result(
-        forecast_result=forecast_result,
-        dengue_upload_id=upload_id,
-    )
-
     return {
-        "message": "Dengue source uploaded, cleaned, forecasted, stored for backend integration, and saved to Supabase.",
+        "message": "Dengue source uploaded, cleaned, stored for backend integration, and saved to Supabase. Forecasting is deferred until all four sources are integrated.",
         "database_upload_id": upload_id,
-        "database_forecast": forecast_database_result,
-        "database_forecast_run_id": forecast_database_result.get("forecast_run_id"),
         "inspect_result": {
             "message": "File inspected successfully.",
             "filename": resolved_filename or filename,
@@ -460,7 +447,8 @@ async def upload_dengue_source(file: UploadFile = File(...)):
             "message": "Summary skipped in fast upload mode to keep large live uploads responsive.",
             "row_count": int(len(df)),
         },
-        "forecast_result": _compact_validation_response(forecast_result),
+        "forecast_result": None,
+        "forecast_deferred": True,
     }
 
 

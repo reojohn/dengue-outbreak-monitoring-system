@@ -127,9 +127,9 @@ export async function summarizeDengueFile(file) {
   return handleApiResponse(response)
 }
 
-export async function forecastDengueFile(file) {
+export async function validateDengueFile(file) {
   const response = await fetchWithTimeout(
-    `${API_BASE_URL}/uploads/forecast-dengue`,
+    `${API_BASE_URL}/uploads/validate-dengue`,
     {
       method: 'POST',
       body: buildFileFormData(file),
