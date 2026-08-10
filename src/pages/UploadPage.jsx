@@ -2478,18 +2478,63 @@ function mapSavedPopulationPreviewRows(rows = []) {
 
 function buildSourceStatusFromDatabaseUploads(uploads = {}) {
   return Object.entries(uploads).reduce((acc, [datasetType, upload]) => {
+    const rawValidationCounts = upload?.validation_counts || upload?.validationCounts || {}
+    let validationCounts = rawValidationCounts
+
+    if (typeof rawValidationCounts === 'string') {
+      try {
+        validationCounts = JSON.parse(rawValidationCounts) || {}
+      } catch {
+        validationCounts = {}
+      }
+    }
+
+    const recordCount = Number(upload?.original_row_count || 0)
+    const validCount = Number(upload?.valid_row_count || 0)
+    const invalidCount = Number(upload?.invalid_row_count || 0)
+    const unresolvedCount = Math.max(
+      0,
+      Number(validationCounts?.unresolved_or_missing || 0),
+      Number(validationCounts?.unknown_location_records || 0)
+    )
+    const duplicateCount = Math.max(0, Number(validationCounts?.duplicates || 0))
+    const otherInvalidCount = Math.max(
+      0,
+      Math.min(
+        Number(validationCounts?.other_invalid || 0),
+        Math.max(0, invalidCount - unresolvedCount - duplicateCount)
+      )
+    )
+    const sourceDiscrepancyCount = Math.max(
+      0,
+      Number(validationCounts?.source_discrepancies || 0)
+    )
+
     acc[datasetType] = {
-      uploadedName: upload.original_filename || 'Saved online',
+      uploadedName: upload?.original_filename || 'Saved online',
       badge: getBadgeFromDatabaseUpload(upload),
-      recordCount: Number(upload.original_row_count || 0),
-      validCount: Number(upload.valid_row_count || 0),
-      missingCount: 0,
-      duplicateCount: 0,
-      invalidCount: Number(upload.invalid_row_count || 0),
+      recordCount,
+      validCount,
+      invalidCount,
+      unresolvedCount,
+      otherInvalidCount,
+      // Legacy alias used by the immediate validation UI.
+      missingCount: unresolvedCount,
+      duplicateCount,
+      sourceDiscrepancyCount,
+      validationCounts,
       mappingSummary: 'Loaded from online database',
       backendPowered: true,
-      databaseUploadId: upload.upload_id,
-      uploadedAt: upload.uploaded_at,
+      databaseUploadId: upload?.upload_id,
+      uploadId: upload?.upload_id,
+      datasetType: upload?.dataset_type || datasetType,
+      fileType: upload?.file_type || '',
+      status: upload?.status || '',
+      coverageStart: upload?.coverage_start || '',
+      coverageEnd: upload?.coverage_end || '',
+      uploadedAt: upload?.uploaded_at,
+      uploaded_at: upload?.uploaded_at,
+      uploadDateTime: upload?.uploaded_at,
     }
 
     return acc
