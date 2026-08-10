@@ -18,21 +18,39 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-def _build_validation_counts(dataset_type: str, summary: dict | str | None, invalid_row_count: int) -> dict:
+def _json_object(value: Any) -> dict:
+    """Normalize a JSON/JSONB value into a dictionary."""
+    if isinstance(value, dict):
+        return value
+
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    return {}
+
+
+def _build_validation_counts(
+    dataset_type: str,
+    summary: dict | str | None,
+    invalid_row_count: int,
+    detection: dict | str | None = None,
+    original_filename: str = "",
+) -> dict:
     """Return tiny, non-overlapping issue counts for the upload workspace.
 
-    Older rows can surface JSONB metadata as a JSON string, and some DOH
-    uploads recorded the unknown-location count under source-specific keys.
-    Normalize those shapes here so a page refresh cannot turn a known
-    unresolved-location count into zero.
+    The latest upload metadata can span validation_summary and detection_result.
+    Older persisted DOH rows sometimes have the source-format / unknown-location
+    metadata only in detection_result, so use both sources when rebuilding the
+    lightweight status payload. This keeps the 22 unresolved DOH location rows
+    in the unresolved bucket instead of reclassifying them as generic invalid
+    values after login or refresh.
     """
-    if isinstance(summary, str):
-        try:
-            summary = json.loads(summary) or {}
-        except Exception:
-            summary = {}
-    elif not isinstance(summary, dict):
-        summary = {}
+    summary = _json_object(summary)
+    detection = _json_object(detection)
 
     invalid_total = max(0, _safe_int(invalid_row_count))
 
@@ -40,18 +58,57 @@ def _build_validation_counts(dataset_type: str, summary: dict | str | None, inva
         explicit_unresolved = max(
             _safe_int(summary.get("invalid_barangay_rows")),
             _safe_int(summary.get("unknown_location_record_count")),
+            _safe_int(detection.get("invalid_barangay_rows")),
+            _safe_int(detection.get("unknown_location_record_count")),
         )
 
-        # For the DOH monthly format, any remaining invalid rows after the
-        # explicit time/case/death checks are unresolved source locations.
-        # This also repairs older persisted summaries that omitted the
-        # invalid_barangay_rows field but retained the total invalid count.
-        if explicit_unresolved <= 0 and summary.get("source_format") == "doh_monthly_summary":
-            known_other_invalid = (
-                _safe_int(summary.get("invalid_time_rows"))
-                + _safe_int(summary.get("invalid_cases_rows"))
-                + _safe_int(summary.get("invalid_deaths_rows"))
+        source_format = str(
+            summary.get("source_format")
+            or detection.get("source_format")
+            or ""
+        ).strip().lower()
+        detection_method = str(
+            summary.get("detection_method")
+            or detection.get("detection_method")
+            or ""
+        ).strip().lower()
+        source_agency = str(
+            summary.get("source_agency")
+            or detection.get("source_agency")
+            or ""
+        ).strip().lower()
+        filename_key = str(original_filename or "").strip().lower()
+
+        known_other_invalid = (
+            max(
+                _safe_int(summary.get("invalid_time_rows")),
+                _safe_int(detection.get("invalid_time_rows")),
             )
+            + max(
+                _safe_int(summary.get("invalid_cases_rows")),
+                _safe_int(detection.get("invalid_cases_rows")),
+            )
+            + max(
+                _safe_int(summary.get("invalid_deaths_rows")),
+                _safe_int(detection.get("invalid_deaths_rows")),
+            )
+        )
+
+        # Current uploads persist source_format and invalid_barangay_rows.
+        # Some older Supabase rows were saved before those metadata fields were
+        # persisted, even though the same official DOH FOI workbook had already
+        # been validated locally as having unresolved barangay/location rows.
+        # Recognize those legacy DOH rows from the remaining stable metadata
+        # (or the official FOI filename) so refresh/login does not move the
+        # unresolved rows into the generic "Invalid values" bucket.
+        looks_like_doh_monthly = any((
+            source_format == "doh_monthly_summary",
+            detection_method == "doh_monthly_report_parser",
+            source_agency == "department of health",
+            "foi doh" in filename_key,
+        ))
+
+        if explicit_unresolved <= 0 and looks_like_doh_monthly:
             explicit_unresolved = max(0, invalid_total - known_other_invalid)
 
         unresolved = min(invalid_total, explicit_unresolved)
@@ -61,9 +118,18 @@ def _build_validation_counts(dataset_type: str, summary: dict | str | None, inva
             "unresolved_or_missing": unresolved,
             "other_invalid": other_invalid,
             "duplicates": duplicate,
-            "source_discrepancies": _safe_int(summary.get("monthly_total_discrepancy_count")),
-            "unknown_location_records": _safe_int(summary.get("unknown_location_record_count")),
-            "unknown_location_cases": _safe_int(summary.get("unknown_location_case_count")),
+            "source_discrepancies": max(
+                _safe_int(summary.get("monthly_total_discrepancy_count")),
+                _safe_int(detection.get("monthly_total_discrepancy_count")),
+            ),
+            "unknown_location_records": max(
+                _safe_int(summary.get("unknown_location_record_count")),
+                _safe_int(detection.get("unknown_location_record_count")),
+            ),
+            "unknown_location_cases": max(
+                _safe_int(summary.get("unknown_location_case_count")),
+                _safe_int(detection.get("unknown_location_case_count")),
+            ),
         }
 
     if dataset_type == "weather":
@@ -252,6 +318,7 @@ def get_latest_dataset_uploads() -> dict:
                     valid_row_count,
                     invalid_row_count,
                     validation_summary,
+                    detection_result,
                     coalesce(
                         nullif(detection_result->>'coverage_start', ''),
                         nullif(validation_summary->>'coverage_start', '')
@@ -373,6 +440,8 @@ def get_latest_dataset_uploads() -> dict:
                 dataset_type,
                 row["validation_summary"],
                 row["invalid_row_count"],
+                row["detection_result"],
+                row["original_filename"],
             ),
             # Only expose the two tiny coverage values needed by the header.
             # This reuses the existing database-status request and avoids
