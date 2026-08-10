@@ -3784,96 +3784,130 @@ export default function UploadPage() {
 
 
   function getSourceUploadErrorDetails(
-    error,
-    sourceTitle = 'selected file type',
-    localValidationResult = null
-  ) {
-    const fallbackMessage =
-      `This file does not match the selected upload type. Please upload the correct ${sourceTitle.toLowerCase()} file.`
+  error,
+  sourceTitle = 'selected file type',
+  localValidationResult = null
+) {
+  const rawMessage = String(error?.message || '').trim()
+  const lower = rawMessage.toLowerCase()
+  const localValidCount = Number(localValidationResult?.validCount || 0)
 
-    const rawMessage = String(error?.message || '').trim()
-    const lower = rawMessage.toLowerCase()
-    const localValidCount = Number(localValidationResult?.validCount || 0)
+  const wrongFileMessage =
+    `Wrong file uploaded. This file does not match ${sourceTitle}. Please choose the correct ${sourceTitle.toLowerCase()} file.`
 
-    const backendErrorPatterns = [
-      'database',
-      'supabase',
-      'postgres',
-      'sqlalchemy',
-      'relation ',
-      'schema',
-      'permission denied',
-      'connection',
-      'connect to server',
-      'could not connect',
-      'failed to fetch',
-      'network',
-      'timed out',
-      'timeout',
-      'transaction',
-      'insert into',
-      'database_url',
-      'upload job',
-      'backend',
-    ]
+  // These messages mean the backend received a readable file,
+  // but it does not match the dataset type selected by the user.
+  const fileMismatchPatterns = [
+    'does not match the selected upload type',
 
-    const explicitFileMismatchPatterns = [
-      'does not match the selected upload type',
-      'json file must contain a list of records',
-      'excel files cannot be used for barangay map boundaries',
-      'featurecollection',
-      'does not contain',
-      'must contain',
-      'unable to validate the selected file',
-      'cannot be used for',
-    ]
+    // Weather file mismatch
+    'not ready for weather cleaning',
+    'not_ready_for_weather',
 
-    const looksLikeBackendError =
-      localValidCount > 0 ||
-      backendErrorPatterns.some((pattern) => lower.includes(pattern)) ||
+    // Population file mismatch
+    'not ready for population cleaning',
+    'not_ready_for_population',
+
+    // Dengue file mismatch
+    'not ready for dengue cleaning',
+    'not_ready_for_dengue',
+
+    // Boundary file mismatch
+    'not ready for boundary',
+    'not_ready_for_boundary',
+
+    // General validation mismatch messages
+    'missing required',
+    'invalid file',
+    'not a valid',
+    'does not contain',
+    'must contain',
+    'json file must contain a list of records',
+    'excel files cannot be used for barangay map boundaries',
+    'featurecollection',
+    'unable to validate the selected file',
+    'cannot be used for',
+  ]
+
+  const looksLikeFileMismatch =
+    fileMismatchPatterns.some((pattern) => lower.includes(pattern)) ||
+    (
+      localValidationResult &&
+      localValidCount <= 0
+    )
+
+  // Check for a wrong dataset type BEFORE treating the problem
+  // as a backend/database failure.
+  if (looksLikeFileMismatch) {
+    return {
+      status: 'error',
+      badge: 'Wrong file',
+      message: wrongFileMessage,
+    }
+  }
+
+  // These indicate an actual backend, network, Render,
+  // Supabase, or database problem rather than a wrong file.
+  const backendErrorPatterns = [
+    'database',
+    'supabase',
+    'postgres',
+    'sqlalchemy',
+    'relation ',
+    'schema',
+    'permission denied',
+    'connection',
+    'connect to server',
+    'could not connect',
+    'failed to fetch',
+    'network',
+    'timed out',
+    'timeout',
+    'transaction',
+    'insert into',
+    'database_url',
+    'upload job',
+    'backend',
+  ]
+
+  const looksLikeBackendError =
+    backendErrorPatterns.some((pattern) => lower.includes(pattern)) ||
+    (
+      lower.includes('column') &&
       (
-        lower.includes('column') &&
-        (
-          lower.includes('relation') ||
-          lower.includes('table') ||
-          lower.includes('database')
-        )
+        lower.includes('relation') ||
+        lower.includes('table') ||
+        lower.includes('database')
       )
+    )
 
-    if (looksLikeBackendError) {
-      return {
-        status: 'backend-error',
-        badge: 'Save failed',
-        message: rawMessage
-          ? `The file structure is valid, but the backend or Supabase database could not save it. ${rawMessage}`
-          : 'The file structure is valid, but the backend or Supabase database could not save it. Check that the backend is running and the database schema is up to date.',
-      }
-    }
-
-    const looksLikeFileMismatch =
-      explicitFileMismatchPatterns.some((pattern) => lower.includes(pattern)) ||
-      (
-        localValidationResult &&
-        localValidCount <= 0
-      ) ||
-      lower.includes('missing required') ||
-      lower.includes('invalid file') ||
-      lower.includes('not a valid')
-
-    if (!rawMessage || looksLikeFileMismatch) {
-      return {
-        status: 'error',
-        badge: 'Wrong file',
-        message: fallbackMessage,
-      }
-    }
-
+  if (looksLikeBackendError) {
     return {
       status: 'backend-error',
       badge: 'Upload failed',
-      message: `The file could not be completed by the backend. ${rawMessage}`,
+      message:
+        'The file could not be saved right now. Please try again. If the problem continues, contact the system administrator.',
     }
   }
+
+  // If the backend returned no useful error message,
+  // give the user a simple file-selection message.
+  if (!rawMessage) {
+    return {
+      status: 'error',
+      badge: 'Wrong file',
+      message: wrongFileMessage,
+    }
+  }
+
+  // Never expose long technical backend diagnostics to the user.
+  return {
+    status: 'error',
+    badge: 'Upload failed',
+    message:
+      'The file could not be processed. Please check that you selected the correct file and try again.',
+  }
+}
 
   function getSourceUploadErrorMessage(
     error,
@@ -4774,7 +4808,7 @@ export default function UploadPage() {
                       </div>
 
                       <span
-                        className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${
+                        className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-black ${
                           isSourceProcessing
                             ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
                             : hasSourceBackendError
@@ -4826,28 +4860,30 @@ export default function UploadPage() {
                       )}
 
                       {uploadState?.message && (
-                        <div
-                          className={`mt-3 flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-bold ${
-                            isSourceProcessing
-                              ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
-                              : hasSourceBackendError
-                                ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200'
-                                : hasSourceFileError
-                                  ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
-                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-                          }`}
-                        >
-                          {isSourceProcessing ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : hasSourceError ? (
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          )}
+  <div
+    className={`mt-3 flex items-start gap-3 rounded-2xl border px-4 py-3 text-base font-bold leading-6 ${
+      isSourceProcessing
+        ? 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300'
+        : hasSourceBackendError
+          ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200'
+          : hasSourceFileError
+            ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+    }`}
+  >
+    {isSourceProcessing ? (
+      <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin" />
+    ) : hasSourceError ? (
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+    ) : (
+      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+    )}
 
-                          <span>{uploadState.message}</span>
-                        </div>
-                      )}
+    <span className="min-w-0 flex-1">
+      {uploadState.message}
+    </span>
+  </div>
+)}
 
                       {isSourceProcessing && (
                         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/[0.55] backdrop-blur-[2px] dark:bg-slate-950/50">
