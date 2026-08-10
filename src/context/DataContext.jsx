@@ -1664,12 +1664,46 @@ export function DataProvider({ children }) {
   useEffect(() => {
     let cancelled = false
 
+    // DataProvider is mounted on the public Login page too. Do not start a
+    // server-workspace request before authentication exists: that request would
+    // use the fallback `default_user` key and can finish after login, overwriting
+    // the authoritative upload metadata that was just refreshed for the real user.
+    const sessionAtStart = getAuthSession()
+
+    if (!sessionAtStart) {
+      setWorkspaceHydrated(true)
+
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const sessionIdentityAtStart = String(
+      sessionAtStart.userId || sessionAtStart.email || sessionAtStart.label || ''
+    ).trim().toLowerCase()
+
     async function loadSavedWorkspace() {
       try {
         const result = await getSavedWorkspaceState()
         const savedWorkspace = result?.workspace
+        const currentSession = getAuthSession()
+        const currentSessionIdentity = String(
+          currentSession?.userId || currentSession?.email || currentSession?.label || ''
+        ).trim().toLowerCase()
 
-        if (!cancelled && savedWorkspace && typeof savedWorkspace === 'object') {
+        // Ignore a late response if the user logged out or switched accounts while
+        // the persisted-workspace request was still in flight.
+        const sameAuthenticatedUser =
+          Boolean(currentSession) &&
+          Boolean(sessionIdentityAtStart) &&
+          currentSessionIdentity === sessionIdentityAtStart
+
+        if (
+          !cancelled &&
+          sameAuthenticatedUser &&
+          savedWorkspace &&
+          typeof savedWorkspace === 'object'
+        ) {
           setWorkspace((current) =>
             normalizeWorkspace({
               ...current,
@@ -1710,6 +1744,13 @@ export function DataProvider({ children }) {
 
   useEffect(() => {
     if (!workspaceHydrated) return undefined
+
+    // Never persist the public/login-page workspace under `default_user`. This also
+    // prevents a timer created before login from racing with the authenticated
+    // database-status refresh. Once login stores the session, the next workspace
+    // update (the sign-in activity log / authenticated refresh) schedules the save
+    // for the real user instead.
+    if (!getAuthSession()) return undefined
 
     const saveTimer = window.setTimeout(() => {
       saveWorkspaceState(compactWorkspaceForPersistence(workspace)).catch(() => {
