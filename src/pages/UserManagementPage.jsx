@@ -991,12 +991,12 @@ export default function UserManagementPage() {
                 <div className="relative mt-2">
                   <input
                     required
-                    minLength={6}
+                    minLength={12}
                     type={showPassword ? 'text' : 'password'}
                     value={form.password}
                     onChange={(event) => updateForm('password', event.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 12 characters"
                   />
 
                   <button
@@ -1480,12 +1480,12 @@ export default function UserManagementPage() {
               <div className="relative mt-2">
                 <input
                   required
-                  minLength={6}
+                  minLength={12}
                   type={showResetPassword ? 'text' : 'password'}
                   value={resetPasswordValue}
                   onChange={(event) => setResetPasswordValue(event.target.value)}
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:ring-cyan-400/10"
-                  placeholder="Minimum 6 characters"
+                  placeholder="Minimum 12 characters"
                 />
 
                 <button

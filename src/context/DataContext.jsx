@@ -9,6 +9,7 @@ import {
   getUploadDatabasePreview,
   getLatestSavedBoundaryGeoJson,
   getLatestSavedForecast,
+  getSharedSystemStatus,
   resetBackendIntegrationWorkspace,
   getSavedWorkspaceState,
   saveWorkspaceState,
@@ -479,20 +480,20 @@ function compactWorkspaceForPersistence(workspace = {}) {
 
   return {
     ...normalized,
+    // Shared system data is authoritative in Supabase and must not be copied into
+    // each user's private workspace. Keeping these empty prevents stale role-
+    // specific snapshots and avoids duplicating forecast/boundary payloads per user.
     dengueRecords: [],
     weatherRecords: [],
     populationRecords: [],
     boundaryRecords: [],
     backendMergedDataset: [],
-    backendIntegrationResult: normalized.backendIntegrationResult
-      ? {
-          message: normalized.backendIntegrationResult.message,
-          row_count: normalized.backendIntegrationResult.row_count,
-          summary: normalized.backendIntegrationResult.summary,
-          integration_run: normalized.backendIntegrationResult.integration_run,
-          databaseBacked: normalized.backendIntegrationResult.databaseBacked,
-        }
-      : null,
+    backendDengueSummary: null,
+    backendForecastResult: null,
+    backendIntegrationStatus: null,
+    backendIntegrationResult: null,
+    databaseIntegrationReadiness: null,
+    sourceStatus: emptySourceStatus,
     activityLogs: normalized.activityLogs.slice(0, 20),
   }
 }
@@ -1904,8 +1905,14 @@ export function DataProvider({ children }) {
 
       updateWorkspace((current) => {
         const currentSourceStatus = normalizeSourceStatus(current.sourceStatus)
+        // Upload cards are authoritative server state. Start from empty keys so
+        // missing sources in a persistent fresh/partial cycle cannot be restored
+        // from an older per-user workspace after logout/login.
         const nextSourceStatus = {
-          ...currentSourceStatus,
+          dengue: {},
+          weather: {},
+          population: {},
+          boundary: {},
         }
 
         requiredTypes.forEach((datasetType) => {
@@ -1932,6 +1939,10 @@ export function DataProvider({ children }) {
           ? mapSavedPopulationPreviewRows(previewRows.population)
           : []
 
+        const forecastMatchesCurrentUploads = Boolean(
+          result?.forecast_status?.ready && result?.forecast_status?.matches_current_uploads
+        )
+
         return {
           ...current,
           dengueRecords: savedDengueRows.length > 0 ? savedDengueRows : current.dengueRecords,
@@ -1942,6 +1953,10 @@ export function DataProvider({ children }) {
             result?.integration_readiness && typeof result.integration_readiness === 'object'
               ? result.integration_readiness
               : null,
+          // Keep the last successfully published forecast while Admin stages
+          // a new partial source set. It is replaced after the next successful
+          // model run rather than disappearing during preparation.
+          backendForecastResult: current.backendForecastResult,
         }
       })
 
@@ -1954,6 +1969,59 @@ export function DataProvider({ children }) {
         )
       }
 
+      return null
+    }
+  }
+
+  async function loadSharedSystemStatus({ silent = false } = {}) {
+    try {
+      const result = await getSharedSystemStatus()
+      const uploads = result?.uploads || {}
+      const requiredTypes = Array.isArray(result?.required_types)
+        ? result.required_types
+        : ['dengue', 'weather', 'population', 'boundary']
+
+      updateWorkspace((current) => {
+        const currentSourceStatus = normalizeSourceStatus(current.sourceStatus)
+        const nextSourceStatus = { ...currentSourceStatus }
+
+        requiredTypes.forEach((datasetType) => {
+          const upload = uploads[datasetType]
+          if (!upload) return
+
+          nextSourceStatus[datasetType] = normalizeDatabaseUploadStatus(
+            upload,
+            currentSourceStatus[datasetType] || {},
+            datasetType
+          )
+        })
+
+        const forecastMatchesCurrentUploads = Boolean(
+          result?.forecast_status?.ready && result?.forecast_status?.matches_current_uploads
+        )
+
+        return {
+          ...current,
+          sourceStatus: normalizeSourceStatus(nextSourceStatus),
+          databaseIntegrationReadiness:
+            result?.integration_readiness && typeof result.integration_readiness === 'object'
+              ? result.integration_readiness
+              : null,
+          // Keep the last successfully published forecast while Admin stages
+          // a new partial source set. It is replaced after the next successful
+          // model run rather than disappearing during preparation.
+          backendForecastResult: current.backendForecastResult,
+        }
+      })
+
+      return result
+    } catch (error) {
+      if (!silent) {
+        addActivityLog(
+          'Shared system status unavailable',
+          error?.message || 'The app could not load the shared forecast readiness summary.'
+        )
+      }
       return null
     }
   }
@@ -2097,6 +2165,21 @@ export function DataProvider({ children }) {
           result.forecast_strategy || result.validation_summary?.forecast_strategy || '',
         forecast_method:
           result.forecast_method || result.validation_summary?.forecast_method || '',
+        forecast_scope:
+          result.forecast_scope || result.validation_summary?.forecast_scope || '',
+        forecast_stage:
+          result.forecast_stage || result.validation_summary?.forecast_stage || '',
+        is_preliminary_forecast: Boolean(
+          result.is_preliminary_forecast ||
+            result.validation_summary?.forecast_stage === 'preliminary' ||
+            result.validation_summary?.forecast_scope === 'historical_dengue_only'
+        ),
+        model_metrics: result.model_metrics || {},
+        model_comparison: Array.isArray(result.model_comparison) ? result.model_comparison : [],
+        training_summary: result.training_summary || null,
+        selection_confidence: result.selection_confidence || null,
+        selection_explanation: result.selection_explanation || null,
+        feature_importance: Array.isArray(result.feature_importance) ? result.feature_importance : [],
         forecast_results: forecastResults,
         forecast_run: result.forecast_run || null,
         databaseBacked: true,
@@ -2191,41 +2274,65 @@ export function DataProvider({ children }) {
     }
 
     const role = String(session.role || '').toLowerCase()
-    const tasks = []
+    let requestCount = 0
+    let fulfilledCount = 0
+    let statusResult = null
 
-    // Keep the login bootstrap intentionally light. The dashboard only needs
-    // upload metadata plus the saved forecast. Full dataset previews are loaded
-    // later when the user actually opens Data Upload.
-    if (role === 'cho' || role === 'admin') {
-      tasks.push(
-        loadLatestUploadDatabaseStatus({
+    // Always fetch the tiny readiness snapshot first. This lets us avoid
+    // downloading a stale 86-row forecast when one of the four source uploads
+    // changed and the new forecast has not been generated yet.
+    try {
+      if (role === 'cho' || role === 'admin') {
+        requestCount += 1
+        statusResult = await loadLatestUploadDatabaseStatus({
           silent,
           includePreview: false,
         })
-      )
-
-      // Load the saved boundary once so the map is also ready after login,
-      // without downloading the integrated dataset preview.
-      tasks.push(loadLatestSavedBoundaryGeoJson({ silent }))
-    }
-
-    if (role === 'cho' || role === 'supervisor' || role === 'admin') {
-      tasks.push(loadLatestSavedForecast({ silent }))
-    }
-
-    if (!tasks.length) {
-      return {
-        refreshed: true,
-        requestCount: 0,
+      } else if (['supervisor', 'bhw', 'viewer'].includes(role)) {
+        requestCount += 1
+        statusResult = await loadSharedSystemStatus({ silent })
       }
+      if (statusResult) fulfilledCount += 1
+    } catch {
+      statusResult = null
     }
 
-    const results = await Promise.allSettled(tasks)
+    const forecastMatchesCurrentUploads = Boolean(
+      statusResult?.forecast_status?.ready &&
+        statusResult?.forecast_status?.matches_current_uploads
+    )
+    const publishedForecastAvailable = Boolean(
+      statusResult?.forecast_status?.published_ready || forecastMatchesCurrentUploads
+    )
+
+    const followUpTasks = []
+
+    if (
+      ['cho', 'supervisor', 'bhw', 'admin', 'viewer'].includes(role) &&
+      (publishedForecastAvailable || !statusResult)
+    ) {
+      requestCount += 1
+      followUpTasks.push(loadLatestSavedForecast({ silent }))
+    }
+
+    // BHW lands directly on the field workspace, so load only its assigned
+    // polygon at sign-in. Full city boundaries for CHO/Admin/Supervisor/Viewer
+    // are lazy-loaded only when a map/report/BHW command view is actually opened.
+    if (role === 'bhw') {
+      requestCount += 1
+      followUpTasks.push(loadLatestSavedBoundaryGeoJson({ silent }))
+    }
+
+    if (followUpTasks.length) {
+      const results = await Promise.allSettled(followUpTasks)
+      fulfilledCount += results.filter((result) => result.status === 'fulfilled').length
+    }
 
     return {
       refreshed: true,
-      requestCount: tasks.length,
-      fulfilledCount: results.filter((result) => result.status === 'fulfilled').length,
+      requestCount,
+      fulfilledCount,
+      forecastMatchesCurrentUploads,
     }
   }
 
@@ -2332,6 +2439,7 @@ export function DataProvider({ children }) {
     clearMockDengueData,
 
     loadLatestUploadDatabaseStatus,
+    loadSharedSystemStatus,
     syncBackendIntegrationStatus,
     buildBackendIntegrationWorkspace,
     loadLatestBackendIntegrationDataset,

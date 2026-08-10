@@ -14,21 +14,6 @@ function getAuthToken() {
   }
 }
 
-function getCurrentUserKey() {
-  try {
-    const session = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
-    const identity =
-      session?.userId ||
-      session?.email ||
-      session?.label ||
-      'default_user'
-
-    return `user:${String(identity).trim().toLowerCase()}`
-  } catch {
-    return 'default_user'
-  }
-}
-
 function withAuthHeaders(options = {}) {
   const token = getAuthToken()
   const headers = { ...(options.headers || {}) }
@@ -182,6 +167,13 @@ export async function validateBoundaryFile(file) {
 
 export async function getUploadJobStatus(jobId) {
   const response = await apiFetch(`${API_BASE_URL}/uploads/jobs/${jobId}`)
+  return handleApiResponse(response)
+}
+
+export async function startFreshUploadCycle() {
+  const response = await apiFetch(`${API_BASE_URL}/uploads/fresh-cycle`, {
+    method: 'POST',
+  })
   return handleApiResponse(response)
 }
 
@@ -410,8 +402,13 @@ export async function getLatestSavedForecast() {
   return handleApiResponse(response)
 }
 
+export async function getSharedSystemStatus() {
+  const response = await apiFetch(`${API_BASE_URL}/forecast/system-status`)
+  return handleApiResponse(response)
+}
+
 export async function getLatestSavedBoundaryGeoJson() {
-  const response = await apiFetch(`${API_BASE_URL}/uploads/latest-boundary-geojson`)
+  const response = await apiFetch(`${API_BASE_URL}/geospatial/boundary`)
   return handleApiResponse(response)
 }
 
@@ -439,57 +436,49 @@ export async function getGeneratedReports({ limit = 20 } = {}) {
 
 
 
-export async function getSavedWorkspaceState({ userKey = getCurrentUserKey() } = {}) {
-  const params = new URLSearchParams({ user_key: userKey })
-  const response = await apiFetch(`${API_BASE_URL}/workspace?${params.toString()}`)
+export async function getSavedWorkspaceState(_options = {}) {
+  const response = await apiFetch(`${API_BASE_URL}/workspace`)
   return handleApiResponse(response)
 }
 
-export async function saveWorkspaceState(workspace, { userKey = getCurrentUserKey() } = {}) {
+export async function saveWorkspaceState(workspace, _options = {}) {
   const response = await apiFetch(`${API_BASE_URL}/workspace`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      user_key: userKey,
-      workspace,
-    }),
+    body: JSON.stringify({ workspace }),
   })
 
   return handleApiResponse(response)
 }
 
-export async function clearSavedWorkspaceState({ userKey = getCurrentUserKey() } = {}) {
-  const params = new URLSearchParams({ user_key: userKey })
-  const response = await apiFetch(`${API_BASE_URL}/workspace?${params.toString()}`, {
+export async function clearSavedWorkspaceState(_options = {}) {
+  const response = await apiFetch(`${API_BASE_URL}/workspace`, {
     method: 'DELETE',
   })
   return handleApiResponse(response)
 }
 
-export async function getNotificationReads({ userKey = getCurrentUserKey() } = {}) {
-  const params = new URLSearchParams({ user_key: userKey })
-  const response = await apiFetch(`${API_BASE_URL}/notifications/reads?${params.toString()}`)
+export async function getNotificationReads(_options = {}) {
+  const response = await apiFetch(`${API_BASE_URL}/notifications/reads`)
   return handleApiResponse(response)
 }
 
-export async function markNotificationRead(notificationId, { userKey = getCurrentUserKey() } = {}) {
-  const params = new URLSearchParams({ user_key: userKey })
-  const response = await apiFetch(`${API_BASE_URL}/notifications/reads/${encodeURIComponent(notificationId)}?${params.toString()}`, {
+export async function markNotificationRead(notificationId, _options = {}) {
+  const response = await apiFetch(`${API_BASE_URL}/notifications/reads/${encodeURIComponent(notificationId)}`, {
     method: 'POST',
   })
   return handleApiResponse(response)
 }
 
-export async function markNotificationsRead(notificationIds, { userKey = getCurrentUserKey() } = {}) {
+export async function markNotificationsRead(notificationIds, _options = {}) {
   const response = await apiFetch(`${API_BASE_URL}/notifications/reads`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      user_key: userKey,
       notification_ids: notificationIds,
     }),
   })

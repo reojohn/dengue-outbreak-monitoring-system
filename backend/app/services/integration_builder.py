@@ -18,8 +18,10 @@ from app.services.file_inspector import make_json_safe_records
 from app.services.integration_state import (
     build_source_status_summary,
     get_all_integration_sources,
+    set_integration_source,
 )
 from app.services.database_integration import save_integration_result
+from app.services.database_uploads import get_latest_dataset_source_payloads
 
 MERGED_DATASET_COLUMNS = [
     "barangay",
@@ -1264,6 +1266,21 @@ def _prepare_doh_monthly_time_series(dengue_records, barangay_reference):
 
 def build_model_ready_dataset():
     sources = get_all_integration_sources()
+
+    # Render and other stateless hosts can restart between uploads. Rehydrate any
+    # missing in-memory source from the latest persisted cleaned payload only when
+    # a rebuild is requested. This keeps normal page loads lightweight while
+    # allowing one changed source to be combined with the other three saved ones.
+    required_types = ("dengue", "weather", "population", "boundary")
+    missing_types = [name for name in required_types if not sources.get(name)]
+    if missing_types:
+        persisted_sources = get_latest_dataset_source_payloads()
+        for dataset_type in missing_types:
+            payload = persisted_sources.get(dataset_type)
+            if payload:
+                set_integration_source(dataset_type, payload)
+        sources = get_all_integration_sources()
+
     status = build_source_status_summary()
 
     dengue_source = sources.get("dengue")

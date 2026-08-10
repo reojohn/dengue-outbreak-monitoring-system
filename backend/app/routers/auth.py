@@ -1,8 +1,11 @@
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from threading import Lock
+from time import monotonic
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -12,6 +15,7 @@ from app.auth_security import (
     create_access_token,
     get_current_user,
     hash_password,
+    password_needs_rehash,
     require_roles,
     verify_password,
 )
@@ -20,32 +24,79 @@ from app.database import engine, get_db
 router = APIRouter(prefix="/auth", tags=["authentication"])
 VALID_ROLES = {"cho", "bhw", "supervisor", "admin", "viewer"}
 MANAGE_ROLES = ("admin", "cho")
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 128
+LOGIN_WINDOW_SECONDS = 10 * 60
+LOGIN_MAX_FAILURES = 8
+_LOGIN_FAILURES = defaultdict(deque)
+_LOGIN_FAILURES_LOCK = Lock()
+
+
+def _client_key(request: Request, email: str) -> str:
+    client_host = request.client.host if request.client else "unknown"
+    normalized_email = str(email or "").strip().lower()[:254]
+    return f"{client_host}|{normalized_email}"
+
+
+def _prune_login_failures(key: str, now: float) -> deque:
+    attempts = _LOGIN_FAILURES[key]
+    cutoff = now - LOGIN_WINDOW_SECONDS
+    while attempts and attempts[0] < cutoff:
+        attempts.popleft()
+    return attempts
+
+
+def _enforce_login_rate_limit(request: Request, email: str) -> str:
+    key = _client_key(request, email)
+    now = monotonic()
+    with _LOGIN_FAILURES_LOCK:
+        attempts = _prune_login_failures(key, now)
+        if len(attempts) >= LOGIN_MAX_FAILURES:
+            retry_after = max(1, int(LOGIN_WINDOW_SECONDS - (now - attempts[0])))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts. Please wait before trying again.",
+                headers={"Retry-After": str(retry_after)},
+            )
+    return key
+
+
+def _record_login_failure(key: str) -> None:
+    now = monotonic()
+    with _LOGIN_FAILURES_LOCK:
+        attempts = _prune_login_failures(key, now)
+        attempts.append(now)
+
+
+def _clear_login_failures(key: str) -> None:
+    with _LOGIN_FAILURES_LOCK:
+        _LOGIN_FAILURES.pop(key, None)
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
 
 class UserCreateRequest(BaseModel):
-    email: str
-    password: str = Field(min_length=6)
-    full_name: str = Field(min_length=2)
-    role: str
-    assigned_barangay: Optional[str] = None
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
+    full_name: str = Field(min_length=2, max_length=160)
+    role: str = Field(min_length=2, max_length=32)
+    assigned_barangay: Optional[str] = Field(default=None, max_length=160)
     is_active: bool = True
 
 
 class UserUpdateRequest(BaseModel):
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    role: Optional[str] = None
-    assigned_barangay: Optional[str] = None
+    email: Optional[str] = Field(default=None, min_length=3, max_length=254)
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=160)
+    role: Optional[str] = Field(default=None, min_length=2, max_length=32)
+    assigned_barangay: Optional[str] = Field(default=None, max_length=160)
     is_active: Optional[bool] = None
 
 
 class PasswordResetRequest(BaseModel):
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
 
 
 def ensure_auth_tables() -> None:
@@ -145,7 +196,8 @@ def validate_user_payload(role: str, assigned_barangay: Optional[str]):
 
 
 @router.post("/login")
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    login_key = _enforce_login_rate_limit(request, payload.email)
     row = db.execute(
         text(
             """
@@ -159,10 +211,22 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     ).mappings().first()
 
     if not row or not verify_password(payload.password, row["password_hash"]):
+        _record_login_failure(login_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
 
     if not row["is_active"]:
+        _record_login_failure(login_key)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is inactive.")
+
+    _clear_login_failures(login_key)
+
+    # Existing accounts created with the older PBKDF2 work factor are upgraded
+    # transparently after a successful login; no password reset is required.
+    if password_needs_rehash(row["password_hash"]):
+        db.execute(
+            text("update public.app_users set password_hash = :password_hash, updated_at = now() where id = :id"),
+            {"id": str(row["id"]), "password_hash": hash_password(payload.password)},
+        )
 
     session_id = str(uuid4())
     expires_at = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)

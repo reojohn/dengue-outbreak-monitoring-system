@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -23,6 +22,7 @@ import {
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import uploadHeroBackground from '../assets/upload.png'
+import AutoProcessingModal from '../components/uploads/AutoProcessingModal'
 import { useData } from '../context/DataContext'
 import {
   autoRunModel,
@@ -33,6 +33,7 @@ import {
   getUploadDatabaseStatus,
   getUploadJobStatus,
   inspectUploadedFile,
+  startFreshUploadCycle,
   summarizeDengueFile,
   validateBoundaryFile,
   validatePopulationFile,
@@ -2297,134 +2298,6 @@ function getForecastModelMeta(forecastResult = null) {
 }
 
 
-function AutoProcessingModal({ visible, step = 'combine', detail = '' }) {
-  if (!visible) return null
-
-  const steps = [
-    {
-      id: 'combine',
-      label: 'Combining files',
-      message: 'Creating one clean table from dengue, weather, population, and map files.',
-      icon: Database,
-    },
-    {
-      id: 'names',
-      label: 'Checking barangay names',
-      message: 'Making sure dengue barangays match the population file and map boundary file.',
-      icon: ClipboardCheck,
-    },
-    {
-      id: 'model',
-      label: 'Choosing the best forecast method',
-      message: 'The system is preparing the forecast method and checking if the result is reliable.',
-      icon: Bot,
-    },
-    {
-      id: 'forecast',
-      label: 'Creating dengue forecast',
-      message: 'The system is creating and saving the latest dengue forecast for each barangay.',
-      icon: Sparkles,
-    },
-    {
-      id: 'done',
-      label: 'Ready',
-      message: 'Automatic preparation is complete. You can review the results below.',
-      icon: CheckCircle2,
-    },
-  ]
-
-  const activeIndex = Math.max(
-    0,
-    steps.findIndex((item) => item.id === step)
-  )
-
-  const activeStep = steps[activeIndex] || steps[0]
-  const ActiveIcon = activeStep.icon
-
-  const modal = (
-    <div className="fixed inset-0 z-[99999] flex min-h-dvh items-center justify-center overflow-hidden bg-slate-950/75 px-4 py-6 backdrop-blur-md">
-      <div className="relative w-full max-w-[520px] overflow-hidden rounded-[36px] border border-white/[0.15] bg-slate-950 p-6 text-white shadow-[0_34px_100px_rgba(0,0,0,0.58)] ring-1 ring-white/10">
-        <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-cyan-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-6 h-64 w-64 rounded-full bg-emerald-400/[0.15] blur-3xl" />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.10)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.10)_1px,transparent_1px)] bg-[size:22px_22px] opacity-25" />
-        <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />
-
-        <div className="relative">
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-cyan-300/25 bg-cyan-400/10 shadow-[0_0_38px_rgba(34,211,238,0.30)]">
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-[26px] bg-gradient-to-br from-cyan-400 via-blue-500 to-emerald-400 text-white shadow-[0_18px_42px_rgba(14,165,233,0.42)]">
-              <span className="absolute inset-0 rounded-[26px] border border-white/30 animate-ping" />
-              {step === 'done' ? (
-                <ActiveIcon className="relative h-8 w-8" strokeWidth={2.6} />
-              ) : (
-                <Loader2 className="relative h-8 w-8 animate-spin" strokeWidth={2.6} />
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 text-center">
-            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200">
-              Automatic data preparation
-            </p>
-
-            <h3 className="mt-3 text-2xl font-black tracking-tight">
-              {activeStep.label}
-            </h3>
-
-            <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-slate-300">
-              {detail || activeStep.message}
-            </p>
-          </div>
-
-          <div className="mt-6 grid gap-2 sm:grid-cols-4">
-            {steps.map((item, index) => {
-              const StepIcon = item.icon
-              const isDone = index < activeIndex || step === 'done'
-              const isActive = index === activeIndex && step !== 'done'
-
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-[22px] border px-3 py-3 text-center transition ${
-                    isDone
-                      ? 'border-emerald-300/25 bg-emerald-400/10 text-emerald-200'
-                      : isActive
-                        ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,0.12)]'
-                        : 'border-white/10 bg-white/5 text-slate-400'
-                  }`}
-                >
-                  <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl bg-white/10">
-                    {isDone ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : isActive ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <StepIcon className="h-4 w-4" />
-                    )}
-                  </div>
-
-                  <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em]">
-                    {item.label}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-
-          <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-blue-400 to-emerald-300 shadow-[0_0_20px_rgba(34,211,238,0.55)] transition-all duration-500"
-              style={{ width: `${step === 'done' ? 100 : activeIndex === 0 ? 25 : activeIndex === 1 ? 50 : activeIndex === 2 ? 75 : 90}%` }}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  return createPortal(modal, document.body)
-}
-
-
 function getBadgeFromDatabaseUpload(upload = {}) {
   if (!upload) return 'Not loaded'
 
@@ -2770,6 +2643,7 @@ export default function UploadPage() {
     visible: false,
     step: 'combine',
     detail: '',
+    selectedModel: '',
   })
   const [freshUploadSession, setFreshUploadSession] = useState(false)
   const [freshUploadedSources, setFreshUploadedSources] = useState({})
@@ -2777,7 +2651,12 @@ export default function UploadPage() {
   const autoPreparationRunningRef = useRef(false)
   const autoPreparationArmedRef = useRef(false)
   const autoPreparationRunIdRef = useRef(0)
-  const databaseUploadStatusLoadedRef = useRef(false)
+  // Reuse the same tiny database-status request across React StrictMode's
+  // development effect replay. This prevents the first request from being
+  // cancelled and discarded while also avoiding a duplicate Supabase read.
+  const databaseUploadStatusRequestRef = useRef(null)
+  const updateWorkspaceRef = useRef(updateWorkspace)
+  updateWorkspaceRef.current = updateWorkspace
 
   useEffect(() => {
     function getSourceIdFromDatasetType(datasetType = '') {
@@ -2827,33 +2706,67 @@ export default function UploadPage() {
   }, [selected])
 
   useEffect(() => {
-    if (databaseUploadStatusLoadedRef.current) return undefined
-
-    databaseUploadStatusLoadedRef.current = true
-    let cancelled = false
+    let active = true
+    let statusRequest = databaseUploadStatusRequestRef.current
 
     async function loadDatabaseUploadStatus() {
       try {
-        const status = await withTimeout(
-          getUploadDatabaseStatus(),
-          15000,
-          'Checking online uploaded files is taking too long.'
-        )
+        // React StrictMode intentionally replays effects in development. Reuse
+        // the in-flight request so logout/login or a page remount still gets the
+        // persisted historical-forecast flag without issuing a second DB read.
+        if (!statusRequest) {
+          statusRequest = withTimeout(
+            getUploadDatabaseStatus(),
+            15000,
+            'Checking online uploaded files is taking too long.'
+          )
+          databaseUploadStatusRequestRef.current = statusRequest
+        }
 
-        if (cancelled || !status) return
+        const status = await statusRequest
+
+        if (!active || !status) return
 
         setDatabaseUploadStatus(status)
 
         const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(status.uploads || {})
+        const uploadCycle = status?.upload_cycle || {}
+        const cycleCompletedTypes = Array.isArray(uploadCycle?.completed_types)
+          ? uploadCycle.completed_types
+          : Array.isArray(status?.completed_types)
+            ? status.completed_types
+            : []
+        const cycleForecastReady = Boolean(
+          status?.forecast_status?.ready &&
+            status?.forecast_status?.matches_current_uploads
+        )
+        const persistentFreshUploadSession = Boolean(
+          uploadCycle?.persistent &&
+            uploadCycle?.mode === 'fresh' &&
+            !cycleForecastReady
+        )
+
+        // Rehydrate the persistent fresh-upload cycle after refresh/login.
+        // Without this, React starts freshUploadSession as false and the old
+        // published forecast can incorrectly make the Admin checklist look Ready.
+        setFreshUploadSession(persistentFreshUploadSession)
+        setFreshUploadedSources(
+          persistentFreshUploadSession
+            ? Object.fromEntries(cycleCompletedTypes.map((datasetType) => [datasetType, true]))
+            : {}
+        )
 
         // Keep the initial Upload-page request lightweight. Detailed source rows
         // and the combined-data preview are loaded only when their collapsible
         // sections are opened. This avoids downloading preview rows on every
         // visit while keeping the authoritative counts visible immediately.
-        updateWorkspace((current) => ({
+        updateWorkspaceRef.current((current) => ({
           ...current,
           sourceStatus: {
-            ...(current.sourceStatus || {}),
+            dengue: {},
+            weather: {},
+            population: {},
+            boundary: {},
             ...databaseSourceStatus,
           },
           databaseIntegrationReadiness:
@@ -2863,18 +2776,38 @@ export default function UploadPage() {
         }))
       } catch {
         // Do not block the Upload page if the online database status cannot be loaded.
+      } finally {
+        if (databaseUploadStatusRequestRef.current === statusRequest) {
+          databaseUploadStatusRequestRef.current = null
+        }
       }
     }
 
     loadDatabaseUploadStatus()
 
     return () => {
-      cancelled = true
+      active = false
     }
-  }, [updateWorkspace])
+  }, [])
 
   const selectedSource = sources.find((item) => item.id === selected) || sources[0]
   const selectedStatus = sourceStatus?.[selectedSource.contextKey] || {}
+
+  const processingBarangayNames = useMemo(() => {
+    const candidates = [
+      ...(Array.isArray(data?.dengueRecords) ? data.dengueRecords : []),
+      ...(Array.isArray(riskRows) ? riskRows : []),
+    ]
+
+    return Array.from(
+      new Set(
+        candidates
+          .map((row) => row?.barangay || row?.barangay_name || row?.name || '')
+          .map((name) => String(name || '').trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 86)
+  }, [data?.dengueRecords, riskRows])
 
   const storedRecords = useMemo(() => {
     return getSourceRecords(selected, data)
@@ -2921,10 +2854,18 @@ export default function UploadPage() {
     setPreviewPage(1)
   }, [selected, previewRows.length])
 
-  const savedForecastWorkflowReady =
-    Boolean(databaseUploadStatus?.forecast_status?.ready) ||
-    (Array.isArray(backendForecastResult?.forecast_results) &&
-      backendForecastResult.forecast_results.length > 0)
+  // The Pre-Forecast Checklist describes the *active upload cycle*, not the
+  // last published forecast. While a fresh cycle is incomplete, keep this
+  // item Pending even though an older published forecast remains available
+  // to BHW/Supervisor/Viewer elsewhere in the system.
+  const savedForecastWorkflowReady = Boolean(
+    // Stage 1: a forecast generated from the current historical dengue upload.
+    databaseUploadStatus?.historical_forecast_status?.ready ||
+      // Stage 2: the final forecast matching all four current source uploads.
+      (databaseUploadStatus?.all_required_uploaded &&
+        databaseUploadStatus?.forecast_status?.ready &&
+        databaseUploadStatus?.forecast_status?.matches_current_uploads)
+  )
 
   const checklist = [
     {
@@ -2945,7 +2886,7 @@ export default function UploadPage() {
     },
     {
       label: 'Forecast workflow ready',
-      ready: savedForecastWorkflowReady || riskRows.length > 0,
+      ready: savedForecastWorkflowReady,
     },
   ]
 
@@ -3158,12 +3099,18 @@ export default function UploadPage() {
   const freshUploadedSourceCount = sources.filter((source) =>
     Boolean(freshUploadedSources[source.contextKey])
   ).length
+  const databaseHasAllRequiredFiles = Boolean(
+    databaseUploadStatus?.all_required_uploaded &&
+      Array.isArray(databaseUploadStatus?.completed_types) &&
+      databaseUploadStatus.completed_types.length >= sources.length
+  )
   const allRequiredFilesReady = freshUploadSession
     ? freshUploadedSourceCount >= sources.length
     : Boolean(
-        backendCanBuildDataset &&
-          backendRequiredSourceCount >= sources.length &&
-          backendLoadedSourceCount >= backendRequiredSourceCount
+        databaseHasAllRequiredFiles ||
+          (backendCanBuildDataset &&
+            backendRequiredSourceCount >= sources.length &&
+            backendLoadedSourceCount >= backendRequiredSourceCount)
       )
   const persistedIntegrationMatchesCurrentUploads = Boolean(
     databaseUploadStatus?.integration_status?.matches_current_uploads
@@ -3226,62 +3173,79 @@ export default function UploadPage() {
   async function handleResetWorkspace() {
     if (isProcessing) return
 
-    clearAutoPreparationKey()
-    autoPreparationKeyRef.current = ''
-    autoPreparationRunIdRef.current += 1
-    autoPreparationRunningRef.current = false
-    autoPreparationArmedRef.current = false
-    setAutoProcessing({
-      visible: false,
-      step: 'combine',
-      detail: '',
-    })
-    setFreshUploadSession(true)
-    setFreshUploadedSources({})
-    setDatabaseUploadStatus(null)
-
     setIsProcessing(true)
+    setUploadError('')
+    setUploadMessage('')
 
     try {
-      await resetBackendIntegration?.()
-    } catch {
-      // Continue clearing the frontend workspace even if the backend is offline.
+      // Persist the empty card set first. If the backend/database is unavailable,
+      // do not pretend locally that the fresh cycle exists because it would be
+      // restored incorrectly on the next login.
+      const result = await startFreshUploadCycle()
+
+      clearAutoPreparationKey()
+      autoPreparationKeyRef.current = ''
+      autoPreparationRunIdRef.current += 1
+      autoPreparationRunningRef.current = false
+      autoPreparationArmedRef.current = false
+      setAutoProcessing({
+        visible: false,
+        step: 'combine',
+        detail: '',
+        selectedModel: '',
+      })
+      setFreshUploadSession(true)
+      setFreshUploadedSources({})
+
+      updateWorkspace((current) => ({
+        ...current,
+        dengueRecords: [],
+        weatherRecords: [],
+        populationRecords: [],
+        boundaryRecords: [],
+        backendDengueSummary: null,
+        backendIntegrationStatus: null,
+        backendIntegrationResult: null,
+        backendMergedDataset: [],
+        databaseIntegrationReadiness: null,
+        // Keep the last successfully published forecast/risk rows available
+        // while Admin stages the next source set. They are replaced only after
+        // the new four-source forecast succeeds.
+        sourceStatus: {
+          dengue: {},
+          weather: {},
+          population: {},
+          boundary: {},
+        },
+      }))
+
+      setAlignmentReport(null)
+      setSelected('historical')
+      setValidationResult(null)
+      setSourceUploadStates({})
+
+      if (result?.database_status) {
+        applyDatabaseUploadStatus(result.database_status)
+      } else {
+        setDatabaseUploadStatus(null)
+      }
+
+      setUploadMessage(
+        'Fresh upload cycle started and saved. The four upload cards will remain empty across logout/login until new source files are uploaded. Historical uploads and the last successful forecast remain preserved.'
+      )
+
+      addActivityLog(
+        'Fresh upload cycle started',
+        'The current upload cards were persistently cleared for a new four-source cycle. Historical uploads, integrations, and published forecasts were preserved.'
+      )
+    } catch (error) {
+      setUploadError(
+        error?.message ||
+          'Unable to start a persistent fresh upload cycle. The existing uploaded source set was left unchanged.'
+      )
+    } finally {
+      setIsProcessing(false)
     }
-
-    updateWorkspace((current) => ({
-      ...current,
-      dengueRecords: [],
-      weatherRecords: [],
-      populationRecords: [],
-      boundaryRecords: [],
-      riskRows: [],
-      backendDengueSummary: null,
-      backendForecastResult: null,
-      backendIntegrationStatus: null,
-      backendIntegrationResult: null,
-      backendMergedDataset: [],
-      databaseIntegrationReadiness: null,
-      sourceStatus: {
-        dengue: {},
-        weather: {},
-        population: {},
-        boundary: {},
-      },
-    }))
-
-    setAlignmentReport(null)
-    setSelected('historical')
-    setValidationResult(null)
-    setSourceUploadStates({})
-    setUploadError('')
-    setUploadMessage('Fresh upload cycle started. Upload all four source files again to build a new integrated dataset and forecast. Saved historical runs remain in Supabase for audit history.')
-
-    addActivityLog(
-      'Workspace reset',
-      'A fresh four-source upload cycle was started. Saved historical database runs were preserved.'
-    )
-
-    setIsProcessing(false)
   }
 
   async function handleSyncBackendStatus() {
@@ -3380,6 +3344,7 @@ export default function UploadPage() {
       visible: false,
       step: 'combine',
       detail: '',
+      selectedModel: '',
     })
 
     setUploadMessage('')
@@ -3600,6 +3565,7 @@ export default function UploadPage() {
         detail: needsIntegrationBuild
           ? 'All four files are ready. The system is now combining them automatically, so users do not need to click another button.'
           : 'The current four-source dataset is already combined. The system is now evaluating or loading the matching machine learning model and generating the dengue forecast.',
+        selectedModel: '',
       })
 
       try {
@@ -3620,6 +3586,7 @@ export default function UploadPage() {
             visible: true,
             step: 'names',
             detail: 'Combined data is ready. The system is now checking barangay names across the dengue, population, and map files.',
+            selectedModel: '',
           })
 
           alignmentResult = await withTimeout(
@@ -3658,6 +3625,7 @@ export default function UploadPage() {
           visible: true,
           step: 'model',
           detail: 'The system is now evaluating all available machine learning methods, selecting the best model for the current integrated dataset, and generating the dengue forecast automatically.',
+          selectedModel: '',
         })
 
         const autoRunResult = await withTimeout(
@@ -3676,22 +3644,45 @@ export default function UploadPage() {
             : current.riskRows || [],
         }))
 
-        try {
-          await refreshDatabaseUploadStatus()
-        } catch {
-          // The forecast itself succeeded. A delayed status refresh should not
-          // turn a completed model run into a visible failure.
-        }
+        const selectedModelName =
+          autoRunResult?.model_display_name ||
+          autoRunResult?.model_name ||
+          autoRunResult?.forecast_run?.model_name ||
+          ''
+
+        // The backend has finished model evaluation. Briefly freeze the carousel
+        // on the actual winner so the transition is visible instead of jumping
+        // straight from a spinning carousel to a disappearing modal.
+        setAutoProcessing({
+          visible: true,
+          step: 'model',
+          detail: `${selectedModelName || 'The best-performing model'} was selected for the current integrated dataset. Preparing the four forecast horizons next.`,
+          selectedModel: selectedModelName,
+        })
+
+        await wait(1400)
 
         if (!isCurrentRun()) return
+
+        // Keep the same lightweight status refresh, but do it while the forecast
+        // animation is visible instead of blocking the UI on the model-selection
+        // screen. This does not add an extra request or extra Supabase polling.
+        const statusRefreshPromise = refreshDatabaseUploadStatus().catch(() => null)
 
         setAutoProcessing({
           visible: true,
           step: 'forecast',
-          detail: `${autoRunResult?.model_display_name || 'The selected machine learning model'} generated the latest dengue forecast and saved ${Number(autoRunResult?.barangay_count || 0)} barangay result${Number(autoRunResult?.barangay_count || 0) === 1 ? '' : 's'}.`,
+          detail: `${selectedModelName || 'The selected machine learning model'} is finalizing the four-month dengue forecast and publishing the latest barangay results.`,
+          selectedModel: selectedModelName,
         })
 
-        await wait(700)
+        // Guarantee enough time for the Month +1 to Month +4 animation to be
+        // visible. If the lightweight saved-status refresh is slower, keep this
+        // stage visible until that existing request finishes.
+        await Promise.all([
+          wait(4200),
+          statusRefreshPromise,
+        ])
 
         if (!isCurrentRun()) return
 
@@ -3733,6 +3724,7 @@ export default function UploadPage() {
           detail: finalModelMeta.hasModel
             ? `The uploaded files were combined, barangay names were checked, and the latest forecast was generated using ${finalModelMeta.displayName}. You can continue explaining this page before opening the Forecast page.`
             : 'The uploaded files were combined, barangay names were checked, and the latest forecast was generated automatically. You can continue explaining this page before opening the Forecast page.',
+          selectedModel: finalModelMeta.displayName || finalModelMeta.rawModelName || '',
         })
 
         closeTimer = window.setTimeout(() => {
@@ -3742,7 +3734,7 @@ export default function UploadPage() {
               visible: false,
             }))
           }
-        }, 950)
+        }, 2600)
       } catch (error) {
         if (!isCurrentRun()) return
 
@@ -3956,67 +3948,55 @@ export default function UploadPage() {
       backendIntegrationResult: null,
       backendMergedDataset: [],
       databaseIntegrationReadiness: null,
-      backendForecastResult: null,
-      riskRows: [],
+      // Preserve the last successfully published forecast while a new source
+      // set is incomplete. The automatic workflow replaces it after success.
     }))
   }
 
   function applyDatabaseUploadStatus(status, justUploadedSourceKey = '') {
     if (!status) return
 
-    const rawUploads = status.uploads || {}
-    const freshSourceKeys = new Set(
-      sources
-        .map((source) => source.contextKey)
-        .filter((sourceKey) =>
-          Boolean(freshUploadedSources[sourceKey]) || sourceKey === justUploadedSourceKey
-        )
-    )
-
-    const visibleUploads = freshUploadSession
-      ? Object.fromEntries(
-          Object.entries(rawUploads).filter(([sourceKey]) => freshSourceKeys.has(sourceKey))
-        )
-      : rawUploads
-
-    const freshSetComplete = !freshUploadSession || freshSourceKeys.size >= sources.length
-    const visibleStatus = freshUploadSession
-      ? {
-          ...status,
-          uploads: visibleUploads,
-          completed_types: Object.keys(visibleUploads),
-          missing_types: sources
-            .map((source) => source.contextKey)
-            .filter((sourceKey) => !freshSourceKeys.has(sourceKey)),
-          all_required_uploaded: freshSetComplete,
-          integration_status: freshSetComplete
-            ? status.integration_status
-            : { ready: false, matches_current_uploads: false, integration_run_id: null, row_count: 0 },
-          integration_readiness: freshSetComplete ? status.integration_readiness : null,
-          forecast_status: freshSetComplete
-            ? status.forecast_status
-            : { ready: false, matches_current_uploads: false, forecast_run_id: null, result_count: 0 },
-        }
-      : status
+    // The backend now owns the persistent upload-card set. Trust its exact
+    // source list so an intentionally empty/partial fresh cycle stays empty or
+    // partial after refresh, logout/login, or a Render restart.
+    const visibleUploads = status.uploads || {}
+    const visibleStatus = status
 
     setDatabaseUploadStatus(visibleStatus)
 
     const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(visibleUploads)
+    const uploadCycle = visibleStatus?.upload_cycle || {}
+    const cycleCompletedTypes = Array.isArray(uploadCycle?.completed_types)
+      ? uploadCycle.completed_types
+      : Array.isArray(visibleStatus?.completed_types)
+        ? visibleStatus.completed_types
+        : []
+    const cycleForecastReady = Boolean(
+      visibleStatus?.forecast_status?.ready &&
+        visibleStatus?.forecast_status?.matches_current_uploads
+    )
+    const persistentFreshUploadSession = Boolean(
+      uploadCycle?.persistent &&
+        uploadCycle?.mode === 'fresh' &&
+        !cycleForecastReady
+    )
+
+    setFreshUploadSession(persistentFreshUploadSession)
+    setFreshUploadedSources(
+      persistentFreshUploadSession
+        ? Object.fromEntries(cycleCompletedTypes.map((datasetType) => [datasetType, true]))
+        : {}
+    )
 
     updateWorkspace((current) => ({
       ...current,
-      sourceStatus: freshUploadSession
-        ? {
-            dengue: {},
-            weather: {},
-            population: {},
-            boundary: {},
-            ...databaseSourceStatus,
-          }
-        : {
-            ...(current.sourceStatus || {}),
-            ...databaseSourceStatus,
-          },
+      sourceStatus: {
+        dengue: {},
+        weather: {},
+        population: {},
+        boundary: {},
+        ...databaseSourceStatus,
+      },
       databaseIntegrationReadiness:
         visibleStatus?.integration_readiness && typeof visibleStatus.integration_readiness === 'object'
           ? visibleStatus.integration_readiness
@@ -4065,6 +4045,7 @@ export default function UploadPage() {
       visible: false,
       step: 'combine',
       detail: '',
+      selectedModel: '',
     })
 
     setIsProcessing(true)
@@ -4102,7 +4083,7 @@ export default function UploadPage() {
         const inspectResult = null
         const cleanResult = dengueValidationResult
         const summaryResult = null
-        const forecastResult = null
+        const forecastResult = dengueValidationResult?.preliminary_forecast || null
 
         const rawBackendResult = buildBackendDengueValidationResult({
           fileName: file.name,
@@ -4127,8 +4108,10 @@ export default function UploadPage() {
           ...current,
           [selectedSource.recordKey]: backendResult.validRecords,
           backendDengueSummary: summaryResult,
-          backendForecastResult: null,
-          riskRows: [],
+          backendForecastResult: forecastResult || current.backendForecastResult || null,
+          riskRows: Array.isArray(forecastResult?.forecast_results)
+            ? forecastResult.forecast_results
+            : current.riskRows || [],
           sourceStatus: {
             ...(current.sourceStatus || {}),
             [selectedSource.contextKey]: {
@@ -4173,8 +4156,8 @@ export default function UploadPage() {
 
         setUploadMessage(
           isDohMonthly
-            ? `Upload successful. The DOH monthly report was recognized and converted into ${backendResult.validCount} usable barangay-month records covering ${dohSummary.coverage_start || '2018-01'} to ${dohSummary.coverage_end || '2025-12'}. Grand Total was used as the case count. ${unknownLocationCount} unknown-location record${unknownLocationCount === 1 ? '' : 's'} were separated from barangay forecasting, and ${dohWarningCount} monthly total discrepanc${dohWarningCount === 1 ? 'y was' : 'ies were'} flagged for review.`
-            : `Upload successful. Dengue records were validated and saved. The forecast will be generated after dengue, weather, population, and boundary sources are integrated.${adaptiveMappingNote}`
+            ? `Upload successful. The DOH monthly report was recognized and converted into ${backendResult.validCount} usable barangay-month records covering ${dohSummary.coverage_start || '2018-01'} to ${dohSummary.coverage_end || '2025-12'}. Grand Total was used as the case count. ${unknownLocationCount} unknown-location record${unknownLocationCount === 1 ? '' : 's'} were separated from barangay forecasting, and ${dohWarningCount} monthly total discrepanc${dohWarningCount === 1 ? 'y was' : 'ies were'} flagged for review. A preliminary historical-only forecast is now available while the remaining three sources are being prepared.`
+            : `Upload successful. Dengue records were validated and saved. A preliminary historical-only forecast is now available. Upload weather, population, and boundary files to generate the complete multi-source forecast.${adaptiveMappingNote}`
         )
 
         addActivityLog(
@@ -4532,6 +4515,8 @@ export default function UploadPage() {
         visible={autoProcessing.visible}
         step={autoProcessing.step}
         detail={autoProcessing.detail}
+        selectedModel={autoProcessing.selectedModel}
+        barangayNames={processingBarangayNames}
       />
 
       <><div className="pointer-events-none absolute -left-24 -top-10 -z-10 h-80 w-80 rounded-full bg-blue-200/[0.45] blur-3xl dark:bg-blue-500/10" /><div className="pointer-events-none absolute -right-24 top-[520px] -z-10 h-72 w-72 rounded-full bg-cyan-100/[0.55] blur-3xl dark:bg-cyan-500/10" /></>

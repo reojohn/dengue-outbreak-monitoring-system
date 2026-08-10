@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import text
 
 from app.database import engine
+from app.services.database_uploads import get_current_dataset_upload_ids
 
 
 def _to_json(value: Any) -> str:
@@ -53,24 +54,8 @@ def _to_date(value: Any):
 
 
 def get_latest_dataset_upload_ids() -> dict:
-    with engine.connect() as connection:
-        result = connection.execute(
-            text("""
-                select distinct on (dataset_type)
-                    dataset_type,
-                    upload_id
-                from public.dataset_uploads
-                where dataset_type in ('dengue', 'weather', 'population', 'boundary')
-                order by dataset_type, uploaded_at desc
-            """)
-        )
-
-        rows = result.mappings().all()
-
-    return {
-        row["dataset_type"]: row["upload_id"]
-        for row in rows
-    }
+    """Compatibility wrapper for the persistent current upload-card set."""
+    return get_current_dataset_upload_ids()
 
 
 def save_integration_result(

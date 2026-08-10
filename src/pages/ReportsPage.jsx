@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Activity,
@@ -4596,7 +4596,18 @@ export default function ReportsPage() {
     backendDengueSummary = null,
     addActivityLog,
     boundaryRecords = [],
+    loadLatestSavedBoundaryGeoJson,
   } = data
+
+  const boundaryLoadRequestedRef = useRef(false)
+
+  useEffect(() => {
+    if (boundaryRecords.length > 0 || boundaryLoadRequestedRef.current) return
+    boundaryLoadRequestedRef.current = true
+    Promise.resolve(loadLatestSavedBoundaryGeoJson?.({ silent: true })).finally(() => {
+      if (!boundaryRecords.length) boundaryLoadRequestedRef.current = false
+    })
+  }, [boundaryRecords.length])
 
   useEffect(() => {
     let active = true

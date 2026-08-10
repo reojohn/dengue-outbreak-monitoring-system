@@ -1,4 +1,5 @@
 import json
+import uuid
 from threading import Lock
 from typing import Any
 
@@ -232,6 +233,39 @@ def ensure_dataset_uploads_schema() -> None:
                 """)
             )
 
+            # Keep only the latest cleaned source payload for each dataset type.
+            # Metadata/history stays in dataset_uploads, while this small table
+            # lets Render rebuild the integrated dataset after a restart without
+            # forcing users to re-upload the other three unchanged sources.
+            connection.execute(
+                text("""
+                    create table if not exists public.dataset_source_payloads (
+                        dataset_type text primary key,
+                        upload_id uuid not null references public.dataset_uploads(upload_id) on delete cascade,
+                        payload jsonb not null default '{}'::jsonb,
+                        updated_at timestamptz not null default now()
+                    )
+                """)
+            )
+
+            # Persistent singleton describing the upload cards' current source set.
+            # Starting a fresh cycle replaces only this tiny pointer map; historical
+            # upload rows, integrations, forecasts, and source payloads remain intact.
+            connection.execute(
+                text("""
+                    create table if not exists public.dataset_upload_cycle_state (
+                        singleton_id smallint primary key,
+                        cycle_id text not null,
+                        mode text not null default 'replacement',
+                        source_upload_ids jsonb not null default '{}'::jsonb,
+                        started_by text not null default '',
+                        started_at timestamptz not null default now(),
+                        updated_at timestamptz not null default now(),
+                        constraint dataset_upload_cycle_state_singleton check (singleton_id = 1)
+                    )
+                """)
+            )
+
         _DATASET_UPLOADS_SCHEMA_READY = True
 
 
@@ -302,38 +336,300 @@ def save_dataset_upload(
     return str(upload_id)
 
 
+def save_dataset_source_payload(*, dataset_type: str, upload_id: str, payload: dict | None = None) -> None:
+    """Persist the latest cleaned source payload for integration recovery.
+
+    One row per dataset type is retained, so repeated uploads do not accumulate
+    full cleaned source copies. This is used only when an integration rebuild is
+    actually requested after the backend process has lost its in-memory state.
+    """
+    ensure_dataset_uploads_schema()
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("""
+                insert into public.dataset_source_payloads (
+                    dataset_type, upload_id, payload, updated_at
+                )
+                values (
+                    :dataset_type, cast(:upload_id as uuid), cast(:payload as jsonb), now()
+                )
+                on conflict (dataset_type) do update
+                set upload_id = excluded.upload_id,
+                    payload = excluded.payload,
+                    updated_at = now()
+            """),
+            {
+                "dataset_type": str(dataset_type or "").strip().lower(),
+                "upload_id": str(upload_id),
+                "payload": _to_json(payload),
+            },
+        )
+
+
+REQUIRED_DATASET_TYPES = ("dengue", "weather", "population", "boundary")
+
+
+def _normalize_upload_id_map(value: Any) -> dict:
+    raw = _json_object(value)
+    normalized = {}
+    for dataset_type in REQUIRED_DATASET_TYPES:
+        upload_id = str(raw.get(dataset_type) or "").strip()
+        if upload_id:
+            normalized[dataset_type] = upload_id
+    return normalized
+
+
+def _latest_validated_upload_ids_for_connection(connection) -> dict:
+    rows = connection.execute(
+        text("""
+            select distinct on (dataset_type) dataset_type, upload_id
+            from public.dataset_uploads
+            where status = 'validated'
+              and dataset_type in ('dengue', 'weather', 'population', 'boundary')
+            order by dataset_type, uploaded_at desc
+        """)
+    ).mappings().all()
+    return {str(row["dataset_type"]): str(row["upload_id"]) for row in rows}
+
+
+def _latest_completed_integration_upload_ids_for_connection(connection) -> dict:
+    row = connection.execute(
+        text("""
+            select dengue_upload_id, weather_upload_id, population_upload_id, boundary_upload_id
+            from public.integration_runs
+            where status = 'completed'
+            order by created_at desc, integration_run_id desc
+            limit 1
+        """)
+    ).mappings().first()
+    if not row:
+        return {}
+    return {
+        dataset_type: str(row[f"{dataset_type}_upload_id"])
+        for dataset_type in REQUIRED_DATASET_TYPES
+        if row.get(f"{dataset_type}_upload_id")
+    }
+
+
+def _get_upload_cycle_for_connection(connection) -> dict | None:
+    row = connection.execute(
+        text("""
+            select cycle_id, mode, source_upload_ids, started_by, started_at, updated_at
+            from public.dataset_upload_cycle_state
+            where singleton_id = 1
+            limit 1
+        """)
+    ).mappings().first()
+    if not row:
+        return None
+    source_ids = _normalize_upload_id_map(row["source_upload_ids"])
+    return {
+        "cycle_id": str(row["cycle_id"]),
+        "mode": str(row["mode"] or "replacement"),
+        "source_upload_ids": source_ids,
+        "completed_types": [name for name in REQUIRED_DATASET_TYPES if name in source_ids],
+        "missing_types": [name for name in REQUIRED_DATASET_TYPES if name not in source_ids],
+        "started_by": str(row["started_by"] or ""),
+        "started_at": str(row["started_at"] or ""),
+        "updated_at": str(row["updated_at"] or ""),
+    }
+
+
+def get_current_upload_cycle() -> dict | None:
+    ensure_dataset_uploads_schema()
+    with engine.connect() as connection:
+        return _get_upload_cycle_for_connection(connection)
+
+
+def start_fresh_upload_cycle(*, started_by: str = "") -> dict:
+    """Persist an intentionally empty upload-card set without deleting history."""
+    ensure_dataset_uploads_schema()
+    cycle_id = str(uuid.uuid4())
+    with engine.begin() as connection:
+        connection.execute(
+            text("""
+                insert into public.dataset_upload_cycle_state (
+                    singleton_id, cycle_id, mode, source_upload_ids, started_by, started_at, updated_at
+                )
+                values (1, :cycle_id, 'fresh', '{}'::jsonb, :started_by, now(), now())
+                on conflict (singleton_id) do update
+                set cycle_id = excluded.cycle_id,
+                    mode = 'fresh',
+                    source_upload_ids = '{}'::jsonb,
+                    started_by = excluded.started_by,
+                    started_at = now(),
+                    updated_at = now()
+            """),
+            {"cycle_id": cycle_id, "started_by": str(started_by or "")},
+        )
+        cycle = _get_upload_cycle_for_connection(connection)
+    return cycle or {
+        "cycle_id": cycle_id,
+        "mode": "fresh",
+        "source_upload_ids": {},
+        "completed_types": [],
+        "missing_types": list(REQUIRED_DATASET_TYPES),
+    }
+
+
+def register_upload_in_current_cycle(*, dataset_type: str, upload_id: str, started_by: str = "") -> dict:
+    """Attach a validated upload to the persistent card set.
+
+    If no explicit fresh cycle exists, seed the set from the last completed
+    integration (or latest validated uploads) so replacing one source keeps the
+    other three current sources without downloading them into the browser.
+    """
+    ensure_dataset_uploads_schema()
+    dataset_type = str(dataset_type or "").strip().lower()
+    if dataset_type not in REQUIRED_DATASET_TYPES:
+        raise ValueError(f"Unsupported dataset type: {dataset_type}")
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text("""
+                select cycle_id, mode, source_upload_ids, started_by, started_at, updated_at
+                from public.dataset_upload_cycle_state
+                where singleton_id = 1
+                for update
+            """)
+        ).mappings().first()
+
+        if row:
+            cycle_id = str(row["cycle_id"])
+            mode = str(row["mode"] or "replacement")
+            source_ids = _normalize_upload_id_map(row["source_upload_ids"])
+        else:
+            cycle_id = str(uuid.uuid4())
+            mode = "replacement"
+            source_ids = _latest_completed_integration_upload_ids_for_connection(connection)
+            if len(source_ids) < len(REQUIRED_DATASET_TYPES):
+                latest_ids = _latest_validated_upload_ids_for_connection(connection)
+                for name in REQUIRED_DATASET_TYPES:
+                    if name not in source_ids and latest_ids.get(name):
+                        source_ids[name] = latest_ids[name]
+
+        source_ids[dataset_type] = str(upload_id)
+
+        connection.execute(
+            text("""
+                insert into public.dataset_upload_cycle_state (
+                    singleton_id, cycle_id, mode, source_upload_ids, started_by, started_at, updated_at
+                )
+                values (
+                    1, :cycle_id, :mode, cast(:source_upload_ids as jsonb), :started_by, now(), now()
+                )
+                on conflict (singleton_id) do update
+                set cycle_id = excluded.cycle_id,
+                    mode = excluded.mode,
+                    source_upload_ids = excluded.source_upload_ids,
+                    started_by = case
+                        when public.dataset_upload_cycle_state.started_by = '' then excluded.started_by
+                        else public.dataset_upload_cycle_state.started_by
+                    end,
+                    updated_at = now()
+            """),
+            {
+                "cycle_id": cycle_id,
+                "mode": mode,
+                "source_upload_ids": _to_json(source_ids),
+                "started_by": str(started_by or ""),
+            },
+        )
+        cycle = _get_upload_cycle_for_connection(connection)
+    return cycle or {}
+
+
+def _current_upload_ids_for_connection(connection) -> dict:
+    cycle = _get_upload_cycle_for_connection(connection)
+    if cycle is not None:
+        return dict(cycle.get("source_upload_ids") or {})
+    return _latest_validated_upload_ids_for_connection(connection)
+
+
+def get_current_dataset_upload_ids() -> dict:
+    ensure_dataset_uploads_schema()
+    with engine.connect() as connection:
+        return _current_upload_ids_for_connection(connection)
+
+
+def get_latest_dataset_source_payloads() -> dict:
+    """Return persisted payloads for the current persistent upload-card set only."""
+    ensure_dataset_uploads_schema()
+
+    with engine.connect() as connection:
+        current_ids = _current_upload_ids_for_connection(connection)
+        rows = []
+        for dataset_type, upload_id in current_ids.items():
+            row = connection.execute(
+                text("""
+                    select dataset_type, upload_id, payload
+                    from public.dataset_source_payloads
+                    where dataset_type = :dataset_type
+                      and upload_id = cast(:upload_id as uuid)
+                    limit 1
+                """),
+                {"dataset_type": dataset_type, "upload_id": upload_id},
+            ).mappings().first()
+            if row:
+                rows.append(row)
+
+    payloads = {}
+    for row in rows:
+        payload = _json_object(row["payload"])
+        if payload:
+            payloads[str(row["dataset_type"])] = payload
+
+    return payloads
+
+
 def get_latest_dataset_uploads() -> dict:
     ensure_dataset_uploads_schema()
 
     with engine.connect() as connection:
-        result = connection.execute(
-            text("""
-                select distinct on (dataset_type)
-                    upload_id,
-                    dataset_type,
-                    original_filename,
-                    file_type,
-                    status,
-                    original_row_count,
-                    valid_row_count,
-                    invalid_row_count,
-                    validation_summary,
-                    detection_result,
-                    coalesce(
-                        nullif(detection_result->>'coverage_start', ''),
-                        nullif(validation_summary->>'coverage_start', '')
-                    ) as coverage_start,
-                    coalesce(
-                        nullif(detection_result->>'coverage_end', ''),
-                        nullif(validation_summary->>'coverage_end', '')
-                    ) as coverage_end,
-                    uploaded_at
-                from public.dataset_uploads
-                order by dataset_type, uploaded_at desc
-            """)
-        )
+        upload_cycle = _get_upload_cycle_for_connection(connection)
+        current_upload_ids = _current_upload_ids_for_connection(connection)
+        rows = []
 
-        rows = result.mappings().all()
+        # Fetch at most four tiny metadata rows, one for each upload card. If a
+        # persistent fresh cycle is partial, missing types stay missing instead
+        # of silently falling back to older uploads after logout/login.
+        for dataset_type in REQUIRED_DATASET_TYPES:
+            upload_id = current_upload_ids.get(dataset_type)
+            if not upload_id:
+                continue
+            row = connection.execute(
+                text("""
+                    select
+                        upload_id,
+                        dataset_type,
+                        original_filename,
+                        file_type,
+                        status,
+                        original_row_count,
+                        valid_row_count,
+                        invalid_row_count,
+                        validation_summary,
+                        detection_result,
+                        coalesce(
+                            nullif(detection_result->>'coverage_start', ''),
+                            nullif(validation_summary->>'coverage_start', '')
+                        ) as coverage_start,
+                        coalesce(
+                            nullif(detection_result->>'coverage_end', ''),
+                            nullif(validation_summary->>'coverage_end', '')
+                        ) as coverage_end,
+                        uploaded_at
+                    from public.dataset_uploads
+                    where upload_id = cast(:upload_id as uuid)
+                      and dataset_type = :dataset_type
+                      and status = 'validated'
+                    limit 1
+                """),
+                {"upload_id": upload_id, "dataset_type": dataset_type},
+            ).mappings().first()
+            if row:
+                rows.append(row)
 
         # Keep forecast readiness lightweight. The Upload page already calls this
         # endpoint when it opens, so include only a tiny persisted-forecast status
@@ -346,6 +642,8 @@ def get_latest_dataset_uploads() -> dict:
                     runs.integration_run_id,
                     runs.dengue_upload_id,
                     runs.completed_at,
+                    runs.validation_summary->>'forecast_scope' as forecast_scope,
+                    runs.validation_summary->>'forecast_stage' as forecast_stage,
                     integration.dengue_upload_id as integration_dengue_upload_id,
                     integration.weather_upload_id as integration_weather_upload_id,
                     integration.population_upload_id as integration_population_upload_id,
@@ -368,6 +666,52 @@ def get_latest_dataset_uploads() -> dict:
         )
 
         latest_forecast = forecast_result.mappings().first()
+
+        # A preliminary dengue-only forecast belongs to the CURRENT dengue
+        # upload cycle, not simply to whichever completed forecast happens to
+        # be newest overall. Its stable identity is: exact current dengue upload
+        # id + no integration run + saved forecast rows. JSON scope/stage tags are
+        # useful metadata but are deliberately not required here so relogin also
+        # works for runs saved before/while those tags were introduced.
+        current_dengue_upload_id = current_upload_ids.get("dengue")
+        latest_historical_forecast = None
+        if current_dengue_upload_id:
+            historical_forecast_result = connection.execute(
+                text("""
+                    select
+                        runs.forecast_run_id,
+                        runs.dengue_upload_id,
+                        runs.completed_at,
+                        runs.validation_summary->>'forecast_scope' as forecast_scope,
+                        runs.validation_summary->>'forecast_stage' as forecast_stage,
+                        (
+                            select count(*)
+                            from public.forecast_results results
+                            where results.forecast_run_id = runs.forecast_run_id
+                        ) as result_count
+                    from public.forecast_runs runs
+                    where runs.status = 'completed'
+                      and runs.dengue_upload_id = cast(:dengue_upload_id as uuid)
+                      and runs.integration_run_id is null
+                      -- Matching the exact current dengue upload + no integration
+                      -- is the authoritative identity of the preliminary stage.
+                      -- Do not require the newer JSON tags here because older/
+                      -- partially migrated runs may not have them even though the
+                      -- forecast rows were saved correctly.
+                      and exists (
+                          select 1
+                          from public.forecast_results existing_results
+                          where existing_results.forecast_run_id = runs.forecast_run_id
+                      )
+                    order by
+                        runs.completed_at desc nulls last,
+                        runs.started_at desc nulls last,
+                        runs.forecast_run_id desc
+                    limit 1
+                """),
+                {"dengue_upload_id": current_dengue_upload_id},
+            )
+            latest_historical_forecast = historical_forecast_result.mappings().first()
 
         integration_result = connection.execute(
             text("""
@@ -451,7 +795,7 @@ def get_latest_dataset_uploads() -> dict:
             "uploaded_at": str(row["uploaded_at"]),
         }
 
-    required_types = ["dengue", "weather", "population", "boundary"]
+    required_types = list(REQUIRED_DATASET_TYPES)
     forecast_result_count = int(latest_forecast["result_count"] or 0) if latest_forecast else 0
 
     forecast_matches_current_uploads = False
@@ -470,6 +814,19 @@ def get_latest_dataset_uploads() -> dict:
             == str(uploads[dataset_type].get("upload_id") or "")
             for dataset_type in required_types
         )
+
+    historical_forecast_result_count = (
+        int(latest_historical_forecast["result_count"] or 0)
+        if latest_historical_forecast
+        else 0
+    )
+    historical_forecast_matches_current_dengue = bool(
+        latest_historical_forecast
+        and uploads.get("dengue")
+        and str(latest_historical_forecast.get("dengue_upload_id") or "")
+            == str(uploads["dengue"].get("upload_id") or "")
+        and historical_forecast_result_count > 0
+    )
 
     integration_readiness = None
     if latest_integration and integration_counts and integration_matches_current_uploads:
@@ -562,9 +919,17 @@ def get_latest_dataset_uploads() -> dict:
         },
         "integration_readiness": integration_readiness,
         "forecast_status": {
+            # This remains the final four-source readiness flag used by the
+            # automatic integration/model workflow. A preliminary historical
+            # forecast must never satisfy this full-source match.
             "ready": forecast_result_count > 0 and forecast_matches_current_uploads,
             "result_count": forecast_result_count,
             "matches_current_uploads": forecast_matches_current_uploads,
+            # The latest successful forecast remains publishable to BHW,
+            # Supervisor, and Viewer while Admin is staging a new partial set.
+            "published_ready": forecast_result_count > 0,
+            "forecast_scope": latest_forecast.get("forecast_scope") if latest_forecast else None,
+            "forecast_stage": latest_forecast.get("forecast_stage") if latest_forecast else None,
             "forecast_run_id": str(latest_forecast["forecast_run_id"]) if latest_forecast else None,
             "completed_at": (
                 str(latest_forecast["completed_at"])
@@ -572,11 +937,89 @@ def get_latest_dataset_uploads() -> dict:
                 else None
             ),
         },
+        "historical_forecast_status": {
+            "ready": historical_forecast_matches_current_dengue,
+            "matches_current_dengue_upload": historical_forecast_matches_current_dengue,
+            "result_count": (
+                historical_forecast_result_count
+                if historical_forecast_matches_current_dengue
+                else 0
+            ),
+            "forecast_run_id": (
+                str(latest_historical_forecast["forecast_run_id"])
+                if historical_forecast_matches_current_dengue
+                else None
+            ),
+            "completed_at": (
+                str(latest_historical_forecast["completed_at"])
+                if historical_forecast_matches_current_dengue
+                and latest_historical_forecast["completed_at"]
+                else None
+            ),
+        },
+        "upload_cycle": {
+            "persistent": upload_cycle is not None,
+            "cycle_id": upload_cycle.get("cycle_id") if upload_cycle else None,
+            "mode": upload_cycle.get("mode") if upload_cycle else "legacy",
+            "completed_types": [item for item in required_types if item in uploads],
+            "missing_types": [item for item in required_types if item not in uploads],
+            "started_at": upload_cycle.get("started_at") if upload_cycle else None,
+            "updated_at": upload_cycle.get("updated_at") if upload_cycle else None,
+        },
     }
 
 
 def get_latest_dataset_previews(limit: int = 300) -> dict:
     safe_limit = max(1, min(int(limit or 300), 1000))
+
+    # Preview the persistent current upload set, not an older completed
+    # integration. PostgreSQL slices only the requested JSON records so Render
+    # does not pull an entire persisted source payload from Supabase merely to
+    # show a 25/100-row browser preview. This endpoint is also lazy and is never
+    # called by the normal login bootstrap.
+    ensure_dataset_uploads_schema()
+    with engine.connect() as preview_connection:
+        cycle = _get_upload_cycle_for_connection(preview_connection)
+        current_ids = _current_upload_ids_for_connection(preview_connection)
+        previews = {}
+        payload_found = False
+        for dataset_type in ("dengue", "weather", "population"):
+            upload_id = current_ids.get(dataset_type)
+            if not upload_id:
+                previews[dataset_type] = []
+                continue
+
+            rows = preview_connection.execute(
+                text("""
+                    select item.value as record
+                    from public.dataset_source_payloads payloads
+                    cross join lateral jsonb_array_elements(
+                        coalesce(payloads.payload->'records', '[]'::jsonb)
+                    ) with ordinality as item(value, ord)
+                    where payloads.dataset_type = :dataset_type
+                      and payloads.upload_id = cast(:upload_id as uuid)
+                    order by item.ord
+                    limit :limit
+                """),
+                {
+                    "dataset_type": dataset_type,
+                    "upload_id": upload_id,
+                    "limit": safe_limit,
+                },
+            ).mappings().all()
+            previews[dataset_type] = [
+                _json_object(row["record"]) for row in rows if _json_object(row["record"])
+            ]
+            if rows:
+                payload_found = True
+
+        if cycle is not None or payload_found:
+            return {
+                "message": "Current upload-cycle previews loaded from persisted source payloads.",
+                "has_saved_preview": payload_found,
+                "limit": safe_limit,
+                "previews": previews,
+            }
 
     with engine.connect() as connection:
         latest_run_result = connection.execute(

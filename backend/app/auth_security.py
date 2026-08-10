@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 import secrets
+import warnings
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -14,10 +15,37 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 
-JWT_SECRET = os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY") or "change-this-dev-secret-before-production"
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "12"))
-PASSWORD_ITERATIONS = 260000
+JWT_EXPIRE_HOURS = max(1, min(int(os.getenv("JWT_EXPIRE_HOURS", "12")), 24))
+PASSWORD_ITERATIONS = max(600000, int(os.getenv("PASSWORD_ITERATIONS", "600000")))
+MAX_TOKEN_LENGTH = 8192
+
+
+def _is_production_runtime() -> bool:
+    environment = (os.getenv("ENVIRONMENT") or os.getenv("APP_ENV") or "").strip().lower()
+    render_flag = (os.getenv("RENDER") or "").strip().lower()
+    return environment in {"production", "prod"} or render_flag in {"1", "true", "yes"}
+
+
+JWT_SECRET = (os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY") or "").strip()
+if not JWT_SECRET:
+    if _is_production_runtime():
+        raise RuntimeError("JWT_SECRET_KEY is required in production.")
+
+    # Local development remains usable without a committed/shared secret, but all
+    # sessions become invalid whenever the backend restarts. This is safer than a
+    # public hard-coded fallback secret.
+    JWT_SECRET = secrets.token_urlsafe(48)
+    warnings.warn(
+        "JWT_SECRET_KEY is not set. Using a temporary development secret; existing sessions will expire on restart.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+
+if len(JWT_SECRET) < 32:
+    if _is_production_runtime():
+        raise RuntimeError("JWT_SECRET_KEY must be at least 32 characters in production.")
+    warnings.warn("JWT_SECRET_KEY should be at least 32 characters.", RuntimeWarning, stacklevel=2)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -47,15 +75,26 @@ def verify_password(password: str, stored_hash: str) -> bool:
         algorithm, iterations, salt, expected_digest = stored_hash.split("$", 3)
         if algorithm != "pbkdf2_sha256":
             return False
+        iteration_count = int(iterations)
+        if iteration_count <= 0 or iteration_count > 5_000_000:
+            return False
         digest = hashlib.pbkdf2_hmac(
             "sha256",
             password.encode("utf-8"),
             salt.encode("utf-8"),
-            int(iterations),
+            iteration_count,
         ).hex()
         return hmac.compare_digest(digest, expected_digest)
     except Exception:
         return False
+
+
+def password_needs_rehash(stored_hash: str) -> bool:
+    try:
+        algorithm, iterations, _salt, _digest = stored_hash.split("$", 3)
+        return algorithm != "pbkdf2_sha256" or int(iterations) < PASSWORD_ITERATIONS
+    except Exception:
+        return True
 
 
 def create_access_token(payload: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
@@ -78,7 +117,14 @@ def create_access_token(payload: Dict[str, Any], expires_delta: Optional[timedel
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     try:
+        if not token or len(token) > MAX_TOKEN_LENGTH:
+            raise ValueError("Invalid token size")
+
         encoded_header, encoded_payload, encoded_signature = token.split(".", 2)
+        header = json.loads(_b64url_decode(encoded_header))
+        if header.get("typ") != "JWT" or header.get("alg") != JWT_ALGORITHM:
+            raise ValueError("Unsupported token header")
+
         signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
         expected_signature = hmac.new(JWT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
         actual_signature = _b64url_decode(encoded_signature)
@@ -88,10 +134,17 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 
         payload = json.loads(_b64url_decode(encoded_payload))
         exp = int(payload.get("exp", 0))
-        if exp < int(datetime.now(timezone.utc).timestamp()):
+        now_timestamp = int(datetime.now(timezone.utc).timestamp())
+        if exp <= now_timestamp:
             raise ValueError("Token expired")
 
+        issued_at = int(payload.get("iat", 0))
+        if issued_at <= 0 or issued_at > now_timestamp + 300:
+            raise ValueError("Invalid token issued-at timestamp")
+
         return payload
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

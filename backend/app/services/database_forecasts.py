@@ -469,6 +469,7 @@ def save_forecast_result(
     dengue_upload_id=None,
     integration_run_id=None,
     created_by: str = "demo_user",
+    resolve_latest_integration_if_missing: bool = True,
 ) -> dict:
     ensure_forecast_factor_columns()
 
@@ -477,7 +478,7 @@ def save_forecast_result(
     if dengue_upload_id is None:
         dengue_upload_id = get_latest_dengue_upload_id()
 
-    if integration_run_id is None:
+    if integration_run_id is None and resolve_latest_integration_if_missing:
         integration_run_id = get_latest_integration_run_id()
 
     with engine.begin() as connection:
@@ -946,9 +947,24 @@ def get_latest_forecast_result_from_database() -> dict:
 
     forecast_results = _apply_canonical_priority_ranks(forecast_results)
 
+    forecast_scope = validation_summary.get("forecast_scope") or (
+        "multi_source_integrated" if forecast_run["integration_run_id"] else "historical_dengue_only"
+    )
+    forecast_stage = validation_summary.get("forecast_stage") or (
+        "final" if forecast_run["integration_run_id"] else "preliminary"
+    )
+    is_preliminary = forecast_stage == "preliminary" or forecast_scope == "historical_dengue_only"
+
     return {
-        "message": "Latest saved forecast loaded from Supabase.",
+        "message": (
+            "Latest preliminary historical dengue forecast loaded from Supabase."
+            if is_preliminary
+            else "Latest saved forecast loaded from Supabase."
+        ),
         "has_saved_forecast": True,
+        "forecast_scope": forecast_scope,
+        "forecast_stage": forecast_stage,
+        "is_preliminary_forecast": is_preliminary,
         "forecast_run": {
             "forecast_run_id": str(forecast_run["forecast_run_id"]),
             "integration_run_id": str(forecast_run["integration_run_id"]) if forecast_run["integration_run_id"] else None,
@@ -962,7 +978,9 @@ def get_latest_forecast_result_from_database() -> dict:
             "created_by": forecast_run["created_by"],
         },
         "forecast_method": (
-            "Four horizon-specific direct models generate Periods 1 through 4 separately; their predictions are summed for cumulative risk classification."
+            "Preliminary historical-only dengue forecast using direct multi-step machine learning on dengue case history. Weather, population, and boundary context are added after the four-source workflow completes."
+            if validation_summary.get("forecast_scope") == "historical_dengue_only"
+            else "Four horizon-specific direct models generate Periods 1 through 4 separately; their predictions are summed for cumulative risk classification."
             if validation_summary.get("forecast_strategy") == "direct_multi_step"
             else "Saved forecast using uploaded dengue, weather, population, and barangay map records."
         ),
@@ -977,6 +995,12 @@ def get_latest_forecast_result_from_database() -> dict:
         "total_forecast_next_4_periods": int(forecast_run["total_forecast_next_4_periods"] or 0),
         "risk_counts": forecast_run["risk_counts"] or {},
         "validation_summary": validation_summary,
+        "model_metrics": validation_summary.get("preliminary_model_metrics") or {},
+        "model_comparison": validation_summary.get("preliminary_model_comparison") or [],
+        "training_summary": validation_summary.get("preliminary_training_summary") or {},
+        "selection_confidence": validation_summary.get("preliminary_selection_confidence") or {},
+        "selection_explanation": validation_summary.get("preliminary_selection_explanation") or {},
+        "feature_importance": validation_summary.get("preliminary_feature_importance") or [],
         "forecast_results": forecast_results,
         "barangay_count": len(forecast_results),
     }

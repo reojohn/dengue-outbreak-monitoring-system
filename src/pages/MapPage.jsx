@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -1816,7 +1816,19 @@ export default function MapPage() {
     backendForecastResult = null,
     addActivityLog,
     boundaryRecords = [],
+    loadLatestSavedBoundaryGeoJson,
   } = data
+
+  const boundaryLoadRequestedRef = useRef(false)
+
+  useEffect(() => {
+    if (boundaryRecords.length > 0 || boundaryLoadRequestedRef.current) return
+    boundaryLoadRequestedRef.current = true
+    Promise.resolve(loadLatestSavedBoundaryGeoJson?.({ silent: true })).finally(() => {
+      // Allow a later retry only if no boundary was restored.
+      if (!boundaryRecords.length) boundaryLoadRequestedRef.current = false
+    })
+  }, [boundaryRecords.length])
 
   const populationRecords = useMemo(() => {
     const candidates = [

@@ -1496,7 +1496,18 @@ export default function BHWPage() {
     dashboardStats = {},
     backendForecastResult,
     boundaryRecords = [],
+    loadLatestSavedBoundaryGeoJson,
   } = useData()
+
+  const boundaryLoadRequestedRef = useRef(false)
+
+  useEffect(() => {
+    if (boundaryRecords.length > 0 || boundaryLoadRequestedRef.current) return
+    boundaryLoadRequestedRef.current = true
+    Promise.resolve(loadLatestSavedBoundaryGeoJson?.({ silent: true })).finally(() => {
+      if (!boundaryRecords.length) boundaryLoadRequestedRef.current = false
+    })
+  }, [boundaryRecords.length])
 
   const session = getAuthSession()
   const currentRole = session?.role || 'viewer'
@@ -1654,12 +1665,17 @@ export default function BHWPage() {
   ), [barangayName, boundaryRecords])
 
   const cityHighRiskCount = useMemo(() => {
-    const sourceRows = savedForecastRows.length ? savedForecastRows : riskRows
+    const persistedCityCount = Number(
+      backendForecastResult?.city_summary?.risk_counts?.High ??
+        backendForecastResult?.risk_counts?.High
+    )
+    if (Number.isFinite(persistedCityCount)) return persistedCityCount
 
+    const sourceRows = savedForecastRows.length ? savedForecastRows : riskRows
     return sourceRows.filter((row) => (
       normalizeRiskLevel(row?.risk_level ?? row?.risk, 'Low') === 'High'
     )).length
-  }, [riskRows, savedForecastRows])
+  }, [backendForecastResult, riskRows, savedForecastRows])
 
   const selectedSavedForecastRow = useMemo(() => {
     const activeKey = normalizeName(barangayName)

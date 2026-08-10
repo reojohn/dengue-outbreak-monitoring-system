@@ -1,11 +1,11 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Path, status
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.auth_security import get_current_user
+from app.auth_security import get_current_user, require_roles
 from app.database import engine, get_db
 from app.services.notification_builder import build_backend_notifications
 from app.services.notification_state import add_notification_event, clear_notification_events
@@ -15,25 +15,44 @@ router = APIRouter(
     tags=["notifications"],
 )
 
+ALLOWED_RECIPIENT_ROLES = {"cho", "supervisor", "bhw", "admin", "viewer"}
+
 
 class NotificationEventRequest(BaseModel):
-    title: str
-    message: str
-    severity: str = "info"
-    category: str = "system_event"
-    to: str = "/dashboard"
-    hash: str = "dashboard-summary"
+    title: str = Field(min_length=1, max_length=160)
+    message: str = Field(min_length=1, max_length=1200)
+    severity: Literal["info", "success", "activity", "warning", "danger"] = "info"
+    category: str = Field(default="system_event", min_length=1, max_length=80)
+    to: str = Field(default="/dashboard", min_length=1, max_length=200)
+    hash: str = Field(default="dashboard-summary", max_length=120)
     meta: Optional[Dict[str, Any]] = None
-    recipient_role: Optional[str] = None
-    recipient_user_id: Optional[str] = None
+    recipient_role: Optional[str] = Field(default=None, max_length=32)
+    recipient_user_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class NotificationPreferenceUpdate(BaseModel):
     notifications_enabled: bool
 
 
+class NotificationReadsRequest(BaseModel):
+    notification_ids: list[str] = Field(default_factory=list, max_length=100)
+    # Backward-compatible only. Server derives the read-state owner from auth.
+    user_key: Optional[str] = None
+
+
+def _notification_user_key(current_user: Dict[str, Any]) -> str:
+    return f"user:{str(current_user['id']).strip().lower()}"
+
+
+def _validate_event_target(payload: NotificationEventRequest) -> None:
+    if payload.recipient_role and payload.recipient_role not in ALLOWED_RECIPIENT_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid notification recipient role.")
+    if not payload.to.startswith("/") or payload.to.startswith("//"):
+        raise HTTPException(status_code=400, detail="Notification target must be an internal application path.")
+
+
 def ensure_notification_preferences_table() -> None:
-    """Create the account-level preference table without inserting default rows."""
+    """Create the account-level preference and notification tables."""
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -82,14 +101,7 @@ def ensure_notification_preferences_table() -> None:
                 """
             )
         )
-        connection.execute(
-            text(
-                """
-                alter table public.notifications
-                add column if not exists recipient_role text
-                """
-            )
-        )
+        connection.execute(text("alter table public.notifications add column if not exists recipient_role text"))
         connection.execute(
             text(
                 """
@@ -163,16 +175,8 @@ def update_notification_preferences(
     row = db.execute(
         text(
             """
-            insert into public.user_preferences (
-                user_id,
-                notifications_enabled,
-                updated_at
-            )
-            values (
-                :user_id,
-                :notifications_enabled,
-                now()
-            )
+            insert into public.user_preferences (user_id, notifications_enabled, updated_at)
+            values (:user_id, :notifications_enabled, now())
             on conflict (user_id)
             do update set
                 notifications_enabled = excluded.notifications_enabled,
@@ -198,8 +202,9 @@ def update_notification_preferences(
 @router.post("/events")
 def create_notification_event(
     payload: NotificationEventRequest,
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_roles("admin", "cho", "supervisor")),
 ):
+    _validate_event_target(payload)
     event_payload = payload.model_dump()
     event_payload["meta"] = {
         **(event_payload.get("meta") or {}),
@@ -215,16 +220,19 @@ def create_notification_event(
 
 
 @router.delete("/events")
-def reset_notification_events():
+def reset_notification_events(
+    current_user=Depends(require_roles("admin", "cho")),
+):
     clear_notification_events()
-
-    return {
-        "message": "Notification events cleared.",
-    }
+    return {"message": "Notification events cleared."}
 
 
 @router.get("/reads")
-def get_notification_reads(user_key: str = "default_user"):
+def get_notification_reads(
+    user_key: Optional[str] = None,
+    current_user=Depends(get_current_user),
+):
+    owner_key = _notification_user_key(current_user)
     with engine.connect() as connection:
         rows = connection.execute(
             text(
@@ -236,18 +244,23 @@ def get_notification_reads(user_key: str = "default_user"):
                 limit 300
                 """
             ),
-            {"user_key": user_key},
+            {"user_key": owner_key},
         ).mappings().all()
 
     return {
         "message": "Notification read state loaded from Supabase.",
-        "user_key": user_key,
+        "user_key": owner_key,
         "read_notification_ids": [str(row["notification_id"]) for row in rows],
     }
 
 
 @router.post("/reads/{notification_id}")
-def mark_notification_read(notification_id: str, user_key: str = "default_user"):
+def mark_notification_read(
+    notification_id: str = Path(min_length=1, max_length=128),
+    user_key: Optional[str] = None,
+    current_user=Depends(get_current_user),
+):
+    owner_key = _notification_user_key(current_user)
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -258,23 +271,23 @@ def mark_notification_read(notification_id: str, user_key: str = "default_user")
                 do update set read_at = now()
                 """
             ),
-            {
-                "notification_id": notification_id,
-                "user_key": user_key,
-            },
+            {"notification_id": notification_id, "user_key": owner_key},
         )
 
     return {
         "message": "Notification marked as read.",
         "notification_id": notification_id,
-        "user_key": user_key,
+        "user_key": owner_key,
     }
 
 
 @router.post("/reads")
-def mark_notifications_read(payload: dict):
-    user_key = payload.get("user_key") or "default_user"
-    notification_ids = payload.get("notification_ids") or []
+def mark_notifications_read(
+    payload: NotificationReadsRequest,
+    current_user=Depends(get_current_user),
+):
+    owner_key = _notification_user_key(current_user)
+    notification_ids = list(dict.fromkeys(str(item).strip() for item in payload.notification_ids if str(item).strip()))[:100]
 
     with engine.begin() as connection:
         for notification_id in notification_ids:
@@ -287,14 +300,11 @@ def mark_notifications_read(payload: dict):
                     do update set read_at = now()
                     """
                 ),
-                {
-                    "notification_id": str(notification_id),
-                    "user_key": user_key,
-                },
+                {"notification_id": notification_id[:128], "user_key": owner_key},
             )
 
     return {
         "message": "Notifications marked as read.",
-        "user_key": user_key,
+        "user_key": owner_key,
         "count": len(notification_ids),
     }

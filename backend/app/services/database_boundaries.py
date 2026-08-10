@@ -151,19 +151,42 @@ def save_boundary_geojson(
     }
 
 
-def get_latest_boundary_geojson() -> dict:
+def get_latest_boundary_geojson(barangay: str | None = None) -> dict:
     with engine.connect() as connection:
+        # Serve the boundary that belongs to the latest successfully published
+        # forecast. Admin may be staging a newer partial upload cycle, and that
+        # draft boundary should not replace the map used by BHW/Supervisor/Viewer
+        # until the new forecast is successfully published.
         upload_result = connection.execute(
             text("""
-                select upload_id, original_filename, uploaded_at
-                from public.dataset_uploads
-                where dataset_type = 'boundary'
-                order by uploaded_at desc
+                select uploads.upload_id, uploads.original_filename, uploads.uploaded_at
+                from public.forecast_runs forecasts
+                join public.integration_runs integration
+                  on integration.integration_run_id = forecasts.integration_run_id
+                join public.dataset_uploads uploads
+                  on uploads.upload_id = integration.boundary_upload_id
+                where forecasts.status = 'completed'
+                order by
+                    forecasts.completed_at desc nulls last,
+                    forecasts.started_at desc nulls last,
+                    forecasts.forecast_run_id desc
                 limit 1
             """)
         )
 
         latest_upload = upload_result.mappings().first()
+
+        if not latest_upload:
+            fallback_result = connection.execute(
+                text("""
+                    select upload_id, original_filename, uploaded_at
+                    from public.dataset_uploads
+                    where dataset_type = 'boundary'
+                    order by uploaded_at desc
+                    limit 1
+                """)
+            )
+            latest_upload = fallback_result.mappings().first()
 
         if not latest_upload:
             return {
@@ -175,6 +198,17 @@ def get_latest_boundary_geojson() -> dict:
                     "features": [],
                 },
             }
+
+        requested_barangay_key = normalize_barangay_key(barangay or "")
+
+        total_feature_count = connection.execute(
+            text("""
+                select count(*)
+                from public.barangay_boundaries
+                where upload_id = :upload_id
+            """),
+            {"upload_id": latest_upload["upload_id"]},
+        ).scalar_one()
 
         rows_result = connection.execute(
             text("""
@@ -191,10 +225,12 @@ def get_latest_boundary_geojson() -> dict:
                     created_at
                 from public.barangay_boundaries
                 where upload_id = :upload_id
+                  and (:barangay_key = '' or barangay_key = :barangay_key)
                 order by barangay
             """),
             {
                 "upload_id": latest_upload["upload_id"],
+                "barangay_key": requested_barangay_key,
             },
         )
 
@@ -246,7 +282,9 @@ def get_latest_boundary_geojson() -> dict:
             "original_filename": latest_upload["original_filename"],
             "uploaded_at": str(latest_upload["uploaded_at"]),
         },
-        "feature_count": len(features),
+        "feature_count": int(total_feature_count or len(features)),
+        "returned_feature_count": len(features),
+        "scope_barangay": barangay or "",
         "boundary_geojson": {
             "type": "FeatureCollection",
             "features": features,
