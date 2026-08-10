@@ -27,7 +27,7 @@ import { useData } from '../context/DataContext'
 import {
   autoRunModel,
   cleanDengueFile,
-  validateDengueFile,
+  forecastDengueFile,
   getBackendAlignmentReport,
   getUploadDatabasePreview,
   getUploadDatabaseStatus,
@@ -2726,11 +2726,8 @@ export default function UploadPage() {
     step: 'combine',
     detail: '',
   })
-  const [freshUploadSession, setFreshUploadSession] = useState(false)
-  const [freshUploadedSources, setFreshUploadedSources] = useState({})
   const autoPreparationKeyRef = useRef(getStoredAutoPreparationKey())
   const autoPreparationRunningRef = useRef(false)
-  const autoPreparationArmedRef = useRef(false)
   const autoPreparationRunIdRef = useRef(0)
   const databaseUploadStatusLoadedRef = useRef(false)
 
@@ -2814,7 +2811,7 @@ export default function UploadPage() {
           databaseIntegrationReadiness:
             status?.integration_readiness && typeof status.integration_readiness === 'object'
               ? status.integration_readiness
-              : null,
+              : current.databaseIntegrationReadiness || null,
         }))
       } catch {
         // Do not block the Upload page if the online database status cannot be loaded.
@@ -3069,10 +3066,9 @@ export default function UploadPage() {
   const usingReadinessAlignment = activeAlignmentReport?.source === 'database_integration_readiness'
   const backendSourceSignature = sources
     .map((source) => {
-      const sourceIsFresh = !freshUploadSession || Boolean(freshUploadedSources[source.contextKey])
-      const backendSource = sourceIsFresh ? (backendSources[source.contextKey] || {}) : {}
-      const databaseUpload = sourceIsFresh ? (databaseUploads[source.contextKey] || {}) : {}
-      const statusSource = sourceIsFresh ? (sourceStatus?.[source.contextKey] || {}) : {}
+      const backendSource = backendSources[source.contextKey] || {}
+      const databaseUpload = databaseUploads[source.contextKey] || {}
+      const statusSource = sourceStatus?.[source.contextKey] || {}
 
       const filename =
         backendSource.filename ||
@@ -3095,43 +3091,26 @@ export default function UploadPage() {
       )
 
       const loaded = Boolean(backendSource.loaded || validCount > 0)
-      const sourceIdentity =
-        databaseUpload.upload_id ||
-        backendSource.updated_at ||
-        statusSource.uploadId ||
-        filename
 
       return [
         source.contextKey,
-        sourceIdentity,
+        filename,
         validCount,
         recordCount,
         loaded ? 'loaded' : 'pending',
       ].join(':')
     })
     .join('|')
-  const freshUploadedSourceCount = sources.filter((source) =>
-    Boolean(freshUploadedSources[source.contextKey])
-  ).length
-  const allRequiredFilesReady = freshUploadSession
-    ? freshUploadedSourceCount >= sources.length
-    : Boolean(
-        backendCanBuildDataset &&
-          backendRequiredSourceCount >= sources.length &&
-          backendLoadedSourceCount >= backendRequiredSourceCount
-      )
-  const persistedIntegrationMatchesCurrentUploads = Boolean(
-    databaseUploadStatus?.integration_status?.matches_current_uploads
-  )
-  const persistedIntegrationRowCount = Number(
-    databaseUploadStatus?.integration_status?.row_count || 0
-  )
-  const currentBuildRowCount = Number(
-    backendIntegrationResult?.row_count || backendBuildSummary?.row_count || 0
+  const allRequiredFilesReady = Boolean(
+    backendCanBuildDataset &&
+      backendRequiredSourceCount >= sources.length &&
+      backendLoadedSourceCount >= backendRequiredSourceCount
   )
   const hasCombinedBackendData = Boolean(
-    currentBuildRowCount > 0 ||
-      (persistedIntegrationMatchesCurrentUploads && persistedIntegrationRowCount > 0)
+    backendMergedRows.length > 0 ||
+      Number(backendBuildSummary?.row_count || 0) > 0 ||
+      Number(backendIntegrationResult?.row_count || 0) > 0 ||
+      Number(integrationReadiness?.summary?.integratedRowCount || 0) > 0
   )
 
   async function handleOpenCombinedDetails() {
@@ -3185,15 +3164,11 @@ export default function UploadPage() {
     autoPreparationKeyRef.current = ''
     autoPreparationRunIdRef.current += 1
     autoPreparationRunningRef.current = false
-    autoPreparationArmedRef.current = false
     setAutoProcessing({
       visible: false,
       step: 'combine',
       detail: '',
     })
-    setFreshUploadSession(true)
-    setFreshUploadedSources({})
-    setDatabaseUploadStatus(null)
 
     setIsProcessing(true)
 
@@ -3215,7 +3190,6 @@ export default function UploadPage() {
       backendIntegrationStatus: null,
       backendIntegrationResult: null,
       backendMergedDataset: [],
-      databaseIntegrationReadiness: null,
       sourceStatus: {
         dengue: {},
         weather: {},
@@ -3229,11 +3203,11 @@ export default function UploadPage() {
     setValidationResult(null)
     setSourceUploadStates({})
     setUploadError('')
-    setUploadMessage('Fresh upload cycle started. Upload all four source files again to build a new integrated dataset and forecast. Saved historical runs remain in Supabase for audit history.')
+    setUploadMessage('Workspace reset. Uploaded files, checking results, forecast results, and combined data were cleared.')
 
     addActivityLog(
       'Workspace reset',
-      'A fresh four-source upload cycle was started. Saved historical database runs were preserved.'
+      'Uploaded files, checking results, forecast results, and combined data were cleared.'
     )
 
     setIsProcessing(false)
@@ -3330,7 +3304,6 @@ export default function UploadPage() {
 
     autoPreparationRunIdRef.current += 1
     autoPreparationRunningRef.current = false
-    autoPreparationArmedRef.current = false
     setAutoProcessing({
       visible: false,
       step: 'combine',
@@ -3480,139 +3453,77 @@ export default function UploadPage() {
 
 
 
-  const persistedForecastMatchesCurrentUploads = Boolean(
-    databaseUploadStatus?.forecast_status?.ready &&
-      databaseUploadStatus?.forecast_status?.matches_current_uploads
-  )
-  const inMemoryForecastReady = Boolean(
-    currentBuildRowCount > 0 &&
-      Array.isArray(backendForecastResult?.forecast_results) &&
-      backendForecastResult.forecast_results.length > 0
-  )
-  const hasCurrentForecast = Boolean(
-    persistedForecastMatchesCurrentUploads || inMemoryForecastReady
-  )
-
   useEffect(() => {
-    // Never start the heavy integration/model workflow just because the Upload
-    // page was opened and four saved sources already exist in Supabase. The
-    // workflow is armed only by a successful upload made in the current UI
-    // session. This prevents page-load processing loops and blinking modals.
-    if (!autoPreparationArmedRef.current) return
     if (!allRequiredFilesReady) return
+    if (hasCombinedBackendData) return
     if (isProcessing || autoPreparationRunningRef.current) return
     if (!backendSourceSignature || backendSourceSignature.includes('pending')) return
 
     const preparationKey = backendSourceSignature
 
-    // A matching integrated dataset and forecast already exist for these exact
-    // upload IDs. Reuse them instead of replaying the loading animation or
-    // consuming Render resources on unnecessary model training.
-    if (hasCombinedBackendData && hasCurrentForecast) {
-      autoPreparationArmedRef.current = false
-
-      if (autoPreparationKeyRef.current !== preparationKey) {
-        autoPreparationKeyRef.current = preparationKey
-        saveAutoPreparationKey(preparationKey)
-      }
-
-      if (freshUploadSession) {
-        setFreshUploadSession(false)
-        setFreshUploadedSources({})
-      }
-      return
-    }
-
-    if (autoPreparationKeyRef.current === preparationKey && hasCurrentForecast) return
+    if (autoPreparationKeyRef.current === preparationKey) return
 
     const runId = autoPreparationRunIdRef.current + 1
     autoPreparationRunIdRef.current = runId
     autoPreparationKeyRef.current = preparationKey
     autoPreparationRunningRef.current = true
-    // Consume the one-shot trigger immediately. If this run fails, the effect
-    // must not continuously restart itself and flash the modal.
-    autoPreparationArmedRef.current = false
 
     let closeTimer = null
 
     const isCurrentRun = () => autoPreparationRunIdRef.current === runId
 
     async function runAutomaticPreparation() {
-      const needsIntegrationBuild = !hasCombinedBackendData
-      let result = backendIntegrationResult || {
-        row_count: persistedIntegrationRowCount,
-        summary: integrationReadiness?.summary || {},
-      }
-      let alignmentResult = activeAlignmentReport
-
       setUploadMessage('')
       setUploadError('')
-      setIsBuildingBackendDataset(needsIntegrationBuild)
-      setIsCheckingAlignment(needsIntegrationBuild || !alignmentResult)
+      setIsBuildingBackendDataset(true)
+      setIsCheckingAlignment(true)
       setAutoProcessing({
         visible: true,
-        step: needsIntegrationBuild ? 'combine' : 'model',
-        detail: needsIntegrationBuild
-          ? 'All four files are ready. The system is now combining them automatically, so users do not need to click another button.'
-          : 'The current four-source dataset is already combined. The system is now evaluating or loading the matching machine learning model and generating the dengue forecast.',
+        step: 'combine',
+        detail: 'All four files are ready. The system is now combining them automatically, so users do not need to click another button.',
       })
 
       try {
-        if (needsIntegrationBuild) {
-          result = await withTimeout(
-            buildBackendIntegrationWorkspace?.(),
-            180000,
-            'Combining the uploaded files is taking too long. Please make sure the system server is running, then click “Run again”.'
-          )
+        const result = await withTimeout(
+  buildBackendIntegrationWorkspace?.(),
+  180000,
+  'Combining the uploaded files is taking too long. Please make sure the system server is running, then click “Run again”.'
+)
 
-          if (!result) {
-            throw new Error('The system did not return combined data. Please try again.')
-          }
-
-          if (!isCurrentRun()) return
-
-          setAutoProcessing({
-            visible: true,
-            step: 'names',
-            detail: 'Combined data is ready. The system is now checking barangay names across the dengue, population, and map files.',
-          })
-
-          alignmentResult = await withTimeout(
-            getBackendAlignmentReport(),
-            90000,
-            'Barangay name checking is taking too long. The combined data was prepared, but the name check did not finish. You can click “Check again” later.'
-          )
-
-          if (!isCurrentRun()) return
-
-          setAlignmentReport(alignmentResult)
-
-          await withTimeout(
-            syncBackendIntegrationStatus?.({ silent: true }),
-            15000,
-            'The files were prepared, but refreshing the status took too long.'
-          )
-
-          if (!isCurrentRun()) return
-        } else if (!alignmentResult) {
-          try {
-            alignmentResult = await withTimeout(
-              getBackendAlignmentReport(),
-              90000,
-              'Barangay name checking is taking too long.'
-            )
-            if (isCurrentRun()) setAlignmentReport(alignmentResult)
-          } catch {
-            alignmentResult = null
-          }
+        if (!result) {
+          throw new Error('The system did not return combined data. Please try again.')
         }
 
         if (!isCurrentRun()) return
 
         setAutoProcessing({
           visible: true,
+          step: 'names',
+          detail: 'Combined data is ready. The system is now checking barangay names across the dengue, population, and map files.',
+        })
+
+        const alignmentResult = await withTimeout(
+          getBackendAlignmentReport(),
+          90000,
+          'Barangay name checking is taking too long. The combined data was prepared, but the name check did not finish. You can click “Check again” later.'
+        )
+
+        if (!isCurrentRun()) return
+
+        setAlignmentReport(alignmentResult)
+
+        await withTimeout(
+          syncBackendIntegrationStatus?.({ silent: true }),
+          15000,
+          'The files were prepared, but refreshing the status took too long.'
+        )
+
+        if (!isCurrentRun()) return
+
+        setAutoProcessing({
+          visible: true,
           step: 'model',
-          detail: 'The system is now evaluating all available machine learning methods, selecting the best model for the current integrated dataset, and generating the dengue forecast automatically.',
+          detail: 'The system is now training or loading the best machine learning model, evaluating it, and generating the dengue forecast automatically.',
         })
 
         const autoRunResult = await withTimeout(
@@ -3631,15 +3542,6 @@ export default function UploadPage() {
             : current.riskRows || [],
         }))
 
-        try {
-          await refreshDatabaseUploadStatus()
-        } catch {
-          // The forecast itself succeeded. A delayed status refresh should not
-          // turn a completed model run into a visible failure.
-        }
-
-        if (!isCurrentRun()) return
-
         setAutoProcessing({
           visible: true,
           step: 'forecast',
@@ -3655,14 +3557,10 @@ export default function UploadPage() {
           saveAutoPreparationKey(preparationKey)
         }
 
-        setFreshUploadSession(false)
-        setFreshUploadedSources({})
-
         const rowCount = Number(
           result?.row_count ||
             result?.summary?.row_count ||
             backendBuildSummary?.row_count ||
-            persistedIntegrationRowCount ||
             backendMergedRows.length ||
             0
         )
@@ -3737,10 +3635,8 @@ export default function UploadPage() {
   }, [
     allRequiredFilesReady,
     hasCombinedBackendData,
-    hasCurrentForecast,
     backendSourceSignature,
     isProcessing,
-    freshUploadSession,
     updateWorkspace,
     addActivityLog,
   ])
@@ -3894,15 +3790,6 @@ export default function UploadPage() {
     return details
   }
 
-  function markFreshUploadedSource(sourceKey) {
-    if (!freshUploadSession || !sourceKey) return
-
-    setFreshUploadedSources((current) => ({
-      ...current,
-      [sourceKey]: true,
-    }))
-  }
-
   function clearStaleCombinedData() {
     setAlignmentReport(null)
 
@@ -3910,98 +3797,18 @@ export default function UploadPage() {
       ...current,
       backendIntegrationResult: null,
       backendMergedDataset: [],
-      databaseIntegrationReadiness: null,
-      backendForecastResult: null,
-      riskRows: [],
     }))
   }
 
-  function applyDatabaseUploadStatus(status, justUploadedSourceKey = '') {
-    if (!status) return
-
-    const rawUploads = status.uploads || {}
-    const freshSourceKeys = new Set(
-      sources
-        .map((source) => source.contextKey)
-        .filter((sourceKey) =>
-          Boolean(freshUploadedSources[sourceKey]) || sourceKey === justUploadedSourceKey
-        )
-    )
-
-    const visibleUploads = freshUploadSession
-      ? Object.fromEntries(
-          Object.entries(rawUploads).filter(([sourceKey]) => freshSourceKeys.has(sourceKey))
-        )
-      : rawUploads
-
-    const freshSetComplete = !freshUploadSession || freshSourceKeys.size >= sources.length
-    const visibleStatus = freshUploadSession
-      ? {
-          ...status,
-          uploads: visibleUploads,
-          completed_types: Object.keys(visibleUploads),
-          missing_types: sources
-            .map((source) => source.contextKey)
-            .filter((sourceKey) => !freshSourceKeys.has(sourceKey)),
-          all_required_uploaded: freshSetComplete,
-          integration_status: freshSetComplete
-            ? status.integration_status
-            : { ready: false, matches_current_uploads: false, integration_run_id: null, row_count: 0 },
-          integration_readiness: freshSetComplete ? status.integration_readiness : null,
-          forecast_status: freshSetComplete
-            ? status.forecast_status
-            : { ready: false, matches_current_uploads: false, forecast_run_id: null, result_count: 0 },
-        }
-      : status
-
-    setDatabaseUploadStatus(visibleStatus)
-
-    const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(visibleUploads)
-
-    updateWorkspace((current) => ({
-      ...current,
-      sourceStatus: freshUploadSession
-        ? {
-            dengue: {},
-            weather: {},
-            population: {},
-            boundary: {},
-            ...databaseSourceStatus,
-          }
-        : {
-            ...(current.sourceStatus || {}),
-            ...databaseSourceStatus,
-          },
-      databaseIntegrationReadiness:
-        visibleStatus?.integration_readiness && typeof visibleStatus.integration_readiness === 'object'
-          ? visibleStatus.integration_readiness
-          : null,
-    }))
-  }
-
-  async function refreshDatabaseUploadStatus(justUploadedSourceKey = '') {
-    const status = await withTimeout(
-      getUploadDatabaseStatus(),
-      15000,
-      'The file was uploaded, but refreshing the saved upload status took too long.'
-    )
-
-    applyDatabaseUploadStatus(status, justUploadedSourceKey)
-    return status
-  }
-
-  async function refreshBackendStatusAfterUpload(justUploadedSourceKey = '') {
+  async function refreshBackendStatusAfterUpload() {
     try {
-      await Promise.all([
-        withTimeout(
-          syncBackendIntegrationStatus?.({ silent: true }),
-          15000,
-          'The file was uploaded, but refreshing the file status took too long.'
-        ),
-        refreshDatabaseUploadStatus(justUploadedSourceKey),
-      ])
+      await withTimeout(
+        syncBackendIntegrationStatus?.({ silent: true }),
+        15000,
+        'The file was uploaded, but refreshing the file status took too long.'
+      )
     } catch {
-      // Keep the upload successful even if an optional status refresh is slow.
+      // Keep the upload successful even if the status refresh is slow.
     }
   }
 
@@ -4015,7 +3822,6 @@ export default function UploadPage() {
     autoPreparationKeyRef.current = ''
     autoPreparationRunIdRef.current += 1
     autoPreparationRunningRef.current = false
-    autoPreparationArmedRef.current = false
     setAutoProcessing({
       visible: false,
       step: 'combine',
@@ -4044,20 +3850,19 @@ export default function UploadPage() {
       }
 
       if (selected === 'historical' && (isCsv || isExcel || fileName.endsWith('.json'))) {
-        const dengueInitialResult = await validateDengueFile(file)
-        const dengueValidationResult = await waitForUploadJobResult(dengueInitialResult, () => {
+        const forecastInitialResult = await forecastDengueFile(file)
+        const forecastResult = await waitForUploadJobResult(forecastInitialResult, () => {
           setSourceUploadStates((current) => ({
             ...current,
             [selected]: {
               status: 'processing',
-              message: 'File accepted. Validating and saving dengue records in the background...',
+              message: 'File accepted. Saving and generating forecast in the background...',
             },
           }))
         })
         const inspectResult = null
-        const cleanResult = dengueValidationResult
+        const cleanResult = forecastResult
         const summaryResult = null
-        const forecastResult = null
 
         const rawBackendResult = buildBackendDengueValidationResult({
           fileName: file.name,
@@ -4082,8 +3887,7 @@ export default function UploadPage() {
           ...current,
           [selectedSource.recordKey]: backendResult.validRecords,
           backendDengueSummary: summaryResult,
-          backendForecastResult: null,
-          riskRows: [],
+          backendForecastResult: forecastResult,
           sourceStatus: {
             ...(current.sourceStatus || {}),
             [selectedSource.contextKey]: {
@@ -4091,9 +3895,22 @@ export default function UploadPage() {
               badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
-              missingCount: backendResult.missingCount,
-              duplicateCount: backendResult.duplicateCount,
-              invalidCount: backendResult.invalidCount,
+              // Persist both the canonical issue fields and the legacy missingCount
+              // alias. DataContext uses unresolvedCount/otherInvalidCount after a
+              // server refresh, while validationResult uses missingCount/invalidCount
+              // immediately after upload. Keeping both shapes synchronized prevents
+              // the unresolved count from briefly showing 22 and then reverting to 0.
+              unresolvedCount: Number(backendResult.missingCount || 0),
+              otherInvalidCount: Number(backendResult.invalidCount || 0),
+              missingCount: Number(backendResult.missingCount || 0),
+              duplicateCount: Number(backendResult.duplicateCount || 0),
+              invalidCount: Math.max(
+                0,
+                Number(backendResult.recordCount || 0) - Number(backendResult.validCount || 0),
+                Number(backendResult.missingCount || 0) +
+                  Number(backendResult.invalidCount || 0) +
+                  Number(backendResult.duplicateCount || 0)
+              ),
               mappingSummary: backendResult.mappingSummary,
               sourceFormat: backendResult.sourceFormat,
               temporalGranularity: backendResult.temporalGranularity,
@@ -4105,6 +3922,10 @@ export default function UploadPage() {
         }))
 
         setValidationResult(backendResult)
+
+        const highRiskCount = Number(forecastResult?.risk_counts?.High || 0)
+        const moderateRiskCount = Number(forecastResult?.risk_counts?.Moderate || 0)
+        const lowRiskCount = Number(forecastResult?.risk_counts?.Low || 0)
 
         const adaptiveMappingNote = backendResult.mappingSummary
           ? ` Detected mapping: ${backendResult.mappingSummary}.`
@@ -4118,7 +3939,7 @@ export default function UploadPage() {
         setUploadMessage(
           isDohMonthly
             ? `Upload successful. The DOH monthly report was recognized and converted into ${backendResult.validCount} usable barangay-month records covering ${dohSummary.coverage_start || '2018-01'} to ${dohSummary.coverage_end || '2025-12'}. Grand Total was used as the case count. ${unknownLocationCount} unknown-location record${unknownLocationCount === 1 ? '' : 's'} were separated from barangay forecasting, and ${dohWarningCount} monthly total discrepanc${dohWarningCount === 1 ? 'y was' : 'ies were'} flagged for review.`
-            : `Upload successful. Dengue records were validated and saved. The forecast will be generated after dengue, weather, population, and boundary sources are integrated.${adaptiveMappingNote}`
+            : `Upload successful. Dengue records are ready for analysis. The system identified ${highRiskCount} high-risk barangay${highRiskCount === 1 ? '' : 's'}, ${moderateRiskCount} moderate-risk barangay${moderateRiskCount === 1 ? '' : 's'}, and ${lowRiskCount} low-risk barangay${lowRiskCount === 1 ? '' : 's'}.${adaptiveMappingNote}`
         )
 
         addActivityLog(
@@ -4127,10 +3948,8 @@ export default function UploadPage() {
         )
 
         setSourceUploadSuccess(selected)
-        markFreshUploadedSource(selectedSource.contextKey)
-        await refreshBackendStatusAfterUpload(selectedSource.contextKey)
+        await refreshBackendStatusAfterUpload()
         clearStaleCombinedData()
-        autoPreparationArmedRef.current = true
 
         return
       }
@@ -4173,9 +3992,22 @@ export default function UploadPage() {
               badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
-              missingCount: backendResult.missingCount,
-              duplicateCount: backendResult.duplicateCount,
-              invalidCount: backendResult.invalidCount,
+              // Persist both the canonical issue fields and the legacy missingCount
+              // alias. DataContext uses unresolvedCount/otherInvalidCount after a
+              // server refresh, while validationResult uses missingCount/invalidCount
+              // immediately after upload. Keeping both shapes synchronized prevents
+              // the unresolved count from briefly showing 22 and then reverting to 0.
+              unresolvedCount: Number(backendResult.missingCount || 0),
+              otherInvalidCount: Number(backendResult.invalidCount || 0),
+              missingCount: Number(backendResult.missingCount || 0),
+              duplicateCount: Number(backendResult.duplicateCount || 0),
+              invalidCount: Math.max(
+                0,
+                Number(backendResult.recordCount || 0) - Number(backendResult.validCount || 0),
+                Number(backendResult.missingCount || 0) +
+                  Number(backendResult.invalidCount || 0) +
+                  Number(backendResult.duplicateCount || 0)
+              ),
               mappingSummary: backendResult.mappingSummary,
               backendPowered: true,
             },
@@ -4198,10 +4030,8 @@ export default function UploadPage() {
         )
 
         setSourceUploadSuccess(selected)
-        markFreshUploadedSource(selectedSource.contextKey)
-        await refreshBackendStatusAfterUpload(selectedSource.contextKey)
+        await refreshBackendStatusAfterUpload()
         clearStaleCombinedData()
-        autoPreparationArmedRef.current = true
 
         return
       }
@@ -4244,9 +4074,22 @@ export default function UploadPage() {
               badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
-              missingCount: backendResult.missingCount,
-              duplicateCount: backendResult.duplicateCount,
-              invalidCount: backendResult.invalidCount,
+              // Persist both the canonical issue fields and the legacy missingCount
+              // alias. DataContext uses unresolvedCount/otherInvalidCount after a
+              // server refresh, while validationResult uses missingCount/invalidCount
+              // immediately after upload. Keeping both shapes synchronized prevents
+              // the unresolved count from briefly showing 22 and then reverting to 0.
+              unresolvedCount: Number(backendResult.missingCount || 0),
+              otherInvalidCount: Number(backendResult.invalidCount || 0),
+              missingCount: Number(backendResult.missingCount || 0),
+              duplicateCount: Number(backendResult.duplicateCount || 0),
+              invalidCount: Math.max(
+                0,
+                Number(backendResult.recordCount || 0) - Number(backendResult.validCount || 0),
+                Number(backendResult.missingCount || 0) +
+                  Number(backendResult.invalidCount || 0) +
+                  Number(backendResult.duplicateCount || 0)
+              ),
               mappingSummary: backendResult.mappingSummary,
               backendPowered: true,
             },
@@ -4269,10 +4112,8 @@ export default function UploadPage() {
         )
 
         setSourceUploadSuccess(selected)
-        markFreshUploadedSource(selectedSource.contextKey)
-        await refreshBackendStatusAfterUpload(selectedSource.contextKey)
+        await refreshBackendStatusAfterUpload()
         clearStaleCombinedData()
-        autoPreparationArmedRef.current = true
 
         return
       }
@@ -4315,9 +4156,22 @@ export default function UploadPage() {
               badge: backendResult.validCount > 0 ? 'Checked' : 'Needs Review',
               recordCount: backendResult.recordCount,
               validCount: backendResult.validCount,
-              missingCount: backendResult.missingCount,
-              duplicateCount: backendResult.duplicateCount,
-              invalidCount: backendResult.invalidCount,
+              // Persist both the canonical issue fields and the legacy missingCount
+              // alias. DataContext uses unresolvedCount/otherInvalidCount after a
+              // server refresh, while validationResult uses missingCount/invalidCount
+              // immediately after upload. Keeping both shapes synchronized prevents
+              // the unresolved count from briefly showing 22 and then reverting to 0.
+              unresolvedCount: Number(backendResult.missingCount || 0),
+              otherInvalidCount: Number(backendResult.invalidCount || 0),
+              missingCount: Number(backendResult.missingCount || 0),
+              duplicateCount: Number(backendResult.duplicateCount || 0),
+              invalidCount: Math.max(
+                0,
+                Number(backendResult.recordCount || 0) - Number(backendResult.validCount || 0),
+                Number(backendResult.missingCount || 0) +
+                  Number(backendResult.invalidCount || 0) +
+                  Number(backendResult.duplicateCount || 0)
+              ),
               mappingSummary: backendResult.mappingSummary,
               backendPowered: true,
             },
@@ -4340,10 +4194,8 @@ export default function UploadPage() {
         )
 
         setSourceUploadSuccess(selected)
-        markFreshUploadedSource(selectedSource.contextKey)
-        await refreshBackendStatusAfterUpload(selectedSource.contextKey)
+        await refreshBackendStatusAfterUpload()
         clearStaleCombinedData()
-        autoPreparationArmedRef.current = true
 
         return
       }
@@ -4420,9 +4272,17 @@ export default function UploadPage() {
             badge: result.validCount > 0 ? 'Uploaded' : 'Needs Review',
             recordCount: result.recordCount,
             validCount: result.validCount,
-            missingCount: result.missingCount,
-            duplicateCount: result.duplicateCount,
-            invalidCount: result.invalidCount,
+            unresolvedCount: Number(result.missingCount || 0),
+            otherInvalidCount: Number(result.invalidCount || 0),
+            missingCount: Number(result.missingCount || 0),
+            duplicateCount: Number(result.duplicateCount || 0),
+            invalidCount: Math.max(
+              0,
+              Number(result.recordCount || 0) - Number(result.validCount || 0),
+              Number(result.missingCount || 0) +
+                Number(result.invalidCount || 0) +
+                Number(result.duplicateCount || 0)
+            ),
             mappingSummary: finalMappingSummary,
           },
         },
@@ -4869,7 +4729,7 @@ export default function UploadPage() {
                     className="group flex min-h-[58px] items-center justify-center gap-2 rounded-[22px] border border-rose-200 bg-white px-4 py-3 text-center text-sm font-black leading-5 text-rose-600 shadow-[0_14px_30px_rgba(225,29,72,0.08)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:shadow-[0_18px_38px_rgba(225,29,72,0.14)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
                   >
                     <RotateCcw className="h-4 w-4 transition group-hover:-rotate-45" />
-                    Start fresh upload set
+                    Clear all uploaded files
                   </button>
                 </div>
               </div>

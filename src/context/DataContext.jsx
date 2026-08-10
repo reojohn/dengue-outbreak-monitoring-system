@@ -212,24 +212,68 @@ const mockDengueRecords = [
   { barangay: 'San Vicente', reportingDate: '2026-02-11', cases: 2 },
 ]
 
+function normalizeSingleSourceStatus(defaultStatus = {}, sourceStatus = {}) {
+  const raw = sourceStatus || {}
+  const merged = { ...defaultStatus, ...raw }
+
+  const recordCount = Number(merged.recordCount || 0)
+  const validCount = Number(merged.validCount || 0)
+  const rowDifference = Math.max(0, recordCount - validCount)
+
+  // Older UploadPage builds persisted missingCount and used invalidCount for
+  // only the non-missing invalid rows. Newer builds use unresolvedCount,
+  // otherInvalidCount, and invalidCount as the total invalid-row count.
+  const hasCanonicalUnresolved = raw.unresolvedCount !== undefined && raw.unresolvedCount !== null
+  const hasCanonicalOtherInvalid = raw.otherInvalidCount !== undefined && raw.otherInvalidCount !== null
+  const hasLegacyMissing = raw.missingCount !== undefined && raw.missingCount !== null
+
+  const unresolvedCount = Math.max(
+    0,
+    Number(hasCanonicalUnresolved ? raw.unresolvedCount : (raw.missingCount ?? 0)) || 0
+  )
+  const duplicateCount = Math.max(0, Number(raw.duplicateCount ?? merged.duplicateCount ?? 0) || 0)
+
+  let otherInvalidCount
+  let invalidCount
+
+  if (hasCanonicalOtherInvalid) {
+    otherInvalidCount = Math.max(0, Number(raw.otherInvalidCount || 0))
+    invalidCount = Math.max(
+      rowDifference,
+      Number(raw.invalidCount || 0),
+      unresolvedCount + otherInvalidCount + duplicateCount
+    )
+  } else if (hasLegacyMissing && !hasCanonicalUnresolved) {
+    // Legacy shape: missingCount = unresolved rows, invalidCount = other invalid rows.
+    otherInvalidCount = Math.max(0, Number(raw.invalidCount || 0))
+    invalidCount = Math.max(
+      rowDifference,
+      unresolvedCount + otherInvalidCount + duplicateCount
+    )
+  } else {
+    invalidCount = Math.max(rowDifference, Number(raw.invalidCount || 0))
+    otherInvalidCount = Math.max(0, invalidCount - unresolvedCount - duplicateCount)
+  }
+
+  return {
+    ...merged,
+    recordCount,
+    validCount,
+    invalidCount,
+    unresolvedCount,
+    otherInvalidCount,
+    duplicateCount,
+    // Keep this alias so an older UploadPage can still render the same count.
+    missingCount: Number(raw.missingCount ?? unresolvedCount),
+  }
+}
+
 function normalizeSourceStatus(sourceStatus = {}) {
   return {
-    dengue: {
-      ...emptySourceStatus.dengue,
-      ...(sourceStatus.dengue || {}),
-    },
-    weather: {
-      ...emptySourceStatus.weather,
-      ...(sourceStatus.weather || {}),
-    },
-    population: {
-      ...emptySourceStatus.population,
-      ...(sourceStatus.population || {}),
-    },
-    boundary: {
-      ...emptySourceStatus.boundary,
-      ...(sourceStatus.boundary || {}),
-    },
+    dengue: normalizeSingleSourceStatus(emptySourceStatus.dengue, sourceStatus.dengue),
+    weather: normalizeSingleSourceStatus(emptySourceStatus.weather, sourceStatus.weather),
+    population: normalizeSingleSourceStatus(emptySourceStatus.population, sourceStatus.population),
+    boundary: normalizeSingleSourceStatus(emptySourceStatus.boundary, sourceStatus.boundary),
   }
 }
 
@@ -287,16 +331,49 @@ function normalizeDatabaseUploadStatus(upload = {}, fallback = {}, datasetType =
       fallback.invalidCount ??
       0
   )
-  const validationCounts = upload.validation_counts || upload.validationCounts || {}
-  const unresolvedCount = Number(
-    validationCounts.unresolved_or_missing ?? fallback.unresolvedCount ?? 0
+  const rawValidationCounts = upload.validation_counts || upload.validationCounts || {}
+  let validationCounts = rawValidationCounts
+  if (typeof rawValidationCounts === 'string') {
+    try {
+      validationCounts = JSON.parse(rawValidationCounts) || {}
+    } catch {
+      validationCounts = {}
+    }
+  }
+
+  const backendUnresolvedCount = Number(validationCounts.unresolved_or_missing ?? 0)
+  const fallbackUnresolvedCount = Number(
+    fallback.unresolvedCount ?? fallback.missingCount ?? 0
   )
-  const otherInvalidCount = Number(
-    validationCounts.other_invalid ?? fallback.otherInvalidCount ?? 0
+  const unknownLocationRecordCount = Number(
+    validationCounts.unknown_location_records ?? 0
+  )
+  const unresolvedCount = Math.max(
+    0,
+    Number.isFinite(backendUnresolvedCount) ? backendUnresolvedCount : 0,
+    Number.isFinite(fallbackUnresolvedCount) ? fallbackUnresolvedCount : 0,
+    Number.isFinite(unknownLocationRecordCount) ? unknownLocationRecordCount : 0
+  )
+
+  const backendOtherInvalidCount = Number(validationCounts.other_invalid ?? 0)
+  const fallbackOtherInvalidCount = Number(fallback.otherInvalidCount ?? 0)
+  let otherInvalidCount = Math.max(
+    0,
+    Number.isFinite(backendOtherInvalidCount) ? backendOtherInvalidCount : 0,
+    Number.isFinite(fallbackOtherInvalidCount) ? fallbackOtherInvalidCount : 0
   )
   const duplicateCount = Number(
     validationCounts.duplicates ?? fallback.duplicateCount ?? 0
   )
+
+  // The database invalid_row_count is authoritative for the total. Keep the
+  // issue buckets non-overlapping even when rehydrating a legacy upload row.
+  if (Number.isFinite(invalidRowCount)) {
+    otherInvalidCount = Math.max(
+      0,
+      Math.min(otherInvalidCount, Math.max(0, invalidRowCount - unresolvedCount - (Number(duplicateCount) || 0)))
+    )
+  }
   const sourceDiscrepancyCount = Number(
     validationCounts.source_discrepancies ?? fallback.sourceDiscrepancyCount ?? 0
   )

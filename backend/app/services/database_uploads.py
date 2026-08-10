@@ -18,13 +18,43 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-def _build_validation_counts(dataset_type: str, summary: dict | None, invalid_row_count: int) -> dict:
-    """Return tiny, non-overlapping issue counts for the upload workspace."""
-    summary = summary or {}
+def _build_validation_counts(dataset_type: str, summary: dict | str | None, invalid_row_count: int) -> dict:
+    """Return tiny, non-overlapping issue counts for the upload workspace.
+
+    Older rows can surface JSONB metadata as a JSON string, and some DOH
+    uploads recorded the unknown-location count under source-specific keys.
+    Normalize those shapes here so a page refresh cannot turn a known
+    unresolved-location count into zero.
+    """
+    if isinstance(summary, str):
+        try:
+            summary = json.loads(summary) or {}
+        except Exception:
+            summary = {}
+    elif not isinstance(summary, dict):
+        summary = {}
+
     invalid_total = max(0, _safe_int(invalid_row_count))
 
     if dataset_type == "dengue":
-        unresolved = min(invalid_total, _safe_int(summary.get("invalid_barangay_rows")))
+        explicit_unresolved = max(
+            _safe_int(summary.get("invalid_barangay_rows")),
+            _safe_int(summary.get("unknown_location_record_count")),
+        )
+
+        # For the DOH monthly format, any remaining invalid rows after the
+        # explicit time/case/death checks are unresolved source locations.
+        # This also repairs older persisted summaries that omitted the
+        # invalid_barangay_rows field but retained the total invalid count.
+        if explicit_unresolved <= 0 and summary.get("source_format") == "doh_monthly_summary":
+            known_other_invalid = (
+                _safe_int(summary.get("invalid_time_rows"))
+                + _safe_int(summary.get("invalid_cases_rows"))
+                + _safe_int(summary.get("invalid_deaths_rows"))
+            )
+            explicit_unresolved = max(0, invalid_total - known_other_invalid)
+
+        unresolved = min(invalid_total, explicit_unresolved)
         duplicate = 0
         other_invalid = max(0, invalid_total - unresolved - duplicate)
         return {
@@ -32,6 +62,7 @@ def _build_validation_counts(dataset_type: str, summary: dict | None, invalid_ro
             "other_invalid": other_invalid,
             "duplicates": duplicate,
             "source_discrepancies": _safe_int(summary.get("monthly_total_discrepancy_count")),
+            "unknown_location_records": _safe_int(summary.get("unknown_location_record_count")),
             "unknown_location_cases": _safe_int(summary.get("unknown_location_case_count")),
         }
 
@@ -340,7 +371,7 @@ def get_latest_dataset_uploads() -> dict:
             "invalid_row_count": row["invalid_row_count"],
             "validation_counts": _build_validation_counts(
                 dataset_type,
-                row["validation_summary"] if isinstance(row["validation_summary"], dict) else {},
+                row["validation_summary"],
                 row["invalid_row_count"],
             ),
             # Only expose the two tiny coverage values needed by the header.
