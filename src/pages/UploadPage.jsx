@@ -30,7 +30,6 @@ import {
   validateDengueFile,
   getBackendAlignmentReport,
   getUploadDatabasePreview,
-  getUploadDatabaseStatus,
   getUploadJobStatus,
   inspectUploadedFile,
   startFreshUploadCycle,
@@ -1881,7 +1880,7 @@ function TablePagination({ rows = [], page = 1, onPageChange }) {
   const safePage = Math.min(Math.max(1, Number(page || 1)), pageCount)
 
   return (
-    <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/80 sm:flex-row sm:items-center sm:justify-between">
+    <div className="upload-table-pagination flex flex-col gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/80 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs font-bold text-brand-muted dark:text-slate-400">
         Showing {getPageRangeLabel(rows, safePage)} rows
       </p>
@@ -2618,9 +2617,13 @@ export default function UploadPage() {
     backendIntegrationResult = null,
     backendMergedDataset = [],
     backendForecastResult = null,
+    latestUploadDatabaseStatus = null,
+    loadLatestUploadDatabaseStatus,
+    cacheLatestUploadDatabaseStatus,
     syncBackendIntegrationStatus,
     buildBackendIntegrationWorkspace,
     loadLatestBackendIntegrationDataset,
+    warmNavigationCache,
     resetBackendIntegration,
   } = data
 
@@ -2633,7 +2636,7 @@ export default function UploadPage() {
   const [isBuildingBackendDataset, setIsBuildingBackendDataset] = useState(false)
   const [alignmentReport, setAlignmentReport] = useState(null)
   const [isCheckingAlignment, setIsCheckingAlignment] = useState(false)
-  const [databaseUploadStatus, setDatabaseUploadStatus] = useState(null)
+  const [databaseUploadStatus, setDatabaseUploadStatus] = useState(() => latestUploadDatabaseStatus || null)
   const [savedPreviewRowsByType, setSavedPreviewRowsByType] = useState({})
   const [isLoadingSavedPreview, setIsLoadingSavedPreview] = useState(false)
   const [isLoadingCombinedPreview, setIsLoadingCombinedPreview] = useState(false)
@@ -2651,10 +2654,6 @@ export default function UploadPage() {
   const autoPreparationRunningRef = useRef(false)
   const autoPreparationArmedRef = useRef(false)
   const autoPreparationRunIdRef = useRef(0)
-  // Reuse the same tiny database-status request across React StrictMode's
-  // development effect replay. This prevents the first request from being
-  // cancelled and discarded while also avoiding a duplicate Supabase read.
-  const databaseUploadStatusRequestRef = useRef(null)
   const updateWorkspaceRef = useRef(updateWorkspace)
   updateWorkspaceRef.current = updateWorkspace
 
@@ -2707,79 +2706,27 @@ export default function UploadPage() {
 
   useEffect(() => {
     let active = true
-    let statusRequest = databaseUploadStatusRequestRef.current
 
     async function loadDatabaseUploadStatus() {
       try {
-        // React StrictMode intentionally replays effects in development. Reuse
-        // the in-flight request so logout/login or a page remount still gets the
-        // persisted historical-forecast flag without issuing a second DB read.
-        if (!statusRequest) {
-          statusRequest = withTimeout(
-            getUploadDatabaseStatus(),
-            15000,
-            'Checking online uploaded files is taking too long.'
-          )
-          databaseUploadStatusRequestRef.current = statusRequest
-        }
-
-        const status = await statusRequest
+        // CHO/Admin login already loads this tiny status snapshot into
+        // DataContext. Reuse it immediately when returning to Upload so the
+        // Forecast workflow card never flashes Pending while the same data is
+        // fetched again.
+        const status = latestUploadDatabaseStatus || await withTimeout(
+          loadLatestUploadDatabaseStatus?.({
+            silent: true,
+            includePreview: false,
+          }),
+          15000,
+          'Checking online uploaded files is taking too long.'
+        )
 
         if (!active || !status) return
 
-        setDatabaseUploadStatus(status)
-
-        const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(status.uploads || {})
-        const uploadCycle = status?.upload_cycle || {}
-        const cycleCompletedTypes = Array.isArray(uploadCycle?.completed_types)
-          ? uploadCycle.completed_types
-          : Array.isArray(status?.completed_types)
-            ? status.completed_types
-            : []
-        const cycleForecastReady = Boolean(
-          status?.forecast_status?.ready &&
-            status?.forecast_status?.matches_current_uploads
-        )
-        const persistentFreshUploadSession = Boolean(
-          uploadCycle?.persistent &&
-            uploadCycle?.mode === 'fresh' &&
-            !cycleForecastReady
-        )
-
-        // Rehydrate the persistent fresh-upload cycle after refresh/login.
-        // Without this, React starts freshUploadSession as false and the old
-        // published forecast can incorrectly make the Admin checklist look Ready.
-        setFreshUploadSession(persistentFreshUploadSession)
-        setFreshUploadedSources(
-          persistentFreshUploadSession
-            ? Object.fromEntries(cycleCompletedTypes.map((datasetType) => [datasetType, true]))
-            : {}
-        )
-
-        // Keep the initial Upload-page request lightweight. Detailed source rows
-        // and the combined-data preview are loaded only when their collapsible
-        // sections are opened. This avoids downloading preview rows on every
-        // visit while keeping the authoritative counts visible immediately.
-        updateWorkspaceRef.current((current) => ({
-          ...current,
-          sourceStatus: {
-            dengue: {},
-            weather: {},
-            population: {},
-            boundary: {},
-            ...databaseSourceStatus,
-          },
-          databaseIntegrationReadiness:
-            status?.integration_readiness && typeof status.integration_readiness === 'object'
-              ? status.integration_readiness
-              : null,
-        }))
+        applyDatabaseUploadStatus(status)
       } catch {
         // Do not block the Upload page if the online database status cannot be loaded.
-      } finally {
-        if (databaseUploadStatusRequestRef.current === statusRequest) {
-          databaseUploadStatusRequestRef.current = null
-        }
       }
     }
 
@@ -3644,6 +3591,13 @@ export default function UploadPage() {
             : current.riskRows || [],
         }))
 
+        // The new forecast changes the model/hotspot cache key. Warm those
+        // small shared results in the background while the success animation is
+        // still visible so opening Forecast/Map/Reports afterwards is immediate.
+        window.setTimeout(() => {
+          Promise.resolve(warmNavigationCache?.()).catch(() => {})
+        }, 0)
+
         const selectedModelName =
           autoRunResult?.model_display_name ||
           autoRunResult?.model_name ||
@@ -3997,6 +3951,7 @@ export default function UploadPage() {
     const visibleStatus = status
 
     setDatabaseUploadStatus(visibleStatus)
+    cacheLatestUploadDatabaseStatus?.(visibleStatus)
 
     const databaseSourceStatus = buildSourceStatusFromDatabaseUploads(visibleUploads)
     const uploadCycle = visibleStatus?.upload_cycle || {}
@@ -4040,7 +3995,10 @@ export default function UploadPage() {
 
   async function refreshDatabaseUploadStatus(justUploadedSourceKey = '') {
     const status = await withTimeout(
-      getUploadDatabaseStatus(),
+      loadLatestUploadDatabaseStatus?.({
+        silent: true,
+        includePreview: false,
+      }),
       15000,
       'The file was uploaded, but refreshing the saved upload status took too long.'
     )
@@ -4586,7 +4544,7 @@ export default function UploadPage() {
               Upload dengue, weather, population, and barangay boundary files in one guided workspace. The system validates every source, combines matching records, and prepares the latest forecast automatically.
             </p>
 
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="premium-hero-actions mt-7 flex flex-wrap gap-3">
               <label
                 className={`premium-hero-upload-button group inline-flex min-h-[50px] items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black shadow-[0_16px_40px_rgba(2,6,23,0.28)] transition ${
                   isProcessing
@@ -4641,7 +4599,7 @@ export default function UploadPage() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[30px] border border-white/[0.14] bg-slate-950/[0.66] p-5 text-white shadow-[0_28px_70px_rgba(2,6,23,0.48)] backdrop-blur-2xl sm:p-6">
+          <div className="premium-workspace-readiness-card relative overflow-hidden rounded-[30px] border border-white/[0.14] bg-slate-950/[0.66] p-5 text-white shadow-[0_28px_70px_rgba(2,6,23,0.48)] backdrop-blur-2xl sm:p-6">
             <div className="pointer-events-none absolute -right-14 -top-16 h-40 w-40 rounded-full bg-cyan-300/[0.15] blur-3xl" />
             <div className="pointer-events-none absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
 
@@ -5678,7 +5636,7 @@ export default function UploadPage() {
           </ExpandableSection>
         </div>
 
-        <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+        <aside className="upload-sidebar space-y-5 xl:sticky xl:top-24 xl:self-start">
           <ExpandableSection
             title="Pre-Forecast Checklist"
             summary={`${readyChecklistCount}/${checklist.length} requirements completed`}
@@ -7377,6 +7335,483 @@ export default function UploadPage() {
             height: 2.35rem !important;
             width: 2.35rem !important;
             border-radius: 13px !important;
+          }
+        }
+
+
+        /* =========================================================
+           Responsive stabilization pass
+           Keeps desktop styling intact while preventing mobile
+           cards, checks, controls, and tables from becoming cramped.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .premium-upload-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            padding-bottom: 1.25rem !important;
+          }
+
+          /* HERO */
+          .premium-upload-page .premium-upload-hero {
+            min-height: 0 !important;
+            border-radius: 24px !important;
+          }
+
+          .premium-upload-page .premium-upload-hero > .relative.z-10 {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 1rem !important;
+            padding: 1rem !important;
+          }
+
+          .premium-upload-page .premium-upload-hero h1 {
+            font-size: 1.85rem !important;
+            line-height: 1.04 !important;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+
+          .premium-upload-page .premium-upload-hero h1 + p {
+            display: block !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.82rem !important;
+            line-height: 1.5 !important;
+          }
+
+          .premium-upload-page .premium-hero-actions {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.6rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .premium-upload-page .premium-hero-actions > * {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 48px !important;
+            padding: 0.72rem 0.9rem !important;
+            font-size: 0.8rem !important;
+            line-height: 1.25 !important;
+            white-space: normal !important;
+          }
+
+          .premium-upload-page .premium-hero-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .premium-upload-page .premium-hero-metrics > div {
+            min-width: 0 !important;
+            min-height: 74px !important;
+            border-radius: 15px !important;
+            padding: 0.55rem !important;
+          }
+
+          .premium-upload-page .premium-hero-metrics p:first-child {
+            min-height: 2.15em !important;
+            font-size: 0.64rem !important;
+            line-height: 1.08 !important;
+            letter-spacing: 0.04em !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .premium-upload-page .premium-hero-metrics p.text-2xl {
+            margin-top: 0 !important;
+            font-size: 1.1rem !important;
+          }
+
+          .premium-upload-page .premium-hero-metrics span {
+            display: none !important;
+          }
+
+          /* HERO READINESS CARD */
+          .premium-upload-page .premium-workspace-readiness-card {
+            border-radius: 20px !important;
+            padding: 0.9rem !important;
+          }
+
+          .premium-upload-page .premium-workspace-readiness-card h2 {
+            max-width: 100% !important;
+            margin-top: 0.25rem !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: normal !important;
+            font-size: 1.12rem !important;
+            line-height: 1.18 !important;
+          }
+
+          .premium-upload-page .premium-workspace-readiness-card .h-20.w-20 {
+            height: 4.2rem !important;
+            width: 4.2rem !important;
+          }
+
+          .premium-upload-page .premium-readiness-source-list {
+            margin-top: 0.8rem !important;
+          }
+
+          .premium-upload-page .premium-readiness-source-list > button {
+            min-height: 44px !important;
+            padding: 0.55rem 0.65rem !important;
+          }
+
+          .premium-upload-page .premium-current-source-card {
+            margin-top: 0.75rem !important;
+            padding: 0.7rem !important;
+          }
+
+          /* MAIN SOURCE CARDS: 2 x 2 on normal phones */
+          .premium-upload-page .mobile-upload-source-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.6rem !important;
+          }
+
+          .premium-upload-page .mobile-upload-source-grid > .premium-source-card {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 150px !important;
+            border-radius: 19px !important;
+            padding: 0.7rem !important;
+          }
+
+          .premium-upload-page .premium-source-card > .relative.z-20.flex {
+            align-items: center !important;
+            gap: 0.4rem !important;
+          }
+
+          .premium-upload-page .premium-source-card > .relative.z-20.flex > span {
+            max-width: 84px !important;
+            padding: 0.28rem 0.45rem !important;
+            font-size: 0.64rem !important;
+            line-height: 1.05 !important;
+            letter-spacing: 0 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+          }
+
+          .premium-upload-page .premium-source-card .h-14.w-14 {
+            height: 2.1rem !important;
+            width: 2.1rem !important;
+            border-radius: 12px !important;
+          }
+
+          .premium-upload-page .premium-source-card h3 {
+            font-size: 0.82rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .premium-upload-page .premium-source-card h3 + p {
+            font-size: 0.72rem !important;
+            line-height: 1.28 !important;
+          }
+
+          .premium-upload-page .premium-source-card .mt-4.flex.flex-wrap {
+            margin-top: 0.5rem !important;
+            gap: 0.3rem !important;
+          }
+
+          .premium-upload-page .premium-source-card .mt-4.flex.flex-wrap span {
+            font-size: 0.66rem !important;
+          }
+
+          /* SELECTED SOURCE / ACTIONS */
+          .premium-upload-page .premium-source-selection-panel {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .premium-upload-page .premium-source-selection-panel > .flex {
+            gap: 0.75rem !important;
+          }
+
+          .premium-upload-page .premium-source-selection-panel .grid.gap-3 {
+            width: 100% !important;
+            min-width: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .premium-upload-page .premium-source-selection-panel label,
+          .premium-upload-page .premium-source-selection-panel button {
+            width: 100% !important;
+            min-height: 48px !important;
+            font-size: 0.8rem !important;
+            white-space: normal !important;
+          }
+
+          /* EXPANDABLE SECTION HEADERS */
+          .premium-upload-page .premium-expandable-section {
+            border-radius: 20px !important;
+          }
+
+          .premium-upload-page .premium-expandable-section > button {
+            min-height: 72px !important;
+            gap: 0.6rem !important;
+            padding: 0.75rem !important;
+          }
+
+          .premium-upload-page .premium-expandable-section > button > span:first-child {
+            gap: 0.65rem !important;
+          }
+
+          .premium-upload-page .premium-expandable-section > button .h-12.w-12 {
+            height: 2.35rem !important;
+            width: 2.35rem !important;
+            border-radius: 13px !important;
+          }
+
+          .premium-upload-page .premium-expandable-section > button .text-base {
+            font-size: 0.9rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .premium-upload-page .premium-expandable-section > button .mt-1.block {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.75rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .premium-upload-page .premium-expandable-section > button .h-10.w-10 {
+            height: 2.25rem !important;
+            width: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          /* SIMPLE METRIC CARDS: keep useful 2 x 2 layout */
+          .premium-upload-page .mobile-grid-4 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .premium-upload-page .mobile-grid-4 > div {
+            min-width: 0 !important;
+            min-height: 94px !important;
+            padding: 0.68rem !important;
+            overflow: hidden !important;
+          }
+
+          .premium-upload-page .mobile-grid-4 p[class*="uppercase"] {
+            font-size: 0.68rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          .premium-upload-page .mobile-grid-4 .text-3xl,
+          .premium-upload-page .mobile-grid-4 .text-2xl {
+            font-size: 1.25rem !important;
+            line-height: 1 !important;
+          }
+
+          /* 3-card summaries: 2 + 1 instead of squeezing 3 narrow cards */
+          .premium-upload-page .mobile-grid-3 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .premium-upload-page .mobile-grid-3 > div {
+            min-width: 0 !important;
+            min-height: 94px !important;
+            padding: 0.68rem !important;
+          }
+
+          .premium-upload-page .mobile-grid-3 > div:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .premium-upload-page .mobile-grid-3 p[class*="uppercase"] {
+            font-size: 0.68rem !important;
+            line-height: 1.12 !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          .premium-upload-page .mobile-grid-3 .text-2xl,
+          .premium-upload-page .mobile-grid-3 .text-3xl {
+            font-size: 1.25rem !important;
+          }
+
+          /* Complex integration checks should NEVER be 3 tiny columns. */
+          .premium-upload-page .mobile-grid-6 {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.6rem !important;
+          }
+
+          .premium-upload-page .mobile-grid-6 > div {
+            min-width: 0 !important;
+            min-height: 0 !important;
+            padding: 0.75rem !important;
+            overflow: visible !important;
+          }
+
+          .premium-upload-page .mobile-grid-6 > div .flex.gap-3 {
+            gap: 0.6rem !important;
+          }
+
+          .premium-upload-page .mobile-grid-6 > div p:first-child {
+            display: block !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.8rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .premium-upload-page .mobile-grid-6 > div p:not(:first-child) {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.75rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .premium-upload-page .mobile-grid-6 span {
+            width: fit-content !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: normal !important;
+            font-size: 0.7rem !important;
+            line-height: 1.15 !important;
+            padding: 0.3rem 0.5rem !important;
+          }
+
+          /* TABLES: preserve data readability with deliberate touch scrolling */
+          .premium-upload-page .records-preview-scroll {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: auto !important;
+            overscroll-behavior: contain !important;
+            -webkit-overflow-scrolling: touch !important;
+            touch-action: pan-x pan-y !important;
+            scrollbar-width: thin;
+          }
+
+          .premium-upload-page .premium-data-table-card {
+            max-width: 100% !important;
+            border-radius: 18px !important;
+          }
+
+          .premium-upload-page .premium-data-table-card table {
+            width: max-content !important;
+            max-width: none !important;
+            font-size: 0.75rem !important;
+          }
+
+          .premium-upload-page .premium-data-table-card th,
+          .premium-upload-page .premium-data-table-card td {
+            padding: 0.6rem 0.7rem !important;
+          }
+
+          /* PAGINATION: Previous / Page / Next on phone.
+             First and Last remain available from sm+ screens. */
+          .premium-upload-page .upload-table-pagination {
+            align-items: stretch !important;
+            gap: 0.55rem !important;
+            padding: 0.7rem !important;
+          }
+
+          .premium-upload-page .upload-table-pagination > p {
+            width: 100% !important;
+            text-align: center !important;
+            font-size: 0.72rem !important;
+          }
+
+          .premium-upload-page .upload-table-pagination > div {
+            display: grid !important;
+            width: 100% !important;
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) !important;
+            gap: 0.45rem !important;
+          }
+
+          .premium-upload-page .upload-table-pagination > div > button:first-child,
+          .premium-upload-page .upload-table-pagination > div > button:last-child {
+            display: none !important;
+          }
+
+          .premium-upload-page .upload-table-pagination > div > button,
+          .premium-upload-page .upload-table-pagination > div > span {
+            min-width: 0 !important;
+            min-height: 38px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 0.45rem 0.55rem !important;
+            font-size: 0.7rem !important;
+            line-height: 1.1 !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+          }
+
+          /* SIDEBAR becomes normal flow until desktop XL layout. */
+          .premium-upload-page .upload-sidebar {
+            position: static !important;
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+        }
+
+        /* Very small phones: sacrifice the 2x2 source grid before text becomes
+           unreadable. Everything else remains compact and usable. */
+        @media (max-width: 374px) {
+          .premium-upload-page .premium-hero-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          }
+
+          .premium-upload-page .premium-hero-metrics p:first-child {
+            font-size: 0.58rem !important;
+          }
+
+          .premium-upload-page .mobile-upload-source-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .premium-upload-page .mobile-upload-source-grid > .premium-source-card {
+            min-height: 145px !important;
+            padding: 0.8rem !important;
+          }
+
+          .premium-upload-page .premium-source-card > .relative.z-20.flex > span {
+            max-width: 130px !important;
+          }
+
+          .premium-upload-page .mobile-grid-4,
+          .premium-upload-page .mobile-grid-3 {
+            gap: 0.45rem !important;
+          }
+
+          .premium-upload-page .mobile-grid-4 > div,
+          .premium-upload-page .mobile-grid-3 > div {
+            padding: 0.58rem !important;
+          }
+        }
+
+        /* Tablets: retain comfortable two-column source cards and let the
+           page stack naturally until the existing lg/xl desktop layouts apply. */
+        @media (min-width: 640px) and (max-width: 1023px) {
+          .premium-upload-page .premium-upload-hero > .relative.z-10 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .premium-upload-page .mobile-upload-source-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .premium-upload-page .premium-source-selection-panel .grid {
+            min-width: 0 !important;
+          }
+
+          .premium-upload-page .premium-data-table-card {
+            max-width: 100% !important;
           }
         }
 

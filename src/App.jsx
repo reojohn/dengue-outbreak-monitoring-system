@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import UploadPage from './pages/UploadPage'
@@ -11,11 +11,21 @@ import UserManagementPage from './pages/UserManagementPage'
 import AppShell from './components/AppShell'
 import { canAccessRole, getAuthSession, getRoleHome } from './utils/auth'
 
-function ShellPage({ children }) {
-  return <AppShell>{children}</AppShell>
+function AuthenticatedShell() {
+  const session = getAuthSession()
+
+  if (!session) {
+    return <Navigate to="/login" replace />
+  }
+
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  )
 }
 
-function ProtectedRoute({ allowedRoles = [], children }) {
+function RoleRoute({ allowedRoles = [], children }) {
   const session = getAuthSession()
 
   if (!session) {
@@ -26,7 +36,7 @@ function ProtectedRoute({ allowedRoles = [], children }) {
     return <Navigate to={getRoleHome(session.role)} replace />
   }
 
-  return <ShellPage>{children}</ShellPage>
+  return children
 }
 
 function HomeRedirect() {
@@ -42,73 +52,81 @@ function HomeRedirect() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute allowedRoles={['cho', 'supervisor', 'admin', 'viewer']}>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bhw"
-        element={
-          <ProtectedRoute allowedRoles={['bhw', 'cho', 'admin']}>
-            <BHWPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/supervisor"
-        element={
-          <ProtectedRoute allowedRoles={['supervisor', 'cho', 'admin']}>
-            <SupervisorPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/upload"
-        element={
-          <ProtectedRoute allowedRoles={['cho', 'admin']}>
-            <UploadPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/forecast"
-        element={
-          <ProtectedRoute allowedRoles={['cho', 'supervisor', 'admin']}>
-            <ForecastPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/map"
-        element={
-          <ProtectedRoute allowedRoles={['cho', 'supervisor', 'bhw', 'admin', 'viewer']}>
-            <MapPage />
-          </ProtectedRoute>
-        }
-      />
 
-      <Route
-        path="/users"
-        element={
-          <ProtectedRoute allowedRoles={['cho', 'admin']}>
-            <UserManagementPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/reports"
-        element={
-          <ProtectedRoute allowedRoles={['cho', 'supervisor', 'bhw', 'admin', 'viewer']}>
-            <ReportsPage />
-          </ProtectedRoute>
-        }
-      />
+      {/*
+        Keep one AppShell mounted for the entire authenticated workspace.
+        Route changes now replace only the page inside <Outlet />, so navbar,
+        settings, notifications and their server state no longer remount/reload
+        every time the user opens Forecast, Map, Reports, etc.
+      */}
+      <Route element={<AuthenticatedShell />}>
+        <Route path="/" element={<HomeRedirect />} />
+        <Route
+          path="/dashboard"
+          element={
+            <RoleRoute allowedRoles={['cho', 'supervisor', 'admin', 'viewer']}>
+              <DashboardPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/bhw"
+          element={
+            <RoleRoute allowedRoles={['bhw', 'cho', 'admin']}>
+              <BHWPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/supervisor"
+          element={
+            <RoleRoute allowedRoles={['supervisor', 'cho', 'admin']}>
+              <SupervisorPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/upload"
+          element={
+            <RoleRoute allowedRoles={['cho', 'admin']}>
+              <UploadPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/forecast"
+          element={
+            <RoleRoute allowedRoles={['cho', 'supervisor', 'admin']}>
+              <ForecastPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/map"
+          element={
+            <RoleRoute allowedRoles={['cho', 'supervisor', 'bhw', 'admin', 'viewer']}>
+              <MapPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <RoleRoute allowedRoles={['cho', 'admin']}>
+              <UserManagementPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <RoleRoute allowedRoles={['cho', 'supervisor', 'bhw', 'admin', 'viewer']}>
+              <ReportsPage />
+            </RoleRoute>
+          }
+        />
+      </Route>
     </Routes>
   )
 }

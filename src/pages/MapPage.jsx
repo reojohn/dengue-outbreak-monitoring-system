@@ -30,7 +30,6 @@ import {
 } from 'lucide-react'
 import LeafletRiskMap from '../components/LeafletRiskMap'
 import { useData } from '../context/DataContext'
-import { getGeospatialHotspots } from '../services/api'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 import mapHeroBackground from '../assets/map.png'
@@ -1817,6 +1816,8 @@ export default function MapPage() {
     addActivityLog,
     boundaryRecords = [],
     loadLatestSavedBoundaryGeoJson,
+    geospatialHotspotResult = null,
+    loadGeospatialHotspotsCached,
   } = data
 
   const boundaryLoadRequestedRef = useRef(false)
@@ -1922,9 +1923,15 @@ export default function MapPage() {
   const [mapStyle, setMapStyle] = useState('dark')
   const [mapLayerMode, setMapLayerMode] = useState('forecast')
   const [isMapExpanded, setIsMapExpanded] = useState(false)
-  const [hotspotResult, setHotspotResult] = useState(null)
+  const [hotspotResult, setHotspotResult] = useState(() => geospatialHotspotResult || null)
   const [hotspotError, setHotspotError] = useState('')
   const [isLoadingHotspots, setIsLoadingHotspots] = useState(false)
+
+  useEffect(() => {
+    if (geospatialHotspotResult) {
+      setHotspotResult(geospatialHotspotResult)
+    }
+  }, [geospatialHotspotResult])
 
   const boundaryFeatureCount = countBoundaryFeatures(boundaryRecords)
 
@@ -2346,6 +2353,13 @@ export default function MapPage() {
   }
 
   function handleStartPanelDrag(event) {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 639px)').matches
+    ) {
+      return
+    }
+
     const target = event.target
 
     if (target?.closest?.('button, a, input, textarea, select')) return
@@ -2622,7 +2636,14 @@ export default function MapPage() {
     setIsLoadingHotspots(true)
 
     try {
-      const result = await getGeospatialHotspots()
+      const result = await loadGeospatialHotspotsCached?.({
+        silent: true,
+        force: true,
+      })
+
+      if (!result) {
+        throw new Error('The hotspot analysis could not be loaded from the server.')
+      }
 
       setHotspotResult(result)
 
@@ -2656,7 +2677,7 @@ export default function MapPage() {
 
   function renderMapControls() {
     return (
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="map-control-stack flex flex-wrap items-center gap-2">
         <div className="map-layer-toggle flex flex-wrap rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:shadow-none">
           {mapLayerOptions.map((option) => {
             const Icon = option.icon
@@ -2717,7 +2738,7 @@ export default function MapPage() {
     color: '#0f172a',
     borderColor: 'rgba(255,255,255,0.45)',
   }}
-  className="group inline-flex w-fit max-w-full items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-left shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
+  className="map-expand-button group inline-flex w-fit max-w-full items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-left shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
 >
   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-blue text-white shadow-[0_8px_18px_rgba(37,95,143,0.22)]">
     {isMapExpanded ? (
@@ -2741,7 +2762,7 @@ export default function MapPage() {
           type="button"
           onClick={handleRunHotspotAnalysis}
           disabled={isLoadingHotspots || !hasBoundaryData}
-          className="inline-flex items-center gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
+          className="map-hotspot-button inline-flex items-center gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
         >
           <Radar className="h-3.5 w-3.5" />
           {isLoadingHotspots ? 'Checking hotspot areas...' : 'Run hotspot check'}
@@ -2755,8 +2776,8 @@ export default function MapPage() {
     <div
       className={
         isMapExpanded
-          ? 'h-[calc(100vh-190px)] min-h-[720px] max-h-[920px] overflow-hidden rounded-[30px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)]'
-          : 'h-[560px] overflow-hidden rounded-[28px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)] sm:h-[680px] 2xl:h-[780px]'
+          ? 'map-workspace-canvas map-workspace-canvas-expanded h-[calc(100vh-190px)] min-h-[720px] max-h-[920px] overflow-hidden rounded-[30px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)]'
+          : 'map-workspace-canvas map-workspace-canvas-compact h-[560px] overflow-hidden rounded-[28px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)] sm:h-[680px] 2xl:h-[780px]'
       }
     >
       <div className="h-full overflow-hidden rounded-[22px] dark:[&_.leaflet-container]:bg-slate-950">
@@ -2844,7 +2865,7 @@ export default function MapPage() {
             </button>
           </div>
 
-          <div className="max-h-[calc(100vh-150px)] overflow-y-auto p-6">
+          <div className="map-selected-panel-body max-h-[calc(100vh-150px)] overflow-y-auto p-6">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-muted dark:text-slate-500">
               Selected barangay
             </p>
@@ -2989,7 +3010,7 @@ export default function MapPage() {
                   </>
                 ) : (
                   <>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="map-mobile-field-grid-3 mt-4 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
                           Hotspot score
@@ -3178,7 +3199,7 @@ export default function MapPage() {
                     : 'Upload and validate dengue records and barangay boundaries to activate risk colors, hotspot analysis, and response guidance.'}
             </p>
 
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="map-hero-actions mt-7 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => document.getElementById('hotspot-map')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -3226,7 +3247,7 @@ export default function MapPage() {
             </div>
           </div>
 
-          <div className="w-full self-end justify-self-end lg:max-w-[400px]">
+          <div className="map-hero-selected-card w-full self-end justify-self-end lg:max-w-[400px]">
             <div className="relative overflow-hidden rounded-[30px] border border-white/15 bg-slate-950/[0.62] p-5 text-white shadow-[0_28px_76px_rgba(2,6,23,0.52)] ring-1 ring-white/5 backdrop-blur-2xl sm:p-6">
               <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-cyan-300/15 blur-3xl" />
               <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
@@ -3338,8 +3359,8 @@ export default function MapPage() {
             </div>
           </div>
 
-          <div className="relative mt-5 overflow-hidden rounded-[32px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.13),transparent_36%),linear-gradient(145deg,#f8fafc,#ffffff_58%,#eff6ff)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_46px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_36%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)]">
-            <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="map-workspace-shell relative mt-5 overflow-hidden rounded-[32px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.13),transparent_36%),linear-gradient(145deg,#f8fafc,#ffffff_58%,#eff6ff)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_46px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_36%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)]">
+            <div className="map-workspace-toolbar mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-brand-muted dark:text-slate-500">
                   Barangay monitoring map
@@ -3350,7 +3371,7 @@ export default function MapPage() {
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2 xl:items-end">
+              <div className="map-workspace-controls flex flex-col gap-2 xl:items-end">
                 <div className="flex flex-wrap gap-2">
                   <div className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-bold text-brand-muted shadow-sm dark:bg-slate-800 dark:text-slate-300 dark:shadow-none">
                     {hasBoundaryData ? 'Barangay map available' : 'Map file pending'}
@@ -3417,7 +3438,7 @@ export default function MapPage() {
                   return (
                     <div
                       key={item.key}
-                      className="group relative overflow-hidden rounded-[22px] border border-white/[0.80] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_45%),linear-gradient(145deg,#ffffff,#f8fafc)] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/55 transition hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(15,23,42,0.11)] dark:border-slate-800 dark:bg-[linear-gradient(145deg,#0f172a,#020617)] dark:ring-white/5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-gradient-to-r before:from-cyan-500 before:via-blue-500 before:to-transparent"
+                      className="map-legend-card group relative overflow-hidden rounded-[22px] border border-white/[0.80] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_45%),linear-gradient(145deg,#ffffff,#f8fafc)] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/55 transition hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(15,23,42,0.11)] dark:border-slate-800 dark:bg-[linear-gradient(145deg,#0f172a,#020617)] dark:ring-white/5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-gradient-to-r before:from-cyan-500 before:via-blue-500 before:to-transparent"
                     >
                       <div className="flex items-center gap-2">
                         <span className={`h-3 w-3 rounded-full ${item.dot}`} />
@@ -3487,7 +3508,7 @@ export default function MapPage() {
           }
         >
           <div
-            className={`group relative self-start overflow-hidden rounded-[32px] border border-cyan-400/20 bg-black shadow-[0_28px_78px_rgba(2,6,23,0.30)] ring-1 ring-white/10 ${
+            className={`map-side-visual group relative self-start overflow-hidden rounded-[32px] border border-cyan-400/20 bg-black shadow-[0_28px_78px_rgba(2,6,23,0.30)] ring-1 ring-white/10 ${
               isMapExpanded
                 ? 'h-[min(680px,calc(100vh-180px))] min-h-[520px]'
                 : 'h-[360px]'
@@ -3520,7 +3541,7 @@ export default function MapPage() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[36px] border border-white/[0.80] bg-white/[0.94] p-5 shadow-[0_26px_78px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/60 backdrop-blur-2xl dark:border-slate-800/80 dark:bg-slate-950/[0.88] dark:ring-white/5 sm:p-6">
+          <div className="map-priority-panel relative overflow-hidden rounded-[36px] border border-white/[0.80] bg-white/[0.94] p-5 shadow-[0_26px_78px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/60 backdrop-blur-2xl dark:border-slate-800/80 dark:bg-slate-950/[0.88] dark:ring-white/5 sm:p-6">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
               <Navigation className="h-3.5 w-3.5" />
               Priority barangays
@@ -3540,7 +3561,7 @@ export default function MapPage() {
                     : 'Top barangays will appear after risk levels are calculated.'}
             </p>
 
-            <div className="mt-5 space-y-3">
+            <div className="map-priority-list mt-5 space-y-3">
               {summary.length > 0 ? (
                 summary.map((row, index) => (
                   <button
@@ -4224,6 +4245,736 @@ export default function MapPage() {
             font-size: 0.55rem !important;
           }
         }
+
+        /* =========================================================
+           FINAL MAP RESPONSIVE STABILIZATION
+           Page-local only. Keeps the global Leaflet/app-shell rules
+           in index.css unchanged.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .map-mobile-compact {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            border-radius: 22px !important;
+            padding-bottom: 1rem !important;
+          }
+
+          /* HERO: remove desktop minimum height and keep real content visible. */
+          .map-mobile-compact .premium-map-hero {
+            min-height: 0 !important;
+            border-radius: 24px !important;
+            padding: 0 !important;
+          }
+
+          .map-mobile-compact .premium-map-hero > .relative.z-10 {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 1rem !important;
+            padding: 1rem !important;
+          }
+
+          .map-mobile-compact .premium-map-hero h1 {
+            margin-top: 1rem !important;
+            max-width: 100% !important;
+            font-size: 1.9rem !important;
+            line-height: 1.04 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .map-mobile-compact .premium-map-hero h1 + p {
+            display: block !important;
+            margin-top: 0.75rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.82rem !important;
+            line-height: 1.5 !important;
+          }
+
+          /* Hero actions: 2-up on normal phones. */
+          .map-mobile-compact .map-hero-actions {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .map-mobile-compact .map-hero-actions > button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 48px !important;
+            padding: 0.7rem 0.6rem !important;
+            font-size: 0.74rem !important;
+            line-height: 1.2 !important;
+            white-space: normal !important;
+          }
+
+          /* Four hero metrics should be a real 2 x 2 grid, not 3 + 1. */
+          .map-mobile-compact .map-mobile-hero-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .map-mobile-compact .map-mobile-hero-grid > div {
+            min-width: 0 !important;
+            min-height: 88px !important;
+            border-radius: 17px !important;
+            padding: 0.7rem !important;
+          }
+
+          .map-mobile-compact .map-mobile-hero-grid > div .relative.flex.items-center {
+            align-items: flex-start !important;
+          }
+
+          .map-mobile-compact .map-mobile-hero-grid span {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.06em !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .map-mobile-compact .map-mobile-hero-grid p {
+            margin-top: 0.45rem !important;
+            font-size: 1.18rem !important;
+            line-height: 1.05 !important;
+          }
+
+          /* Selected-area hero card: preserve detail instead of over-compressing. */
+          .map-mobile-compact .map-hero-selected-card > div {
+            border-radius: 20px !important;
+            padding: 0.85rem !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card h2 {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            font-size: 1.25rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card .relative.flex.h-20.w-20 {
+            width: 4.25rem !important;
+            height: 4.25rem !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card .relative.mt-5.grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card .relative.mt-5.grid > div {
+            min-width: 0 !important;
+            padding: 0.65rem !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card .relative.mt-5.grid p:first-child {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card .relative.mt-5.grid p:last-child {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            font-size: 0.82rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .map-mobile-compact .map-hero-selected-card .relative.mt-3.rounded-\[20px\] p:last-of-type {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+
+          /* MAP WORKSPACE */
+          .map-mobile-compact #hotspot-map {
+            overflow: visible !important;
+            border-radius: 20px !important;
+            padding: 0.7rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map > .flex:first-child {
+            gap: 0.65rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map h2 {
+            font-size: 1.25rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .map-mobile-compact #hotspot-map h2 + p {
+            font-size: 0.8rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .map-mobile-compact #hotspot-map > .flex:first-child > .w-fit {
+            width: 100% !important;
+            text-align: center !important;
+            white-space: normal !important;
+            font-size: 0.7rem !important;
+          }
+
+          .map-mobile-compact .map-workspace-shell {
+            border-radius: 18px !important;
+            padding: 0.55rem !important;
+          }
+
+          .map-mobile-compact .map-workspace-toolbar {
+            gap: 0.65rem !important;
+            margin-bottom: 0.6rem !important;
+          }
+
+          .map-mobile-compact .map-workspace-toolbar > div:first-child p {
+            font-size: 0.76rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls {
+            width: 100% !important;
+          }
+
+          /* Three state pills become 2 + 1 rather than three tiny chips. */
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 {
+            display: grid !important;
+            width: 100% !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 > div {
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0.45rem 0.5rem !important;
+            font-size: 0.68rem !important;
+            line-height: 1.2 !important;
+            white-space: normal !important;
+            text-align: center !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 > div:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          /* Overall map controls stack into comfortable groups. */
+          .map-mobile-compact #hotspot-map .map-layer-toggle,
+          .map-mobile-compact #hotspot-map .map-style-toggle {
+            width: 100% !important;
+            display: grid !important;
+            gap: 0.35rem !important;
+            padding: 0.3rem !important;
+            border-radius: 14px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-layer-toggle {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-style-toggle {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-layer-toggle button,
+          .map-mobile-compact #hotspot-map .map-style-toggle button {
+            min-width: 0 !important;
+            min-height: 42px !important;
+            justify-content: center !important;
+            gap: 0.35rem !important;
+            padding: 0.55rem 0.4rem !important;
+            border-radius: 11px !important;
+            font-size: 0.68rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.06em !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-layer-toggle button svg,
+          .map-mobile-compact #hotspot-map .map-style-toggle button svg {
+            width: 0.9rem !important;
+            height: 0.9rem !important;
+          }
+
+          /* Expand + Run Hotspot are full-width action buttons. */
+          .map-mobile-compact #hotspot-map .map-workspace-controls > .flex:last-child {
+            width: 100% !important;
+          }
+
+          .map-mobile-compact #hotspot-map button.group.inline-flex,
+          .map-mobile-compact #hotspot-map button.inline-flex.items-center.gap-2 {
+            width: 100% !important;
+            min-height: 46px !important;
+            justify-content: center !important;
+            padding: 0.6rem 0.7rem !important;
+            border-radius: 13px !important;
+            font-size: 0.68rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .map-mobile-compact #hotspot-map button.group.inline-flex .h-9.w-9 {
+            display: flex !important;
+            width: 2rem !important;
+            height: 2rem !important;
+          }
+
+          /* Map canvas: compact still large enough to interact with,
+             expanded mode now actually grows on phones. */
+          .map-mobile-compact #hotspot-map .map-workspace-canvas {
+            width: 100% !important;
+            min-width: 0 !important;
+            border-radius: 18px !important;
+            padding: 0.35rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-workspace-canvas-compact {
+            height: clamp(360px, 52dvh, 460px) !important;
+            min-height: 360px !important;
+            max-height: 460px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-workspace-canvas-expanded {
+            height: clamp(500px, 68dvh, 650px) !important;
+            min-height: 500px !important;
+            max-height: 650px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-workspace-canvas > .h-full {
+            border-radius: 15px !important;
+          }
+
+          /* Map legend: 2 columns so names like "Low Spatial Concern"
+             remain readable. */
+          .map-mobile-compact .map-mobile-legend-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+            padding: 0.65rem !important;
+          }
+
+          .map-mobile-compact .map-legend-card {
+            min-width: 0 !important;
+            min-height: 92px !important;
+            border-radius: 15px !important;
+            padding: 0.6rem !important;
+          }
+
+          .map-mobile-compact .map-legend-card .inline-flex {
+            max-width: 100% !important;
+            white-space: normal !important;
+            padding: 0.35rem 0.5rem !important;
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .map-mobile-compact .map-legend-card p {
+            font-size: 0.72rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Barangay map note: preserve useful 3 rows but don't squeeze into
+             three columns on a phone. */
+          .map-mobile-compact #hotspot-map .group.relative.mt-4.overflow-hidden.rounded-\[26px\] .mt-2.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.3rem !important;
+          }
+
+          /* Side visual should not consume excessive vertical space. */
+          .map-mobile-compact .map-side-visual {
+            height: 220px !important;
+            min-height: 220px !important;
+            border-radius: 18px !important;
+          }
+
+          .map-mobile-compact .map-side-visual .absolute.bottom-0 {
+            padding: 0.85rem !important;
+          }
+
+          .map-mobile-compact .map-side-visual h3 {
+            font-size: 1rem !important;
+          }
+
+          .map-mobile-compact .map-side-visual p {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.76rem !important;
+            line-height: 1.4 !important;
+          }
+
+          /* PRIORITY BARANGAYS: one full-width card per row. */
+          .map-mobile-compact .map-priority-panel {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .map-mobile-compact .map-priority-panel h2 {
+            font-size: 1.25rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .map-mobile-compact .map-priority-panel h2 + p {
+            font-size: 0.8rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .map-mobile-compact .map-priority-list {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.6rem !important;
+          }
+
+          .map-mobile-compact .map-priority-list > button {
+            min-width: 0 !important;
+            border-radius: 17px !important;
+            padding: 0.75rem !important;
+            gap: 0.65rem !important;
+          }
+
+          .map-mobile-compact .map-priority-list > button .h-10.w-10 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+            font-size: 0.75rem !important;
+          }
+
+          .map-mobile-compact .map-priority-list > button span.font-black {
+            font-size: 0.88rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .map-mobile-compact .map-priority-list > button p {
+            display: block !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.72rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .map-mobile-compact .map-priority-list > button > span:last-child {
+            padding: 0.4rem 0.6rem !important;
+            font-size: 0.68rem !important;
+            white-space: normal !important;
+          }
+
+          /* General supporting cards: restore readable phone typography.
+             This intentionally overrides the earlier 0.5rem–0.6rem rules. */
+          .map-mobile-compact p {
+            font-size: 0.8rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .map-mobile-compact .text-base {
+            font-size: 0.86rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .map-mobile-compact .text-sm {
+            font-size: 0.8rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .map-mobile-compact .text-xs {
+            font-size: 0.72rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .map-mobile-compact .text-\[11px\] {
+            font-size: 0.68rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .map-mobile-compact .text-\[10px\] {
+            font-size: 0.66rem !important;
+            line-height: 1.2 !important;
+          }
+
+          /* SELECTED BARANGAY PANEL = mobile bottom sheet.
+             It no longer visually behaves like a draggable desktop window. */
+          .map-selected-panel {
+            left: 0.55rem !important;
+            right: 0.55rem !important;
+            top: auto !important;
+            bottom: max(0.6rem, env(safe-area-inset-bottom)) !important;
+            width: auto !important;
+            max-width: none !important;
+            max-height: calc(100dvh - max(1.2rem, env(safe-area-inset-top)) - max(1.2rem, env(safe-area-inset-bottom))) !important;
+            border-radius: 22px !important;
+          }
+
+          .map-selected-panel > div:first-child {
+            cursor: default !important;
+            padding: 0.8rem !important;
+          }
+
+          .map-selected-panel > div:first-child p {
+            display: none !important;
+          }
+
+          .map-selected-panel .map-selected-panel-body {
+            max-height: calc(100dvh - 6rem - max(1rem, env(safe-area-inset-bottom))) !important;
+            overflow-y: auto !important;
+            overscroll-behavior: contain !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding: 0.8rem !important;
+          }
+
+          .map-selected-panel h3 {
+            font-size: 1.35rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .map-selected-panel > div:first-child .inline-flex {
+            font-size: 0.68rem !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics > div {
+            min-width: 0 !important;
+            min-height: 104px !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics .h-11.w-11 {
+            display: flex !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            margin-bottom: 0.45rem !important;
+            border-radius: 11px !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics .h-11.w-11 svg {
+            width: 0.9rem !important;
+            height: 0.9rem !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics p:first-of-type {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics p:last-of-type {
+            display: block !important;
+            margin-top: 0.35rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.78rem !important;
+            line-height: 1.3 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          /* Hotspot detail 3-card rows become 2 + 1. */
+          .map-selected-panel .map-mobile-field-grid-3 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .map-selected-panel .map-mobile-field-grid-3 > div {
+            min-width: 0 !important;
+            border-radius: 14px !important;
+            padding: 0.65rem !important;
+          }
+
+          .map-selected-panel .map-mobile-field-grid-3 > div:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .map-selected-panel p,
+          .map-selected-panel span,
+          .map-selected-panel li {
+            font-size: 0.78rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .map-selected-panel .flex.flex-wrap.gap-2 span {
+            max-width: 100% !important;
+            white-space: normal !important;
+            padding: 0.4rem 0.6rem !important;
+            font-size: 0.7rem !important;
+          }
+
+          .map-selected-panel .text-base {
+            font-size: 0.84rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .map-selected-panel .text-sm {
+            font-size: 0.78rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .map-selected-panel .text-xs {
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+        }
+
+        /* Very narrow phones: stack action buttons before they become cramped. */
+        @media (max-width: 374px) {
+          .map-mobile-compact .map-hero-actions {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .map-mobile-compact .map-mobile-hero-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 > div:last-child:nth-child(odd) {
+            grid-column: auto !important;
+          }
+
+          .map-selected-panel .map-mobile-selected-metrics,
+          .map-selected-panel .map-mobile-field-grid-3 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .map-selected-panel .map-mobile-field-grid-3 > div:last-child:nth-child(odd) {
+            grid-column: auto !important;
+          }
+        }
+
+        /* Tablets: keep map workspace stacked until the existing xl split. */
+        @media (min-width: 640px) and (max-width: 1023px) {
+          .map-mobile-compact .premium-map-hero > .relative.z-10 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls {
+            width: 100% !important;
+          }
+        }
+
+
+        /* =========================================================
+           PHONE MAP CONTROL FIX
+           Prevents the map layer/style controls from sharing one row
+           and breaking labels into individual syllables.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .map-mobile-compact #hotspot-map .map-control-stack {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            width: 100% !important;
+            gap: 0.55rem !important;
+            align-items: stretch !important;
+          }
+
+          /* Forecast / Hotspot */
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-layer-toggle {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            width: 100% !important;
+            max-width: none !important;
+            gap: 0.35rem !important;
+            padding: 0.3rem !important;
+          }
+
+          /* Dark / Light / Street / Satellite */
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-style-toggle {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            width: 100% !important;
+            max-width: none !important;
+            gap: 0.35rem !important;
+            padding: 0.3rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-control-stack .map-layer-toggle button,
+          .map-mobile-compact #hotspot-map .map-control-stack .map-style-toggle button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 46px !important;
+            display: inline-flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0.45rem !important;
+            padding: 0.6rem 0.5rem !important;
+            font-size: 0.72rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.04em !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-control-stack .map-layer-toggle button svg,
+          .map-mobile-compact #hotspot-map .map-control-stack .map-style-toggle button svg {
+            width: 0.95rem !important;
+            height: 0.95rem !important;
+            flex: 0 0 auto !important;
+          }
+
+          /* Action buttons become full-width rows, avoiding label collisions. */
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-expand-button,
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-hotspot-button {
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 50px !important;
+            justify-content: center !important;
+            gap: 0.6rem !important;
+            padding: 0.7rem 0.85rem !important;
+            border-radius: 14px !important;
+            font-size: 0.74rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.06em !important;
+            white-space: normal !important;
+            text-align: center !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-expand-button .h-9.w-9 {
+            display: flex !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            flex: 0 0 auto !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-expand-button > span {
+            white-space: nowrap !important;
+          }
+
+          /* Status chips above controls use readable 2 + 1 layout. */
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 > div {
+            min-height: 40px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 0.7rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .map-mobile-compact .map-workspace-controls > .flex.flex-wrap.gap-2 > div:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+        }
+
+        @media (max-width: 374px) {
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-style-toggle {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-control-stack > .map-layer-toggle {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-control-stack .map-layer-toggle button,
+          .map-mobile-compact #hotspot-map .map-control-stack .map-style-toggle button {
+            white-space: normal !important;
+          }
+        }
+
       `}</style>
 
     </div>

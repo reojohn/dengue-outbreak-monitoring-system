@@ -200,7 +200,7 @@ function getRoleVisual(role) {
 export default function LoginPage() {
   const existingSession = getAuthSession()
   const navigate = useNavigate()
-  const { addActivityLog, refreshAuthenticatedWorkspace } = useData()
+  const { addActivityLog, refreshAuthenticatedWorkspace, warmNavigationCache } = useData()
 
   const [selectedRole, setSelectedRole] = useState('cho')
   const [email, setEmail] = useState('cityhealth@butuan.gov.ph')
@@ -333,6 +333,15 @@ export default function LoginPage() {
     // dashboard and Forecast workflow status are correct without a manual
     // browser refresh.
     await refreshAuthenticatedWorkspace?.({ silent: true })
+
+    // Warm the small shared page caches after authentication without delaying
+    // navigation. Forecast, Map and Reports can then reuse the same in-memory
+    // model/boundary/hotspot data instead of waiting 2–3 seconds on first open.
+    window.setTimeout(() => {
+      Promise.resolve(
+        warmNavigationCache?.({ role: authenticatedUser.role })
+      ).catch(() => {})
+    }, 0)
 
     navigate(getRoleHome(authenticatedUser.role), { replace: true })
   } catch (loginError) {

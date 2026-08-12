@@ -38,9 +38,6 @@ import {
   riskStyles,
 } from '../utils/analytics'
 
-import {
-  getLatestModelMetrics,
-} from '../services/api'
 import aiGif from '../assets/ai.gif'
 import ai1 from '../assets/ai1.png'
 import ai2 from '../assets/ai2.png'
@@ -640,7 +637,7 @@ function ForecastFindingsChat({
 
   return (
     <div
-      className="relative mt-4 overflow-hidden rounded-[28px] border border-cyan-200/15 bg-slate-950/45 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_42px_rgba(2,6,23,0.22)] backdrop-blur-xl sm:p-5"
+      className="forecast-ai-chat relative mt-4 overflow-hidden rounded-[28px] border border-cyan-200/15 bg-slate-950/45 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_42px_rgba(2,6,23,0.22)] backdrop-blur-xl sm:p-5"
       role="region"
       aria-label={`${modelName} forecast conversation`}
     >
@@ -2790,7 +2787,7 @@ function StatCard({
 
   const style = toneMap[tone] || toneMap.blue
   const isInteractive = typeof onClick === 'function'
-  const cardClassName = `group relative min-h-[168px] w-full overflow-hidden rounded-[28px] border border-slate-200/80 bg-gradient-to-br ${style.surface} p-5 text-left shadow-[0_16px_42px_rgba(15,23,42,0.075)] ring-1 ring-white/90 transition-all duration-300 hover:-translate-y-1.5 hover:border-slate-300 hover:shadow-[0_28px_64px_rgba(15,23,42,0.15)] dark:border-white/10 dark:ring-white/5 ${isInteractive ? 'cursor-pointer outline-none focus-visible:ring-4 focus-visible:ring-sky-300/35 dark:focus-visible:ring-sky-400/30' : ''}`
+  const cardClassName = `forecast-stat-card group relative min-h-[168px] w-full overflow-hidden rounded-[28px] border border-slate-200/80 bg-gradient-to-br ${style.surface} p-5 text-left shadow-[0_16px_42px_rgba(15,23,42,0.075)] ring-1 ring-white/90 transition-all duration-300 hover:-translate-y-1.5 hover:border-slate-300 hover:shadow-[0_28px_64px_rgba(15,23,42,0.15)] dark:border-white/10 dark:ring-white/5 ${isInteractive ? 'cursor-pointer outline-none focus-visible:ring-4 focus-visible:ring-sky-300/35 dark:focus-visible:ring-sky-400/30' : ''}`
 
   const cardContent = (
     <>
@@ -2938,7 +2935,7 @@ function SummaryBarangayListModal({
 
   return (
     <div
-      className="fixed inset-0 z-[10020] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-md sm:p-5"
+      className="forecast-summary-modal fixed inset-0 z-[10020] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-md sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="forecast-summary-list-title"
@@ -2948,7 +2945,7 @@ function SummaryBarangayListModal({
         }
       }}
     >
-      <div className="relative flex max-h-[min(88vh,860px)] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_36px_110px_rgba(2,6,23,0.48)] ring-1 ring-slate-200/70 dark:border-slate-700/90 dark:bg-slate-950 dark:ring-white/10 sm:rounded-[36px]">
+      <div className="forecast-summary-modal-card relative flex max-h-[min(88vh,860px)] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_36px_110px_rgba(2,6,23,0.48)] ring-1 ring-slate-200/70 dark:border-slate-700/90 dark:bg-slate-950 dark:ring-white/10 sm:rounded-[36px]">
         <div className={`pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full ${style.glow} blur-3xl`} />
         <div className="pointer-events-none absolute -bottom-24 left-8 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
         <div className={`pointer-events-none absolute inset-x-10 top-0 h-[2px] bg-gradient-to-r from-transparent ${style.accent} to-transparent`} />
@@ -3204,8 +3201,8 @@ function ForecastThreeDTrendChart({
   if (!chart.points.length) return null
 
   return (
-    <div className="h-full w-full overflow-x-auto overscroll-x-contain rounded-[24px]">
-      <div className="h-full min-w-[720px]">
+    <div className="h-full w-full overflow-hidden rounded-[24px]">
+      <div className="forecast-3d-chart-inner h-full w-full min-w-0">
         <svg
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           role="img"
@@ -3706,6 +3703,8 @@ export default function ForecastPage() {
     weatherRecords = [],
     sourceStatus,
     backendForecastResult = null,
+    latestModelMetrics = null,
+    loadLatestModelMetricsCached,
   } = useData()
 
   const selectedMode = modeMeta[mode]
@@ -3734,7 +3733,6 @@ export default function ForecastPage() {
       : rawForecastHorizonLabel)
   const forecastHorizonHelper = `Expected cases for ${forecastHorizonLabel}`
   const projectedHorizonHelper = `Projected cases for ${forecastHorizonLabel}`
-  const [latestModelMetrics, setLatestModelMetrics] = useState(null)
   const [showModelDetails, setShowModelDetails] = useState(false)
 
   const selectedModelName = formatModelName(
@@ -4096,50 +4094,68 @@ export default function ForecastPage() {
   ]
 
   useEffect(() => {
-  async function loadMetrics() {
-    try {
-      const result = await getLatestModelMetrics()
+    // DataContext keeps model metrics in memory across route changes. Only ask
+    // the backend when this browser session has not loaded metrics for the
+    // current forecast yet.
+    if (latestModelMetrics) return
 
-      if (result?.has_metrics) {
-        setLatestModelMetrics(result)
-      }
-    } catch {
-      setLatestModelMetrics(null)
-    }
-  }
+    loadLatestModelMetricsCached?.({ silent: true })
+  }, [
+    latestModelMetrics,
+    backendForecastResult?.database_forecast_run_id,
+    backendForecastResult?.forecast_run?.forecast_run_id,
+  ])
 
-  loadMetrics()
-}, [])
+// Saved final forecasts can legitimately return empty model-detail containers
+// ({} / []) because those fields are stored separately in model_training_runs.
+// Empty objects and arrays are truthy in JavaScript, so a plain `||` fallback
+// would incorrectly hide the populated /models/latest-metrics response.
+// Prefer only populated values here. This changes data selection only and does
+// not add requests, polling, database reads, or responsive/layout changes.
+const firstPopulatedObject = (...values) =>
+  values.find(
+    (value) =>
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.keys(value).length > 0
+  ) || null
 
-const activeModelMetrics =
-  backendForecastResult?.model_metrics ||
-  latestModelMetrics?.metrics ||
-  null
+const firstPopulatedArray = (...values) =>
+  values.find((value) => Array.isArray(value) && value.length > 0) || []
 
-const activeTrainingSummary =
-  backendForecastResult?.training_summary ||
-  latestModelMetrics?.training_summary ||
-  null
+const firstPopulatedString = (...values) =>
+  values.find((value) => typeof value === 'string' && value.trim().length > 0) || ''
 
-const activeSelectionConfidence =
-  backendForecastResult?.selection_confidence ||
-  latestModelMetrics?.selection_confidence ||
-  activeTrainingSummary?.selection_confidence ||
-  activeModelMetrics?.selection_confidence ||
-  null
+const activeModelMetrics = firstPopulatedObject(
+  backendForecastResult?.model_metrics,
+  latestModelMetrics?.metrics
+)
 
-const activeSelectionExplanation =
-  backendForecastResult?.selection_explanation ||
-  latestModelMetrics?.selection_explanation ||
-  activeTrainingSummary?.selection_explanation ||
-  activeModelMetrics?.selection_explanation ||
-  ''
+const activeTrainingSummary = firstPopulatedObject(
+  backendForecastResult?.training_summary,
+  latestModelMetrics?.training_summary
+)
 
-const activeFeatureImportance =
-  backendForecastResult?.feature_importance ||
-  latestModelMetrics?.feature_importance ||
-  activeModelMetrics?.feature_importance ||
-  []
+const activeSelectionConfidence = firstPopulatedObject(
+  backendForecastResult?.selection_confidence,
+  latestModelMetrics?.selection_confidence,
+  activeTrainingSummary?.selection_confidence,
+  activeModelMetrics?.selection_confidence
+)
+
+const activeSelectionExplanation = firstPopulatedString(
+  backendForecastResult?.selection_explanation,
+  latestModelMetrics?.selection_explanation,
+  activeTrainingSummary?.selection_explanation,
+  activeModelMetrics?.selection_explanation
+)
+
+const activeFeatureImportance = firstPopulatedArray(
+  backendForecastResult?.feature_importance,
+  latestModelMetrics?.feature_importance,
+  activeModelMetrics?.feature_importance
+)
 
 const selectedModelDisplayName =
   activeModelMetrics?.model_name ||
@@ -4418,10 +4434,10 @@ const selectedModelImage = getModelIcon(
 )
 
 const activeModelComparison = (() => {
-  const rawComparison =
-    backendForecastResult?.model_comparison ||
-    latestModelMetrics?.model_comparison ||
-    []
+  const rawComparison = firstPopulatedArray(
+    backendForecastResult?.model_comparison,
+    latestModelMetrics?.model_comparison
+  )
 
   const comparisonMap = new Map()
 
@@ -4557,7 +4573,7 @@ const activeModelComparison = (() => {
                   : 'Upload validated records to estimate future cases, identify priority barangays, and prepare targeted response decisions from one coordinated view.'}
               </p>
 
-              <div className="mt-7 flex flex-wrap gap-3">
+              <div className="forecast-hero-actions mt-7 flex flex-wrap gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -4589,7 +4605,7 @@ const activeModelComparison = (() => {
               </div>
             </div>
 
-            <div className="mt-9 grid gap-3 sm:grid-cols-3">
+            <div className="forecast-hero-metrics mt-9 grid gap-3 sm:grid-cols-3">
               <HeroMetric
                 label="Expected cases"
                 value={formatNumber(projectedTotal)}
@@ -4611,7 +4627,7 @@ const activeModelComparison = (() => {
             </div>
           </div>
 
-          <div className="relative flex flex-col rounded-[28px] border border-white/15 bg-slate-950/60 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
+          <div className="forecast-scenario-card relative flex flex-col rounded-[28px] border border-white/15 bg-slate-950/60 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.19em] text-cyan-100/70">
@@ -4873,7 +4889,7 @@ const activeModelComparison = (() => {
       </PremiumPanel>
 
       {showAiSection && (
-<PremiumPanel id="machine-learning-controls" className="p-5 sm:p-6">
+<PremiumPanel id="machine-learning-controls" className="forecast-ai-wide-panel p-5 sm:p-6">
   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
     <div>
       <SectionBadge icon={Sparkles} tone="blue">
@@ -4921,15 +4937,15 @@ const activeModelComparison = (() => {
     ))}
   </div>
 
-  <div className="mt-5 grid gap-5 2xl:grid-cols-[minmax(0,1fr)_380px]">
-    <div className="relative overflow-hidden rounded-[34px] border border-cyan-200/15 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-950 p-5 text-white shadow-[0_28px_80px_rgba(2,6,23,0.30)] ring-1 ring-white/5 dark:border-emerald-500/20 sm:p-6">
+  <div className="mt-5 grid gap-5">
+    <div className="forecast-ai-selected-card relative overflow-hidden rounded-[34px] border border-cyan-200/15 bg-gradient-to-br from-slate-950 via-blue-950 to-emerald-950 p-5 text-white shadow-[0_28px_80px_rgba(2,6,23,0.30)] ring-1 ring-white/5 dark:border-emerald-500/20 sm:p-6">
       <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 left-8 h-64 w-64 rounded-full bg-emerald-300/10 blur-3xl" />
       <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
       <div className="pointer-events-none absolute right-8 top-8 h-28 w-28 rounded-full border border-white/5" />
       <div className="pointer-events-none absolute right-14 top-14 h-16 w-16 rounded-full border border-white/5" />
 
-      <div className="relative grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)_220px] lg:items-center">
+      <div className="forecast-selected-model-hero relative grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)_220px] lg:items-center">
         <div className="relative mx-auto flex h-[168px] w-[168px] items-center justify-center lg:mx-0">
           <div className="absolute inset-0 rounded-full border border-cyan-200/15" />
           <div className="absolute inset-4 rounded-full border border-emerald-200/15" />
@@ -5045,7 +5061,7 @@ const activeModelComparison = (() => {
         </div>
       </div>
 
-      <div className="relative mt-6 overflow-hidden rounded-[30px] border border-cyan-200/15 bg-gradient-to-br from-slate-950/55 via-blue-950/45 to-emerald-950/40 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-sm sm:p-5">
+      <div className="forecast-ai-conversation-shell relative mt-6 overflow-hidden rounded-[30px] border border-cyan-200/15 bg-gradient-to-br from-slate-950/55 via-blue-950/45 to-emerald-950/40 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-sm sm:p-5">
         <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" />
 
         <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -5079,40 +5095,57 @@ const activeModelComparison = (() => {
       </div>
     </div>
 
-    <div className="relative overflow-hidden rounded-[34px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-[0_24px_64px_rgba(15,23,42,0.09)] ring-1 ring-white/80 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-blue-950/20 dark:ring-white/5 sm:p-6">
+    <div className="forecast-ai-control-card relative w-full overflow-hidden rounded-[34px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-[0_24px_64px_rgba(15,23,42,0.09)] ring-1 ring-white/80 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-blue-950/20 dark:ring-white/5 sm:p-6">
       <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-400/20 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-blue-400/10 blur-3xl" />
       <div className="pointer-events-none absolute inset-x-8 top-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent" />
 
-      <div className="relative flex items-start gap-4">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[24px] border border-emerald-100 bg-white text-brand-green shadow-[0_14px_32px_rgba(15,23,42,0.10)] dark:border-emerald-500/20 dark:bg-white/10 dark:text-emerald-300">
-          <Sparkles className="h-6 w-6" />
-        </div>
+      <div className="forecast-ai-control-header relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className="forecast-ai-control-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-emerald-100 bg-white text-brand-green shadow-[0_12px_28px_rgba(15,23,42,0.09)] dark:border-emerald-500/20 dark:bg-white/10 dark:text-emerald-300">
+            <Sparkles className="h-5 w-5" />
+          </div>
 
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
             <p className="text-lg font-black tracking-[-0.025em] text-brand-text dark:text-slate-100">
               Explainable AI control center
             </p>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-              Enabled
-            </span>
+            <p className="mt-1.5 text-sm leading-6 text-brand-muted dark:text-slate-400">
+              A compact audit view of how the selected model was validated, reproduced, and interpreted.
+            </p>
           </div>
+        </div>
 
-          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-            Review how the model was selected, how reproducibility was maintained, and which inputs influenced the forecast.
-          </p>
+        <span className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.7)] dark:bg-emerald-300" />
+          Enabled
+        </span>
+      </div>
+
+      <div className="forecast-ai-control-summary relative mt-5 overflow-hidden rounded-[24px] border border-emerald-100/90 bg-white/90 p-4 shadow-[0_10px_28px_rgba(15,23,42,0.055)] dark:border-emerald-500/20 dark:bg-slate-950/70">
+        <div className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-emerald-400/10 blur-2xl" />
+        <div className="relative flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <BarChart3 className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                Validation method
+              </span>
+              <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                Hold-out evaluation
+              </span>
+            </div>
+            <p className="mt-2 break-words text-sm font-black leading-5 text-brand-text dark:text-slate-100">
+              {activeTrainingSummary?.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard'}
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="relative mt-6 grid gap-3">
+      <div className="forecast-ai-control-metrics relative mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          [
-            'Validation method',
-            activeTrainingSummary?.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard',
-            'Hold-out evaluation',
-            BarChart3,
-          ],
           [
             'Random state',
             activeTrainingSummary?.random_state ??
@@ -5138,62 +5171,73 @@ const activeModelComparison = (() => {
             'Ranked by RMSE and MAE',
             Gauge,
           ],
+          [
+            'Selection strength',
+            activeSelectionConfidence?.score
+              ? `${formatNumber(activeSelectionConfidence.score)}/100`
+              : 'N/A',
+            activeSelectionConfidence?.label || 'Model-selection confidence',
+            CheckCircle2,
+          ],
         ].map(([label, value, helper, Icon]) => (
           <div
             key={label}
-            className="group flex items-center gap-3 rounded-[22px] border border-white/80 bg-white/90 p-3.5 shadow-[0_10px_26px_rgba(15,23,42,0.055)] transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-950/75 dark:hover:border-emerald-500/25"
+            className="group relative min-w-0 overflow-hidden rounded-[20px] border border-white/80 bg-white/90 p-3.5 shadow-[0_9px_24px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-950/75 dark:hover:border-emerald-500/25"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-              <Icon className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.13em] text-brand-muted dark:text-slate-500">
-                  {label}
-                </span>
-                <span className="text-sm font-black text-brand-text dark:text-slate-100">
-                  {value}
-                </span>
+            <div className="pointer-events-none absolute -right-7 -top-7 h-16 w-16 rounded-full bg-cyan-400/10 blur-2xl" />
+            <div className="relative flex items-start justify-between gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <Icon className="h-4 w-4" />
               </div>
-              <p className="mt-0.5 text-[11px] font-semibold text-brand-muted dark:text-slate-500">
-                {helper}
-              </p>
+              <span className="min-w-0 break-words text-right text-base font-black leading-5 text-brand-text dark:text-slate-100">
+                {value}
+              </span>
             </div>
+            <p className="relative mt-3 text-[9px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+              {label}
+            </p>
+            <p className="relative mt-1 break-words text-[10px] font-semibold leading-4 text-brand-muted dark:text-slate-500">
+              {helper}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="relative mt-5 rounded-[22px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border border-blue-100 bg-white text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-white/10 dark:text-blue-300">
-            <CheckCircle2 className="h-4 w-4" />
-          </div>
-          <div>
-            <p className="text-sm font-black text-brand-text dark:text-slate-100">
-              Transparent and reproducible
-            </p>
-            <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-              The AI dashboard keeps model rankings, evaluation metrics, training settings, and feature importance available for technical review.
-            </p>
+      <div className="forecast-ai-control-footer relative mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
+        <div className="forecast-ai-control-note relative rounded-[20px] border border-blue-100 bg-blue-50/75 p-3.5 dark:border-blue-500/20 dark:bg-blue-500/10">
+          <div className="flex h-full items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-blue-100 bg-white text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-white/10 dark:text-blue-300">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 self-center">
+              <p className="text-base font-black leading-5 text-brand-text dark:text-slate-100">
+                Transparent and reproducible
+              </p>
+              <p className="mt-1.5 text-[13px] font-medium leading-5 text-brand-muted dark:text-slate-400">
+                Rankings, metrics, training settings, and feature importance remain available for technical review.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <button
-        type="button"
-        onClick={() => setShowModelDetails((current) => !current)}
-        className="relative mt-5 flex w-full items-center justify-between rounded-[22px] border border-slate-200 bg-slate-950 px-4 py-3.5 text-left text-sm font-black text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-900 hover:shadow-lg dark:border-white/10"
-      >
-        <span className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-cyan-300" />
-          {showModelDetails ? 'Hide technical AI dashboard' : 'Open technical AI dashboard'}
-        </span>
-        {showModelDetails ? (
-          <ChevronUp className="h-4 w-4" />
-        ) : (
-          <ChevronDown className="h-4 w-4" />
-        )}
-      </button>
+        <button
+          type="button"
+          onClick={() => setShowModelDetails((current) => !current)}
+          className="relative flex min-h-[64px] w-full items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-slate-950 px-5 py-3.5 text-left text-[15px] font-black text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-900 hover:shadow-lg dark:border-white/10"
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Sparkles className="h-5 w-5 shrink-0 text-cyan-300" />
+            <span>{showModelDetails ? 'Hide technical AI dashboard' : 'Open technical AI dashboard'}</span>
+          </span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border border-white/10 bg-white/5">
+            {showModelDetails ? (
+              <ChevronUp className="h-5 w-5" />
+            ) : (
+              <ChevronDown className="h-5 w-5" />
+            )}
+          </span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -5221,7 +5265,7 @@ const activeModelComparison = (() => {
       )}
 
       {activeModelComparison.length > 0 && (
-        <div className="rounded-[32px] border border-slate-200/80 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
+        <div className="forecast-ai-model-board rounded-[32px] border border-slate-200/80 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-base font-black text-brand-text dark:text-slate-100">
@@ -5711,7 +5755,7 @@ const activeModelComparison = (() => {
 
             {selectedResponsePeriodPredictions.length > 0 ? (
               <>
-                <div className="relative mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="forecast-horizon-grid relative mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {selectedResponsePeriodPredictions.map((item, index) => (
                     <div
                       key={`${selectedResponseRow?.barangay || 'barangay'}-${item.horizon || index + 1}`}
@@ -6220,7 +6264,7 @@ const activeModelComparison = (() => {
 
                       {isExpanded && (
                         <div className="mt-4 rounded-[22px] border border-slate-200 bg-white p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
-                          <div className="grid gap-2 sm:grid-cols-3">
+                          <div className="forecast-priority-detail-grid grid gap-2 sm:grid-cols-3">
                             <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black ${getTrendStyle(row.trendLabel)}`}>
                               <TrendIcon className="h-3.5 w-3.5" />
                               {row.trendLabel}
@@ -6235,7 +6279,7 @@ const activeModelComparison = (() => {
                             </span>
                           </div>
 
-                          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                          <div className="forecast-priority-detail-grid mt-4 grid gap-2 sm:grid-cols-3">
                             <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
                               <p className="text-[10px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
                                 Rainfall
@@ -7388,6 +7432,919 @@ const activeModelComparison = (() => {
             max-height: 13.5rem !important;
           }
         }
+
+        /* =========================================================
+           FINAL FORECAST RESPONSIVE STABILIZATION
+           Page-local rules only. Global shell responsiveness remains
+           in index.css so Dashboard/Upload/Map are not affected.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .forecast-mobile-compact {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            padding-bottom: 1.25rem !important;
+          }
+
+          /* HERO */
+          .forecast-mobile-compact .forecast-premium-hero {
+            min-height: 0 !important;
+            border-radius: 24px !important;
+            padding: 1rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-premium-hero > .relative.z-10 {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 1rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-premium-hero h1 {
+            margin-top: 1rem !important;
+            max-width: 100% !important;
+            font-size: 1.9rem !important;
+            line-height: 1.04 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .forecast-mobile-compact .forecast-premium-hero h1 + p {
+            display: block !important;
+            margin-top: 0.75rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.82rem !important;
+            line-height: 1.5 !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-actions {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-actions > button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 48px !important;
+            padding: 0.7rem 0.65rem !important;
+            font-size: 0.76rem !important;
+            line-height: 1.2 !important;
+            white-space: normal !important;
+          }
+
+          /* 2 + 1 instead of three cramped hero metrics.
+             The selected-model card gets the full second row. */
+          .forecast-mobile-compact .forecast-hero-metrics {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics > div {
+            min-width: 0 !important;
+            min-height: 98px !important;
+            border-radius: 17px !important;
+            padding: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics > div:nth-child(3) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics .h-10.w-10 {
+            display: flex !important;
+            width: 2rem !important;
+            height: 2rem !important;
+            border-radius: 11px !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics p:first-child {
+            font-size: 0.66rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.07em !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics p:nth-child(2) {
+            margin-top: 0.4rem !important;
+            font-size: 1.15rem !important;
+            line-height: 1.08 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics p:last-child {
+            display: block !important;
+            margin-top: 0.35rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.7rem !important;
+            line-height: 1.25 !important;
+          }
+
+          /* Scenario card remains one full-width control surface. */
+          .forecast-mobile-compact .forecast-scenario-card {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-scenario-card .mt-5.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-scenario-card .mt-5.grid > button {
+            min-height: 48px !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            text-align: left !important;
+            padding: 0.6rem 0.7rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-scenario-card .mt-5.grid > button > span:first-child {
+            flex-direction: row !important;
+          }
+
+          .forecast-mobile-compact .forecast-scenario-card .mt-4.rounded-\[20px\] {
+            display: block !important;
+          }
+
+          /* MAIN SUMMARY STAT CARDS: true 2 x 2 mobile grid */
+          .forecast-mobile-compact > .mobile-field-grid-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card {
+            min-width: 0 !important;
+            min-height: 148px !important;
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card .relative.flex.h-full {
+            gap: 0.8rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card .h-12.w-12 {
+            width: 2.15rem !important;
+            height: 2.15rem !important;
+            border-radius: 13px !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card p:first-child {
+            font-size: 0.68rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.06em !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card h3 {
+            margin-top: 0.45rem !important;
+            font-size: 1.18rem !important;
+            line-height: 1.08 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card h3 + p {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.74rem !important;
+            line-height: 1.28 !important;
+          }
+
+          .forecast-mobile-compact .forecast-stat-card .mt-3.inline-flex {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          /* Status card action is easier to tap across the phone width. */
+          .forecast-mobile-compact > .relative.overflow-hidden.rounded-\[24px\].border button {
+            width: 100% !important;
+            min-height: 44px !important;
+          }
+
+          /* Collapsible section headers */
+          .forecast-mobile-compact section > button.flex.w-full.items-center.justify-between {
+            gap: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact section > button.flex.w-full.items-center.justify-between .h-11.w-11 {
+            width: 2.4rem !important;
+            height: 2.4rem !important;
+            border-radius: 13px !important;
+          }
+
+          /* All simple 4-item metric groups stay 2 x 2. */
+          .forecast-mobile-compact .mobile-field-grid-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-4 > * {
+            min-width: 0 !important;
+          }
+
+          /* Six-item groups were previously 3 columns and were too narrow.
+             Use 2 columns for readable labels and values. */
+          .forecast-mobile-compact .mobile-field-grid-6 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 > div,
+          .forecast-mobile-compact .mobile-field-grid-6 > section {
+            min-width: 0 !important;
+            min-height: 82px !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 p:first-child,
+          .forecast-mobile-compact .mobile-field-grid-6 .text-\[10px\],
+          .forecast-mobile-compact .mobile-field-grid-6 .text-\[11px\] {
+            font-size: 0.68rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 p:nth-child(2),
+          .forecast-mobile-compact .mobile-field-grid-6 .text-xl,
+          .forecast-mobile-compact .mobile-field-grid-6 .text-2xl {
+            font-size: 0.95rem !important;
+            line-height: 1.08 !important;
+          }
+
+          .forecast-mobile-compact .mobile-field-grid-6 p:last-child {
+            -webkit-line-clamp: 2 !important;
+            font-size: 0.7rem !important;
+            line-height: 1.25 !important;
+          }
+
+          /* AI / MODEL SECTION */
+          .forecast-mobile-compact [id="machine-learning-controls"] {
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact [id="machine-learning-controls"] > .flex:first-child > .w-fit {
+            width: 100% !important;
+            text-align: center !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.9rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .relative.mx-auto {
+            width: 6.5rem !important;
+            height: 6.5rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .h-32.w-32 {
+            width: 5rem !important;
+            height: 5rem !important;
+            border-radius: 24px !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero h3 {
+            font-size: 1.45rem !important;
+            line-height: 1.08 !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 > div:last-child {
+            grid-column: 1 / -1 !important;
+          }
+
+          /* Forecast AI conversation: put the avatar above the message so
+             the typewriter text gets the full phone width. */
+          .forecast-mobile-compact .forecast-ai-chat {
+            border-radius: 20px !important;
+            padding: 0.75rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat > .relative.flex.items-start {
+            flex-direction: column !important;
+            gap: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat > .relative.flex.items-start > .relative.-mt-1 {
+            width: 4rem !important;
+            height: 4rem !important;
+            margin: 0 auto !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat > .relative.flex.items-start > .min-w-0.flex-1 {
+            width: 100% !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .inline-flex.rounded-\[14px\] {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .inline-flex.rounded-\[14px\] > button {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 0.55rem !important;
+            font-size: 0.66rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] {
+            min-height: 128px !important;
+            padding: 0.85rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] p {
+            min-height: 94px !important;
+            font-size: 0.82rem !important;
+            line-height: 1.65 !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .mt-3.flex.flex-col.gap-3 {
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .mt-3.flex.flex-col.gap-3 > div:last-child {
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+
+          /* Model comparison stays one card per row. Do not compress its
+             RMSE / MAE / R² trio below readable widths. */
+          .forecast-mobile-compact .mobile-model-comparison-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 > div {
+            padding: 0.48rem 0.35rem !important;
+          }
+
+          /* MULTI-SOURCE FACTORS */
+          .forecast-mobile-compact [id="multi-source-risk-factors"] .mobile-field-grid-6 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          /* FORECAST HORIZONS */
+          .forecast-mobile-compact .forecast-horizon-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-horizon-grid > div {
+            min-width: 0 !important;
+            min-height: 108px !important;
+            border-radius: 16px !important;
+            padding: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-horizon-grid .text-3xl {
+            font-size: 1.35rem !important;
+          }
+
+          /* 3D CHART: fit the entire citywide forecast into the phone.
+             The SVG viewBox handles scaling, so horizontal clipping is not needed. */
+          .forecast-mobile-compact [id="forecast-model"] .forecast-3d-chart-wrap {
+            height: 330px !important;
+            min-height: 330px !important;
+            max-height: 330px !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .forecast-3d-chart-inner {
+            width: 100% !important;
+            min-width: 0 !important;
+            overflow: hidden !important;
+          }
+
+          .forecast-mobile-compact [id="forecast-model"] .forecast-3d-chart-inner svg {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+          }
+
+          /* TOP BARANGAYS */
+          .forecast-mobile-compact [id="top-barangays"] {
+            overflow: visible !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .relative.mt-5.grid.gap-3 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .group.relative.overflow-hidden.rounded-\[28px\] {
+            min-height: 0 !important;
+            padding: 0.8rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .forecast-priority-detail-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .forecast-priority-detail-grid > :last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          /* Recommended actions: full-width controls in normal page flow. */
+          .forecast-mobile-compact [id="recommended-actions"] {
+            position: static !important;
+            overflow: visible !important;
+          }
+
+          .forecast-mobile-compact [id="recommended-actions"] .mobile-field-grid-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          /* SEARCHABLE SELECT */
+          .forecast-mobile-compact .forecast-searchable-menu {
+            max-width: calc(100vw - 2rem) !important;
+            border-radius: 18px !important;
+          }
+
+          .forecast-mobile-compact .forecast-searchable-menu .forecast-custom-scrollbar {
+            max-height: min(42dvh, 18rem) !important;
+          }
+
+          /* SUMMARY MODAL */
+          .forecast-summary-modal {
+            align-items: stretch !important;
+            padding:
+              max(0.6rem, env(safe-area-inset-top))
+              0.6rem
+              max(0.6rem, env(safe-area-inset-bottom)) !important;
+          }
+
+          .forecast-summary-modal-card {
+            width: 100% !important;
+            max-height: calc(100dvh - max(1.2rem, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+            border-radius: 22px !important;
+          }
+
+          .forecast-summary-modal-card > .relative.border-b {
+            padding: 0.85rem !important;
+          }
+
+          .forecast-summary-modal-card > .relative.border-b .flex.items-start.justify-between {
+            gap: 0.65rem !important;
+          }
+
+          .forecast-summary-modal-card > .relative.border-b .h-12.w-12 {
+            width: 2.5rem !important;
+            height: 2.5rem !important;
+            border-radius: 14px !important;
+          }
+
+          .forecast-summary-modal-card h2 {
+            margin-top: 0.65rem !important;
+            font-size: 1.25rem !important;
+            line-height: 1.12 !important;
+          }
+
+          .forecast-summary-modal-card h2 + p {
+            font-size: 0.78rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .forecast-summary-modal-card label.mt-5 {
+            margin-top: 0.75rem !important;
+          }
+
+          .forecast-summary-modal-card .forecast-custom-scrollbar {
+            padding: 0.65rem !important;
+          }
+
+          .forecast-summary-modal-card .group\/summary-row {
+            border-radius: 18px !important;
+            padding: 0.75rem !important;
+          }
+
+          .forecast-summary-modal-card .group\/summary-row .relative.mt-3.grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .forecast-summary-modal-card .group\/summary-row .relative.mt-3.grid > div:last-child {
+            grid-column: 1 / -1 !important;
+          }
+
+          /* Restore comfortable readable body copy after earlier broad rules. */
+          .forecast-mobile-compact .text-sm {
+            font-size: 0.82rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .forecast-mobile-compact .text-xs {
+            font-size: 0.74rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .forecast-mobile-compact .text-\[10px\] {
+            font-size: 0.68rem !important;
+            line-height: 1.22 !important;
+          }
+
+          .forecast-mobile-compact .text-\[11px\] {
+            font-size: 0.72rem !important;
+            line-height: 1.28 !important;
+          }
+        }
+
+        /* Very narrow phones: prioritize readable content over dense grids. */
+        @media (max-width: 374px) {
+          .forecast-mobile-compact .forecast-hero-actions {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact .forecast-hero-metrics > div:nth-child(3) {
+            grid-column: auto !important;
+          }
+
+          .forecast-mobile-compact > .mobile-field-grid-4,
+          .forecast-mobile-compact .mobile-field-grid-4,
+          .forecast-mobile-compact .mobile-field-grid-6 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact .forecast-horizon-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .forecast-priority-detail-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact [id="top-barangays"] .forecast-priority-detail-grid > :last-child:nth-child(odd) {
+            grid-column: auto !important;
+          }
+        }
+
+        /* Tablet portrait / compact laptop:
+           keep page sections stacked until the existing desktop xl breakpoint. */
+        @media (min-width: 640px) and (max-width: 1023px) {
+          .forecast-mobile-compact .forecast-premium-hero > .relative.z-10 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .forecast-mobile-compact .forecast-3d-chart-inner {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .forecast-mobile-compact .mobile-model-comparison-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+        }
+
+
+        /* =========================================================
+           FORECAST AI — WIDER MOBILE WORKSPACE
+           Only affects the expanded AI/model section.
+           ========================================================= */
+        @media (max-width: 639px) {
+          /* Allow this one section to use the otherwise-unused AppShell gutters.
+             The section itself stays inside the physical viewport. */
+          .forecast-mobile-compact {
+            overflow-x: visible !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel {
+            width: calc(100vw - 0.75rem) !important;
+            max-width: none !important;
+            margin-left: calc(50% - 50vw + 0.375rem) !important;
+            margin-right: 0 !important;
+            padding: 0.4rem !important;
+            border-radius: 18px !important;
+          }
+
+          /* Header uses nearly the full panel width. */
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .flex:first-child {
+            padding: 0.35rem 0.3rem 0 !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .flex:first-child h2 {
+            font-size: 1.25rem !important;
+            line-height: 1.1 !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .flex:first-child h2 + p {
+            max-width: none !important;
+            font-size: 0.76rem !important;
+            line-height: 1.4 !important;
+          }
+
+          /* Six summary metrics stay 2 columns, but now have much more real width. */
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .mobile-field-grid-6 {
+            width: 100% !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+            margin-top: 0.7rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .mobile-field-grid-6 > div {
+            min-height: 96px !important;
+            padding: 0.55rem !important;
+            border-radius: 13px !important;
+          }
+
+          /* Do not truncate important values such as the selected model
+             or the chronological train/test methodology. */
+          .forecast-mobile-compact .forecast-ai-wide-panel .mobile-field-grid-6 p.relative.mt-2.truncate {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            overflow-wrap: anywhere !important;
+            font-size: 0.82rem !important;
+            line-height: 1.18 !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel .mobile-field-grid-6 p.relative.mt-1 {
+            font-size: 0.66rem !important;
+            line-height: 1.28 !important;
+          }
+
+          /* Main AI/control split: remove excess spacing around the two big cards. */
+          .forecast-mobile-compact .forecast-ai-wide-panel .mt-5.grid.gap-5 {
+            gap: 0.45rem !important;
+            margin-top: 0.55rem !important;
+          }
+
+          /* Selected-model / conversational AI card gets almost the entire viewport. */
+          .forecast-mobile-compact .forecast-ai-selected-card {
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0.55rem !important;
+            border-radius: 15px !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero {
+            gap: 0.65rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .relative.mx-auto {
+            width: 5.75rem !important;
+            height: 5.75rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .h-32.w-32 {
+            width: 4.5rem !important;
+            height: 4.5rem !important;
+            border-radius: 20px !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero h3 {
+            margin-top: 0.6rem !important;
+            font-size: 1.35rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > div:nth-child(2) > p {
+            max-width: none !important;
+          }
+
+          /* Model version / scenario / horizon = 2 + 1 */
+          .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
+            margin-top: 0.6rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 > div {
+            min-width: 0 !important;
+            min-height: 62px !important;
+            padding: 0.5rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 > div:last-child {
+            grid-column: 1 / -1 !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 p.mt-1.truncate {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          /* RMSE / F1 / selection strength use a compact 3-column strip now
+             that the parent is wider. */
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.32rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 > div {
+            min-width: 0 !important;
+            min-height: 92px !important;
+            padding: 0.5rem !important;
+            border-radius: 13px !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 p:nth-child(2) {
+            font-size: 0.95rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 p:last-child {
+            font-size: 0.6rem !important;
+            line-height: 1.2 !important;
+          }
+
+          /* Conversation shell uses the entire selected-model card width. */
+          .forecast-mobile-compact .forecast-ai-conversation-shell {
+            width: 100% !important;
+            margin-top: 0.55rem !important;
+            padding: 0.45rem !important;
+            border-radius: 14px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-conversation-shell > .relative.flex:first-of-type {
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat {
+            width: 100% !important;
+            margin-top: 0.45rem !important;
+            padding: 0.55rem !important;
+            border-radius: 14px !important;
+          }
+
+          /* Avatar is smaller so the conversation itself gets the visual priority. */
+          .forecast-mobile-compact .forecast-ai-chat > .relative.flex.items-start > .relative.-mt-1 {
+            width: 3.4rem !important;
+            height: 3.4rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] {
+            min-height: 118px !important;
+            padding: 0.7rem !important;
+            border-radius: 14px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] p {
+            min-height: 84px !important;
+            font-size: 0.8rem !important;
+            line-height: 1.55 !important;
+          }
+
+          /* Auto / Manual remains an easy two-button row. */
+          .forecast-mobile-compact .forecast-ai-chat .inline-flex.rounded-\[14px\] {
+            gap: 0.25rem !important;
+            padding: 0.22rem !important;
+            border-radius: 11px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-chat .inline-flex.rounded-\[14px\] > button {
+            min-height: 38px !important;
+            padding: 0.45rem !important;
+          }
+
+          /* Explainable AI control card: compact audit layout that stays readable on phones. */
+          .forecast-mobile-compact .forecast-ai-control-card {
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0.6rem !important;
+            border-radius: 15px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-header {
+            gap: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-header .forecast-ai-control-icon {
+            width: 2.5rem !important;
+            height: 2.5rem !important;
+            border-radius: 13px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-summary {
+            margin-top: 0.6rem !important;
+            padding: 0.6rem !important;
+            border-radius: 13px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-summary .h-10.w-10 {
+            width: 1.9rem !important;
+            height: 1.9rem !important;
+            border-radius: 10px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.4rem !important;
+            margin-top: 0.4rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-metrics > div {
+            min-width: 0 !important;
+            min-height: 92px !important;
+            padding: 0.55rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-metrics > div .h-9.w-9 {
+            width: 1.8rem !important;
+            height: 1.8rem !important;
+            border-radius: 10px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-footer {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.45rem !important;
+            margin-top: 0.5rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-note {
+            margin-top: 0 !important;
+            padding: 0.55rem !important;
+            border-radius: 12px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-footer > button {
+            min-height: 44px !important;
+            margin-top: 0 !important;
+            padding: 0.55rem !important;
+            border-radius: 12px !important;
+          }
+
+          /* Technical AI details and model board get the same wider treatment. */
+          .forecast-mobile-compact .forecast-ai-wide-panel .mt-5.space-y-5 {
+            margin-top: 0.55rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-model-board {
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0.55rem !important;
+            border-radius: 15px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-model-board .mobile-model-comparison-grid {
+            margin-top: 0.6rem !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-model-board .model-board-card {
+            border-radius: 14px !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-model-board .model-board-card > button {
+            padding: 0.55rem !important;
+          }
+
+          /* Keep text readable rather than hiding useful AI details. */
+          .forecast-mobile-compact .forecast-ai-wide-panel .truncate {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            overflow-wrap: anywhere !important;
+          }
+        }
+
+        /* Narrow phones still use the widened AI workspace, but metric strips
+           simplify before their labels become unreadable. */
+        @media (max-width: 374px) {
+          .forecast-mobile-compact .forecast-ai-wide-panel {
+            width: calc(100vw - 0.5rem) !important;
+            margin-left: calc(50% - 50vw + 0.25rem) !important;
+            padding: 0.32rem !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .mobile-field-grid-6 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 > div:last-child {
+            grid-column: 1 / -1 !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-control-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
       `}</style>
 
     </div>

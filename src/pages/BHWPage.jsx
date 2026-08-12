@@ -1094,7 +1094,7 @@ function PremiumPanel({ children, tone = 'blue', className = '' }) {
     <section className={`group relative overflow-hidden rounded-[34px] border bg-gradient-to-br from-white/95 via-white/90 to-slate-50/[0.85] shadow-[0_22px_68px_rgba(15,23,42,0.08)] ring-1 ring-white/80 backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_30px_82px_rgba(15,23,42,0.12)] dark:from-slate-950/95 dark:via-slate-950/90 dark:to-slate-900/80 dark:border-slate-800/80 dark:ring-white/5 ${theme.surface.split(' ')[0]} ${className}`}>
       <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
       <div className={`pointer-events-none absolute -right-24 -top-24 h-60 w-60 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-110 ${theme.glow}`} />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035] dark:[background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.08),transparent_28%)] opacity-70 dark:bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.08),transparent_28%)] dark:opacity-90" />
       <div className="relative z-[1]">{children}</div>
     </section>
   )
@@ -1485,6 +1485,499 @@ function BHWPageStyles() {
         background: linear-gradient(180deg, rgba(56, 189, 248, 0.85), rgba(14, 165, 233, 0.48));
         background-clip: padding-box;
       }
+
+        /* =========================================================
+           FINAL BHW RESPONSIVE STABILIZATION
+           Keeps desktop styling and workflow logic unchanged.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .bhw-mobile-compact {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            border-radius: 22px !important;
+            padding-bottom: 1rem !important;
+          }
+
+          /* HERO */
+          .bhw-mobile-compact .bhw-premium-hero {
+            min-height: 0 !important;
+            border-radius: 24px !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-layout {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 1rem !important;
+            padding: 1rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-premium-hero h1 {
+            margin-top: 1rem !important;
+            max-width: 100% !important;
+            font-size: 1.9rem !important;
+            line-height: 1.04 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .bhw-mobile-compact .bhw-premium-hero h1 + p {
+            display: block !important;
+            margin-top: 0.75rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.82rem !important;
+            line-height: 1.5 !important;
+          }
+
+          .bhw-mobile-compact .bhw-selector-shell {
+            margin-top: 1rem !important;
+            max-width: 100% !important;
+            border-radius: 18px !important;
+            padding: 0.7rem !important;
+          }
+
+          /* Searchable barangay selector */
+          .bhw-mobile-compact .bhw-barangay-selector > button {
+            min-height: 52px !important;
+            border-radius: 16px !important;
+            padding: 0.65rem 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-barangay-selector > button .h-10.w-10 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          .bhw-mobile-compact .bhw-barangay-selector > button .block.text-\[10px\] {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .bhw-mobile-compact .bhw-barangay-selector > button .text-sm {
+            font-size: 0.82rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .bhw-mobile-compact .bhw-barangay-selector > div.absolute {
+            max-height: min(60dvh, 24rem) !important;
+            border-radius: 18px !important;
+            padding: 0.5rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-barangay-scroll {
+            max-height: min(46dvh, 18rem) !important;
+          }
+
+          /* Hero metrics: 2 + 1, not three cramped cards */
+          .bhw-mobile-compact .bhw-hero-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-metrics > div {
+            min-width: 0 !important;
+            min-height: 98px !important;
+            border-radius: 17px !important;
+            padding: 0.7rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-metrics > div:nth-child(3) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-metrics span {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.06em !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-metrics p:nth-child(2) {
+            margin-top: 0.45rem !important;
+            font-size: 1.2rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-metrics p:last-child {
+            display: block !important;
+            margin-top: 0.35rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Risk hero card */
+          .bhw-mobile-compact .bhw-hero-risk-wrap > div {
+            border-radius: 20px !important;
+            padding: 0.85rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap .relative.grid.grid-cols-\[minmax\(0\,1fr\)_auto\] {
+            gap: 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-risk-shield {
+            width: 4.25rem !important;
+            height: 4.25rem !important;
+            border-radius: 20px !important;
+          }
+
+          .bhw-mobile-compact .bhw-risk-shield svg {
+            width: 2rem !important;
+            height: 2rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap .h-24.w-24 {
+            width: 4.75rem !important;
+            height: 4.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap h2 {
+            font-size: 1.55rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap .relative.mt-5.grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap .relative.mt-5.grid > div {
+            min-width: 0 !important;
+            padding: 0.65rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap .relative.mt-5.grid p {
+            overflow-wrap: anywhere !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-risk-wrap a {
+            min-height: 48px !important;
+            margin-top: 0.8rem !important;
+          }
+
+          /* Four summary cards stay 2 x 2 */
+          .bhw-mobile-compact .bhw-summary-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.6rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-summary-metrics article {
+            min-width: 0 !important;
+            min-height: 150px !important;
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-summary-metrics article .h-12.w-12 {
+            width: 2.15rem !important;
+            height: 2.15rem !important;
+            border-radius: 13px !important;
+          }
+
+          .bhw-mobile-compact .bhw-summary-metrics article .text-3xl {
+            font-size: 1.2rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-summary-metrics article p:last-child {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.72rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Boundary workspace */
+          .bhw-mobile-compact .bhw-boundary-panel {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-panel > .flex:first-child {
+            gap: 0.7rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-panel h2 {
+            font-size: 1.25rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-panel h2 + p {
+            font-size: 0.8rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-map {
+            height: clamp(320px, 48dvh, 420px) !important;
+            min-height: 320px !important;
+            border-radius: 18px !important;
+            padding: 0.35rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-map > .relative.h-full {
+            border-radius: 15px !important;
+          }
+
+          /* Top HUD: keep one readable label on phone */
+          .bhw-mobile-compact .bhw-boundary-map .absolute.inset-x-4.top-3 {
+            left: 0.55rem !important;
+            right: 0.55rem !important;
+            min-height: 36px !important;
+            justify-content: center !important;
+            padding: 0.45rem 0.65rem !important;
+            font-size: 0.66rem !important;
+            letter-spacing: 0.08em !important;
+            text-align: center !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-map .absolute.inset-x-4.top-3 > span:last-child {
+            display: none !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-svg > .absolute.left-5 {
+            left: 0.65rem !important;
+            top: 3.8rem !important;
+            padding: 0.35rem 0.55rem !important;
+            font-size: 0.7rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-svg > .absolute.inset-x-0.bottom-0 {
+            padding: 2rem 0.75rem 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-svg > .absolute.inset-x-0.bottom-0 p:first-child {
+            font-size: 0.66rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-svg > .absolute.inset-x-0.bottom-0 p:last-child {
+            font-size: 1rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-side {
+            gap: 0.55rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-side > div,
+          .bhw-mobile-compact .bhw-boundary-side > a {
+            border-radius: 16px !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-side > .grid.grid-cols-2 {
+            gap: 0.5rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-side > .grid.grid-cols-2 > div {
+            min-width: 0 !important;
+            padding: 0.65rem !important;
+          }
+
+          /* Recommended today: full-width list, not 3 tiny columns */
+          .bhw-mobile-compact .bhw-recommended-actions {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.55rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-recommended-actions > div {
+            min-height: 92px !important;
+            border-radius: 17px !important;
+            padding: 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-recommended-actions > div .h-11.w-11 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          .bhw-mobile-compact .bhw-recommended-actions > div p {
+            margin-top: 0.65rem !important;
+            font-size: 0.82rem !important;
+            line-height: 1.35 !important;
+          }
+
+          /* Forecast timeline */
+          .bhw-mobile-compact .bhw-forecast-timeline > div {
+            border-radius: 17px !important;
+            padding: 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.gap-3 {
+            align-items: flex-start !important;
+          }
+
+          .bhw-mobile-compact .bhw-forecast-timeline .h-10.w-10 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm {
+            align-items: flex-start !important;
+            flex-direction: column !important;
+            gap: 0.15rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm > span:first-child {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+
+          .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm > span:last-child {
+            font-size: 0.82rem !important;
+          }
+
+          /* Field update/checklist */
+          .bhw-mobile-compact .bhw-field-update-panel {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-field-update-panel h2 {
+            font-size: 1.25rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .bhw-mobile-compact .bhw-field-update-panel .mt-4.space-y-3 > button {
+            min-height: 64px !important;
+            border-radius: 16px !important;
+            padding: 0.7rem !important;
+            gap: 0.6rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-field-update-panel .mt-4.space-y-3 > button .h-11.w-11 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          .bhw-mobile-compact .bhw-field-update-panel .mt-4.space-y-3 > button .h-8.w-8 {
+            width: 1.8rem !important;
+            height: 1.8rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-field-update-panel textarea {
+            min-height: 120px !important;
+            border-radius: 16px !important;
+            font-size: 0.82rem !important;
+            line-height: 1.45 !important;
+          }
+
+          /* Escalation remains 2 columns on normal phones */
+          .bhw-mobile-compact .bhw-escalation-panel {
+            border-radius: 16px !important;
+            padding: 0.75rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-escalation-panel .mt-3.grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-escalation-panel label {
+            min-width: 0 !important;
+            min-height: 54px !important;
+            align-items: flex-start !important;
+            border-radius: 13px !important;
+            padding: 0.65rem !important;
+            font-size: 0.72rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .bhw-mobile-compact .bhw-submit-actions {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.55rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-submit-actions > * {
+            width: 100% !important;
+            min-height: 50px !important;
+            border-radius: 15px !important;
+            font-size: 0.8rem !important;
+          }
+
+          /* Bottom support links */
+          .bhw-mobile-compact .bhw-support-links {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.6rem !important;
+          }
+
+          .bhw-mobile-compact .bhw-support-links > * {
+            min-height: 118px !important;
+            border-radius: 18px !important;
+            padding: 0.8rem !important;
+          }
+
+          /* Restore readable body type after the earlier broad shrinking rules */
+          .bhw-mobile-compact p {
+            font-size: 0.8rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .bhw-mobile-compact .text-base {
+            font-size: 0.86rem !important;
+            line-height: 1.45 !important;
+          }
+
+          .bhw-mobile-compact .text-sm {
+            font-size: 0.8rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .bhw-mobile-compact .text-xs {
+            font-size: 0.72rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .bhw-mobile-compact .text-\[11px\] {
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .bhw-mobile-compact .text-\[10px\] {
+            font-size: 0.66rem !important;
+            line-height: 1.22 !important;
+          }
+        }
+
+        /* Very small phones: reduce density further before content becomes cramped */
+        @media (max-width: 374px) {
+          .bhw-mobile-compact .bhw-hero-metrics {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .bhw-mobile-compact .bhw-hero-metrics > div:nth-child(3) {
+            grid-column: auto !important;
+          }
+
+          .bhw-mobile-compact .bhw-summary-metrics {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .bhw-mobile-compact .bhw-escalation-panel .mt-3.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-side > .grid.grid-cols-2 {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+        }
+
+        /* Tablets: keep stacked composition until the existing desktop breakpoints */
+        @media (min-width: 640px) and (max-width: 1023px) {
+          .bhw-mobile-compact .bhw-hero-layout {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .bhw-mobile-compact .bhw-boundary-map {
+            height: 560px !important;
+          }
+        }
+
     `}</style>
   )
 }
@@ -1894,17 +2387,17 @@ export default function BHWPage() {
 
   return (
     <div className="bhw-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-7 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
-      <section className="relative isolate overflow-visible rounded-[36px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]">
+      <section className="bhw-premium-hero relative isolate overflow-visible rounded-[36px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <div className={`absolute inset-0 bg-gradient-to-br ${tone.heroSurface}`} />
           <div className={`absolute inset-y-0 right-0 w-[58%] bg-gradient-to-l ${tone.heroBeam}`} />
-          <div className="absolute inset-0 opacity-[0.14] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_26%),radial-gradient(circle_at_80%_30%,rgba(34,211,238,0.10),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.04),transparent_40%)] opacity-90" />
           <div className={`absolute -right-24 -top-28 h-80 w-80 rounded-full ${tone.glow} blur-3xl`} />
           <div className={`absolute -bottom-32 left-10 h-80 w-80 rounded-full ${tone.accentGlow} blur-3xl`} />
           <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
         </div>
 
-        <div className="relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(330px,0.62fr)] lg:items-center lg:p-10 xl:min-h-[550px] xl:p-12">
+        <div className="bhw-hero-layout relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(330px,0.62fr)] lg:items-center lg:p-10 xl:min-h-[550px] xl:p-12">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur-xl">
@@ -1931,7 +2424,7 @@ export default function BHWPage() {
               Review barangay risk, expected cases, focused boundary coverage, field tasks, community advisories, and reporting progress from one coordinated workspace.
             </p>
 
-            <div className="relative z-40 mt-6 max-w-xl rounded-[28px] border border-white/[0.15] bg-slate-950/[0.45] p-4 shadow-[0_18px_46px_rgba(2,6,23,0.34)] backdrop-blur-xl">
+            <div className="bhw-selector-shell relative z-40 mt-6 max-w-xl rounded-[28px] border border-white/[0.15] bg-slate-950/[0.45] p-4 shadow-[0_18px_46px_rgba(2,6,23,0.34)] backdrop-blur-xl">
               {canSelectBarangay ? (
                 <label className="block">
                   <span className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.17em] text-cyan-100/75">
@@ -1961,7 +2454,7 @@ export default function BHWPage() {
               )}
             </div>
 
-            <div className="bhw-mobile-grid-3 mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
+            <div className="bhw-hero-metrics bhw-mobile-grid-3 mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
               {[
                 { label: 'Expected cases', value: formatNumber(predictedCases), helper: 'Cumulative four-horizon forecast', icon: Activity },
                 { label: 'Combined priority score', value: `${score}/100`, helper: '0–100 multi-source decision-support score', icon: ShieldAlert },
@@ -1983,7 +2476,7 @@ export default function BHWPage() {
             </div>
           </div>
 
-          <div className="w-full self-end justify-self-end lg:max-w-[390px]">
+          <div className="bhw-hero-risk-wrap w-full self-end justify-self-end lg:max-w-[390px]">
             <div className={`group/risk-card relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${tone.heroCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
               <div className={`pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full ${tone.glow} blur-3xl`} />
 
@@ -2043,14 +2536,14 @@ export default function BHWPage() {
         </div>
       </section>
 
-      <section className="bhw-mobile-grid-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="bhw-summary-metrics bhw-mobile-grid-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={ShieldAlert} label="Expected cases" value={formatNumber(predictedCases)} helper="Cumulative forecast across the four direct horizons." tone="rose" />
         <MetricCard icon={Activity} label="Combined priority score" value={`${score}/100`} helper="Saved 0–100 multi-source decision-support score." tone="blue" />
         <MetricCard icon={TrendingUp} label="Trend records" value={formatNumber(weeklyTotals.length)} helper="Available historical and projected reporting points." tone="amber" />
         <MetricCard icon={MapPinned} label="City hotspots" value={formatNumber(cityHighRiskCount)} helper="High-risk barangays across the city workspace." tone="sky" />
       </section>
 
-      <PremiumPanel tone="sky" className="p-5 sm:p-6">
+      <PremiumPanel tone="sky" className="bhw-boundary-panel p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <SectionBadge icon={MapPinned} tone="sky">Barangay boundary workspace</SectionBadge>
@@ -2099,7 +2592,7 @@ export default function BHWPage() {
             </div>
           </div>
 
-          <div className="flex h-full flex-col gap-3">
+          <div className="bhw-boundary-side flex h-full flex-col gap-3">
             <div className="relative overflow-hidden rounded-[26px] border border-sky-200/70 bg-gradient-to-br from-sky-50/95 via-white to-blue-50/75 p-5 shadow-[0_16px_40px_rgba(14,165,233,0.10)] dark:border-sky-400/20 dark:from-sky-500/10 dark:via-slate-950 dark:to-blue-500/5">
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-600 via-blue-400 to-cyan-300" />
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Coverage area</p>
@@ -2148,7 +2641,7 @@ export default function BHWPage() {
             <p className="text-sm font-semibold leading-7">{getAction(risk)}</p>
           </div>
 
-          <div className="bhw-mobile-grid-3 mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="bhw-recommended-actions bhw-mobile-grid-3 mt-5 grid gap-3 sm:grid-cols-3">
             {[
               { label: 'Inspect water storage and canals', icon: Droplets, theme: 'sky' },
               { label: 'Coordinate cleanup drive', icon: Home, theme: 'emerald' },
@@ -2196,7 +2689,7 @@ export default function BHWPage() {
             )}
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="bhw-forecast-timeline mt-5 space-y-3">
             {localForecasts.length ? (
               localForecasts.map((row, index) => {
                 const cases = Number(row?.predicted_cases || 0)
@@ -2241,7 +2734,7 @@ export default function BHWPage() {
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.12fr)_minmax(300px,0.88fr)]">
-        <PremiumPanel tone="amber" className="p-6">
+        <PremiumPanel tone="amber" className="bhw-field-update-panel p-6">
           <div className="flex items-start gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-amber-200 bg-amber-50 text-amber-700 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">
               <CheckCircle2 className="h-5 w-5" />
@@ -2308,7 +2801,7 @@ export default function BHWPage() {
             <span className="mt-1 block text-right text-xs font-bold text-brand-muted dark:text-slate-500">{String(fieldUpdate.note || '').length}/1200</span>
           </label>
 
-          <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+          <div className="bhw-escalation-panel mt-4 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
             <p className="text-sm font-black text-brand-text dark:text-white">Escalation details</p>
             <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">Mark only the conditions observed today. Urgent or High Risk submissions are also surfaced to the administrator.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -2344,7 +2837,7 @@ export default function BHWPage() {
             <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold leading-6 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">This is a read-only preview. Only the BHW assigned to this barangay can save or submit its daily field update.</div>
           )}
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="bhw-submit-actions mt-4 grid gap-3 sm:grid-cols-3">
             <button type="button" onClick={saveFieldUpdate} disabled={!canEditFieldUpdate || Boolean(fieldUpdateBusy) || isLoadingFieldUpdate} className={`flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] border px-4 py-3 text-sm font-black transition ${canEditFieldUpdate ? 'border-blue-200 bg-white text-blue-700 shadow-sm hover:-translate-y-0.5 dark:border-blue-500/25 dark:bg-slate-950 dark:text-blue-200' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500'}`}>{fieldUpdateBusy === 'draft' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Save Draft</button>
             <button type="button" onClick={submitToSupervisor} disabled={!canEditFieldUpdate || Boolean(fieldUpdateBusy) || isLoadingFieldUpdate} className={`flex min-h-[52px] items-center justify-center gap-2 rounded-[20px] border px-4 py-3 text-sm font-black transition ${canEditFieldUpdate ? 'border-transparent bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-500 text-white shadow-[0_16px_34px_rgba(37,99,235,0.24)] hover:-translate-y-0.5' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500'}`}>{fieldUpdateBusy === 'submit' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}Submit to Supervisor</button>
             {fieldUpdate.fieldUpdateId && fieldUpdate.status !== 'Draft' ? (
@@ -2355,7 +2848,7 @@ export default function BHWPage() {
           </div>
         </PremiumPanel>
 
-        <div className="grid content-start gap-4">
+        <div className="bhw-support-links grid content-start gap-4">
           <Link to="/map" className="group relative overflow-hidden rounded-[30px] border border-sky-200/70 bg-gradient-to-br from-sky-50/95 via-white to-cyan-50/75 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_26px_62px_rgba(15,23,42,0.14)] dark:border-sky-400/20 dark:from-sky-500/10 dark:via-slate-950 dark:to-cyan-500/5 dark:ring-white/5">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-600 via-cyan-400 to-blue-300" />
             <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-sky-200 bg-white text-sky-700 shadow-sm dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200"><MapPinned className="h-5 w-5" /></div>

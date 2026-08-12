@@ -548,15 +548,15 @@ function SettingsToggle({ enabled, onToggle, icon: Icon, title, description }) {
     <button
       type="button"
       onClick={onToggle}
-      className={`group flex w-full items-center justify-between gap-4 overflow-hidden rounded-[24px] border p-3.5 text-left transition hover:-translate-y-0.5 ${
+      className={`dengue-settings-toggle group flex w-full items-center justify-between gap-4 overflow-hidden rounded-[24px] border p-3.5 text-left transition hover:-translate-y-0.5 ${
         enabled
           ? 'border-sky-300/40 bg-gradient-to-br from-sky-50 via-white to-cyan-50 text-brand-blue shadow-[0_16px_34px_rgba(14,165,233,0.12)] dark:border-sky-400/30 dark:from-sky-500/15 dark:via-slate-950 dark:to-cyan-500/10 dark:text-sky-200'
           : 'border-slate-200 bg-white/90 text-brand-text hover:border-brand-blue/25 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-100 dark:hover:border-blue-500/30'
       }`}
     >
-      <span className="flex min-w-0 items-center gap-3">
+      <span className="dengue-settings-toggle-main flex min-w-0 items-center gap-3">
         <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border transition ${
+          className={`dengue-settings-toggle-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border transition ${
             enabled
               ? 'border-sky-200 bg-white text-brand-blue shadow-sm dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200'
               : 'border-slate-200 bg-slate-50 text-brand-muted group-hover:text-brand-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:group-hover:text-blue-300'
@@ -565,7 +565,7 @@ function SettingsToggle({ enabled, onToggle, icon: Icon, title, description }) {
           <Icon className="h-5 w-5" />
         </span>
 
-        <span className="min-w-0">
+        <span className="dengue-settings-toggle-copy min-w-0">
           <span className="block text-sm font-black">{title}</span>
           <span className="mt-0.5 block text-xs leading-5 text-brand-muted dark:text-slate-400">
             {description}
@@ -574,7 +574,7 @@ function SettingsToggle({ enabled, onToggle, icon: Icon, title, description }) {
       </span>
 
       <span
-        className={`relative h-8 w-[58px] shrink-0 rounded-full border transition ${
+        className={`dengue-settings-toggle-switch relative h-8 w-[58px] shrink-0 rounded-full border transition ${
           enabled
             ? 'border-sky-300 bg-gradient-to-r from-sky-500 to-cyan-300 shadow-[0_0_22px_rgba(14,165,233,0.42)]'
             : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-800'
@@ -618,6 +618,20 @@ function DisplaySettingsPanel({
   )
   const canDecreaseText = textScale > TEXT_SCALE_MIN
   const canIncreaseText = textScale < TEXT_SCALE_MAX
+  const settingsBodyRef = useRef(null)
+
+  useEffect(() => {
+    if (!mobile || !settingsBodyRef.current) return undefined
+
+    const body = settingsBodyRef.current
+    body.scrollTop = 0
+
+    const frame = window.requestAnimationFrame(() => {
+      body.scrollTop = 0
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [mobile])
 
   function handleTextScaleChange(value) {
     const nextValue = Math.round(Number(value))
@@ -651,25 +665,25 @@ function DisplaySettingsPanel({
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      className={`dengue-premium-panel ${mobile ? 'fixed left-3 right-3 top-[72px] z-[9999] max-h-[calc(100vh-5.5rem)] w-auto max-w-none' : 'fixed right-6 top-[92px] z-[9999] max-h-[calc(100vh-7.25rem)] w-[calc(100vw-3rem)] max-w-[470px] xl:right-8'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`}
+      className={`dengue-premium-panel ${mobile ? 'dengue-mobile-floating-panel dengue-mobile-settings-panel fixed left-3 right-3 top-0 z-[9999] w-auto max-w-none' : 'fixed right-6 top-[92px] z-[9999] max-h-[calc(100dvh-7.25rem)] w-[calc(100vw-3rem)] max-w-[470px] xl:right-8'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`}
     >
       <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-sky-300/30 blur-3xl dark:bg-sky-500/[0.15]" />
       <div className="pointer-events-none absolute -bottom-16 left-6 h-44 w-44 rounded-full bg-emerald-300/20 blur-3xl dark:bg-emerald-500/10" />
       <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-sky-400/70 to-transparent" />
 
-      <div className="relative border-b border-slate-100/90 bg-gradient-to-br from-white via-sky-50/90 to-slate-50 px-5 py-4 dark:border-slate-800 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
+      <div className="dengue-settings-panel-header relative border-b border-slate-100/90 bg-gradient-to-br from-white via-sky-50/90 to-slate-50 px-5 py-4 dark:border-slate-800 dark:from-slate-950 dark:via-blue-950/40 dark:to-slate-950">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br from-brand-blue to-sky-500 text-white shadow-[0_16px_32px_rgba(37,95,143,0.26)] ring-1 ring-white/30">
+            <div className="dengue-settings-header-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] bg-gradient-to-br from-brand-blue to-sky-500 text-white shadow-[0_16px_32px_rgba(37,95,143,0.26)] ring-1 ring-white/30">
               <Settings className="h-5 w-5" />
             </div>
 
             <div className="min-w-0">
-              <p className="text-base font-black tracking-tight text-brand-text dark:text-slate-100">
+              <p className="dengue-settings-header-title text-base font-black tracking-tight text-brand-text dark:text-slate-100">
                 Display settings
               </p>
 
-              <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+              <p className="dengue-settings-header-copy mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
                 Accessibility controls for readability, comfort, and reduced visual strain.
               </p>
             </div>
@@ -678,7 +692,7 @@ function DisplaySettingsPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-rose-200 hover:text-rose-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-rose-500/30 dark:hover:text-rose-300"
+            className="dengue-settings-close flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-rose-200 hover:text-rose-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-rose-500/30 dark:hover:text-rose-300"
             aria-label="Close display settings"
           >
             <X className="h-4 w-4" />
@@ -686,15 +700,18 @@ function DisplaySettingsPanel({
         </div>
       </div>
 
-      <div className={mobile ? "dengue-premium-scrollbar relative max-h-[calc(100vh-14rem)] overflow-y-auto p-3" : "dengue-premium-scrollbar relative max-h-[72vh] overflow-y-auto p-4"}>
-        <div className="overflow-hidden rounded-[28px] border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4 shadow-[0_18px_42px_rgba(14,165,233,0.10)] dark:border-sky-500/20 dark:from-sky-500/10 dark:via-slate-950 dark:to-cyan-500/10">
-          <div className="flex items-start justify-between gap-3">
+      <div
+        ref={settingsBodyRef}
+        className={mobile ? "dengue-settings-panel-body dengue-premium-scrollbar relative overflow-y-auto p-3" : "dengue-settings-panel-body dengue-premium-scrollbar relative max-h-[72vh] overflow-y-auto p-4"}
+      >
+        <div className="dengue-settings-text-card overflow-hidden rounded-[28px] border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4 shadow-[0_18px_42px_rgba(14,165,233,0.10)] dark:border-sky-500/20 dark:from-sky-500/10 dark:via-slate-950 dark:to-cyan-500/10">
+          <div className="dengue-settings-text-head flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-sky-200 bg-white text-brand-blue shadow-sm dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200">
+              <div className="dengue-settings-text-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-sky-200 bg-white text-brand-blue shadow-sm dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200">
                 <Type className="h-5 w-5" />
               </div>
 
-              <div>
+              <div className="dengue-settings-text-copy">
                 <p className="text-base font-black text-brand-text dark:text-slate-100">
                   Text size
                 </p>
@@ -705,12 +722,12 @@ function DisplaySettingsPanel({
               </div>
             </div>
 
-            <span className="shrink-0 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-black text-brand-blue shadow-sm dark:border-sky-500/20 dark:bg-slate-900 dark:text-sky-200">
+            <span className="dengue-settings-text-badge shrink-0 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-black text-brand-blue shadow-sm dark:border-sky-500/20 dark:bg-slate-900 dark:text-sky-200">
               {textLabel} · {textScale}%
             </span>
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-inner dark:border-slate-700 dark:bg-slate-950/60">
+          <div className="dengue-settings-slider-card mt-5 rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-inner dark:border-slate-700 dark:bg-slate-950/60">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -757,7 +774,7 @@ function DisplaySettingsPanel({
               </button>
             </div>
 
-            <div className="mt-3 grid grid-cols-4 gap-2 text-center text-[11px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
+            <div className="dengue-settings-scale-labels mt-3 grid grid-cols-4 gap-2 text-center text-[11px] font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-500">
               <span>Small</span>
               <span>Default</span>
               <span>Large</span>
@@ -766,7 +783,7 @@ function DisplaySettingsPanel({
           </div>
         </div>
 
-        <div className="mt-3 grid gap-3">
+        <div className="dengue-settings-toggle-list mt-3 grid gap-3">
           <SettingsToggle
             enabled={comfortableControls}
             onToggle={() => setComfortableControls((current) => !current)}
@@ -807,7 +824,7 @@ function DisplaySettingsPanel({
         <button
           type="button"
           onClick={onReset}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-[24px] border border-slate-200 bg-white/90 px-4 py-3 text-sm font-black text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-950/90 dark:text-slate-300 dark:hover:text-blue-300"
+          className="dengue-settings-reset mt-4 flex w-full items-center justify-center gap-2 rounded-[24px] border border-slate-200 bg-white/90 px-4 py-3 text-sm font-black text-brand-muted shadow-sm transition hover:-translate-y-0.5 hover:border-brand-blue/30 hover:text-brand-blue hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-950/90 dark:text-slate-300 dark:hover:text-blue-300"
         >
           <RotateCcw className="h-4 w-4" />
           Reset display settings
@@ -835,7 +852,7 @@ function NotificationsPanel({
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      className={`dengue-premium-panel ${mobile ? 'fixed left-3 right-3 top-[72px] z-[9999] max-h-[calc(100vh-5.5rem)] w-auto max-w-none' : 'absolute right-0 top-14 z-[9999] w-[calc(100vw-2rem)] max-w-[460px] sm:w-[460px]'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`}
+      className={`dengue-premium-panel ${mobile ? 'dengue-mobile-floating-panel dengue-mobile-notifications-panel fixed left-3 right-3 top-0 z-[9999] w-auto max-w-none' : 'absolute right-0 top-14 z-[9999] w-[calc(100vw-2rem)] max-w-[460px] sm:w-[460px]'} overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_34px_90px_rgba(15,23,42,0.26)] ring-1 ring-slate-200/70 backdrop-blur-2xl dark:border-slate-700/80 dark:bg-slate-950/95 dark:ring-white/10 sm:rounded-[34px]`}
     >
       <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-300/30 blur-3xl dark:bg-blue-500/[0.15]" />
       <div className="pointer-events-none absolute -bottom-16 left-6 h-44 w-44 rounded-full bg-rose-300/[0.15] blur-3xl dark:bg-rose-500/10" />
@@ -881,7 +898,7 @@ function NotificationsPanel({
         )}
       </div>
 
-      <div className={mobile ? "dengue-premium-scrollbar relative max-h-[calc(100vh-18rem)] overflow-y-auto p-3" : "dengue-premium-scrollbar relative max-h-[430px] overflow-y-auto p-3.5"}>
+      <div className={mobile ? "dengue-premium-scrollbar relative max-h-[calc(100dvh-18rem)] overflow-y-auto p-3" : "dengue-premium-scrollbar relative max-h-[430px] overflow-y-auto p-3.5"}>
         {!notificationsEnabled ? (
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-5 text-center dark:border-slate-700 dark:bg-slate-900/80">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[20px] border border-slate-200 bg-white text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
@@ -966,7 +983,7 @@ function NotificationToast({ notification, visible, onClose, onOpen }) {
 
   return (
     <div
-      className={`fixed right-4 top-4 z-[10000] w-[calc(100vw-2rem)] max-w-[420px] transition-all duration-500 sm:right-6 sm:top-6 ${
+      className={`dengue-notification-toast-shell fixed right-4 top-4 z-[10000] w-[calc(100vw-2rem)] max-w-[420px] transition-all duration-500 sm:right-6 sm:top-6 ${
         visible
           ? 'translate-y-0 opacity-100 blur-0'
           : '-translate-y-6 opacity-0 blur-sm pointer-events-none'
@@ -1037,94 +1054,48 @@ function NotificationToast({ notification, visible, onClose, onOpen }) {
   )
 }
 
-function SidebarNavItem({ to, label, Icon, onClick }) {
+function SidebarNavItem({ to, label, Icon, onClick, desktopAccent = false }) {
   return (
     <NavLink
       key={to}
       to={to}
       onClick={onClick}
-      className="block outline-none"
+      className="dengue-sidebar-link block outline-none"
     >
       {({ isActive }) => (
-        <div
-          className={`group/navitem relative rounded-[24px] transition duration-300 ${
-            isActive
-              ? 'p-[2px]'
-              : 'p-[2px] hover:translate-x-0.5'
-          }`}
-        >
-          {isActive && (
-            <span className="pointer-events-none absolute -left-1 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-cyan-400" />
-          )}
-
+        <div className="group/navitem dengue-nav-item relative rounded-[22px] p-[2px] transition duration-300">
           <div
-            className={`relative z-10 flex items-center gap-3 overflow-hidden rounded-[22px] px-4 py-3 text-sm font-black transition duration-300 ${
+            className={`dengue-nav-item-inner relative flex items-center gap-3 overflow-hidden rounded-[20px] px-4 py-3 text-sm font-black transition duration-300 ${
               isActive
-                ? '!text-black'
+                ? 'bg-[#f8fafc] text-[#0f172a] shadow-[0_10px_26px_rgba(2,6,23,0.18)]'
                 : 'text-white/75 hover:bg-white/10 hover:text-white'
             }`}
-            style={
-              isActive
-                ? {
-                    backgroundColor: '#ffffff',
-                    backgroundImage: 'none',
-                    boxShadow: 'none',
-                    filter: 'none',
-                  }
-                : undefined
-            }
           >
-            {isActive && (
-              <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-cyan-400" />
-            )}
-
             <span
-              className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border transition duration-300 ${
+              className={`dengue-nav-icon relative flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border transition duration-300 ${
                 isActive
-                  ? 'border-cyan-200 text-sky-700'
+                  ? 'border-[#bae6fd] bg-[#e0f2fe] text-[#0369a1]'
                   : 'border-white/10 bg-white/10 text-white/80 group-hover/navitem:border-white/20 group-hover/navitem:bg-white/15 group-hover/navitem:text-white'
               }`}
-              style={
-                isActive
-                  ? {
-                      backgroundColor: '#ffffff',
-                      backgroundImage: 'none',
-                      boxShadow: 'none',
-                    }
-                  : undefined
-              }
             >
-              <Icon size={18} strokeWidth={isActive ? 2.4 : 2} />
+              <Icon size={18} strokeWidth={isActive ? 2.35 : 2} />
             </span>
 
             <span
-              className={`relative z-10 min-w-0 flex-1 truncate ${
-                isActive ? '!text-black' : ''
+              className={`dengue-nav-label relative z-10 min-w-0 flex-1 truncate ${
+                isActive ? 'text-[#0f172a]' : ''
               }`}
-              style={
-                isActive
-                  ? {
-                      color: '#000000',
-                      textShadow: 'none',
-                      filter: 'none',
-                    }
-                  : undefined
-              }
             >
               {label}
             </span>
 
-            {isActive && (
+            {isActive && desktopAccent ? (
               <span
-                className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-cyan-300"
-                style={{
-                  backgroundColor: '#ffffff',
-                  boxShadow: 'none',
-                }}
-              >
-                <span className="h-2 w-2 rounded-full bg-cyan-500" />
-              </span>
-            )}
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-8 w-2 -translate-y-1/2 rounded-full bg-gradient-to-b from-cyan-300 via-sky-400 to-cyan-500 shadow-[0_0_16px_rgba(34,211,238,0.78)]"
+              />
+            ) : null}
+
           </div>
         </div>
       )}
@@ -1159,6 +1130,11 @@ export default function AppShell({ children }) {
   const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [isCompactViewport, setIsCompactViewport] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(max-width: 1279px)').matches
+      : false
+  )
   const [readNotificationIds, setReadNotificationIds] = useState(getInitialReadNotifications)
   const [backendNotifications, setBackendNotifications] = useState([])
   const [backendNotificationError, setBackendNotificationError] = useState('')
@@ -1340,7 +1316,6 @@ export default function AppShell({ children }) {
     backendForecastResult?.updated_at,
     backendIntegrationStatus?.loaded_source_count,
     backendIntegrationResult?.integration_run_id,
-    location.pathname,
   ])
 
   const systemStatus = hasDengueData
@@ -1691,54 +1666,6 @@ export default function AppShell({ children }) {
     }
 
     settingsStyle.textContent = `
-      @media (max-width: 1023px) {
-        .dengue-mobile-topbar {
-          position: fixed !important;
-          top: calc(env(safe-area-inset-top, 0px) + 0.75rem) !important;
-          left: 0.75rem !important;
-          right: 0.75rem !important;
-          z-index: 8500 !important;
-          transform: translateZ(0);
-          -webkit-transform: translateZ(0);
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
-          will-change: transform;
-          isolation: isolate;
-        }
-      }
-
-      @media (min-width: 640px) and (max-width: 1023px) {
-        .dengue-mobile-topbar {
-          left: 1.25rem !important;
-          right: 1.25rem !important;
-        }
-      }
-
-      @media (min-width: 1024px) {
-        .dengue-mobile-topbar {
-          display: none !important;
-        }
-      }
-
-      .dengue-layout-shell {
-        max-width: var(--dengue-layout-max-width, 1540px);
-      }
-
-      html.dengue-wide-layout .dengue-layout-shell {
-        width: 100%;
-      }
-
-      .dengue-desktop-sidebar {
-        width: var(--dengue-sidebar-width, 292px);
-      }
-
-      @media (min-width: 1024px) {
-        .dengue-desktop-sidebar {
-          position: sticky !important;
-          top: 1.25rem !important;
-          align-self: flex-start !important;
-        }
-      }
 
       .dengue-scaled-content {
         --dengue-scale: var(--dengue-content-scale, 1);
@@ -2079,6 +2006,43 @@ export default function AppShell({ children }) {
     setToastVisible(false)
   }, [location.pathname])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const mediaQuery = window.matchMedia('(max-width: 1279px)')
+
+    const handleViewportChange = (event) => {
+      setIsCompactViewport(event.matches)
+    }
+
+    setIsCompactViewport(mediaQuery.matches)
+    mediaQuery.addEventListener?.('change', handleViewportChange)
+
+    return () => {
+      mediaQuery.removeEventListener?.('change', handleViewportChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const shouldLockPageScroll =
+      mobileNavOpen || (isCompactViewport && (settingsOpen || notificationsOpen))
+
+    if (!shouldLockPageScroll) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    const previousOverscrollBehavior = document.body.style.overscrollBehavior
+
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'none'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.body.style.overscrollBehavior = previousOverscrollBehavior
+    }
+  }, [mobileNavOpen, settingsOpen, notificationsOpen, isCompactViewport])
+
   function handleThemeToggle() {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
   }
@@ -2234,7 +2198,7 @@ export default function AppShell({ children }) {
 }
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_8%_0%,rgba(56,189,248,0.08),transparent_30%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.055),transparent_26%),linear-gradient(180deg,#dbe5ea_0%,#e5ecef_42%,#dce5e9_100%)] px-3 pb-3 pt-[5.35rem] text-brand-text transition-colors duration-300 dark:bg-[radial-gradient(circle_at_8%_0%,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,#020617_0%,#07111f_48%,#020617_100%)] dark:text-slate-100 sm:px-5 sm:pb-5 sm:pt-[5.6rem] lg:px-6 lg:py-5">
+    <div className="dengue-app-shell relative min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_8%_0%,rgba(56,189,248,0.08),transparent_30%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.055),transparent_26%),linear-gradient(180deg,#dbe5ea_0%,#e5ecef_42%,#dce5e9_100%)] px-3 pb-3 pt-[5.35rem] text-brand-text transition-colors duration-300 dark:bg-[radial-gradient(circle_at_8%_0%,rgba(14,165,233,0.12),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,#020617_0%,#07111f_48%,#020617_100%)] dark:text-slate-100 sm:px-5 sm:pb-5 sm:pt-[5.6rem] xl:px-6 xl:py-5">
       <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:44px_44px] dark:opacity-[0.055] dark:[background-image:linear-gradient(rgba(255,255,255,0.35)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.35)_1px,transparent_1px)]" />
       <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-200/25 blur-3xl dark:bg-cyan-500/10" />
       <div className="pointer-events-none absolute -right-32 top-40 h-96 w-96 rounded-full bg-emerald-200/20 blur-3xl dark:bg-emerald-500/10" />
@@ -2268,7 +2232,9 @@ export default function AppShell({ children }) {
       />
 
       <div
-        className="dengue-mobile-topbar fixed left-3 right-3 z-[8500] overflow-visible rounded-[22px] border border-white/20 bg-[#071525]/95 px-2.5 py-2 shadow-[0_20px_50px_rgba(2,6,23,0.38)] ring-1 ring-cyan-300/10 backdrop-blur-2xl transition-colors duration-300 sm:left-5 sm:right-5 lg:hidden"
+        className={`dengue-mobile-topbar fixed left-3 right-3 z-[8500] overflow-visible rounded-[22px] border border-white/20 bg-[#071525]/95 px-2.5 py-2 shadow-[0_20px_50px_rgba(2,6,23,0.38)] ring-1 ring-cyan-300/10 backdrop-blur-2xl transition-all duration-200 sm:left-5 sm:right-5 xl:hidden ${
+          mobileNavOpen ? 'pointer-events-none invisible opacity-0' : 'visible opacity-100'
+        }`}
         style={{
           top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
           WebkitTransform: 'translateZ(0)',
@@ -2293,7 +2259,7 @@ export default function AppShell({ children }) {
             </p>
 
             <p className="truncate text-[11px] font-bold leading-4 text-cyan-100/60">
-              Butuan City · {systemStatus.badge}
+              Butuan City · {systemStatus.badge} · {dataRange}
             </p>
           </div>
 
@@ -2342,8 +2308,8 @@ export default function AppShell({ children }) {
         </div>
       </div>
 
-      {settingsOpen && (
-        <div className="fixed inset-0 z-[9000] lg:hidden" role="dialog" aria-modal="true">
+      {settingsOpen && isCompactViewport && (
+        <div className="fixed inset-0 z-[9000] xl:hidden" role="dialog" aria-modal="true">
           <button
             type="button"
             aria-label="Close display settings"
@@ -2374,8 +2340,8 @@ export default function AppShell({ children }) {
         </div>
       )}
 
-      {notificationsOpen && (
-        <div className="fixed inset-0 z-[9000] lg:hidden" role="dialog" aria-modal="true">
+      {notificationsOpen && isCompactViewport && (
+        <div className="fixed inset-0 z-[9000] xl:hidden" role="dialog" aria-modal="true">
           <button
             type="button"
             aria-label="Close notifications"
@@ -2404,25 +2370,25 @@ export default function AppShell({ children }) {
         <button
           type="button"
           aria-label="Close navigation overlay"
-          className="fixed inset-0 z-[90] bg-slate-950/60 backdrop-blur-md lg:hidden"
+          className="dengue-mobile-nav-overlay fixed inset-0 z-[8600] bg-slate-950/60 backdrop-blur-md xl:hidden"
           onClick={() => setMobileNavOpen(false)}
         />
       )}
 
       <aside
-        className={`dengue-mobile-drawer fixed left-0 top-0 z-[100] flex h-full w-[82%] max-w-[320px] transform flex-col overflow-y-auto border-r border-white/10 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_30%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_30px_100px_rgba(2,6,23,0.62)] transition-transform duration-300 dengue-premium-scrollbar lg:hidden ${
+        className={`dengue-mobile-drawer fixed left-0 top-0 z-[10020] flex h-full w-[88%] max-w-[340px] transform flex-col overflow-y-auto border-r border-white/10 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_30%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_30px_100px_rgba(2,6,23,0.62)] transition-transform duration-300 dengue-premium-scrollbar xl:hidden ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 left-0 h-60 w-60 rounded-full bg-emerald-400/[0.15] blur-3xl" />
 
-        <div className="relative mb-8 flex shrink-0 items-center justify-between gap-3">
+        <div className="dengue-mobile-drawer-header relative mb-8 flex shrink-0 items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img
               src={dengueLogo}
               alt="Dengue Intelligence"
-              className="h-[72px] w-[72px] shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(2,6,23,0.30)]"
+              className="dengue-mobile-drawer-logo h-[72px] w-[72px] shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(2,6,23,0.30)]"
             />
 
             <div>
@@ -2444,7 +2410,7 @@ export default function AppShell({ children }) {
           </button>
         </div>
 
-        <nav className="relative space-y-0.5 pr-1 overflow-hidden">
+        <nav className="dengue-mobile-drawer-nav relative shrink-0 space-y-0.5 pr-1">
           {filteredNavItems.map(({ to, label, icon: Icon }) => (
             <SidebarNavItem
               key={to}
@@ -2456,7 +2422,7 @@ export default function AppShell({ children }) {
           ))}
         </nav>
 
-        <div className="relative mt-auto shrink-0 space-y-3 pt-8">
+        <div className="dengue-mobile-drawer-footer relative mt-auto shrink-0 space-y-3 pt-8">
           <ThemeModeSwitch isDark={isDark} onToggle={handleThemeToggle} />
 
           <button
@@ -2481,7 +2447,7 @@ export default function AppShell({ children }) {
           <button
   type="button"
   onClick={handleOpenActionCommandCenter}
-  className="group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
+  className="dengue-mobile-quick-action group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
 >
   <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-sky-300/20 blur-2xl" />
 
@@ -2508,8 +2474,8 @@ export default function AppShell({ children }) {
         </div>
       </aside>
 
-      <div className="dengue-layout-shell relative mx-auto flex w-full min-h-[calc(100vh-5.5rem)] items-start gap-5 sm:min-h-[calc(100vh-6rem)] lg:min-h-[calc(100vh-2.5rem)]">
-        <aside className="dengue-desktop-sidebar sticky top-5 z-[60] hidden h-[calc(100vh-2.5rem)] shrink-0 self-start flex-col overflow-hidden rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_22%_0%,rgba(56,189,248,0.24),transparent_27%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_28px_86px_rgba(2,6,23,0.42)] ring-1 ring-cyan-300/10 transition-colors duration-300 lg:flex">
+      <div className="dengue-layout-shell relative mx-auto flex w-full min-h-[calc(100dvh-5.5rem)] items-start gap-5 sm:min-h-[calc(100dvh-6rem)] xl:min-h-[calc(100dvh-2.5rem)]">
+        <aside className="dengue-desktop-sidebar sticky top-5 z-[60] hidden h-[calc(100dvh-2.5rem)] shrink-0 self-start flex-col overflow-hidden rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_22%_0%,rgba(56,189,248,0.24),transparent_27%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_28px_86px_rgba(2,6,23,0.42)] ring-1 ring-cyan-300/10 transition-colors duration-300 xl:flex">
           <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-400/20 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 left-0 h-64 w-64 rounded-full bg-emerald-400/[0.15] blur-3xl" />
           <div className="pointer-events-none absolute inset-0 opacity-[0.055] [background-image:linear-gradient(rgba(255,255,255,0.45)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.45)_1px,transparent_1px)] [background-size:36px_36px]" />
@@ -2556,7 +2522,7 @@ export default function AppShell({ children }) {
             </p>
 
             {filteredNavItems.map(({ to, label, icon: Icon }) => (
-              <SidebarNavItem key={to} to={to} label={label} Icon={Icon} />
+              <SidebarNavItem key={to} to={to} label={label} Icon={Icon} desktopAccent />
             ))}
           </nav>
 
@@ -2653,7 +2619,7 @@ export default function AppShell({ children }) {
                       <Settings size={18} />
                     </button>
 
-                    {settingsOpen && typeof document !== 'undefined' && createPortal(
+                    {settingsOpen && !isCompactViewport && typeof document !== 'undefined' && createPortal(
                       <DisplaySettingsPanel
                         panelRef={settingsPanelRef}
                         textScale={textScale}
@@ -2746,55 +2712,6 @@ export default function AppShell({ children }) {
                 </div>
               </div>
             </header>
-
-            <section className="dengue-mobile-page-summary relative z-[40] mb-2 overflow-hidden rounded-[20px] border border-white/10 bg-[radial-gradient(circle_at_88%_0%,rgba(56,189,248,0.15),transparent_30%),linear-gradient(135deg,#06111f_0%,#0a2037_100%)] p-3 text-white shadow-[0_16px_40px_rgba(2,6,23,0.28)] ring-1 ring-cyan-300/10 lg:hidden">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-cyan-300/10 blur-2xl" />
-              <div className="relative flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
-                    <CurrentPageIcon size={17} />
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100">
-                        Butuan City
-                      </span>
-                      <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${systemStatus.badgeStyle}`}>
-                        {systemStatus.label}
-                      </span>
-                    </div>
-
-                    <h1 className="truncate text-lg font-black tracking-tight text-white">
-                      {title}
-                    </h1>
-
-                    <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-5 text-slate-300">
-                      {workspaceLabel}
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  role="status"
-                  className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] px-2.5 py-2 text-slate-200 shadow-sm"
-                  aria-label={`Dataset range: ${dataRange}`}
-                  title={`Dataset range: ${dataRange}`}
-                >
-                  <CalendarDays size={14} className="shrink-0 text-cyan-200" />
-
-                  <span className="min-w-0 leading-tight">
-                    <span className="block text-[8px] font-black uppercase tracking-[0.12em] text-white/45">
-                      Range
-                    </span>
-
-                    <span className="mt-0.5 block max-w-[86px] truncate text-xs font-black text-slate-100">
-                      {dataRange}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </section>
 
             <div
               className="dengue-scaled-content"

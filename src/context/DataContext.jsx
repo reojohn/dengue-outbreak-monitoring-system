@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { computeDecisionSupport, computeMultiSourceRisk } from '../utils/analytics'
 import { getAuthSession } from '../utils/auth'
 import {
@@ -10,6 +10,8 @@ import {
   getLatestSavedBoundaryGeoJson,
   getLatestSavedForecast,
   getSharedSystemStatus,
+  getLatestModelMetrics as getLatestModelMetricsApi,
+  getGeospatialHotspots as getGeospatialHotspotsApi,
   resetBackendIntegrationWorkspace,
   getSavedWorkspaceState,
   saveWorkspaceState,
@@ -1662,6 +1664,48 @@ export function DataProvider({ children }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false)
 
+  // Small session-only caches used by Forecast/Map/Reports/Upload. These stay
+  // alive while the user navigates between routes, so reopening a page does
+  // not need to wait for the same Supabase-backed metadata again.
+  const [latestUploadDatabaseStatus, setLatestUploadDatabaseStatus] = useState(null)
+  const [cachedModelMetrics, setCachedModelMetrics] = useState(null)
+  const [cachedModelMetricsForecastKey, setCachedModelMetricsForecastKey] = useState('')
+  const [cachedHotspotResult, setCachedHotspotResult] = useState(null)
+  const [cachedHotspotForecastKey, setCachedHotspotForecastKey] = useState('')
+
+  const workspaceRef = useRef(workspace)
+  const modelMetricsRequestRef = useRef(null)
+  const hotspotRequestRef = useRef(null)
+  const boundaryRequestRef = useRef(null)
+  const modelMetricsCacheRef = useRef({ forecastKey: '', value: null })
+  const hotspotCacheRef = useRef({ forecastKey: '', value: null })
+
+  workspaceRef.current = workspace
+
+  function getCurrentForecastCacheKey() {
+    const forecast = workspaceRef.current?.backendForecastResult || null
+
+    return String(
+      forecast?.database_forecast_run_id ||
+        forecast?.forecast_run?.forecast_run_id ||
+        forecast?.forecast_run_id ||
+        forecast?.forecast_run?.generated_at ||
+        forecast?.updated_at ||
+        forecast?.generated_at ||
+        'no-forecast'
+    )
+  }
+
+  const currentForecastCacheKey = getCurrentForecastCacheKey()
+  const latestModelMetrics =
+    cachedModelMetricsForecastKey === currentForecastCacheKey
+      ? cachedModelMetrics
+      : null
+  const geospatialHotspotResult =
+    cachedHotspotForecastKey === currentForecastCacheKey
+      ? cachedHotspotResult
+      : null
+
   useEffect(() => {
     let cancelled = false
 
@@ -1874,6 +1918,16 @@ export function DataProvider({ children }) {
     // authoritative metadata/forecast/boundary payloads.
     localStorage.removeItem(STORAGE_KEY)
     setWorkspace(normalizeWorkspace(emptyWorkspace))
+    setLatestUploadDatabaseStatus(null)
+    setCachedModelMetrics(null)
+    setCachedModelMetricsForecastKey('')
+    setCachedHotspotResult(null)
+    setCachedHotspotForecastKey('')
+    modelMetricsRequestRef.current = null
+    hotspotRequestRef.current = null
+    boundaryRequestRef.current = null
+    modelMetricsCacheRef.current = { forecastKey: '', value: null }
+    hotspotCacheRef.current = { forecastKey: '', value: null }
   }
 
   function clearWorkspace() {
@@ -1883,9 +1937,14 @@ export function DataProvider({ children }) {
     resetLocalWorkspaceSession()
   }
 
+  function cacheLatestUploadDatabaseStatus(status = null) {
+    setLatestUploadDatabaseStatus(status || null)
+  }
+
   async function loadLatestUploadDatabaseStatus({ silent = false, includePreview = true } = {}) {
     try {
       const result = await getUploadDatabaseStatus()
+      cacheLatestUploadDatabaseStatus(result)
       const uploads = result?.uploads || {}
       const requiredTypes = Array.isArray(result?.required_types)
         ? result.required_types
@@ -2204,63 +2263,238 @@ export function DataProvider({ children }) {
     }
   }
 
-  async function loadLatestSavedBoundaryGeoJson({ silent = false } = {}) {
-    try {
-      const result = await getLatestSavedBoundaryGeoJson()
-
-      if (!result?.has_saved_boundary) {
-        return null
-      }
-
-      const boundaryGeoJson = result.boundary_geojson || {
-        type: 'FeatureCollection',
-        features: [],
-      }
-
-      const features = Array.isArray(boundaryGeoJson.features)
-        ? boundaryGeoJson.features
+  async function loadLatestSavedBoundaryGeoJson({ silent = false, force = false } = {}) {
+    if (!force) {
+      const existingBoundary = getBoundaryGeoJson(
+        workspaceRef.current?.boundaryRecords || []
+      )
+      const existingFeatures = Array.isArray(existingBoundary?.features)
+        ? existingBoundary.features
         : []
 
-      if (!features.length) {
-        return null
+      if (existingFeatures.length > 0) {
+        return {
+          has_saved_boundary: true,
+          boundary_geojson: existingBoundary,
+          feature_count: existingFeatures.length,
+          memoryCached: true,
+        }
       }
 
-      const uploadedName =
-        result.upload?.original_filename ||
-        features[0]?.properties?.source_filename ||
-        'latest_saved_boundary_geojson'
-
-      updateWorkspace((current) => ({
-        ...current,
-        boundaryRecords: [boundaryGeoJson],
-        sourceStatus: normalizeSourceStatus({
-          ...(current.sourceStatus || {}),
-          boundary: normalizeDatabaseUploadStatus(
-            result.upload || {},
-            {
-              ...(current.sourceStatus?.boundary || {}),
-              uploadedName,
-              badge: 'Saved Online',
-              recordCount: Number(result.feature_count || features.length),
-              validCount: Number(result.feature_count || features.length),
-              invalidCount: Number(current.sourceStatus?.boundary?.invalidCount || 0),
-            },
-            'boundary'
-          ),
-        }),
-      }))
-
-      return result
-    } catch (error) {
-      if (!silent) {
-        addActivityLog(
-          'Saved boundary map unavailable',
-          error?.message || 'The frontend could not load the latest saved barangay boundary map.'
-        )
+      if (boundaryRequestRef.current) {
+        return boundaryRequestRef.current
       }
-
-      return null
     }
+
+    let requestPromise = null
+
+    requestPromise = (async () => {
+      try {
+        const result = await getLatestSavedBoundaryGeoJson()
+
+        if (!result?.has_saved_boundary) {
+          return null
+        }
+
+        const boundaryGeoJson = result.boundary_geojson || {
+          type: 'FeatureCollection',
+          features: [],
+        }
+
+        const features = Array.isArray(boundaryGeoJson.features)
+          ? boundaryGeoJson.features
+          : []
+
+        if (!features.length) {
+          return null
+        }
+
+        const uploadedName =
+          result.upload?.original_filename ||
+          features[0]?.properties?.source_filename ||
+          'latest_saved_boundary_geojson'
+
+        updateWorkspace((current) => ({
+          ...current,
+          boundaryRecords: [boundaryGeoJson],
+          sourceStatus: normalizeSourceStatus({
+            ...(current.sourceStatus || {}),
+            boundary: normalizeDatabaseUploadStatus(
+              result.upload || {},
+              {
+                ...(current.sourceStatus?.boundary || {}),
+                uploadedName,
+                badge: 'Saved Online',
+                recordCount: Number(result.feature_count || features.length),
+                validCount: Number(result.feature_count || features.length),
+                invalidCount: Number(current.sourceStatus?.boundary?.invalidCount || 0),
+              },
+              'boundary'
+            ),
+          }),
+        }))
+
+        return result
+      } catch (error) {
+        if (!silent) {
+          addActivityLog(
+            'Saved boundary map unavailable',
+            error?.message || 'The frontend could not load the latest saved barangay boundary map.'
+          )
+        }
+
+        return null
+      } finally {
+        if (boundaryRequestRef.current === requestPromise) {
+          boundaryRequestRef.current = null
+        }
+      }
+    })()
+
+    boundaryRequestRef.current = requestPromise
+    return requestPromise
+  }
+
+  async function loadLatestModelMetricsCached({ silent = true, force = false } = {}) {
+    const forecastKey = getCurrentForecastCacheKey()
+    const cached = modelMetricsCacheRef.current
+
+    if (!force && cached.forecastKey === forecastKey && cached.value) {
+      return cached.value
+    }
+
+    if (
+      !force &&
+      modelMetricsRequestRef.current?.forecastKey === forecastKey &&
+      modelMetricsRequestRef.current?.promise
+    ) {
+      return modelMetricsRequestRef.current.promise
+    }
+
+    let requestPromise = null
+
+    requestPromise = (async () => {
+      try {
+        const result = await getLatestModelMetricsApi()
+        const normalized = result?.has_metrics ? result : null
+
+        modelMetricsCacheRef.current = {
+          forecastKey,
+          value: normalized,
+        }
+        setCachedModelMetrics(normalized)
+        setCachedModelMetricsForecastKey(forecastKey)
+
+        return normalized
+      } catch (error) {
+        if (!silent) {
+          addActivityLog(
+            'Model metrics unavailable',
+            error?.message || 'The latest model metrics could not be loaded.'
+          )
+        }
+        return null
+      } finally {
+        if (modelMetricsRequestRef.current?.promise === requestPromise) {
+          modelMetricsRequestRef.current = null
+        }
+      }
+    })()
+
+    modelMetricsRequestRef.current = { forecastKey, promise: requestPromise }
+    return requestPromise
+  }
+
+  async function loadGeospatialHotspotsCached({
+    silent = true,
+    force = false,
+    forceRefresh = false,
+    cachedOnly = false,
+  } = {}) {
+    const forecastKey = getCurrentForecastCacheKey()
+    const cached = hotspotCacheRef.current
+
+    if (!force && cached.forecastKey === forecastKey && cached.value) {
+      return cached.value
+    }
+
+    if (
+      !force &&
+      hotspotRequestRef.current?.forecastKey === forecastKey &&
+      hotspotRequestRef.current?.promise
+    ) {
+      return hotspotRequestRef.current.promise
+    }
+
+    let requestPromise = null
+
+    requestPromise = (async () => {
+      try {
+        const result = await getGeospatialHotspotsApi({
+          forceRefresh,
+          cachedOnly,
+        })
+
+        hotspotCacheRef.current = {
+          forecastKey,
+          value: result || null,
+        }
+        setCachedHotspotResult(result || null)
+        setCachedHotspotForecastKey(forecastKey)
+
+        return result || null
+      } catch (error) {
+        if (!silent) {
+          addActivityLog(
+            'Hotspot summary unavailable',
+            error?.message || 'The latest hotspot summary could not be loaded.'
+          )
+        }
+        return null
+      } finally {
+        if (hotspotRequestRef.current?.promise === requestPromise) {
+          hotspotRequestRef.current = null
+        }
+      }
+    })()
+
+    hotspotRequestRef.current = { forecastKey, promise: requestPromise }
+    return requestPromise
+  }
+
+  function warmNavigationCache({ role: requestedRole = '' } = {}) {
+    const session = getAuthSession()
+    const role = String(requestedRole || session?.role || '').toLowerCase()
+
+    if (!role) return Promise.resolve([])
+
+    const tasks = []
+    const hasPublishedForecast = getCurrentForecastCacheKey() !== 'no-forecast'
+
+    // Model metadata is tiny and used by both Forecast and Reports. Avoid the
+    // request entirely when there is no published forecast yet.
+    if (hasPublishedForecast && ['cho', 'supervisor', 'admin'].includes(role)) {
+      tasks.push(loadLatestModelMetricsCached({ silent: true }))
+    }
+
+    // Load the 86-barangay boundary once per browser session so Map, Reports,
+    // and BHW can reuse it immediately instead of each page starting its own
+    // Supabase-backed request on first open.
+    if (['cho', 'supervisor', 'bhw', 'admin', 'viewer'].includes(role)) {
+      tasks.push(loadLatestSavedBoundaryGeoJson({ silent: true }))
+    }
+
+    // Hotspot rows are also shared by Map and Reports. The backend already
+    // handles its own persisted/cached computation; this simply keeps the
+    // returned 86-row result in browser memory for route changes.
+    if (
+      hasPublishedForecast &&
+      ['cho', 'supervisor', 'bhw', 'admin', 'viewer'].includes(role)
+    ) {
+      tasks.push(loadGeospatialHotspotsCached({ silent: true }))
+    }
+
+    return Promise.allSettled(tasks)
   }
 
   async function refreshAuthenticatedWorkspace({ silent = true } = {}) {
@@ -2361,7 +2595,13 @@ export function DataProvider({ children }) {
     // When the app is opened while already signed in, restore only the small
     // pieces of persisted state needed by the dashboard and workflow status.
     // Data Upload fetches its preview rows lazily when that page is opened.
-    refreshAuthenticatedWorkspace({ silent: true })
+    refreshAuthenticatedWorkspace({ silent: true }).finally(() => {
+      // Do not block the current page. Warm shared route data in the background
+      // so later navigation can render from memory immediately.
+      window.setTimeout(() => {
+        warmNavigationCache().catch(() => {})
+      }, 0)
+    })
   }, [workspaceHydrated])
 
   const riskRows = useMemo(() => {
@@ -2431,6 +2671,12 @@ export function DataProvider({ children }) {
     dashboardStats,
     integrationReadiness,
 
+    // Session-only navigation caches. Pages can render these immediately on
+    // remount instead of showing a loading state for data already fetched.
+    latestUploadDatabaseStatus,
+    latestModelMetrics,
+    geospatialHotspotResult,
+
     updateWorkspace,
     addActivityLog,
     clearWorkspace,
@@ -2439,12 +2685,16 @@ export function DataProvider({ children }) {
     clearMockDengueData,
 
     loadLatestUploadDatabaseStatus,
+    cacheLatestUploadDatabaseStatus,
     loadSharedSystemStatus,
     syncBackendIntegrationStatus,
     buildBackendIntegrationWorkspace,
     loadLatestBackendIntegrationDataset,
     loadLatestSavedBoundaryGeoJson,
     loadLatestSavedForecast,
+    loadLatestModelMetricsCached,
+    loadGeospatialHotspotsCached,
+    warmNavigationCache,
     refreshAuthenticatedWorkspace,
     resetBackendIntegration,
 

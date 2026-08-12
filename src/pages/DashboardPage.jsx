@@ -1449,7 +1449,7 @@ function PremiumStatCard({
       type={onClick ? 'button' : undefined}
       onClick={onClick || undefined}
       aria-label={onClick ? `${title}. ${clickLabel}` : undefined}
-      className={`group relative min-h-[188px] w-full overflow-hidden rounded-[30px] border p-5 text-left shadow-[0_20px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_30px_76px_rgba(15,23,42,0.15)] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300/40 dark:ring-white/5 dark:hover:shadow-[0_30px_76px_rgba(2,6,23,0.38)] sm:min-h-[205px] sm:p-6 ${onClick ? 'cursor-pointer' : ''} ${style.surface}`}
+      className={`group relative min-h-[164px] w-full overflow-hidden rounded-[22px] border p-3.5 text-left sm:min-h-[205px] sm:rounded-[30px] sm:p-6 shadow-[0_20px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_30px_76px_rgba(15,23,42,0.15)] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300/40 dark:ring-white/5 dark:hover:shadow-[0_30px_76px_rgba(2,6,23,0.38)] ${onClick ? 'cursor-pointer' : ''} ${style.surface}`}
     >
       <div className={`pointer-events-none absolute -right-14 -top-16 h-44 w-44 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${style.glow}`} />
       <div className="pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full border border-white/70 opacity-60 dark:border-white/5" />
@@ -1468,14 +1468,14 @@ function PremiumStatCard({
               </span>
             </div>
 
-            <h3 className={`mt-4 break-words text-[2.1rem] font-black leading-none tracking-[-0.05em] sm:text-[2.55rem] ${style.value}`}>
+            <h3 className={`mt-3 break-words text-[1.7rem] font-black leading-none tracking-[-0.05em] sm:mt-4 sm:text-[2.55rem] ${style.value}`}>
               {value}
             </h3>
           </div>
 
-          <div className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border ${style.icon}`}>
+          <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] border sm:h-14 sm:w-14 sm:rounded-[20px] ${style.icon}`}>
             <div className={`pointer-events-none absolute inset-2 rounded-[14px] opacity-10 ${style.signal}`} />
-            <Icon className="relative h-6 w-6" strokeWidth={2.25} />
+            <Icon className="relative h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.25} />
           </div>
         </div>
 
@@ -1493,7 +1493,7 @@ function PremiumStatCard({
             ))}
           </div>
 
-          <p className="max-w-[270px] text-xs font-semibold leading-5 text-slate-600 dark:text-slate-400 sm:text-[13px]">
+          <p className="max-w-[270px] text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-400 sm:text-[13px] sm:leading-5">
             {helper}
           </p>
 
@@ -1669,7 +1669,7 @@ function DashboardBarangayListModal({ config, onClose, onOpenForecast }) {
                   >
                     <div className={`absolute inset-y-4 left-0 w-1 rounded-r-full bg-gradient-to-b ${style.accent}`} />
 
-                    <div className="relative flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="relative flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-white/10 bg-white/10 text-xs font-black text-white">
                           #{index + 1}
@@ -1737,7 +1737,7 @@ function DashboardBarangayListModal({ config, onClose, onOpenForecast }) {
           <button
             type="button"
             onClick={onOpenForecast}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-[16px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:-translate-y-0.5 hover:bg-cyan-300/15"
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-[16px] sm:w-auto border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:-translate-y-0.5 hover:bg-cyan-300/15"
           >
             Open full forecast
             <ArrowRight className="h-4 w-4" />
@@ -1799,14 +1799,14 @@ function SignalCard({
 
   return (
     <article
-      className={`group relative min-h-[178px] overflow-hidden rounded-[28px] border p-4 shadow-[0_16px_40px_rgba(15,23,42,0.07)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_58px_rgba(15,23,42,0.13)] dark:ring-white/5 ${style.surface}`}
+      className={`group relative min-h-[166px] overflow-hidden rounded-[22px] border p-3 sm:min-h-[178px] sm:rounded-[28px] sm:p-4 shadow-[0_16px_40px_rgba(15,23,42,0.07)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_58px_rgba(15,23,42,0.13)] dark:ring-white/5 ${style.surface}`}
     >
       <div className={`pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${style.glow}`} />
       <div className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${style.line}`} />
 
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border shadow-sm ${style.icon}`}>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-[15px] border shadow-sm sm:h-12 sm:w-12 sm:rounded-[18px] ${style.icon}`}>
             <Icon className="h-5 w-5" strokeWidth={2.25} />
           </div>
 
@@ -1819,7 +1819,7 @@ function SignalCard({
           {label}
         </p>
 
-        <p className="mt-1 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-slate-100">
+        <p className="mt-1 break-words text-xl font-black tracking-[-0.04em] text-slate-950 sm:text-2xl dark:text-slate-100">
           {value}
         </p>
 
@@ -1827,7 +1827,7 @@ function SignalCard({
           <div className={`h-full w-[72%] rounded-full bg-gradient-to-r ${style.meter}`} />
         </div>
 
-        <p className="mt-3 text-xs font-medium leading-5 text-slate-600 dark:text-slate-400">
+        <p className="mt-2 text-[11px] font-medium leading-4 text-slate-600 sm:mt-3 sm:text-xs sm:leading-5 dark:text-slate-400">
           {helper}
         </p>
       </div>
@@ -2036,8 +2036,8 @@ function ThreeDTrendChart({
   }
 
   return (
-    <div className="h-full w-full overflow-x-auto overscroll-x-contain rounded-[24px]">
-      <div className="h-full min-w-[720px]">
+    <div className="h-full w-full overflow-hidden rounded-[20px] sm:rounded-[24px]">
+      <div className="h-full w-full min-w-0">
         <svg
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           role="img"
@@ -2584,7 +2584,7 @@ function Panel({
       <div className="pointer-events-none absolute inset-0 opacity-[0.025] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:32px_32px] dark:opacity-[0.035] dark:[background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)]" />
 
       {tabLabel ? (
-        <div className="relative z-[2] mb-4 flex justify-end">
+        <div className="relative z-[2] mb-4 hidden justify-end sm:flex">
           <CurvedCardTab icon={tabIcon} tone={tabTone} label={tabLabel} compact />
         </div>
       ) : null}
@@ -2898,7 +2898,7 @@ export default function DashboardPage() {
   ])
 
   return (
-    <div className="dashboard-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-6 sm:space-y-8 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
+    <div className="dashboard-mobile-compact relative isolate space-y-6 overflow-hidden rounded-[24px] sm:rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-6 sm:space-y-8 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
       {barangayModal && (
         <DashboardBarangayListModal
           config={barangayModal}
@@ -2916,7 +2916,7 @@ export default function DashboardPage() {
         }
       />
 
-      <section className="relative isolate overflow-hidden rounded-[34px] border border-slate-900/10 bg-[#071525] shadow-[0_32px_90px_rgba(2,6,23,0.26)] ring-1 ring-white/10 dark:border-white/10 sm:rounded-[40px]">
+      <section className="relative isolate overflow-hidden rounded-[26px] border border-slate-900/10 sm:rounded-[40px] bg-[#071525] shadow-[0_32px_90px_rgba(2,6,23,0.26)] ring-1 ring-white/10 dark:border-white/10">
         <img
           src={dashboardBackground}
           alt=""
@@ -2930,7 +2930,7 @@ export default function DashboardPage() {
         <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-slate-950/[0.85] to-transparent" />
         <div className="absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
 
-        <div className="relative z-10 grid min-h-[520px] gap-10 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.62fr)] lg:items-center lg:p-10 xl:min-h-[550px] xl:p-12">
+        <div className="relative z-10 grid min-h-0 gap-6 p-4 sm:min-h-[520px] sm:gap-8 sm:p-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.62fr)] lg:items-center lg:p-10 xl:min-h-[550px] xl:p-12">
           <div className="max-w-[760px]">
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur-xl">
@@ -2944,15 +2944,15 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <h2 className="mt-6 max-w-3xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.6rem]">
+            <h2 className="mt-5 max-w-3xl text-[1.9rem] font-black sm:mt-6 sm:text-[3rem] leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] xl:text-[3.6rem]">
               Barangay-level dengue intelligence, built for faster decisions.
             </h2>
 
-            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
+            <p className="mt-4 max-w-2xl text-[13px] font-medium leading-6 sm:mt-5 sm:text-[15px] sm:leading-8 text-slate-200/90 ">
               Monitor dengue cases, environmental pressure, population exposure, and spatial risk from one coordinated command view.
             </p>
 
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="mt-6 grid grid-cols-2 gap-2.5 sm:mt-7 sm:flex sm:flex-wrap sm:gap-3">
               <button
                 type="button"
                 onClick={() => navigate('/forecast')}
@@ -2961,7 +2961,7 @@ export default function DashboardPage() {
                   backgroundImage: 'none',
                   color: '#0f172a',
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white px-5 py-3 text-sm font-black shadow-[0_14px_34px_rgba(255,255,255,0.18)] transition duration-200 hover:-translate-y-0.5 hover:opacity-95"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white px-3 py-3 text-[13px] sm:w-auto sm:px-5 sm:text-sm font-black shadow-[0_14px_34px_rgba(255,255,255,0.18)] transition duration-200 hover:-translate-y-0.5 hover:opacity-95"
               >
                 Review forecast
                 <ArrowRight className="h-4 w-4" />
@@ -2970,14 +2970,14 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => navigate('/map')}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/[0.15] bg-white/[0.08] px-5 py-3 text-sm font-black text-white shadow-lg backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/[0.14]"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.15] bg-white/[0.08] px-3 py-3 text-[13px] sm:w-auto sm:px-5 sm:text-sm font-black text-white shadow-lg backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:bg-white/[0.14]"
               >
                 Open risk map
                 <MapPinned className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="mt-8 grid max-w-2xl grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="mt-6 grid max-w-2xl grid-cols-2 gap-2 sm:mt-8 sm:gap-2.5 sm:grid-cols-4">
               {[
                 { label: 'Integrated rows', value: formatNumber(acceptedRecords), icon: Database },
                 { label: 'High risk', value: formatNumber(highRiskCount), icon: ShieldAlert },
@@ -2989,15 +2989,15 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={item.label}
-                    className="group/hero-metric relative overflow-hidden rounded-[20px] border border-white/[0.15] bg-gradient-to-br from-white/[0.12] via-slate-950/[0.35] to-cyan-400/[0.07] p-3.5 shadow-[0_14px_32px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.14]"
+                    className="group/hero-metric relative overflow-hidden rounded-[18px] border border-white/[0.15] bg-gradient-to-br from-white/[0.12] via-slate-950/[0.35] to-cyan-400/[0.07] p-3 shadow-[0_14px_32px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.14]"
                   >
                     <div className="flex items-center gap-2 text-slate-300">
                       <Icon className="h-3.5 w-3.5" />
-                      <span className="text-[9px] font-black uppercase tracking-[0.15em]">
+                      <span className="text-[10px] font-black uppercase leading-4 tracking-[0.12em] sm:tracking-[0.15em]">
                         {item.label}
                       </span>
                     </div>
-                    <p className="mt-2 text-lg font-black tracking-tight text-white">
+                    <p className="mt-1.5 text-base font-black tracking-tight text-white sm:mt-2 sm:text-lg">
                       {item.value}
                     </p>
                   </div>
@@ -3007,19 +3007,19 @@ export default function DashboardPage() {
           </div>
 
           <div className="w-full self-end justify-self-end lg:max-w-[390px]">
-            <div className="group/top-priority relative overflow-hidden rounded-[32px] border border-cyan-300/20 bg-gradient-to-br from-slate-950/75 via-slate-950/60 to-cyan-950/[0.45] p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:shadow-[0_36px_90px_rgba(2,6,23,0.60)] sm:p-6">
+            <div className="group/top-priority relative overflow-hidden rounded-[24px] sm:rounded-[32px] border border-cyan-300/20 bg-gradient-to-br from-slate-950/75 via-slate-950/60 to-cyan-950/[0.45] p-4 text-white shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:shadow-[0_36px_90px_rgba(2,6,23,0.60)] sm:p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/75">
                     Current top priority
                   </p>
-                  <h3 className="mt-2 max-w-[230px] truncate text-2xl font-black tracking-[-0.03em]">
+                  <h3 className="mt-2 max-w-[180px] break-words text-xl font-black leading-tight sm:max-w-[230px] sm:text-2xl tracking-[-0.03em]">
                     {topPriority?.barangay || 'No barangay yet'}
                   </h3>
                 </div>
 
                 <div
-                  className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[7px] shadow-[0_0_36px_rgba(56,189,248,0.18)]"
+                  className="relative flex h-[68px] w-[68px] shrink-0 sm:h-20 sm:w-20 items-center justify-center rounded-full p-[7px] shadow-[0_0_36px_rgba(56,189,248,0.18)]"
                   style={{
                     background: `conic-gradient(#22d3ee ${Math.min(100, Math.max(0, topMultiSourceScore)) * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
                   }}
@@ -3037,7 +3037,7 @@ export default function DashboardPage() {
                   : 'Upload the required files to generate a barangay-level priority assessment.'}
               </p>
 
-              <div className="mt-5 grid grid-cols-2 gap-2.5">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-2.5">
                 <div className="relative overflow-hidden rounded-[18px] border border-white/[0.15] bg-gradient-to-br from-white/[0.10] to-cyan-300/[0.05] p-3 shadow-inner">
                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Risk level</p>
                   <p className="mt-1 text-sm font-black text-white">{topPriority?.risk || 'Pending'}</p>
@@ -3063,7 +3063,7 @@ export default function DashboardPage() {
 
       <div
         id="dashboard-summary"
-        className="scroll-mt-28 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className="scroll-mt-28 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
       >
         <PremiumStatCard
           title="Barangay-matched cases"
@@ -3135,7 +3135,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Panel className="p-6" tabTone="blue" tabLabel="Integrated" tabIcon={Layers3} curve="bottom-right">
+      <Panel className="p-4 sm:p-6" tabTone="blue" tabLabel="Integrated" tabIcon={Layers3} curve="bottom-right">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <SectionBadge tone="blue">
@@ -3262,7 +3262,7 @@ export default function DashboardPage() {
 
       <div className="grid items-start gap-5 xl:grid-cols-[1.35fr_0.85fr]">
         <div className="min-w-0 space-y-5">
-        <Panel className="p-6" tabTone="rose" tabLabel="Trend" tabIcon={TrendingUp} curve="bottom-left">
+        <Panel className="p-4 sm:p-6" tabTone="rose" tabLabel="Trend" tabIcon={TrendingUp} curve="bottom-left">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <SectionBadge tone="rose">
@@ -3287,8 +3287,8 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-5 space-y-4">
-  <div className="relative overflow-hidden rounded-[30px] border border-cyan-400/[0.15] bg-gradient-to-b from-[#061321] via-[#06111d] to-[#020817] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_70px_rgba(2,8,23,0.42)] sm:p-5">
-    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+  <div className="relative overflow-hidden rounded-[24px] border border-cyan-400/[0.15] bg-gradient-to-b from-[#061321] via-[#06111d] to-[#020817] p-3 sm:rounded-[30px] sm:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_70px_rgba(2,8,23,0.42)]">
+    <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">
           Citywide case outlook
@@ -3304,7 +3304,7 @@ export default function DashboardPage() {
       </div>
     </div>
 
-    <div className="h-[520px] lg:h-[620px]">
+    <div className="h-[330px] sm:h-[520px] lg:h-[620px]">
       {weeklyTotals.length > 0 ? (
         <ThreeDTrendChart
           values={weeklyTotals}
@@ -3322,7 +3322,7 @@ export default function DashboardPage() {
     </div>
   </div>
 
-  <div className="grid gap-3 sm:grid-cols-3">
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
     {riskDistribution.map((item, index) => {
       const riskAccent =
         item.label === 'High'
@@ -3348,7 +3348,7 @@ export default function DashboardPage() {
               rows: canonicalPriorityRows.filter((row) => row.risk === item.label),
             })
           }
-          className={`group/risk relative w-full overflow-hidden rounded-[28px] border p-4 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_58px_rgba(15,23,42,0.14)] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300/40 dark:ring-white/5 ${item.style}`}
+          className={`group/risk relative w-full overflow-hidden rounded-[20px] border p-3 sm:rounded-[28px] sm:p-4 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_58px_rgba(15,23,42,0.14)] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300/40 dark:ring-white/5 ${item.style}`}
           aria-label={`View ${item.label.toLowerCase()}-risk barangays`}
         >
           <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskAccent}`} />
@@ -3356,15 +3356,15 @@ export default function DashboardPage() {
 
           <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-80">
+              <p className="whitespace-nowrap text-[11px] font-black uppercase tracking-[0.16em] opacity-80 sm:text-[10px] sm:tracking-[0.18em]">
                 {item.label} risk
               </p>
-              <p className="mt-3 text-4xl font-black tracking-[-0.05em]">
+              <p className="mt-2 text-3xl font-black tracking-[-0.05em] sm:mt-3 sm:text-4xl">
                 {formatNumber(item.value)}
               </p>
             </div>
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-[17px] border border-white/80 bg-white/70 text-sm font-black shadow-sm dark:border-white/10 dark:bg-white/10">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[13px] sm:h-11 sm:w-11 sm:rounded-[17px] border border-white/80 bg-white/70 text-sm font-black shadow-sm dark:border-white/10 dark:bg-white/10">
               {index + 1}
             </div>
           </div>
@@ -3388,7 +3388,7 @@ export default function DashboardPage() {
             <p className="text-xs font-semibold opacity-80">
               {item.helper}
             </p>
-            <span className="rounded-full border border-white/80 bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-sm dark:border-white/10 dark:bg-white/10">
+            <span className="whitespace-nowrap rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.08em] shadow-sm dark:border-white/10 dark:bg-white/10 sm:px-2.5 sm:text-[9px] sm:tracking-[0.12em]">
               Barangays
             </span>
           </div>
@@ -3399,7 +3399,7 @@ export default function DashboardPage() {
 </div>
         </Panel>
 
-        <Panel className="p-6" tabTone="blue" tabLabel="Navigate" tabIcon={ArrowRight} curve="bottom-right">
+        <Panel className="p-4 sm:p-6" tabTone="blue" tabLabel="Navigate" tabIcon={ArrowRight} curve="bottom-right">
           <SectionBadge tone="blue">
             <Layers3 className="h-3.5 w-3.5" />
             Navigation
@@ -3423,7 +3423,7 @@ export default function DashboardPage() {
                   key={action.label}
                   type="button"
                   onClick={() => handleQuickActionNavigation(actionRoutes[action.label])}
-                  className={`group/action relative flex min-h-[144px] w-full flex-col items-start justify-between gap-4 overflow-hidden rounded-[24px] border px-3.5 py-3.5 text-left shadow-[0_12px_32px_rgba(15,23,42,0.06)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:ring-white/5 sm:min-h-0 sm:flex-row sm:items-center sm:px-4 sm:py-4 ${actionTheme.surface}`}
+                  className={`group/action relative flex min-h-[132px] w-full flex-col items-start justify-between gap-4 overflow-hidden rounded-[24px] border px-3.5 py-3.5 text-left shadow-[0_12px_32px_rgba(15,23,42,0.06)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_48px_rgba(15,23,42,0.12)] dark:ring-white/5 sm:min-h-0 sm:flex-row sm:items-center sm:px-4 sm:py-4 ${actionTheme.surface}`}
                 >
                   <div className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${actionTheme.rail}`} />
                   <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl transition-transform duration-500 group-hover/action:scale-125 ${actionTheme.glow}`} />
@@ -3461,7 +3461,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={resetSampleData}
-              className="group/reset relative flex min-h-[144px] w-full flex-col items-start justify-between gap-4 overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-white to-rose-50/60 px-3.5 py-3.5 text-left text-slate-600 shadow-[0_12px_32px_rgba(15,23,42,0.06)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:border-rose-200 hover:text-rose-600 hover:shadow-[0_20px_48px_rgba(225,29,72,0.12)] dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-rose-500/5 dark:text-slate-300 dark:ring-white/5 dark:hover:border-rose-500/30 dark:hover:text-rose-300 sm:min-h-0 sm:flex-row sm:items-center sm:px-4 sm:py-4"
+              className="group/reset relative flex min-h-[132px] w-full flex-col items-start justify-between gap-4 overflow-hidden rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-50/95 via-white to-rose-50/60 px-3.5 py-3.5 text-left text-slate-600 shadow-[0_12px_32px_rgba(15,23,42,0.06)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:border-rose-200 hover:text-rose-600 hover:shadow-[0_20px_48px_rgba(225,29,72,0.12)] dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-rose-500/5 dark:text-slate-300 dark:ring-white/5 dark:hover:border-rose-500/30 dark:hover:text-rose-300 sm:min-h-0 sm:flex-row sm:items-center sm:px-4 sm:py-4"
             >
               <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900 sm:h-11 sm:w-11">
@@ -3482,7 +3482,7 @@ export default function DashboardPage() {
           </div>
         </Panel>
 
-      <Panel className="p-6" tabTone="slate" tabLabel="Activity" tabIcon={Clock3} curve="bottom-right">
+      <Panel className="p-4 sm:p-6" tabTone="slate" tabLabel="Activity" tabIcon={Clock3} curve="bottom-right">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <SectionBadge>
@@ -3535,7 +3535,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="min-w-0 space-y-5">
-        <Panel className="p-6" tabTone="amber" tabLabel="Priority" tabIcon={Navigation} curve="top-right">
+        <Panel className="p-4 sm:p-6" tabTone="amber" tabLabel="Priority" tabIcon={Navigation} curve="top-right">
           <div className="flex items-start justify-between gap-3">
             <div>
               <SectionBadge tone="amber">
@@ -3553,7 +3553,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 grid grid-cols-1 gap-3">
             {priority.length > 0 ? (
               priority.map((row, index) => {
                 const riskTheme = getRiskCardTheme(row.risk)
@@ -3563,32 +3563,32 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={`${row.barangay}-${index}`}
-                    className={`group/priority relative overflow-hidden rounded-[28px] border p-4 shadow-[0_16px_42px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_62px_rgba(15,23,42,0.14)] dark:ring-white/5 ${riskTheme.surface}`}
+                    className={`group/priority relative overflow-hidden rounded-[24px] border p-4 shadow-[0_16px_42px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_62px_rgba(15,23,42,0.14)] dark:ring-white/5 sm:rounded-[28px] ${riskTheme.surface}`}
                   >
                     <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskTheme.rail}`} />
                     <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl transition-transform duration-500 group-hover/priority:scale-125 ${riskTheme.glow}`} />
                     <div className="pointer-events-none absolute right-5 top-5 h-16 w-16 rounded-full border border-white/60 dark:border-white/5" />
 
-                    <div className="relative flex items-start justify-between gap-3">
+                    <div className="relative flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 items-start gap-3">
-                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border text-sm font-black ${riskTheme.rank}`}>
+                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] border text-sm font-black sm:h-12 sm:w-12 sm:rounded-[18px] ${riskTheme.rank}`}>
                           #{index + 1}
                         </div>
 
                         <div className="min-w-0">
-                          <p className="break-words text-base font-black tracking-tight text-brand-text dark:text-slate-100">
+                          <p className="break-words text-base font-black leading-tight tracking-tight text-brand-text dark:text-slate-100">
                             {row.barangay}
                           </p>
 
-                          <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
+                          <p className="mt-1 text-[11px] font-semibold leading-4 text-brand-muted dark:text-slate-400 sm:text-xs sm:leading-5">
                             {formatNumber(row.forecast)} projected cases
                           </p>
 
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${getRiskBadgeStyle(row.risk)}`}>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className={`whitespace-nowrap rounded-full border px-2 py-1 text-[9px] font-black sm:px-2.5 sm:text-[10px] ${getRiskBadgeStyle(row.risk)}`}>
                               {row.risk} risk
                             </span>
-                            <span className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[10px] font-black text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                            <span className="max-w-full rounded-full border border-white/80 bg-white/75 px-2 py-1 text-[9px] font-black leading-4 text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300 sm:px-2.5 sm:text-[10px]">
                               {decision.priority}
                             </span>
                           </div>
@@ -3596,10 +3596,10 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                        <p className="text-[8px] font-black uppercase leading-4 tracking-[0.08em] text-slate-500 dark:text-slate-400 sm:text-[9px] sm:tracking-[0.14em]">
                           Combined priority score
                         </p>
-                        <p className="mt-1 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">
+                        <p className="mt-1 break-words text-xl font-black tracking-[-0.04em] text-slate-950 sm:text-2xl dark:text-white">
                           {formatNumber(score)}
                           <span className="text-xs font-bold text-slate-400">/100</span>
                         </p>
@@ -3613,8 +3613,8 @@ export default function DashboardPage() {
                       />
                     </div>
 
-                    <div className="relative mt-4 grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-[18px] border border-white/80 bg-white/75 px-3 py-2.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+                    <div className="relative mt-4 grid grid-cols-2 gap-2">
+                      <div className="rounded-[15px] border border-white/80 bg-white/75 px-2.5 py-2.5 shadow-sm dark:border-white/10 dark:bg-white/5 sm:rounded-[18px] sm:px-3">
                         <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">
                           Rainfall pressure
                         </p>
@@ -3623,7 +3623,7 @@ export default function DashboardPage() {
                         </p>
                       </div>
 
-                      <div className="rounded-[18px] border border-white/80 bg-white/75 px-3 py-2.5 shadow-sm dark:border-white/10 dark:bg-white/5">
+                      <div className="rounded-[15px] border border-white/80 bg-white/75 px-2.5 py-2.5 shadow-sm dark:border-white/10 dark:bg-white/5 sm:rounded-[18px] sm:px-3">
                         <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">
                           Population exposure
                         </p>
@@ -3633,7 +3633,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="relative mt-3 rounded-[20px] border border-white/80 bg-white/80 px-3.5 py-3 shadow-sm dark:border-white/10 dark:bg-slate-950/[0.45]">
+                    <div className="relative mt-3 rounded-[16px] border border-white/80 bg-white/80 px-2.5 py-2.5 shadow-sm dark:border-white/10 dark:bg-slate-950/[0.45] sm:rounded-[20px] sm:px-3.5 sm:py-3">
                       <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                         Recommended focus
                       </p>
@@ -3652,7 +3652,7 @@ export default function DashboardPage() {
           </div>
         </Panel>
 
-        <Panel className="p-6" tabTone="amber" tabLabel="Alerts" tabIcon={AlertTriangle} curve="bottom-left">
+        <Panel className="p-4 sm:p-6" tabTone="amber" tabLabel="Alerts" tabIcon={AlertTriangle} curve="bottom-left">
           <SectionBadge tone="amber">
             <AlertTriangle className="h-3.5 w-3.5" />
             Live updates
@@ -3692,7 +3692,7 @@ export default function DashboardPage() {
           </div>
         </Panel>
 
-        <Panel className="p-6" tabTone="emerald" tabLabel="Sources" tabIcon={Database} curve="top-right">
+        <Panel className="p-4 sm:p-6" tabTone="emerald" tabLabel="Sources" tabIcon={Database} curve="top-right">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <SectionBadge tone="emerald">

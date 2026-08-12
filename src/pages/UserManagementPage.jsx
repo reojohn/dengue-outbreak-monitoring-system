@@ -793,7 +793,7 @@ export default function UserManagementPage() {
       <section className="user-hero-panel relative isolate overflow-hidden rounded-[34px] border border-white/10 bg-[#061321] text-white shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_22%,rgba(34,211,238,0.23),transparent_27%),radial-gradient(circle_at_92%_92%,rgba(99,102,241,0.18),transparent_28%),linear-gradient(104deg,rgba(2,6,23,0.99)_0%,rgba(4,18,33,0.96)_48%,rgba(7,34,56,0.84)_100%)]" />
-          <div className="absolute inset-0 opacity-[0.14] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.09),transparent_26%),radial-gradient(circle_at_82%_28%,rgba(34,211,238,0.10),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.035),transparent_42%)] opacity-90" />
           <div className="absolute -right-24 -top-28 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
           <div className="absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-violet-500/[0.15] blur-3xl" />
           <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/55 to-transparent" />
@@ -819,7 +819,7 @@ export default function UserManagementPage() {
               Create authorized accounts, assign role-based access, connect BHW users to barangays, reset credentials, and review account activity without leaving the administration workspace.
             </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="user-hero-actions mt-6 flex flex-wrap gap-3">
               <button
   type="button"
   onClick={loadAll}
@@ -869,7 +869,7 @@ export default function UserManagementPage() {
             </div>
           </div>
 
-          <div className="w-full justify-self-end lg:max-w-[390px]">
+          <div className="user-access-health-wrap w-full justify-self-end lg:max-w-[390px]">
             <div className="group relative overflow-hidden rounded-[32px] border border-cyan-300/20 bg-gradient-to-br from-slate-950/80 via-slate-950/[0.66] to-cyan-950/[0.48] p-5 shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 sm:p-6">
               <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-400/[0.12] blur-3xl" />
 
@@ -921,14 +921,14 @@ export default function UserManagementPage() {
         <StatCard icon={AlertCircle} label="Inactive" value={formatNumber(inactiveCount)} helper="Accounts temporarily disabled." tone="rose" />
       </div>
 
-      <div className="relative z-[50] grid gap-6 xl:grid-cols-[0.85fr_1.45fr]">
+      <div className="user-management-workspace relative z-[50] grid gap-6 xl:grid-cols-[0.85fr_1.45fr]">
         <form
           onSubmit={handleSubmit}
           className="user-form-panel group relative z-[80] overflow-visible rounded-[24px] border border-cyan-200/70 bg-gradient-to-br from-white/95 via-white/90 to-cyan-50/70 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 backdrop-blur-xl dark:border-cyan-400/20 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-cyan-950/30 dark:ring-white/5 sm:rounded-[34px] sm:p-6"
         >
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-500" />
           <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
-          <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.08),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.06),transparent_28%)] opacity-80" />
 
           <div className="relative mb-3 flex items-center justify-between gap-3 sm:mb-5">
             <div className="flex items-start gap-3">
@@ -1077,7 +1077,7 @@ export default function UserManagementPage() {
         <section className="user-list-panel group relative z-[40] overflow-visible rounded-[24px] border border-blue-200/70 bg-gradient-to-br from-white/95 via-white/90 to-blue-50/70 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 backdrop-blur-xl dark:border-blue-400/20 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-blue-950/30 dark:ring-white/5 sm:rounded-[34px] sm:p-6">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-400 to-cyan-400" />
           <div className="pointer-events-none absolute -right-20 -top-20 h-60 w-60 rounded-full bg-blue-300/20 blur-3xl dark:bg-blue-500/10" />
-          <div className="pointer-events-none absolute inset-0 opacity-[0.02] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:36px_36px] dark:opacity-[0.035]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.08),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.06),transparent_28%)] opacity-80" />
 
           <div className="relative mb-3 flex flex-col gap-3 sm:mb-5 sm:gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
@@ -1089,7 +1089,7 @@ export default function UserManagementPage() {
               </h2>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="user-list-filters flex flex-col gap-2 sm:flex-row sm:items-start">
               <div className="relative self-start">
   <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
@@ -1139,7 +1139,7 @@ export default function UserManagementPage() {
                   return (
                     <div
                       key={user.id}
-                      className="group/user relative overflow-hidden rounded-[22px] border border-white/80 bg-gradient-to-br from-white via-white to-slate-50/80 p-3 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70 transition duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.13)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:ring-white/5 dark:hover:border-cyan-400/25 sm:rounded-[28px] sm:p-4"
+                      className="user-account-card group/user relative overflow-hidden rounded-[22px] border border-white/80 bg-gradient-to-br from-white via-white to-slate-50/80 p-3 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/70 transition duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.13)] dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:ring-white/5 dark:hover:border-cyan-400/25 sm:rounded-[28px] sm:p-4"
                     >
                       <div className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${getRoleIconWrapClass(user.role)}`} />
                       <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/10 blur-3xl dark:bg-cyan-500/5" />
@@ -1190,7 +1190,7 @@ export default function UserManagementPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+                        <div className="user-account-actions grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                           <button
                             type="button"
                             onClick={() => startEdit(user)}
@@ -1198,6 +1198,7 @@ export default function UserManagementPage() {
                             title="Edit user"
                           >
                             <Edit3 className="h-4 w-4" />
+                            <span className="user-action-label">Edit</span>
                           </button>
 
                           <button
@@ -1211,6 +1212,7 @@ export default function UserManagementPage() {
                             title="Reset password"
                           >
                             <KeyRound className="h-4 w-4" />
+                            <span className="user-action-label">Reset</span>
                           </button>
 
                           <button
@@ -1233,6 +1235,7 @@ export default function UserManagementPage() {
                               title="Delete user"
                             >
                               <Trash2 className="h-4 w-4" />
+                              <span className="user-action-label">Delete</span>
                             </button>
                           )}
                         </div>
@@ -1249,7 +1252,7 @@ export default function UserManagementPage() {
       <section className="user-audit-panel group relative z-0 overflow-hidden rounded-[24px] border border-violet-200/70 bg-gradient-to-br from-white/95 via-white/90 to-violet-50/70 shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 backdrop-blur-xl dark:border-violet-400/20 dark:from-slate-950/95 dark:via-slate-950/90 dark:to-violet-950/25 dark:ring-white/5 sm:rounded-[34px]">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500 via-indigo-400 to-cyan-400" />
         <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-violet-300/20 blur-3xl dark:bg-violet-500/10" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.022] [background-image:linear-gradient(rgba(15,23,42,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.5)_1px,transparent_1px)] [background-size:34px_34px] dark:opacity-[0.035]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.08),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.06),transparent_28%)] opacity-80" />
 
         <button
           type="button"
@@ -1293,7 +1296,7 @@ export default function UserManagementPage() {
               </span>
             </div>
 
-            <div className="user-audit-scroll relative grid max-h-[520px] gap-3 overflow-y-auto pr-1">
+            <div className="user-audit-scroll user-audit-list relative grid max-h-[520px] gap-3 overflow-y-auto pr-1">
               {auditLogs.length === 0 ? (
                 <div className="rounded-[22px] border border-dashed border-slate-300 bg-white/[0.07]0 p-7 text-center dark:border-slate-700 dark:bg-slate-900/50">
                   <Activity className="mx-auto h-8 w-8 text-slate-400" />
@@ -1442,6 +1445,444 @@ export default function UserManagementPage() {
           border-radius: 999px;
           background: linear-gradient(180deg, rgba(139, 92, 246, 0.9), rgba(59, 130, 246, 0.65));
           background-clip: padding-box;
+        }
+
+
+        /* =========================================================
+           FINAL USER MANAGEMENT RESPONSIVE STABILIZATION
+           ========================================================= */
+        @media (max-width: 639px) {
+          .user-mobile-compact {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            padding-bottom: 1rem !important;
+          }
+
+          .user-mobile-compact > * + * {
+            margin-top: 0.8rem !important;
+          }
+
+          /* HERO */
+          .user-mobile-compact .user-hero-panel {
+            min-height: 0 !important;
+            border-radius: 24px !important;
+          }
+
+          .user-mobile-compact .user-hero-panel > .relative.z-10.grid {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 1rem !important;
+            padding: 1rem !important;
+          }
+
+          .user-mobile-compact .user-hero-panel h1 {
+            margin-top: 1rem !important;
+            max-width: 100% !important;
+            font-size: 1.9rem !important;
+            line-height: 1.04 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .user-mobile-compact .user-hero-panel h1 + p {
+            display: block !important;
+            margin-top: 0.75rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.82rem !important;
+            line-height: 1.5 !important;
+          }
+
+          .user-mobile-compact .user-hero-actions {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            width: 100% !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .user-mobile-compact .user-hero-actions > button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 48px !important;
+            padding: 0.65rem !important;
+            font-size: 0.74rem !important;
+            line-height: 1.2 !important;
+            white-space: normal !important;
+          }
+
+          /* 3 hero metrics = 2 + 1, with helper text visible */
+          .user-mobile-compact .user-hero-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics > div {
+            min-width: 0 !important;
+            min-height: 100px !important;
+            border-radius: 17px !important;
+            padding: 0.7rem !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics > div:nth-child(3) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics span {
+            font-size: 0.66rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.055em !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics p:nth-child(2) {
+            margin-top: 0.4rem !important;
+            font-size: 1.15rem !important;
+            line-height: 1.05 !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics p:last-child {
+            display: block !important;
+            margin-top: 0.3rem !important;
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Access-health hero card */
+          .user-mobile-compact .user-access-health-wrap > div {
+            border-radius: 20px !important;
+            padding: 0.85rem !important;
+          }
+
+          .user-mobile-compact .user-access-health-wrap h2 {
+            font-size: 1.35rem !important;
+            line-height: 1.08 !important;
+          }
+
+          .user-mobile-compact .user-access-health-wrap .h-24.w-24 {
+            width: 4.75rem !important;
+            height: 4.75rem !important;
+          }
+
+          .user-mobile-compact .user-access-health-wrap .relative.mt-5.grid {
+            gap: 0.5rem !important;
+          }
+
+          .user-mobile-compact .user-access-health-wrap .relative.mt-5.grid > div {
+            padding: 0.65rem !important;
+          }
+
+          /* Four account stats = 2x2 */
+          .user-mobile-compact .user-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.6rem !important;
+          }
+
+          .user-mobile-compact .user-stat-grid article {
+            min-width: 0 !important;
+            min-height: 145px !important;
+            border-radius: 19px !important;
+            padding: 0.75rem !important;
+          }
+
+          .user-mobile-compact .user-stat-grid article .h-11.w-11 {
+            width: 2.1rem !important;
+            height: 2.1rem !important;
+            border-radius: 12px !important;
+          }
+
+          .user-mobile-compact .user-stat-grid article .text-2xl,
+          .user-mobile-compact .user-stat-grid article .text-3xl {
+            font-size: 1.18rem !important;
+          }
+
+          .user-mobile-compact .user-stat-grid article p:last-child {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Main management workspace stays stacked on phone/tablet. */
+          .user-mobile-compact .user-management-workspace {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          /* CREATE / EDIT FORM */
+          .user-mobile-compact .user-form-panel {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .user-mobile-compact .user-form-panel h2 {
+            font-size: 1.2rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .user-mobile-compact .user-form-panel input,
+          .user-mobile-compact .user-form-panel .relative.mt-2 > button {
+            min-height: 48px !important;
+            border-radius: 14px !important;
+            padding: 0.65rem 0.75rem !important;
+            font-size: 0.8rem !important;
+          }
+
+          .user-mobile-compact .user-form-panel .relative.mt-2 > button span.block {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+
+          .user-mobile-compact .user-form-panel .absolute.top-full {
+            width: 100% !important;
+            max-width: calc(100vw - 2.4rem) !important;
+            border-radius: 17px !important;
+          }
+
+          .user-mobile-compact .user-form-panel .absolute.top-full [class*="max-h-[340px]"] {
+            max-height: min(45dvh, 18rem) !important;
+          }
+
+          .user-mobile-compact .user-form-panel label.flex.items-center.justify-between {
+            min-height: 62px !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .user-mobile-compact .user-form-panel > .relative.space-y-3 > button,
+          .user-mobile-compact .user-form-panel > .relative.space-y-4 > button {
+            min-height: 50px !important;
+            border-radius: 15px !important;
+          }
+
+          /* REGISTERED USERS PANEL */
+          .user-mobile-compact .user-list-panel {
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          .user-mobile-compact .user-list-panel h2 {
+            font-size: 1.2rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .user-mobile-compact .user-list-filters {
+            width: 100% !important;
+            gap: 0.55rem !important;
+          }
+
+          .user-mobile-compact .user-list-filters > div {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+
+          .user-mobile-compact .user-list-filters input {
+            width: 100% !important;
+            min-height: 48px !important;
+            border-radius: 14px !important;
+          }
+
+          .user-mobile-compact .user-list-filters .relative.z-\[70\] {
+            width: 100% !important;
+          }
+
+          .user-mobile-compact .user-list-filters .relative.z-\[70\] > div > button {
+            min-height: 48px !important;
+            border-radius: 14px !important;
+          }
+
+          /* USER ACCOUNT CARDS */
+          .user-mobile-compact .user-account-card {
+            min-width: 0 !important;
+            border-radius: 17px !important;
+            padding: 0.75rem !important;
+          }
+
+          .user-mobile-compact .user-account-card > .relative.flex {
+            gap: 0.65rem !important;
+          }
+
+          .user-mobile-compact .user-account-card > .relative.flex > div:first-child {
+            gap: 0.65rem !important;
+          }
+
+          .user-mobile-compact .user-account-card .h-10.w-10 {
+            width: 2.35rem !important;
+            height: 2.35rem !important;
+            border-radius: 13px !important;
+          }
+
+          .user-mobile-compact .user-account-card .flex.flex-wrap.items-center.gap-2 {
+            gap: 0.35rem !important;
+          }
+
+          .user-mobile-compact .user-account-card .flex.flex-wrap.items-center.gap-2 > span {
+            padding: 0.3rem 0.45rem !important;
+            font-size: 0.64rem !important;
+            line-height: 1.1 !important;
+            white-space: nowrap !important;
+          }
+
+          .user-mobile-compact .user-account-card p.font-black {
+            font-size: 0.84rem !important;
+            line-height: 1.25 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .user-mobile-compact .user-account-card p.flex.items-center {
+            align-items: flex-start !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          /* Barangay + last login chips remain one per row on phone */
+          .user-mobile-compact .user-account-card .mt-2.grid.grid-cols-1 {
+            gap: 0.4rem !important;
+          }
+
+          .user-mobile-compact .user-account-card .mt-2.grid.grid-cols-1 > span {
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0.45rem 0.55rem !important;
+            border-radius: 12px !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          /* Actions = clear 2x2 grid instead of four mixed-size controls */
+          .user-mobile-compact .user-account-actions {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            width: 100% !important;
+            gap: 0.45rem !important;
+          }
+
+          .user-mobile-compact .user-account-actions > button {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 42px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0.4rem !important;
+            border-radius: 12px !important;
+            padding: 0.5rem 0.55rem !important;
+            font-size: 0.7rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .user-mobile-compact .user-action-label {
+            display: inline !important;
+            font-size: 0.68rem !important;
+            font-weight: 800 !important;
+          }
+
+          /* Reset password modal */
+          .user-mobile-compact + .fixed,
+          .user-mobile-compact .fixed {
+            padding:
+              max(0.6rem, env(safe-area-inset-top))
+              0.6rem
+              max(0.6rem, env(safe-area-inset-bottom)) !important;
+          }
+
+          .user-mobile-compact .fixed form,
+          .fixed:has(.user-mobile-compact) form {
+            max-height: calc(100dvh - 1.2rem) !important;
+            overflow-y: auto !important;
+          }
+
+          /* Audit trail */
+          .user-mobile-compact .user-audit-panel {
+            border-radius: 20px !important;
+          }
+
+          .user-mobile-compact .user-audit-panel > button {
+            min-height: 72px !important;
+            padding: 0.75rem !important;
+            gap: 0.65rem !important;
+          }
+
+          .user-mobile-compact .user-audit-panel > button .h-11.w-11 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 13px !important;
+          }
+
+          .user-mobile-compact .user-audit-panel > button .mt-1.block.text-xs {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+          }
+
+          .user-mobile-compact .user-audit-list {
+            max-height: 430px !important;
+            gap: 0.55rem !important;
+          }
+
+          .user-mobile-compact .user-audit-list article {
+            border-radius: 16px !important;
+            padding: 0.7rem !important;
+          }
+
+          .user-mobile-compact .user-audit-list article .h-9.w-9 {
+            width: 2rem !important;
+            height: 2rem !important;
+            border-radius: 11px !important;
+          }
+
+          /* Readable typography */
+          .user-mobile-compact .text-sm {
+            font-size: 0.8rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .user-mobile-compact .text-xs {
+            font-size: 0.72rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .user-mobile-compact .text-\[10px\] {
+            font-size: 0.66rem !important;
+            line-height: 1.22 !important;
+          }
+        }
+
+        @media (max-width: 374px) {
+          .user-mobile-compact .user-hero-actions,
+          .user-mobile-compact .user-hero-metrics,
+          .user-mobile-compact .user-stat-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .user-mobile-compact .user-hero-metrics > div:nth-child(3) {
+            grid-column: auto !important;
+          }
+
+          .user-mobile-compact .user-account-actions {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
+        @media (min-width: 640px) and (max-width: 1023px) {
+          .user-mobile-compact .user-hero-panel > .relative.z-10.grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .user-mobile-compact .user-management-workspace {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+        }
+
+        /* Hide the mobile text labels again on desktop where icon buttons are
+           intentionally compact. */
+        @media (min-width: 640px) {
+          .user-action-label {
+            display: none;
+          }
         }
 
       `}</style>

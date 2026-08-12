@@ -31,7 +31,7 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getFieldUpdate, getGeospatialHotspots, getLatestModelMetrics, saveGeneratedReport } from '../services/api'
+import { createBackendNotificationEvent, getFieldUpdate, saveGeneratedReport } from '../services/api'
 import reportsHeroBackground from '../assets/reports.png'
 import FieldUpdateReportCard from '../components/FieldUpdateReportCard'
 
@@ -4566,25 +4566,6 @@ function MetadataDetailList({
 export default function ReportsPage() {
   const [searchParams] = useSearchParams()
   const selectedFieldUpdateId = searchParams.get('field_update_id') || ''
-  const [selectedFieldUpdate, setSelectedFieldUpdate] = useState(null)
-  const [isLoadingSelectedFieldUpdate, setIsLoadingSelectedFieldUpdate] = useState(false)
-  const [selectedFieldUpdateError, setSelectedFieldUpdateError] = useState('')
-  const [format, setFormat] = useState('pdf')
-  const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
-  const [expandedPriorityBarangay, setExpandedPriorityBarangay] = useState(null)
-  const [hotspotResult, setHotspotResult] = useState(null)
-  const [hotspotError, setHotspotError] = useState('')
-  const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
-  const [latestModelMetrics, setLatestModelMetrics] = useState(null)
-  const [isAiSnapshotOpen, setIsAiSnapshotOpen] = useState(false)
-  const [isAdditionalIndicatorsOpen, setIsAdditionalIndicatorsOpen] = useState(false)
-  const [isHotspotDetailsOpen, setIsHotspotDetailsOpen] = useState(false)
-  const [isOfficialDetailsOpen, setIsOfficialDetailsOpen] = useState(false)
-  const [isExportDetailsOpen, setIsExportDetailsOpen] = useState(false)
-  const [isSupportingDetailsOpen, setIsSupportingDetailsOpen] = useState(false)
-  const [isActivityOpen, setIsActivityOpen] = useState(false)
-  const [isTopResponseDetailsOpen, setIsTopResponseDetailsOpen] = useState(false)
-
   const data = useData()
 
   const {
@@ -4597,7 +4578,30 @@ export default function ReportsPage() {
     addActivityLog,
     boundaryRecords = [],
     loadLatestSavedBoundaryGeoJson,
+    latestModelMetrics: cachedLatestModelMetrics = null,
+    loadLatestModelMetricsCached,
+    geospatialHotspotResult = null,
+    loadGeospatialHotspotsCached,
   } = data
+
+  const [selectedFieldUpdate, setSelectedFieldUpdate] = useState(null)
+  const [isLoadingSelectedFieldUpdate, setIsLoadingSelectedFieldUpdate] = useState(false)
+  const [selectedFieldUpdateError, setSelectedFieldUpdateError] = useState('')
+  const [format, setFormat] = useState('pdf')
+  const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
+  const [expandedPriorityBarangay, setExpandedPriorityBarangay] = useState(null)
+  const [hotspotResult, setHotspotResult] = useState(() => geospatialHotspotResult || null)
+  const [hotspotError, setHotspotError] = useState('')
+  const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
+  const [latestModelMetrics, setLatestModelMetrics] = useState(() => cachedLatestModelMetrics || null)
+  const [isAiSnapshotOpen, setIsAiSnapshotOpen] = useState(false)
+  const [isAdditionalIndicatorsOpen, setIsAdditionalIndicatorsOpen] = useState(false)
+  const [isHotspotDetailsOpen, setIsHotspotDetailsOpen] = useState(false)
+  const [isOfficialDetailsOpen, setIsOfficialDetailsOpen] = useState(false)
+  const [isExportDetailsOpen, setIsExportDetailsOpen] = useState(false)
+  const [isSupportingDetailsOpen, setIsSupportingDetailsOpen] = useState(false)
+  const [isActivityOpen, setIsActivityOpen] = useState(false)
+  const [isTopResponseDetailsOpen, setIsTopResponseDetailsOpen] = useState(false)
 
   const boundaryLoadRequestedRef = useRef(false)
 
@@ -4692,17 +4696,15 @@ export default function ReportsPage() {
     let active = true
 
     async function loadLatestModelMetrics() {
-      try {
-        const result = await getLatestModelMetrics()
-
-        if (!active) return
-
-        setLatestModelMetrics(result?.has_metrics ? result : null)
-      } catch {
-        if (active) {
-          setLatestModelMetrics(null)
-        }
+      if (cachedLatestModelMetrics) {
+        setLatestModelMetrics(cachedLatestModelMetrics)
+        return
       }
+
+      const result = await loadLatestModelMetricsCached?.({ silent: true })
+
+      if (!active) return
+      setLatestModelMetrics(result || null)
     }
 
     loadLatestModelMetrics()
@@ -4710,7 +4712,11 @@ export default function ReportsPage() {
     return () => {
       active = false
     }
-  }, [backendForecastResult])
+  }, [
+    cachedLatestModelMetrics,
+    backendForecastResult?.database_forecast_run_id,
+    backendForecastResult?.forecast_run?.forecast_run_id,
+  ])
 
   const generatedAt = getCurrentDateTime()
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
@@ -4767,12 +4773,23 @@ export default function ReportsPage() {
         return
       }
 
+      if (geospatialHotspotResult) {
+        setHotspotResult(geospatialHotspotResult)
+        setHotspotError('')
+        setIsLoadingHotspotReport(false)
+        return
+      }
+
       setIsLoadingHotspotReport(true)
 
       try {
-        const result = await getGeospatialHotspots()
+        const result = await loadGeospatialHotspotsCached?.({ silent: true })
 
         if (!active) return
+
+        if (!result) {
+          throw new Error('Hotspot summary is not available yet.')
+        }
 
         setHotspotResult(result)
         setHotspotError('')
@@ -4795,7 +4812,13 @@ export default function ReportsPage() {
     return () => {
       active = false
     }
-  }, [usingBackendForecast, sourceStatus?.boundary?.validCount, backendForecastResult])
+  }, [
+    usingBackendForecast,
+    sourceStatus?.boundary?.validCount,
+    geospatialHotspotResult,
+    backendForecastResult?.database_forecast_run_id,
+    backendForecastResult?.forecast_run?.forecast_run_id,
+  ])
 
 
   const rawHotspotRows = useMemo(() => {
@@ -5031,7 +5054,9 @@ export default function ReportsPage() {
 let exportHotspotSummary = hotspotSummary
 
 try {
-  const latestHotspotResult = await getGeospatialHotspots()
+  const latestHotspotResult = await loadGeospatialHotspotsCached?.({
+    silent: true,
+  })
   const latestRawHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
     ? latestHotspotResult.hotspots
     : rawHotspotRows
@@ -5239,6 +5264,959 @@ const exportPayload = {
             overflow-wrap: anywhere;
           }
         }
+
+        /* =========================================================
+           FINAL REPORTS RESPONSIVE STABILIZATION
+           Page-local only. Export/report-generation logic unchanged.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .reports-mobile-compact {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            padding-bottom: 1rem !important;
+          }
+
+          .reports-mobile-compact > * + * {
+            margin-top: 0.8rem !important;
+          }
+
+          /* HERO */
+          .reports-mobile-compact .reports-hero-panel {
+            min-height: 0 !important;
+            border-radius: 24px !important;
+          }
+
+          .reports-mobile-compact .reports-hero-layout {
+            min-height: 0 !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 1rem !important;
+            padding: 1rem !important;
+          }
+
+          .reports-mobile-compact .reports-hero-panel h1 {
+            margin-top: 1rem !important;
+            max-width: 100% !important;
+            font-size: 1.9rem !important;
+            line-height: 1.04 !important;
+            letter-spacing: -0.045em !important;
+          }
+
+          .reports-mobile-compact .reports-hero-panel h1 + p {
+            display: block !important;
+            margin-top: 0.75rem !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.82rem !important;
+            line-height: 1.5 !important;
+          }
+
+          /* Four hero report indicators = clean 2x2 */
+          .reports-mobile-compact .reports-hero-metrics {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            margin-top: 1rem !important;
+          }
+
+          .reports-mobile-compact .reports-hero-metrics > div {
+            min-width: 0 !important;
+            min-height: 116px !important;
+            border-radius: 17px !important;
+            padding: 0.7rem !important;
+          }
+
+          .reports-mobile-compact .reports-hero-metrics p:first-child {
+            font-size: 0.64rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.055em !important;
+          }
+
+          .reports-mobile-compact .reports-hero-metrics p:nth-child(2) {
+            margin-top: 0.4rem !important;
+            font-size: 1.15rem !important;
+            line-height: 1.05 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .reports-mobile-compact .reports-hero-metrics p:last-child {
+            margin-top: 0.3rem !important;
+            font-size: 0.68rem !important;
+            line-height: 1.28 !important;
+          }
+
+          /* Selected output card */
+          .reports-mobile-compact .reports-selected-output {
+            border-radius: 20px !important;
+            padding: 0.85rem !important;
+          }
+
+          .reports-mobile-compact .reports-selected-output > .flex.items-start {
+            gap: 0.7rem !important;
+          }
+
+          .reports-mobile-compact .reports-selected-output .h-14.w-14 {
+            width: 2.5rem !important;
+            height: 2.5rem !important;
+            border-radius: 14px !important;
+          }
+
+          .reports-mobile-compact .reports-selected-output h2 {
+            font-size: 1.15rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .reports-mobile-compact .reports-selected-output .relative.mt-5.rounded-\[24px\] {
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-selected-output > button {
+            min-height: 52px !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-selected-output > button .h-12.w-12 {
+            width: 2.15rem !important;
+            height: 2.15rem !important;
+            border-radius: 12px !important;
+          }
+
+          /* DISCLOSURE HEADERS */
+          .reports-mobile-compact section > button.group\/disclosure {
+            gap: 0.65rem !important;
+          }
+
+          .reports-mobile-compact section > button.group\/disclosure .h-12.w-12 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 13px !important;
+          }
+
+          .reports-mobile-compact section > button.group\/disclosure h2 {
+            font-size: 1rem !important;
+            line-height: 1.22 !important;
+          }
+
+          .reports-mobile-compact section > button.group\/disclosure h2 + span {
+            font-size: 0.58rem !important;
+          }
+
+          .reports-mobile-compact section > button.group\/disclosure p {
+            margin-top: 0.3rem !important;
+            font-size: 0.74rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .reports-mobile-compact section > button.group\/disclosure .mt-3.inline-flex {
+            max-width: 100% !important;
+            white-space: normal !important;
+            font-size: 0.66rem !important;
+            line-height: 1.25 !important;
+          }
+
+          /* ADDITIONAL INDICATORS: 5 cards = 2 + 2 + 1 */
+          .reports-mobile-compact .reports-additional-indicators {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators > article {
+            min-width: 0 !important;
+            min-height: 148px !important;
+            border-radius: 18px !important;
+            padding: 0.7rem !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators > article:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators .h-12.w-12 {
+            width: 2rem !important;
+            height: 2rem !important;
+            border-radius: 12px !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators .text-3xl {
+            font-size: 1.15rem !important;
+            line-height: 1.08 !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators article p:last-child {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.68rem !important;
+            line-height: 1.28 !important;
+          }
+
+          /* Readiness / hotspot notification banners */
+          .reports-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border {
+            padding: 0.75rem !important;
+            border-radius: 17px !important;
+          }
+
+          .reports-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border .relative.flex.items-start {
+            gap: 0.6rem !important;
+          }
+
+          /* HOTSPOT COUNTS = 2 x 3 */
+          .reports-mobile-compact .reports-hotspot-count-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-hotspot-count-grid > div {
+            min-width: 0 !important;
+            min-height: 88px !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-hotspot-count-grid p:first-child {
+            font-size: 0.64rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.05em !important;
+          }
+
+          .reports-mobile-compact .reports-hotspot-count-grid p:last-child {
+            font-size: 1.05rem !important;
+          }
+
+          /* Hotspot ranked rows stay one per row because descriptions are long */
+          .reports-mobile-compact #hotspot-analysis-details + section .mt-4.space-y-2 > div {
+            border-radius: 16px !important;
+            padding: 0.7rem !important;
+          }
+
+          .reports-mobile-compact #hotspot-analysis-details + section .mt-4.space-y-2 > div .flex.flex-wrap {
+            width: 100% !important;
+          }
+
+          /* OFFICIAL REPORT METADATA */
+          .reports-mobile-compact #official-report-details {
+            overflow: hidden !important;
+          }
+
+          .reports-mobile-compact #official-report-details > .relative.overflow-hidden {
+            padding: 0.8rem !important;
+          }
+
+          .reports-mobile-compact .reports-metadata-highlight-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .reports-mobile-compact .reports-metadata-highlight-grid > div {
+            min-width: 0 !important;
+            min-height: 104px !important;
+            border-radius: 15px !important;
+            padding: 0.6rem !important;
+          }
+
+          .reports-mobile-compact .reports-metadata-highlight-grid .h-9.w-9 {
+            width: 1.85rem !important;
+            height: 1.85rem !important;
+            margin-bottom: 0.45rem !important;
+            border-radius: 10px !important;
+          }
+
+          .reports-mobile-compact .reports-metadata-highlight-grid p:last-child {
+            font-size: 0.72rem !important;
+            line-height: 1.25 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .reports-mobile-compact #official-report-details > .p-5 {
+            padding: 0.65rem !important;
+          }
+
+          /* AI model snapshot metric grid remains 2x2 */
+          .reports-mobile-compact #official-report-details .grid.grid-cols-2.gap-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          /* DECISION + EXPORT workspace */
+          .reports-mobile-compact .reports-decision-export-layout {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          .reports-mobile-compact #decision-brief,
+          .reports-mobile-compact #export-center {
+            position: static !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            border-radius: 20px !important;
+            padding: 0.8rem !important;
+          }
+
+          /* Main response summary remains 1 per row because these are sentences */
+          .reports-mobile-compact .reports-main-summary-list {
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list > div {
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+            gap: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list .h-8.w-8 {
+            width: 1.75rem !important;
+            height: 1.75rem !important;
+          }
+
+          /* Priority barangays: one wide card per row */
+          .reports-mobile-compact #priority-barangays {
+            border-radius: 17px !important;
+            padding: 0.7rem !important;
+          }
+
+          .reports-mobile-compact #priority-barangays > .flex:first-child > div:last-child {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+
+          .reports-mobile-compact .reports-priority-list {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card {
+            min-width: 0 !important;
+            border-radius: 16px !important;
+            padding: 0.7rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .h-12.w-12 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .flex.flex-wrap.gap-2 {
+            gap: 0.35rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .flex.flex-wrap.gap-2 > span {
+            max-width: 100% !important;
+            white-space: normal !important;
+            padding: 0.3rem 0.45rem !important;
+            font-size: 0.64rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] {
+            border-radius: 13px !important;
+            padding: 0.6rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .mt-3.flex.justify-end > button {
+            width: 100% !important;
+            min-height: 40px !important;
+            justify-content: center !important;
+          }
+
+          /* EXPORT FORMAT CARDS = 2x2 */
+          .reports-mobile-compact .reports-export-format-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button {
+            min-width: 0 !important;
+            min-height: 132px !important;
+            border-radius: 16px !important;
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button .flex.items-start {
+            flex-direction: column !important;
+            gap: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button .h-11.w-11 {
+            width: 2rem !important;
+            height: 2rem !important;
+            border-radius: 11px !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button span.font-black {
+            font-size: 0.76rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button span.block {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.66rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .reports-mobile-compact #export-center > button {
+            min-height: 46px !important;
+            border-radius: 14px !important;
+          }
+
+          /* Top Response Plan: six factors = 2 x 3, not 3 cramped columns */
+          .reports-mobile-compact .reports-top-factor-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .reports-mobile-compact .reports-top-factor-grid > div {
+            min-width: 0 !important;
+            min-height: 72px !important;
+            border-radius: 12px !important;
+            padding: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-top-factor-grid p:first-child {
+            font-size: 0.61rem !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0.045em !important;
+          }
+
+          .reports-mobile-compact .reports-top-factor-grid p:last-child {
+            font-size: 0.68rem !important;
+            line-height: 1.25 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          /* SUPPORTING DETAILS */
+          .reports-mobile-compact .reports-supporting-layout {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+
+          /* Distribution descriptions are labels, so use a compact 2x2 grid */
+          .reports-mobile-compact .reports-distribution-list {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-distribution-list > div {
+            min-width: 0 !important;
+            min-height: 110px !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            justify-content: space-between !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-distribution-list > div > div {
+            align-items: flex-start !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-distribution-list .h-10.w-10 {
+            width: 1.9rem !important;
+            height: 1.9rem !important;
+            border-radius: 10px !important;
+          }
+
+          .reports-mobile-compact .reports-distribution-list span.text-sm {
+            font-size: 0.72rem !important;
+            line-height: 1.25 !important;
+            overflow-wrap: anywhere !important;
+          }
+
+          .reports-mobile-compact .reports-distribution-list > div > span:last-child {
+            padding: 0.28rem 0.45rem !important;
+            font-size: 0.62rem !important;
+          }
+
+          /* Uploaded datasets = 2 columns where filenames can wrap */
+          .reports-mobile-compact .reports-source-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-source-grid > div {
+            min-width: 0 !important;
+            border-radius: 15px !important;
+            padding: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-source-grid p.break-all {
+            word-break: break-word !important;
+            overflow-wrap: anywhere !important;
+            font-size: 0.66rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .reports-mobile-compact .reports-source-grid .mt-4.rounded-2xl {
+            margin-top: 0.55rem !important;
+            padding: 0.5rem !important;
+            font-size: 0.66rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Activity descriptions stay one card per row */
+          .reports-mobile-compact .reports-activity-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid > div {
+            border-radius: 15px !important;
+            padding: 0.7rem !important;
+          }
+
+          /* Maintain readable body text despite original broad mobile shrinking */
+          .reports-mobile-compact .text-sm {
+            font-size: 0.8rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .reports-mobile-compact .text-xs {
+            font-size: 0.72rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .reports-mobile-compact .text-\[11px\] {
+            font-size: 0.68rem !important;
+            line-height: 1.28 !important;
+          }
+
+          .reports-mobile-compact .text-\[10px\] {
+            font-size: 0.65rem !important;
+            line-height: 1.22 !important;
+          }
+
+          /* Data tables remain horizontally scrollable rather than squeezed. */
+          .reports-mobile-compact .overflow-x-auto {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overscroll-behavior-x: contain !important;
+            -webkit-overflow-scrolling: touch !important;
+            touch-action: pan-x pan-y !important;
+          }
+        }
+
+        /* Very narrow phones: reduce only the grids that truly need it. */
+        @media (max-width: 374px) {
+          .reports-mobile-compact .reports-hero-metrics,
+          .reports-mobile-compact .reports-additional-indicators,
+          .reports-mobile-compact .reports-export-format-grid,
+          .reports-mobile-compact .reports-distribution-list,
+          .reports-mobile-compact .reports-source-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators > article:last-child:nth-child(odd) {
+            grid-column: auto !important;
+          }
+
+          .reports-mobile-compact .reports-hotspot-count-grid,
+          .reports-mobile-compact .reports-metadata-highlight-grid,
+          .reports-mobile-compact .reports-top-factor-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
+        /* Tablet portrait / compact laptop: keep the two main workspaces stacked. */
+        @media (min-width: 640px) and (max-width: 1023px) {
+          .reports-mobile-compact .reports-hero-layout,
+          .reports-mobile-compact .reports-decision-export-layout,
+          .reports-mobile-compact .reports-supporting-layout {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators > article:last-child {
+            grid-column: span 1 !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
+
+        /* =========================================================
+           REPORTS MOBILE — PRESERVE CARD GRIDS
+           Keeps the dashboard-like grid appearance on phones while
+           reducing card chrome and typography enough for content to fit.
+           ========================================================= */
+        @media (max-width: 639px) {
+          /* Main response summary = 2 x 2 */
+          .reports-mobile-compact .reports-main-summary-list {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list > div {
+            min-width: 0 !important;
+            min-height: 132px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.45rem !important;
+            border-radius: 14px !important;
+            padding: 0.58rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list .h-8.w-8 {
+            width: 1.65rem !important;
+            height: 1.65rem !important;
+            font-size: 0.64rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list p {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 5 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.68rem !important;
+            line-height: 1.3 !important;
+          }
+
+          /* Priority barangays = 2-column card grid */
+          .reports-mobile-compact .reports-priority-list {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            align-items: stretch !important;
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card {
+            min-width: 0 !important;
+            min-height: 250px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            border-radius: 15px !important;
+            padding: 0.6rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card > .flex.flex-col.gap-3 {
+            gap: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card > .flex.flex-col.gap-3 > div:first-child {
+            min-width: 0 !important;
+            gap: 0.45rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .h-12.w-12 {
+            width: 1.9rem !important;
+            height: 1.9rem !important;
+            border-radius: 10px !important;
+            font-size: 0.65rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card p.font-black {
+            font-size: 0.75rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card p.text-xs {
+            font-size: 0.64rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .flex.flex-wrap.gap-2 {
+            gap: 0.25rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .flex.flex-wrap.gap-2 > span {
+            max-width: 100% !important;
+            padding: 0.24rem 0.34rem !important;
+            font-size: 0.57rem !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] {
+            flex: 1 1 auto !important;
+            margin-top: 0.5rem !important;
+            border-radius: 11px !important;
+            padding: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] p:first-child {
+            font-size: 0.57rem !important;
+            line-height: 1.1 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] p:last-child {
+            display: -webkit-box !important;
+            margin-top: 0.3rem !important;
+            -webkit-line-clamp: 4 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.66rem !important;
+            line-height: 1.28 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .mt-3.flex.justify-end {
+            margin-top: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .mt-3.flex.justify-end > button {
+            min-height: 36px !important;
+            padding: 0.45rem 0.5rem !important;
+            font-size: 0.64rem !important;
+          }
+
+          /* Recent activity = 2 + 1 grid */
+          .reports-mobile-compact .reports-activity-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid > div {
+            min-width: 0 !important;
+            min-height: 132px !important;
+            border-radius: 14px !important;
+            padding: 0.58rem !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid > div:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid p:first-child {
+            font-size: 0.72rem !important;
+            line-height: 1.22 !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid p:nth-child(2) {
+            font-size: 0.61rem !important;
+            line-height: 1.2 !important;
+          }
+
+          .reports-mobile-compact .reports-activity-grid p:last-child {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.66rem !important;
+            line-height: 1.28 !important;
+          }
+
+          /* Keep the already-useful card grids compact rather than stacking. */
+          .reports-mobile-compact .reports-hero-metrics,
+          .reports-mobile-compact .reports-additional-indicators,
+          .reports-mobile-compact .reports-hotspot-count-grid,
+          .reports-mobile-compact .reports-metadata-highlight-grid,
+          .reports-mobile-compact .reports-export-format-grid,
+          .reports-mobile-compact .reports-top-factor-grid,
+          .reports-mobile-compact .reports-distribution-list,
+          .reports-mobile-compact .reports-source-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          /* 5 additional indicator cards = 2 + 2 + 1 */
+          .reports-mobile-compact .reports-additional-indicators > article:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          /* Export cards: slightly shorter and tighter, still 2 x 2 */
+          .reports-mobile-compact .reports-export-format-grid > button {
+            min-height: 118px !important;
+            padding: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button span.font-black {
+            font-size: 0.72rem !important;
+          }
+
+          .reports-mobile-compact .reports-export-format-grid > button span.block {
+            -webkit-line-clamp: 2 !important;
+            font-size: 0.62rem !important;
+            line-height: 1.24 !important;
+          }
+
+          /* Distribution remains 2 x 2 but denser */
+          .reports-mobile-compact .reports-distribution-list > div {
+            min-height: 102px !important;
+            padding: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-distribution-list span.text-sm {
+            font-size: 0.68rem !important;
+            line-height: 1.2 !important;
+          }
+
+          /* Uploaded source cards remain 2 columns */
+          .reports-mobile-compact .reports-source-grid > div {
+            min-height: 150px !important;
+            padding: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-source-grid p.text-sm {
+            font-size: 0.72rem !important;
+          }
+
+          .reports-mobile-compact .reports-source-grid p.break-all {
+            display: -webkit-box !important;
+            -webkit-line-clamp: 3 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
+            font-size: 0.61rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .reports-mobile-compact .reports-source-grid span.rounded-full {
+            max-width: 100% !important;
+            padding: 0.25rem 0.38rem !important;
+            font-size: 0.58rem !important;
+            line-height: 1.1 !important;
+            white-space: normal !important;
+          }
+
+          /* Keep risk-factor cards 2 x 3 and compact. */
+          .reports-mobile-compact .reports-top-factor-grid > div {
+            min-height: 66px !important;
+            padding: 0.48rem !important;
+          }
+
+          /* Hotspot count cards = 2 x 3 */
+          .reports-mobile-compact .reports-hotspot-count-grid > div {
+            min-height: 78px !important;
+            padding: 0.55rem !important;
+          }
+        }
+
+        /* Even on very narrow phones, preserve two-column card grids.
+           We reduce spacing/typography instead of removing the grid. */
+        @media (max-width: 374px) {
+          .reports-mobile-compact .reports-hero-metrics,
+          .reports-mobile-compact .reports-additional-indicators,
+          .reports-mobile-compact .reports-hotspot-count-grid,
+          .reports-mobile-compact .reports-metadata-highlight-grid,
+          .reports-mobile-compact .reports-export-format-grid,
+          .reports-mobile-compact .reports-top-factor-grid,
+          .reports-mobile-compact .reports-distribution-list,
+          .reports-mobile-compact .reports-source-grid,
+          .reports-mobile-compact .reports-main-summary-list,
+          .reports-mobile-compact .reports-priority-list,
+          .reports-mobile-compact .reports-activity-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
+          }
+
+          .reports-mobile-compact .reports-additional-indicators > article:last-child:nth-child(odd),
+          .reports-mobile-compact .reports-activity-grid > div:last-child:nth-child(odd) {
+            grid-column: 1 / -1 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card {
+            min-height: 236px !important;
+            padding: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] p:last-child {
+            -webkit-line-clamp: 3 !important;
+            font-size: 0.62rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list > div {
+            min-height: 122px !important;
+            padding: 0.5rem !important;
+          }
+
+          .reports-mobile-compact .reports-main-summary-list p {
+            font-size: 0.64rem !important;
+            -webkit-line-clamp: 4 !important;
+          }
+        }
+
+
+        /* =========================================================
+           PRIORITY BARANGAYS — FULL-WIDTH MOBILE CARDS
+           Keep every other Reports grid unchanged.
+           ========================================================= */
+        @media (max-width: 639px) {
+          .reports-mobile-compact .reports-priority-list {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 0.55rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card {
+            min-height: 0 !important;
+            width: 100% !important;
+            padding: 0.7rem !important;
+            border-radius: 16px !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .h-12.w-12 {
+            width: 2.25rem !important;
+            height: 2.25rem !important;
+            border-radius: 12px !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card p.font-black {
+            font-size: 0.82rem !important;
+            line-height: 1.25 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card p.text-xs {
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .flex.flex-wrap.gap-2 {
+            gap: 0.35rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .flex.flex-wrap.gap-2 > span {
+            padding: 0.3rem 0.45rem !important;
+            font-size: 0.64rem !important;
+            line-height: 1.15 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] {
+            min-height: 0 !important;
+            margin-top: 0.55rem !important;
+            padding: 0.6rem !important;
+            border-radius: 13px !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] p:last-child {
+            display: block !important;
+            overflow: visible !important;
+            -webkit-line-clamp: unset !important;
+            font-size: 0.7rem !important;
+            line-height: 1.35 !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .mt-3.flex.justify-end > button {
+            min-height: 40px !important;
+            font-size: 0.68rem !important;
+          }
+        }
+
+        @media (max-width: 374px) {
+          .reports-mobile-compact .reports-priority-list {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card {
+            min-height: 0 !important;
+            padding: 0.6rem !important;
+          }
+
+          .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] p:last-child {
+            -webkit-line-clamp: unset !important;
+            font-size: 0.68rem !important;
+          }
+        }
+
       `}</style>
 
       {selectedFieldUpdateId && (
@@ -5266,7 +6244,7 @@ const exportPayload = {
         <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-indigo-400/10 blur-3xl" />
 
-        <div className="relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.62fr)] xl:items-center xl:p-10">
+        <div className="reports-hero-layout relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.62fr)] xl:items-center xl:p-10">
           <div className="flex flex-col justify-between">
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/35 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/90 shadow-sm backdrop-blur-md">
@@ -5285,7 +6263,7 @@ const exportPayload = {
               </p>
             </div>
 
-            <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="reports-hero-metrics mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <HeroMetric
                 label="Barangay-matched cases"
                 value={formatNumber(displayDashboardStats.totalCases)}
@@ -5316,7 +6294,7 @@ const exportPayload = {
             </div>
           </div>
 
-          <div className={`group/output relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${selectedOutputTheme.darkCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.54)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
+          <div className={`reports-selected-output group/output relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${selectedOutputTheme.darkCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.54)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
             <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${selectedOutputTheme.line}`} />
             <div className={`pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full ${selectedOutputTheme.glow} blur-3xl`} />
             <div className="flex items-start gap-4">
@@ -5415,7 +6393,7 @@ const exportPayload = {
       />
 
       {isAdditionalIndicatorsOpen && (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-5">
+      <div className="reports-additional-indicators grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-5">
         <StatCard
           label="Barangay-matched cases"
           value={formatNumber(displayDashboardStats.totalCases)}
@@ -5527,7 +6505,7 @@ const exportPayload = {
 
       {isHotspotDetailsOpen && (
         <PremiumPanel className="p-5 sm:p-6">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="reports-hotspot-count-grid grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             {[
               ['Confirmed', hotspotCounts.confirmed, 'rose'],
               ['Emerging', hotspotCounts.emerging, 'amber'],
@@ -5669,7 +6647,7 @@ const exportPayload = {
             </div>
           </div>
 
-          <div className="relative mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="reports-metadata-highlight-grid relative mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
             {[
               ['Generated', officialReportMetadata.generatedAt, CalendarDays],
               ['Forecast window', officialReportMetadata.forecastWindow, BarChart3],
@@ -6083,7 +7061,7 @@ const exportPayload = {
 
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+      <div className="reports-decision-export-layout grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
         <PremiumPanel id="decision-brief" tone="blue" className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -6114,7 +7092,7 @@ const exportPayload = {
               Main response summary
             </h3>
 
-            <div className="mt-4 space-y-3">
+            <div className="reports-main-summary-list mt-4 space-y-3">
               {reportSummary.map((item, index) => (
                 <div
                   key={item}
@@ -6169,7 +7147,7 @@ const exportPayload = {
   </div>
 </div>
 
-            <div className="mt-4 space-y-3">
+            <div className="reports-priority-list mt-4 space-y-3">
               {visibleTopBarangays.length > 0 ? (
                 <>
                   {visibleTopBarangays.map((row, index) => {
@@ -6181,7 +7159,7 @@ const exportPayload = {
                     return (
                       <div
                         key={`${row.barangay}-${index}`}
-                        className={`group relative overflow-hidden rounded-[28px] border p-4 shadow-[0_14px_38px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(15,23,42,0.14)] dark:ring-white/5 ${riskCardTheme.surface}`}
+                        className={`reports-priority-card group relative overflow-hidden rounded-[28px] border p-4 shadow-[0_14px_38px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(15,23,42,0.14)] dark:ring-white/5 ${riskCardTheme.surface}`}
                       >
                         <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskCardTheme.line}`} />
                         <div className={`pointer-events-none absolute -right-14 -top-16 h-36 w-36 rounded-full blur-3xl ${riskCardTheme.glow}`} />
@@ -6388,7 +7366,7 @@ const exportPayload = {
             Select the output format, then generate the response planning report.
           </p>
 
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2">
+          <div className="reports-export-format-grid mt-5 grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-2">
             {exportFormats.map((item) => {
               const Icon = item.icon
               const itemTone =
@@ -6566,7 +7544,7 @@ const exportPayload = {
                     Combined risk factors
                   </p>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-2">
+                  <div className="reports-top-factor-grid mt-3 grid grid-cols-3 gap-2 sm:grid-cols-2">
                     {[
                       ['Combined priority score', `${formatNumber(topProfile.score)}/100`],
                       ['Environment', topProfile.environmentalSuitability],
@@ -6656,7 +7634,7 @@ const exportPayload = {
       />
 
       {isSupportingDetailsOpen && (
-      <div className="grid gap-6 xl:grid-cols-[0.7fr_1fr]">
+      <div className="reports-supporting-layout grid gap-6 xl:grid-cols-[0.7fr_1fr]">
         <PremiumPanel tone="blue" className="p-5 sm:p-6">
           <SectionBadge icon={Send} tone="blue">
             Distribution
@@ -6666,7 +7644,7 @@ const exportPayload = {
             Distribution list
           </h2>
 
-          <div className="mt-5 space-y-3">
+          <div className="reports-distribution-list mt-5 space-y-3">
             {distributionItems.map((item) => {
               const Icon = item.icon
 
@@ -6703,7 +7681,7 @@ const exportPayload = {
             Uploaded data readiness
           </h2>
 
-          <div className="mt-5 grid grid-cols-2 gap-2 lg:gap-3 lg:grid-cols-2">
+          <div className="reports-source-grid mt-5 grid grid-cols-2 gap-2 lg:gap-3 lg:grid-cols-2">
             {Object.entries(sourceStatus || {}).length > 0 ? (
               Object.entries(sourceStatus || {}).map(([key, item = {}]) => (
                 <div
@@ -6765,7 +7743,7 @@ const exportPayload = {
           Recent report activity
         </h2>
 
-        <div className="mt-5 grid gap-2 sm:gap-3 lg:grid-cols-3">
+        <div className="reports-activity-grid mt-5 grid gap-2 sm:gap-3 lg:grid-cols-3">
           {(activityLogs || []).slice(0, 3).length > 0 ? (
             (activityLogs || []).slice(0, 3).map((log) => (
               <div
