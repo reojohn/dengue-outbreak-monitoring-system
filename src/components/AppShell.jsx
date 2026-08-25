@@ -290,7 +290,7 @@ function getInitialReadNotifications() {
 }
 
 function getInitialTextScale() {
-  const savedScale = Number(localStorage.getItem('dengue-text-scale') || 100)
+  const savedScale = Number(localStorage.getItem('dengue-text-scale') || 105)
 
   if (
     Number.isFinite(savedScale) &&
@@ -300,7 +300,7 @@ function getInitialTextScale() {
     return savedScale
   }
 
-  return 100
+  return 105
 }
 
 function getInitialDisplaySetting(key, fallback = false) {
@@ -1150,7 +1150,7 @@ export default function AppShell({ children }) {
   const toastTimerRef = useRef(null)
   const [textScale, setTextScale] = useState(getInitialTextScale)
   const [comfortableControls, setComfortableControls] = useState(() =>
-    getInitialDisplaySetting('dengue-comfortable-controls')
+    getInitialDisplaySetting('dengue-comfortable-controls', true)
   )
   const [highContrast, setHighContrast] = useState(() =>
     getInitialDisplaySetting('dengue-high-contrast')
@@ -1431,7 +1431,7 @@ export default function AppShell({ children }) {
       items.push({
         id: `top-priority-${topBarangay.barangay}-${topBarangay.risk}-${topBarangay.forecast}`,
         title: `Top priority: ${topBarangay.barangay}`,
-        message: `${topBarangay.forecast || 0} projected cases, ${getCanonicalCombinedRiskScore(topBarangay)}/100 combined priority score, classified as ${topBarangay.risk} risk.`,
+        message: `${topBarangay.forecast || 0} forecast cases, ${getCanonicalCombinedRiskScore(topBarangay)}/100 combined priority score, classified as ${topBarangay.risk} risk.`,
         type: topBarangay.risk === 'High' ? 'danger' : topBarangay.risk === 'Moderate' ? 'warning' : 'success',
         severity: topBarangay.risk === 'High' ? 'danger' : topBarangay.risk === 'Moderate' ? 'warning' : 'success',
         source: 'frontend-fallback',
@@ -1671,29 +1671,57 @@ export default function AppShell({ children }) {
         --dengue-scale: var(--dengue-content-scale, 1);
       }
 
-      .dengue-scaled-content [class*="text-[9px]"] {
-        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1rem) !important;
-        line-height: clamp(1rem, calc(1rem * var(--dengue-scale)), 1.55rem) !important;
+      /* Phase 5 readability baseline: health workers should not need to raise the text slider just to read labels. */
+      /* Readability floor. The #root selector intentionally outranks page-level
+         compact mobile CSS so helper text stays readable on every page. */
+      #root .dengue-scaled-content [class*="text-[7px]"],
+      #root .dengue-scaled-content [class*="text-[8px]"],
+      #root .dengue-scaled-content [class*="text-[9px]"] {
+        font-size: clamp(0.8125rem, calc(0.8125rem * var(--dengue-scale)), 1.08rem) !important;
+        line-height: clamp(1.12rem, calc(1.12rem * var(--dengue-scale)), 1.6rem) !important;
       }
 
-      .dengue-scaled-content [class*="text-[10px]"] {
-        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1.08rem) !important;
-        line-height: clamp(0.95rem, calc(1rem * var(--dengue-scale)), 1.62rem) !important;
+      #root .dengue-scaled-content [class*="text-[10px]"],
+      #root .dengue-scaled-content [class*="text-[11px]"] {
+        font-size: clamp(0.875rem, calc(0.875rem * var(--dengue-scale)), 1.18rem) !important;
+        line-height: clamp(1.22rem, calc(1.22rem * var(--dengue-scale)), 1.72rem) !important;
       }
 
-      .dengue-scaled-content [class*="text-[11px]"] {
-        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1.16rem) !important;
-        line-height: clamp(1rem, calc(1.05rem * var(--dengue-scale)), 1.72rem) !important;
+      #root .dengue-scaled-content [class*="text-[12px]"],
+      #root .dengue-scaled-content .text-xs {
+        font-size: clamp(0.875rem, calc(0.875rem * var(--dengue-scale)), 1.22rem) !important;
+        line-height: clamp(1.25rem, calc(1.25rem * var(--dengue-scale)), 1.8rem) !important;
       }
 
-      .dengue-scaled-content .text-xs {
-        font-size: clamp(0.75rem, calc(0.75rem * var(--dengue-scale)), 1.2rem) !important;
-        line-height: clamp(1rem, calc(1rem * var(--dengue-scale)), 1.7rem) !important;
+      #root .dengue-scaled-content .text-sm {
+        font-size: clamp(0.96875rem, calc(0.96875rem * var(--dengue-scale)), 1.38rem) !important;
+        line-height: clamp(1.4rem, calc(1.4rem * var(--dengue-scale)), 2.05rem) !important;
       }
 
-      .dengue-scaled-content .text-sm {
-        font-size: clamp(0.875rem, calc(0.875rem * var(--dengue-scale)), 1.35rem) !important;
-        line-height: clamp(1.25rem, calc(1.25rem * var(--dengue-scale)), 1.95rem) !important;
+      .dengue-scaled-content h1.font-black,
+      .dengue-scaled-content h2.font-black,
+      .dengue-scaled-content h3.font-black,
+      .dengue-scaled-content .dengue-hero-title {
+        font-weight: 700 !important;
+      }
+
+      .dengue-scaled-content .font-black.uppercase {
+        font-weight: 700 !important;
+      }
+
+      .dengue-scaled-content .dengue-hero-title {
+        letter-spacing: -0.035em !important;
+        line-height: 1.08 !important;
+      }
+
+      .dengue-scaled-content .dengue-hero-copy {
+        font-size: clamp(0.9375rem, calc(0.9375rem * var(--dengue-scale)), 1.3rem) !important;
+        line-height: clamp(1.55rem, calc(1.6rem * var(--dengue-scale)), 2.05rem) !important;
+      }
+
+      #root .dengue-scaled-content [data-information-type] {
+        font-size: clamp(0.8125rem, calc(0.8125rem * var(--dengue-scale)), 1.05rem) !important;
+        line-height: 1.15rem !important;
       }
 
       .dengue-scaled-content .text-base {

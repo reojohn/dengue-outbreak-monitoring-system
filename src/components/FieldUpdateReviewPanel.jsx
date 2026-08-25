@@ -19,6 +19,7 @@ import {
   getFieldUpdates,
   reviewFieldUpdate,
 } from '../services/api'
+import InformationTypeBadge from './InformationTypeBadge'
 
 const TASK_LABELS = {
   'inspect-water': 'Inspect stagnant water areas',
@@ -26,6 +27,22 @@ const TASK_LABELS = {
   'community-reminders': 'Issue community reminders',
   'field-observations': 'Record field observations',
   'monitoring-summary': 'Prepare monitoring summary',
+}
+
+const ENVIRONMENTAL_OBSERVATION_LABELS = {
+  standing_water: 'Standing water observed',
+  uncovered_water_containers: 'Uncovered water containers',
+  possible_breeding_sites: 'Possible mosquito breeding sites',
+  flood_prone_area: 'Flood-prone area',
+  low_lying_area: 'Low-lying area',
+  waste_accumulation: 'Waste accumulation',
+  clogged_drainage: 'Clogged drainage',
+}
+
+function getEnvironmentalObservationLabels(update) {
+  return Object.entries(update?.environmental_observations || {})
+    .filter(([, observed]) => Boolean(observed))
+    .map(([key]) => ENVIRONMENTAL_OBSERVATION_LABELS[key] || key)
 }
 
 function formatDate(value) {
@@ -135,16 +152,21 @@ export default function FieldUpdateReviewPanel() {
     setMessage('')
     try {
       const urgent = selected.is_urgent || selected.risk_level === 'High'
+      const environmentalLabels = getEnvironmentalObservationLabels(selected)
+      const environmentalSummary = environmentalLabels.length
+        ? ` Observed environmental factors: ${environmentalLabels.join(', ')}.`
+        : ''
+      const responseActionText = selected.observation_note
+        ? `Respond to BHW field report: ${selected.observation_note}${environmentalSummary}`
+        : `Review the submitted BHW checklist and coordinate the required barangay response.${environmentalSummary}`
       const result = await createDecisionAction({
         barangay: selected.barangay,
         risk_level: selected.risk_level,
-        action: selected.observation_note
-          ? `Respond to BHW field report: ${selected.observation_note}`
-          : 'Review the submitted BHW checklist and coordinate the required barangay response.',
+        action: responseActionText.slice(0, 1200),
         assigned_to: 'Barangay response team',
         status: 'Pending',
         intervention_type: urgent ? 'Urgent field response' : 'Barangay field follow-up',
-        remarks: `Created from field update ${selected.field_update_id}. Progress: ${selected.completed_count}/${selected.total_tasks}.`,
+        remarks: `Created from field update ${selected.field_update_id}. Progress: ${selected.completed_count}/${selected.total_tasks}. Environmental factors are field observations, not confirmed causes.`,
         source: 'bhw_field_update',
       })
       setMessage(result?.message || 'A response action was created from this field update.')
@@ -163,7 +185,10 @@ export default function FieldUpdateReviewPanel() {
             <ClipboardCheck className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.17em] text-blue-600 dark:text-blue-300">Barangay field updates</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-blue-600 dark:text-blue-300">Barangay field updates</p>
+              <InformationTypeBadge type="field" />
+            </div>
             <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Review BHW monitoring submissions</h2>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Open a submitted checklist, review the field observation, request follow-up, or turn the report into a response action.</p>
           </div>
@@ -234,7 +259,10 @@ export default function FieldUpdateReviewPanel() {
             <>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">Selected field report</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">Selected field report</p>
+                    <InformationTypeBadge type="field" />
+                  </div>
                   <h3 className="mt-1 text-2xl font-black text-brand-text dark:text-white">{selected.barangay}</h3>
                   <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Submitted by {selected.submitted_by_name} for {formatDate(selected.reporting_date)}</p>
                 </div>
@@ -244,7 +272,7 @@ export default function FieldUpdateReviewPanel() {
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900"><p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">Progress</p><p className="mt-2 text-xl font-black text-brand-text dark:text-white">{selected.completed_count}/{selected.total_tasks}</p></div>
                 <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900"><p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">Current risk</p><p className={`mt-2 text-xl font-black ${riskTone(selected.risk_level)}`}>{selected.risk_level}</p></div>
-                <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900"><p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">Predicted cases</p><p className="mt-2 text-xl font-black text-brand-text dark:text-white">{Math.round(Number(selected.predicted_cases || 0))}</p></div>
+                <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900"><p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">Forecast cases</p><p className="mt-2 text-xl font-black text-brand-text dark:text-white">{Math.round(Number(selected.predicted_cases || 0))}</p></div>
               </div>
 
               <div className="mt-5">
@@ -257,6 +285,23 @@ export default function FieldUpdateReviewPanel() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-[20px] border border-cyan-200 bg-cyan-50/70 p-4 dark:border-cyan-500/20 dark:bg-cyan-500/10">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-[0.13em] text-cyan-700 dark:text-cyan-300">Observed environmental factors</p>
+                  <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">Field observations only</span>
+                </div>
+                {getEnvironmentalObservationLabels(selected).length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {getEnvironmentalObservationLabels(selected).map((label) => (
+                      <span key={label} className="rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-xs font-black text-cyan-800 dark:border-cyan-400/20 dark:bg-slate-950 dark:text-cyan-100">{label}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-600 dark:text-slate-300">No structured environmental factor was marked for this update.</p>
+                )}
+                <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500 dark:text-slate-400">These entries describe what the BHW observed or locally identified. They should not be interpreted as proven causes of dengue transmission.</p>
               </div>
 
               <div className="mt-5 rounded-[20px] border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">

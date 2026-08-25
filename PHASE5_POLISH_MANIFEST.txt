@@ -1,0 +1,19 @@
+Phase 5 polish changed files
+
+backend/app/services/database_analytics.py
+src/pages/DashboardPage.jsx
+src/pages/ForecastPage.jsx
+src/pages/BHWPage.jsx
+src/pages/MapPage.jsx
+src/pages/SupervisorPage.jsx
+src/pages/ReportsPage.jsx
+src/pages/UploadPage.jsx
+src/pages/UserManagementPage.jsx
+src/services/api.js
+src/components/FieldUpdateReportCard.jsx
+src/components/InformationTypeBadge.jsx
+src/components/SparkChart.jsx
+src/components/AppShell.jsx
+src/components/CityTrendAnalyticsPanel.jsx
+src/components/FieldUpdateReviewPanel.jsx
+src/components/uploads/AutoProcessingModal.jsx

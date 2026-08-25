@@ -17,6 +17,15 @@ router = APIRouter(prefix="/field-updates", tags=["barangay field updates"])
 
 FIELD_UPDATE_STATUSES = {"Draft", "Submitted", "Reviewed", "Follow-up Required"}
 REVIEW_STATUSES = {"Reviewed", "Follow-up Required"}
+ENVIRONMENTAL_OBSERVATION_KEYS = {
+    "standing_water",
+    "uncovered_water_containers",
+    "possible_breeding_sites",
+    "flood_prone_area",
+    "low_lying_area",
+    "waste_accumulation",
+    "clogged_drainage",
+}
 
 
 class FieldUpdatePayload(BaseModel):
@@ -25,6 +34,7 @@ class FieldUpdatePayload(BaseModel):
     tasks: Dict[str, bool] = Field(default_factory=dict)
     total_tasks: int = Field(default=5, ge=1, le=50)
     observation_note: str = Field(default="", max_length=1200)
+    environmental_observations: Dict[str, bool] = Field(default_factory=dict)
     risk_level: str = Field(default="Pending", max_length=40)
     predicted_cases: float = Field(default=0, ge=0)
     is_urgent: bool = False
@@ -71,6 +81,7 @@ def ensure_field_updates_table() -> None:
                     completed_count integer not null default 0,
                     total_tasks integer not null default 5,
                     observation_note text not null default '',
+                    environmental_observations jsonb not null default '{}'::jsonb,
                     risk_level text not null default 'Pending',
                     predicted_cases numeric not null default 0,
                     status text not null default 'Draft',
@@ -92,6 +103,7 @@ def ensure_field_updates_table() -> None:
                 """
             )
         )
+        connection.execute(text("alter table public.field_updates add column if not exists environmental_observations jsonb not null default '{}'::jsonb"))
         connection.execute(text("alter table public.field_updates add column if not exists suspected_symptoms boolean not null default false"))
         connection.execute(text("alter table public.field_updates add column if not exists supplies_needed boolean not null default false"))
         connection.execute(text("alter table public.field_updates add column if not exists assistance_needed boolean not null default false"))
@@ -107,6 +119,7 @@ def _serialize_row(row):
         return None
     item = dict(row)
     tasks = _json_value(item.get("tasks"), {})
+    environmental_observations = _json_value(item.get("environmental_observations"), {})
     return {
         "field_update_id": str(item.get("field_update_id")),
         "barangay": item.get("barangay") or "",
@@ -118,6 +131,7 @@ def _serialize_row(row):
         "completed_count": int(item.get("completed_count") or 0),
         "total_tasks": int(item.get("total_tasks") or 0),
         "observation_note": item.get("observation_note") or "",
+        "environmental_observations": environmental_observations,
         "risk_level": item.get("risk_level") or "Pending",
         "predicted_cases": float(item.get("predicted_cases") or 0),
         "status": item.get("status") or "Draft",
@@ -160,6 +174,11 @@ def _require_bhw_barangay(current_user, barangay: str):
 def _upsert_update(db: Session, payload: FieldUpdatePayload, current_user, status: str):
     _require_bhw_barangay(current_user, payload.barangay)
     tasks = {str(key): bool(value) for key, value in (payload.tasks or {}).items()}
+    environmental_observations = {
+        str(key): bool(value)
+        for key, value in (payload.environmental_observations or {}).items()
+        if str(key) in ENVIRONMENTAL_OBSERVATION_KEYS
+    }
     completed_count = sum(1 for value in tasks.values() if value)
     total_tasks = max(int(payload.total_tasks or 1), len(tasks), 1)
 
@@ -203,6 +222,7 @@ def _upsert_update(db: Session, payload: FieldUpdatePayload, current_user, statu
                 completed_count,
                 total_tasks,
                 observation_note,
+                environmental_observations,
                 risk_level,
                 predicted_cases,
                 status,
@@ -226,6 +246,7 @@ def _upsert_update(db: Session, payload: FieldUpdatePayload, current_user, statu
                 :completed_count,
                 :total_tasks,
                 :observation_note,
+                cast(:environmental_observations as jsonb),
                 :risk_level,
                 :predicted_cases,
                 :status,
@@ -247,6 +268,7 @@ def _upsert_update(db: Session, payload: FieldUpdatePayload, current_user, statu
                 completed_count = excluded.completed_count,
                 total_tasks = excluded.total_tasks,
                 observation_note = excluded.observation_note,
+                environmental_observations = excluded.environmental_observations,
                 risk_level = excluded.risk_level,
                 predicted_cases = excluded.predicted_cases,
                 status = excluded.status,
@@ -284,6 +306,7 @@ def _upsert_update(db: Session, payload: FieldUpdatePayload, current_user, statu
             "completed_count": completed_count,
             "total_tasks": total_tasks,
             "observation_note": payload.observation_note.strip(),
+            "environmental_observations": json.dumps(environmental_observations),
             "risk_level": payload.risk_level.strip() or "Pending",
             "predicted_cases": float(payload.predicted_cases or 0),
             "status": effective_status,

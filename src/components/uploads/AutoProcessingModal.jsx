@@ -333,7 +333,7 @@ function ForecastVisual({ selectedModel = '', pulseTick = 0 }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-black uppercase tracking-[0.13em] text-emerald-200/80">Direct multi-step forecast</p>
-              <p className="mt-1.5 text-lg font-black text-white">Generating four forecast horizons</p>
+              <p className="mt-1.5 text-lg font-black text-white">Generating four forecast periods</p>
             </div>
             <Sparkles className="h-5 w-5 text-emerald-200" />
           </div>

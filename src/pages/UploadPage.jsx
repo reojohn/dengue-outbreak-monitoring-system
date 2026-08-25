@@ -3610,7 +3610,7 @@ export default function UploadPage() {
         setAutoProcessing({
           visible: true,
           step: 'model',
-          detail: `${selectedModelName || 'The best-performing model'} was selected for the current integrated dataset. Preparing the four forecast horizons next.`,
+          detail: `${selectedModelName || 'The best-performing model'} was selected for the current integrated dataset. Preparing the four future forecast periods next.`,
           selectedModel: selectedModelName,
         })
 
@@ -4536,11 +4536,11 @@ export default function UploadPage() {
               Data preparation workspace
             </div>
 
-            <h1 className="mt-5 max-w-3xl text-3xl font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_4px_24px_rgba(2,6,23,0.75)] sm:text-5xl xl:text-[3.45rem]">
+            <h1 className="dengue-hero-title mt-5 max-w-3xl text-3xl font-bold leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_4px_24px_rgba(2,6,23,0.75)] sm:text-5xl xl:text-[3.45rem]">
               Build a trusted data foundation for every dengue decision.
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-200 sm:text-base sm:leading-8">
+            <p className="dengue-hero-copy mt-5 max-w-2xl text-sm leading-7 text-slate-200 sm:text-base sm:leading-8">
               Upload dengue, weather, population, and barangay boundary files in one guided workspace. The system validates every source, combines matching records, and prepares the latest forecast automatically.
             </p>
 
@@ -6371,7 +6371,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section p {
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
@@ -6388,7 +6388,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .mt-6.grid p:first-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.08em !important;
           }
@@ -6400,7 +6400,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .mt-6.grid p:last-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -6448,7 +6448,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload p {
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
@@ -6512,17 +6512,17 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload button h3 {
-            font-size: 0.88rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.12 !important;
           }
 
           .upload-mobile-compact #data-upload button p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
           .upload-mobile-compact #data-upload button span {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             padding: 0.28rem 0.48rem !important;
           }
@@ -6559,7 +6559,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload table {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .upload-mobile-compact #data-upload th,
@@ -6568,7 +6568,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload thead {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .upload-mobile-compact #data-upload aside {
@@ -6588,7 +6588,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload aside .flex.items-center.justify-between span.text-sm {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -6650,7 +6650,7 @@ export default function UploadPage() {
           .upload-mobile-compact section .mb-4.inline-flex {
             margin-bottom: 0.65rem !important;
             padding: 0.35rem 0.6rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.13em !important;
           }
 
@@ -6667,7 +6667,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
@@ -6685,7 +6685,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .mt-6.grid p:first-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.08em !important;
           }
@@ -6698,7 +6698,7 @@ export default function UploadPage() {
 
           .upload-mobile-compact section .mt-6.grid p:last-child {
             margin-top: 0.2rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
 
@@ -6729,7 +6729,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact section .rounded-\[30px\] p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -6781,7 +6781,7 @@ export default function UploadPage() {
 
           .upload-mobile-compact #data-upload .inline-flex.items-center.gap-2 {
             padding: 0.32rem 0.58rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.1em !important;
           }
 
@@ -6797,7 +6797,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.32 !important;
           }
 
@@ -6850,7 +6850,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.12 !important;
           }
 
@@ -6859,7 +6859,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.22 !important;
           }
 
@@ -6868,7 +6868,7 @@ export default function UploadPage() {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             padding: 0.24rem 0.42rem !important;
           }
@@ -6914,7 +6914,7 @@ export default function UploadPage() {
           .upload-mobile-compact #data-upload button[type="button"] {
             min-height: 42px !important;
             padding: 0.62rem 0.75rem !important;
-            font-size: 0.76rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
@@ -6944,7 +6944,7 @@ export default function UploadPage() {
 
           .upload-mobile-compact #data-upload table {
             width: max-content !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .upload-mobile-compact #data-upload table.min-w-\[980px\] { min-width: 760px !important; }
@@ -6958,7 +6958,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload thead {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.08em !important;
           }
 
@@ -6975,7 +6975,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload aside .flex.items-center.justify-between span.text-sm {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
 
@@ -7019,7 +7019,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.12 !important;
           }
 
@@ -7028,7 +7028,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
 
@@ -7037,7 +7037,7 @@ export default function UploadPage() {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             padding: 0.24rem 0.42rem !important;
           }
@@ -7123,7 +7123,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.08 !important;
             letter-spacing: 0.07em !important;
           }
@@ -7154,7 +7154,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
@@ -7169,7 +7169,7 @@ export default function UploadPage() {
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.05 !important;
             padding: 0.22rem 0.36rem !important;
           }
@@ -7192,7 +7192,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.12 !important;
           }
 
@@ -7217,7 +7217,7 @@ export default function UploadPage() {
           }
 
           .upload-mobile-compact #data-upload button h3 {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .upload-mobile-compact section .mt-6.grid {
@@ -7309,7 +7309,7 @@ export default function UploadPage() {
           }
 
           .premium-upload-page .premium-upload-hero .premium-hero-metrics p:first-child {
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             letter-spacing: 0.07em !important;
           }
@@ -7377,7 +7377,7 @@ export default function UploadPage() {
             display: block !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.5 !important;
           }
 
@@ -7393,7 +7393,7 @@ export default function UploadPage() {
             min-width: 0 !important;
             min-height: 48px !important;
             padding: 0.72rem 0.9rem !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
             white-space: normal !important;
           }
@@ -7413,7 +7413,7 @@ export default function UploadPage() {
 
           .premium-upload-page .premium-hero-metrics p:first-child {
             min-height: 2.15em !important;
-            font-size: 0.64rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.08 !important;
             letter-spacing: 0.04em !important;
             overflow-wrap: anywhere !important;
@@ -7486,7 +7486,7 @@ export default function UploadPage() {
           .premium-upload-page .premium-source-card > .relative.z-20.flex > span {
             max-width: 84px !important;
             padding: 0.28rem 0.45rem !important;
-            font-size: 0.64rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.05 !important;
             letter-spacing: 0 !important;
             overflow: hidden !important;
@@ -7501,12 +7501,12 @@ export default function UploadPage() {
           }
 
           .premium-upload-page .premium-source-card h3 {
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
           .premium-upload-page .premium-source-card h3 + p {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.28 !important;
           }
 
@@ -7516,7 +7516,7 @@ export default function UploadPage() {
           }
 
           .premium-upload-page .premium-source-card .mt-4.flex.flex-wrap span {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
           }
 
           /* SELECTED SOURCE / ACTIONS */
@@ -7539,7 +7539,7 @@ export default function UploadPage() {
           .premium-upload-page .premium-source-selection-panel button {
             width: 100% !important;
             min-height: 48px !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             white-space: normal !important;
           }
 
@@ -7574,7 +7574,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2 !important;
             -webkit-box-orient: vertical !important;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -7599,7 +7599,7 @@ export default function UploadPage() {
           }
 
           .premium-upload-page .mobile-grid-4 p[class*="uppercase"] {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             letter-spacing: 0.05em !important;
           }
@@ -7628,7 +7628,7 @@ export default function UploadPage() {
           }
 
           .premium-upload-page .mobile-grid-3 p[class*="uppercase"] {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.12 !important;
             letter-spacing: 0.05em !important;
           }
@@ -7660,7 +7660,7 @@ export default function UploadPage() {
             display: block !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -7669,7 +7669,7 @@ export default function UploadPage() {
             -webkit-line-clamp: 2 !important;
             -webkit-box-orient: vertical !important;
             overflow: hidden !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -7679,7 +7679,7 @@ export default function UploadPage() {
             overflow: visible !important;
             text-overflow: clip !important;
             white-space: normal !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             padding: 0.3rem 0.5rem !important;
           }
@@ -7704,7 +7704,7 @@ export default function UploadPage() {
           .premium-upload-page .premium-data-table-card table {
             width: max-content !important;
             max-width: none !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .premium-upload-page .premium-data-table-card th,
@@ -7723,7 +7723,7 @@ export default function UploadPage() {
           .premium-upload-page .upload-table-pagination > p {
             width: 100% !important;
             text-align: center !important;
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .premium-upload-page .upload-table-pagination > div {
@@ -7746,7 +7746,7 @@ export default function UploadPage() {
             align-items: center !important;
             justify-content: center !important;
             padding: 0.45rem 0.55rem !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             text-align: center !important;
             white-space: nowrap !important;
@@ -7768,7 +7768,7 @@ export default function UploadPage() {
           }
 
           .premium-upload-page .premium-hero-metrics p:first-child {
-            font-size: 0.58rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .premium-upload-page .mobile-upload-source-grid {

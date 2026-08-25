@@ -28,6 +28,7 @@ import {
 } from '../utils/analytics'
 import DecisionActionTracker from '../components/DecisionActionTracker'
 import FieldUpdateReviewPanel from '../components/FieldUpdateReviewPanel'
+import InformationTypeBadge from '../components/InformationTypeBadge'
 import aiGif from '../assets/ai.gif'
 
 function formatNumber(value) {
@@ -435,7 +436,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-hero-panel p {
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -450,7 +451,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-hero-metrics p:first-child {
-          font-size: 0.62rem !important;
+          font-size: 0.8125rem !important;
           letter-spacing: 0.08em !important;
         }
 
@@ -491,7 +492,7 @@ function SupervisorPageStyles() {
 
         .supervisor-table-scroll table {
           min-width: 720px !important;
-          font-size: 0.75rem !important;
+          font-size: 0.8125rem !important;
         }
 
         .supervisor-table-scroll th,
@@ -515,7 +516,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-action-grid h3 {
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.25 !important;
         }
       }
@@ -559,7 +560,7 @@ function SupervisorPageStyles() {
           margin-top: 0.75rem !important;
           overflow: visible !important;
           -webkit-line-clamp: unset !important;
-          font-size: 0.82rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.5 !important;
         }
 
@@ -576,7 +577,7 @@ function SupervisorPageStyles() {
           min-width: 0 !important;
           min-height: 48px !important;
           padding: 0.7rem 0.65rem !important;
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.2 !important;
           text-align: center !important;
           white-space: normal !important;
@@ -597,7 +598,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-hero-metrics span {
-          font-size: 0.66rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.15 !important;
           letter-spacing: 0.055em !important;
           overflow-wrap: anywhere !important;
@@ -668,7 +669,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-ai-panel h2 + p {
-          font-size: 0.78rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -690,7 +691,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-ai-metrics p:first-of-type {
-          font-size: 0.66rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.15 !important;
           letter-spacing: 0.05em !important;
         }
@@ -730,7 +731,7 @@ function SupervisorPageStyles() {
           -webkit-line-clamp: 2 !important;
           -webkit-box-orient: vertical !important;
           overflow: hidden !important;
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.3 !important;
         }
 
@@ -746,7 +747,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact #response-action-center h2 + p {
-          font-size: 0.8rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.45 !important;
         }
 
@@ -777,7 +778,7 @@ function SupervisorPageStyles() {
           white-space: normal !important;
           overflow: visible !important;
           text-overflow: clip !important;
-          font-size: 0.82rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.22 !important;
           overflow-wrap: anywhere !important;
         }
@@ -785,7 +786,7 @@ function SupervisorPageStyles() {
         .supervisor-mobile-compact .supervisor-priority-suggestions .rounded-full.border {
           max-width: 100% !important;
           padding: 0.3rem 0.45rem !important;
-          font-size: 0.64rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.1 !important;
           white-space: nowrap !important;
         }
@@ -823,7 +824,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-ranking-panel h2 + p {
-          font-size: 0.8rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.45 !important;
         }
 
@@ -838,7 +839,7 @@ function SupervisorPageStyles() {
 
         .supervisor-mobile-compact .supervisor-table-scroll table {
           min-width: 720px !important;
-          font-size: 0.75rem !important;
+          font-size: 0.8125rem !important;
         }
 
         .supervisor-mobile-compact .supervisor-table-scroll th,
@@ -870,7 +871,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-decision-guide-list p:first-child {
-          font-size: 0.82rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.25 !important;
         }
 
@@ -878,7 +879,7 @@ function SupervisorPageStyles() {
           display: block !important;
           overflow: visible !important;
           -webkit-line-clamp: unset !important;
-          font-size: 0.74rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -908,7 +909,7 @@ function SupervisorPageStyles() {
         .supervisor-mobile-compact .supervisor-action-grid > a h3 {
           margin-top: 0.7rem !important;
           padding-right: 1.8rem !important;
-          font-size: 0.82rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.25 !important;
           overflow-wrap: anywhere !important;
         }
@@ -919,7 +920,7 @@ function SupervisorPageStyles() {
           -webkit-line-clamp: 2 !important;
           -webkit-box-orient: vertical !important;
           overflow: hidden !important;
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
@@ -940,28 +941,28 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-reminder-panel p {
-          font-size: 0.78rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.45 !important;
         }
 
         /* Restore readable mobile text globally on this page */
         .supervisor-mobile-compact .text-sm {
-          font-size: 0.8rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
         .supervisor-mobile-compact .text-xs {
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
         .supervisor-mobile-compact .text-\[11px\] {
-          font-size: 0.7rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.3 !important;
         }
 
         .supervisor-mobile-compact .text-\[10px\] {
-          font-size: 0.66rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.22 !important;
         }
       }
@@ -1045,7 +1046,7 @@ function SupervisorPageStyles() {
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking h2 + p {
           margin-top: 0.5rem !important;
-          font-size: 0.78rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.45 !important;
         }
 
@@ -1085,7 +1086,7 @@ function SupervisorPageStyles() {
           justify-content: space-between !important;
           border-radius: 13px !important;
           padding: 0.55rem 0.65rem !important;
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.15 !important;
           white-space: normal !important;
         }
@@ -1094,7 +1095,7 @@ function SupervisorPageStyles() {
           width: 100% !important;
           min-height: 44px !important;
           border-radius: 13px !important;
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Main tracker body */
@@ -1151,7 +1152,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form h3 + p {
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -1173,7 +1174,7 @@ function SupervisorPageStyles() {
           min-width: 0 !important;
           border-radius: 14px !important;
           padding: 0.7rem 0.75rem !important;
-          font-size: 0.82rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -1225,7 +1226,7 @@ function SupervisorPageStyles() {
           min-height: 50px !important;
           border-radius: 14px !important;
           justify-content: center !important;
-          font-size: 0.8rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Active response tracker header */
@@ -1246,7 +1247,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div h3 + p {
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -1300,13 +1301,13 @@ function SupervisorPageStyles() {
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article .flex.flex-wrap.items-center.gap-2 > span {
           max-width: 100% !important;
           padding: 0.35rem 0.5rem !important;
-          font-size: 0.66rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.15 !important;
           white-space: normal !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article p.text-base {
-          font-size: 0.82rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
@@ -1315,7 +1316,7 @@ function SupervisorPageStyles() {
           width: 100% !important;
           min-height: 42px !important;
           border-radius: 12px !important;
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Edit fields inside each action record = one field per row */
@@ -1330,7 +1331,7 @@ function SupervisorPageStyles() {
           min-width: 0 !important;
           border-radius: 13px !important;
           padding: 0.65rem 0.7rem !important;
-          font-size: 0.8rem !important;
+          font-size: 0.8125rem !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article textarea {
@@ -1376,33 +1377,33 @@ function SupervisorPageStyles() {
           width: 100% !important;
           min-height: 46px !important;
           border-radius: 13px !important;
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Readable labels/body text in the tracker */
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking label {
-          font-size: 0.68rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.2 !important;
           letter-spacing: 0.07em !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-sm {
-          font-size: 0.8rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.4 !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-xs {
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-\[11px\] {
-          font-size: 0.68rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.25 !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-\[10px\] {
-          font-size: 0.65rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.2 !important;
         }
       }
@@ -1467,7 +1468,7 @@ function SupervisorPageStyles() {
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking h2 + p {
           margin-top: 0.35rem !important;
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
@@ -1500,13 +1501,13 @@ function SupervisorPageStyles() {
           min-height: 39px !important;
           padding: 0.42rem 0.5rem !important;
           border-radius: 11px !important;
-          font-size: 0.66rem !important;
+          font-size: 0.8125rem !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking > .relative.overflow-hidden.bg-gradient-to-br .relative.mt-6 > button {
           min-height: 40px !important;
           padding: 0.45rem 0.55rem !important;
-          font-size: 0.7rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Main body uses less internal whitespace. */
@@ -1551,7 +1552,7 @@ function SupervisorPageStyles() {
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking > .relative.p-5 > .grid.gap-3 p {
-          font-size: 0.64rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.18 !important;
         }
 
@@ -1570,7 +1571,7 @@ function SupervisorPageStyles() {
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form h3 + p,
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div h3 + p {
-          font-size: 0.7rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
@@ -1581,7 +1582,7 @@ function SupervisorPageStyles() {
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article textarea {
           padding: 0.58rem 0.65rem !important;
           border-radius: 12px !important;
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
@@ -1612,11 +1613,11 @@ function SupervisorPageStyles() {
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article .flex.flex-wrap.items-center.gap-2 > span {
           padding: 0.28rem 0.42rem !important;
-          font-size: 0.61rem !important;
+          font-size: 0.8125rem !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article p.text-base {
-          font-size: 0.76rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
@@ -1636,33 +1637,33 @@ function SupervisorPageStyles() {
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article .mt-4.flex.flex-col.gap-3.border-t > button {
           min-height: 42px !important;
           border-radius: 11px !important;
-          font-size: 0.7rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Tracker typography: compact, but not microscopic. */
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking label {
-          font-size: 0.62rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.15 !important;
           letter-spacing: 0.055em !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-sm {
-          font-size: 0.74rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-xs {
-          font-size: 0.67rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.28 !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-\[11px\] {
-          font-size: 0.64rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.22 !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking .text-\[10px\] {
-          font-size: 0.61rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.18 !important;
         }
       }
@@ -1851,7 +1852,7 @@ function SupervisorPageStyles() {
 
         .supervisor-mobile-compact #response-action-center h2 + p {
           max-width: none !important;
-          font-size: 0.73rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.38 !important;
         }
 
@@ -2063,7 +2064,7 @@ function SupervisorPageStyles() {
         > .relative.p-5
         > .mt-6.grid
         > form h3 + p {
-          font-size: 0.7rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.35 !important;
         }
 
@@ -2108,7 +2109,7 @@ function SupervisorPageStyles() {
         > span {
           max-width: 44% !important;
           padding: 0.28rem 0.4rem !important;
-          font-size: 0.62rem !important;
+          font-size: 0.8125rem !important;
           line-height: 1.12 !important;
           white-space: normal !important;
           text-align: center !important;
@@ -2261,7 +2262,7 @@ function SupervisorPageStyles() {
           margin-top: 0.5rem !important;
           padding: 0.55rem 0.65rem !important;
           border-radius: 11px !important;
-          font-size: 0.72rem !important;
+          font-size: 0.8125rem !important;
         }
 
         /* Active Response Tracker, the second child in the same internal grid,
@@ -2373,13 +2374,14 @@ export default function SupervisorPage() {
                 <span className={`h-2 w-2 rounded-full ${analysisReady ? 'bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]' : 'bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.9)]'}`} />
                 {analysisReady ? 'Analysis online' : 'Awaiting forecast'}
               </span>
+              <InformationTypeBadge type="decision" className="border-amber-300/20 bg-amber-300/10 text-amber-100 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100" />
             </div>
 
-            <h1 className="mt-6 max-w-3xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
+            <h1 className="dengue-hero-title mt-6 max-w-3xl text-[2.15rem] font-bold leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
               City-wide dengue oversight for faster coordinated decisions.
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
+            <p className="dengue-hero-copy mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
               Review barangay risk levels, forecast readiness, response assignments, and resource priorities from one coordinated supervisor workspace.
             </p>
 
@@ -2407,7 +2409,7 @@ export default function SupervisorPage() {
                 { label: 'Barangays', value: formatNumber(totalBarangays), icon: Users },
                 { label: 'Average score', value: `${averageScore}/100`, icon: Activity },
                 { label: 'Ready sources', value: `${readySources}/4`, icon: Database },
-                { label: 'Projected cases', value: formatNumber(totalProjectedCases || dashboardStats?.fourWeekForecast || 0), icon: TrendingUp },
+                { label: 'Forecast cases', value: formatNumber(totalProjectedCases || dashboardStats?.fourWeekForecast || 0), icon: TrendingUp },
               ].map((item) => {
                 const Icon = item.icon
 
@@ -2431,7 +2433,10 @@ export default function SupervisorPage() {
 
               <div className="relative flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/70">Current top priority</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/70">Current top priority</p>
+                    <InformationTypeBadge type="decision" className="border-amber-300/20 bg-amber-300/10 text-amber-100 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100" />
+                  </div>
                   <h2 className="mt-2 break-words text-3xl font-black leading-tight tracking-[-0.04em]">{topPriority?.barangay || 'No barangay ranked'}</h2>
                   <p className={`mt-1 text-sm font-black ${topTone.text}`}>{topPriority?.risk || 'Pending'} risk</p>
                 </div>
@@ -2450,7 +2455,10 @@ export default function SupervisorPage() {
 
               <div className="relative mt-5 grid grid-cols-2 gap-2.5">
                 <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
-                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Projected cases</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Forecast cases</p>
+                    <InformationTypeBadge type="forecast" className="border-violet-300/20 bg-violet-300/10 text-violet-100 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-100" />
+                  </div>
                   <p className="mt-1 text-lg font-black text-white">{formatNumber(getRowCases(topPriority || {}))}</p>
                 </div>
                 <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
@@ -2568,9 +2576,12 @@ export default function SupervisorPage() {
         <PremiumPanel tone="blue" className="supervisor-ranking-panel p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <SectionBadge icon={BarChart3} tone="blue">City-wide risk ranking</SectionBadge>
+              <div className="flex flex-wrap items-center gap-2">
+                <SectionBadge icon={BarChart3} tone="blue">City-wide risk ranking</SectionBadge>
+                <InformationTypeBadge type="decision" />
+              </div>
               <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-white">Barangay priority ranking</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Sorted by saved priority rank, risk level, combined priority score, and projected cases.</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Sorted by saved priority rank, risk level, overall combined priority score, and forecast cases.</p>
             </div>
 
             <span className="w-fit rounded-full border border-blue-200 bg-white/85 px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm dark:border-blue-400/20 dark:bg-white/5 dark:text-blue-300">{formatNumber(totalBarangays)} barangays</span>
@@ -2645,7 +2656,7 @@ export default function SupervisorPage() {
               {[
                 { number: '01', title: 'Immediate response', text: 'Prioritize high-risk barangays for cleanup, vector control, field validation, and public advisories.', tone: 'rose' },
                 { number: '02', title: 'Preventive monitoring', text: 'Review moderate-risk barangays for early warning, inspections, and possible escalation.', tone: 'amber' },
-                { number: '03', title: 'Evidence-based allocation', text: 'Use forecast results, reports, and map context before assigning staff, supplies, and schedules.', tone: 'blue' },
+                { number: '03', title: 'Evidence-based allocation', text: 'Use recorded data, forecast results, field reports, and map context before assigning staff, supplies, and schedules.', tone: 'blue' },
               ].map((item) => {
                 const theme = getVisualTheme(item.tone)
                 return (

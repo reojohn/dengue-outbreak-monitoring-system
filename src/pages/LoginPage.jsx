@@ -353,7 +353,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#061426] p-4 transition-colors duration-300 sm:p-6"
+      className="dengue-login-page relative flex min-h-screen items-center justify-center overflow-hidden bg-[#061426] p-4 transition-colors duration-300 sm:p-6"
       style={{
         backgroundImage: `url(${denguePageBackground})`,
         backgroundSize: 'cover',

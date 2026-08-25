@@ -29,6 +29,7 @@ import {
   Users,
 } from 'lucide-react'
 import LeafletRiskMap from '../components/LeafletRiskMap'
+import InformationTypeBadge from '../components/InformationTypeBadge'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
@@ -1396,7 +1397,7 @@ function buildBackendActionPlan({
 
   if (forecast >= 100 || forecastNextPeriod >= 25) {
     actions.push(
-      'Prioritize this barangay in the next CHO coordination meeting because projected case pressure is high.'
+      'Prioritize this barangay in the next CHO coordination meeting because forecast case pressure is high.'
     )
   }
 
@@ -3183,13 +3184,14 @@ export default function MapPage() {
                 <span className={`h-2 w-2 rounded-full ${realHotspotReady ? 'bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]' : hasBoundaryData ? 'bg-cyan-400 shadow-[0_0_14px_rgba(34,211,238,0.9)]' : 'bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.9)]'}`} />
                 {realHotspotReady ? 'Hotspot engine ready' : hasBoundaryData ? 'Map layer online' : 'Awaiting map data'}
               </div>
+              <InformationTypeBadge type="decision" className="border-amber-300/20 bg-amber-300/10 text-amber-100 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100" />
             </div>
 
-            <h1 className="mt-6 max-w-3xl text-[2.2rem] font-black leading-[1.03] tracking-[-0.05em] text-white drop-shadow-[0_6px_26px_rgba(2,6,23,0.70)] sm:text-[3.15rem] xl:text-[3.75rem]">
+            <h1 className="dengue-hero-title mt-6 max-w-3xl text-[2.2rem] font-bold leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_6px_26px_rgba(2,6,23,0.70)] sm:text-[3.15rem] xl:text-[3.75rem]">
               Turn barangay risk into a clear spatial response.
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/[0.92] sm:text-[15px] sm:leading-8">
+            <p className="dengue-hero-copy mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/[0.92] sm:text-[15px] sm:leading-8">
               {realHotspotReady
                 ? 'Review dengue pressure, nearby barangay influence, hotspot concentration, and map-based response priorities from one coordinated view.'
                 : usingMultiSourceRisk
@@ -3330,9 +3332,12 @@ export default function MapPage() {
                 Map view
               </div>
 
-              <h2 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                {showingHotspotLayer ? 'Barangay GIS hotspot map' : 'Barangay forecast risk map'}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  {showingHotspotLayer ? 'Barangay GIS hotspot map' : 'Barangay forecast risk map'}
+                </h2>
+                <InformationTypeBadge type={showingHotspotLayer ? 'decision' : 'forecast'} />
+              </div>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {showingHotspotLayer
@@ -3356,6 +3361,23 @@ export default function MapPage() {
                 : hasRiskData
                   ? 'Forecast risk colors ready'
                   : getMapStatusLabel(hasRiskData, hasBoundaryData)}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[20px] border border-violet-200 bg-violet-50/80 p-3.5 dark:border-violet-400/20 dark:bg-violet-500/10">
+              <div className="flex flex-wrap items-center gap-2">
+                <InformationTypeBadge type="forecast" />
+                <p className="text-sm font-bold text-violet-900 dark:text-violet-100">Forecast risk</p>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-violet-800/80 dark:text-violet-200/80">Predicted dengue risk for each barangay based on the saved forecast and supporting data.</p>
+            </div>
+            <div className="rounded-[20px] border border-amber-200 bg-amber-50/80 p-3.5 dark:border-amber-400/20 dark:bg-amber-500/10">
+              <div className="flex flex-wrap items-center gap-2">
+                <InformationTypeBadge type="decision" label="Spatial hotspot" />
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-100">Hotspot</p>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-amber-800/80 dark:text-amber-200/80">Spatial concern based on the barangay&apos;s local risk and the influence of nearby barangays.</p>
             </div>
           </div>
 
@@ -3547,18 +3569,21 @@ export default function MapPage() {
               Priority barangays
             </div>
 
-            <h2 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              {showingHotspotLayer ? 'Hotspot summary' : 'Forecast priority summary'}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                {showingHotspotLayer ? 'Hotspot summary' : 'Forecast priority summary'}
+              </h2>
+              <InformationTypeBadge type={showingHotspotLayer ? 'decision' : 'forecast'} />
+            </div>
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {showingHotspotLayer
                 ? 'Top barangays are ranked using hotspot score, nearby barangay effects, and barangay map matching.'
                 : usingMultiSourceRisk
-                  ? 'Top barangays are ranked by risk level, combined multi-source score, response priority, and expected cases.'
+                  ? 'Top barangays are ranked by forecast risk, combined priority score, response priority, and forecast cases. The combined priority score is the overall planning priority from forecast and supporting factors.'
                   : usingBackendForecast
-                    ? 'Top barangays are ranked by risk level, combined multi-source score, response priority, and expected cases.'
-                    : 'Top barangays will appear after risk levels are calculated.'}
+                    ? 'Top barangays are ranked by forecast risk, combined priority score, response priority, and forecast cases.'
+                    : 'Top barangays will appear after forecast risk levels are calculated.'}
             </p>
 
             <div className="map-priority-list mt-5 space-y-3">
@@ -3822,7 +3847,7 @@ export default function MapPage() {
           }
 
           .map-mobile-compact p {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -3832,7 +3857,7 @@ export default function MapPage() {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
@@ -3841,7 +3866,7 @@ export default function MapPage() {
           .map-mobile-compact .mb-2.inline-flex,
           .map-mobile-compact .mb-3.inline-flex {
             padding: 0.32rem 0.58rem !important;
-            font-size: 0.55rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.09em !important;
           }
 
@@ -3858,7 +3883,7 @@ export default function MapPage() {
           }
 
           .map-mobile-hero-grid p:first-child {
-            font-size: 0.47rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             letter-spacing: 0.065em !important;
           }
@@ -3871,7 +3896,7 @@ export default function MapPage() {
 
           .map-mobile-hero-grid p:last-child {
             margin-top: 0.2rem !important;
-            font-size: 0.55rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.16 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -3958,7 +3983,7 @@ export default function MapPage() {
             width: 100% !important;
             max-width: 100% !important;
             padding: 0.34rem 0.45rem !important;
-            font-size: 0.5rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.08 !important;
             text-align: center !important;
             white-space: normal !important;
@@ -3991,7 +4016,7 @@ export default function MapPage() {
             gap: 0.2rem !important;
             border-radius: 10px !important;
             padding: 0.42rem 0.25rem !important;
-            font-size: 0.5rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.055em !important;
           }
 
@@ -4008,7 +4033,7 @@ export default function MapPage() {
             justify-content: center !important;
             border-radius: 13px !important;
             padding: 0.5rem !important;
-            font-size: 0.55rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.06em !important;
           }
 
@@ -4050,7 +4075,7 @@ export default function MapPage() {
 
           .map-mobile-legend-grid .inline-flex {
             padding: 0.25rem 0.35rem !important;
-            font-size: 0.46rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.035em !important;
           }
 
@@ -4104,17 +4129,17 @@ export default function MapPage() {
             height: 1.75rem !important;
             width: 1.75rem !important;
             border-radius: 10px !important;
-            font-size: 0.62rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .map-mobile-compact .mt-5.space-y-3 button span.font-black {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.08 !important;
           }
 
           .map-mobile-compact .mt-5.space-y-3 button p {
             margin-top: 0.1rem !important;
-            font-size: 0.58rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.14 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 1;
@@ -4124,7 +4149,7 @@ export default function MapPage() {
 
           .map-mobile-compact .mt-5.space-y-3 button > span:last-child {
             padding: 0.35rem 0.5rem !important;
-            font-size: 0.56rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .map-mobile-compact .rounded-[26px].border.border-blue-100,
@@ -4136,13 +4161,13 @@ export default function MapPage() {
             border-radius: 15px !important;
           }
 
-          .map-mobile-compact .text-2xl { font-size: 1.05rem !important; line-height: 1.1 !important; }
-          .map-mobile-compact .text-xl { font-size: 0.98rem !important; line-height: 1.1 !important; }
-          .map-mobile-compact .text-lg { font-size: 0.9rem !important; line-height: 1.14 !important; }
-          .map-mobile-compact .text-base { font-size: 0.78rem !important; line-height: 1.2 !important; }
-          .map-mobile-compact .text-sm { font-size: 0.7rem !important; line-height: 1.28 !important; }
-          .map-mobile-compact .text-xs { font-size: 0.6rem !important; line-height: 1.18 !important; }
-          .map-mobile-compact .text-[11px] { font-size: 0.52rem !important; line-height: 1.1 !important; }
+          .map-mobile-compact .text-2xl { font-size: 1.2rem !important; line-height: 1.16 !important; }
+          .map-mobile-compact .text-xl { font-size: 1.1rem !important; line-height: 1.16 !important; }
+          .map-mobile-compact .text-lg { font-size: 1rem !important; line-height: 1.2 !important; }
+          .map-mobile-compact .text-base { font-size: 0.9rem !important; line-height: 1.32 !important; }
+          .map-mobile-compact .text-sm { font-size: 0.875rem !important; line-height: 1.35 !important; }
+          .map-mobile-compact .text-xs { font-size: 0.8125rem !important; line-height: 1.3 !important; }
+          .map-mobile-compact .text-[11px] { font-size: 0.8125rem !important; line-height: 1.25 !important; }
 
           .map-selected-panel {
             left: 0.55rem !important;
@@ -4177,7 +4202,7 @@ export default function MapPage() {
           .map-selected-panel span,
           .map-selected-panel button,
           .map-selected-panel li {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.22 !important;
           }
 
@@ -4198,14 +4223,14 @@ export default function MapPage() {
           }
 
           .map-selected-panel .map-mobile-selected-metrics p:first-of-type {
-            font-size: 0.48rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             letter-spacing: 0.06em !important;
           }
 
           .map-selected-panel .map-mobile-selected-metrics p:last-of-type {
             margin-top: 0.35rem !important;
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -4242,7 +4267,7 @@ export default function MapPage() {
 
           .map-selected-panel .flex.flex-wrap.gap-2 span {
             padding: 0.33rem 0.48rem !important;
-            font-size: 0.55rem !important;
+            font-size: 0.8125rem !important;
           }
         }
 
@@ -4287,7 +4312,7 @@ export default function MapPage() {
             margin-top: 0.75rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.5 !important;
           }
 
@@ -4304,7 +4329,7 @@ export default function MapPage() {
             min-width: 0 !important;
             min-height: 48px !important;
             padding: 0.7rem 0.6rem !important;
-            font-size: 0.74rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
             white-space: normal !important;
           }
@@ -4328,7 +4353,7 @@ export default function MapPage() {
           }
 
           .map-mobile-compact .map-mobile-hero-grid span {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.06em !important;
             overflow-wrap: anywhere !important;
@@ -4370,7 +4395,7 @@ export default function MapPage() {
           }
 
           .map-mobile-compact .map-hero-selected-card .relative.mt-5.grid p:first-child {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
@@ -4378,7 +4403,7 @@ export default function MapPage() {
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -4405,7 +4430,7 @@ export default function MapPage() {
           }
 
           .map-mobile-compact #hotspot-map h2 + p {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
@@ -4413,7 +4438,7 @@ export default function MapPage() {
             width: 100% !important;
             text-align: center !important;
             white-space: normal !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .map-mobile-compact .map-workspace-shell {
@@ -4427,7 +4452,7 @@ export default function MapPage() {
           }
 
           .map-mobile-compact .map-workspace-toolbar > div:first-child p {
-            font-size: 0.76rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
@@ -4447,7 +4472,7 @@ export default function MapPage() {
             width: 100% !important;
             min-width: 0 !important;
             padding: 0.45rem 0.5rem !important;
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
             white-space: normal !important;
             text-align: center !important;
@@ -4483,7 +4508,7 @@ export default function MapPage() {
             gap: 0.35rem !important;
             padding: 0.55rem 0.4rem !important;
             border-radius: 11px !important;
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.06em !important;
           }
@@ -4506,7 +4531,7 @@ export default function MapPage() {
             justify-content: center !important;
             padding: 0.6rem 0.7rem !important;
             border-radius: 13px !important;
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
@@ -4560,12 +4585,12 @@ export default function MapPage() {
             max-width: 100% !important;
             white-space: normal !important;
             padding: 0.35rem 0.5rem !important;
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
           .map-mobile-compact .map-legend-card p {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -4596,7 +4621,7 @@ export default function MapPage() {
             -webkit-line-clamp: 2 !important;
             -webkit-box-orient: vertical !important;
             overflow: hidden !important;
-            font-size: 0.76rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
@@ -4612,7 +4637,7 @@ export default function MapPage() {
           }
 
           .map-mobile-compact .map-priority-panel h2 + p {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
@@ -4633,11 +4658,11 @@ export default function MapPage() {
             width: 2.25rem !important;
             height: 2.25rem !important;
             border-radius: 12px !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .map-mobile-compact .map-priority-list > button span.font-black {
-            font-size: 0.88rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.2 !important;
           }
 
@@ -4645,45 +4670,45 @@ export default function MapPage() {
             display: block !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
           .map-mobile-compact .map-priority-list > button > span:last-child {
             padding: 0.4rem 0.6rem !important;
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             white-space: normal !important;
           }
 
           /* General supporting cards: restore readable phone typography.
              This intentionally overrides the earlier 0.5rem–0.6rem rules. */
           .map-mobile-compact p {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
           .map-mobile-compact .text-base {
-            font-size: 0.86rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.45 !important;
           }
 
           .map-mobile-compact .text-sm {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
           .map-mobile-compact .text-xs {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
           .map-mobile-compact .text-\[11px\] {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
           .map-mobile-compact .text-\[10px\] {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
 
@@ -4723,7 +4748,7 @@ export default function MapPage() {
           }
 
           .map-selected-panel > div:first-child .inline-flex {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .map-selected-panel .map-mobile-selected-metrics {
@@ -4752,7 +4777,7 @@ export default function MapPage() {
           }
 
           .map-selected-panel .map-mobile-selected-metrics p:first-of-type {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.05em !important;
           }
@@ -4762,7 +4787,7 @@ export default function MapPage() {
             margin-top: 0.35rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
             overflow-wrap: anywhere !important;
           }
@@ -4786,7 +4811,7 @@ export default function MapPage() {
           .map-selected-panel p,
           .map-selected-panel span,
           .map-selected-panel li {
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
@@ -4794,21 +4819,21 @@ export default function MapPage() {
             max-width: 100% !important;
             white-space: normal !important;
             padding: 0.4rem 0.6rem !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .map-selected-panel .text-base {
-            font-size: 0.84rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.45 !important;
           }
 
           .map-selected-panel .text-sm {
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
           .map-selected-panel .text-xs {
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
         }
@@ -4898,7 +4923,7 @@ export default function MapPage() {
             justify-content: center !important;
             gap: 0.45rem !important;
             padding: 0.6rem 0.5rem !important;
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             letter-spacing: 0.04em !important;
             white-space: nowrap !important;
@@ -4923,7 +4948,7 @@ export default function MapPage() {
             gap: 0.6rem !important;
             padding: 0.7rem 0.85rem !important;
             border-radius: 14px !important;
-            font-size: 0.74rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.06em !important;
             white-space: normal !important;
@@ -4951,7 +4976,7 @@ export default function MapPage() {
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
 

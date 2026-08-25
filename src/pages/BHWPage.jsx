@@ -23,7 +23,15 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
-import { getCurrentFieldUpdate, saveFieldUpdateDraft, submitFieldUpdate } from '../services/api'
+import SparkChart from '../components/SparkChart'
+import InformationTypeBadge from '../components/InformationTypeBadge'
+import {
+  getBarangayTrendAnalytics,
+  getCurrentFieldUpdate,
+  getTrendAnalyticsBarangays,
+  saveFieldUpdateDraft,
+  submitFieldUpdate,
+} from '../services/api'
 import { getAuthSession } from '../utils/auth'
 import { getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
 
@@ -33,6 +41,79 @@ function formatNumber(value) {
 
 function normalizeName(value = '') {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+const ENVIRONMENTAL_OBSERVATION_OPTIONS = [
+  { key: 'standing_water', label: 'Standing water observed' },
+  { key: 'uncovered_water_containers', label: 'Uncovered water containers' },
+  { key: 'possible_breeding_sites', label: 'Possible mosquito breeding sites' },
+  { key: 'flood_prone_area', label: 'Flood-prone area' },
+  { key: 'low_lying_area', label: 'Low-lying area' },
+  { key: 'waste_accumulation', label: 'Waste accumulation' },
+  { key: 'clogged_drainage', label: 'Clogged drainage' },
+]
+
+const TREND_PERIOD_OPTIONS = [
+  { value: 'all', label: 'Full year' },
+  { value: 'q1', label: 'Q1 · Jan–Mar' },
+  { value: 'q2', label: 'Q2 · Apr–Jun' },
+  { value: 'q3', label: 'Q3 · Jul–Sep' },
+  { value: 'q4', label: 'Q4 · Oct–Dec' },
+  { value: 'm1', label: 'January' },
+  { value: 'm2', label: 'February' },
+  { value: 'm3', label: 'March' },
+  { value: 'm4', label: 'April' },
+  { value: 'm5', label: 'May' },
+  { value: 'm6', label: 'June' },
+  { value: 'm7', label: 'July' },
+  { value: 'm8', label: 'August' },
+  { value: 'm9', label: 'September' },
+  { value: 'm10', label: 'October' },
+  { value: 'm11', label: 'November' },
+  { value: 'm12', label: 'December' },
+]
+
+function getTrendPeriodParams(value = 'all') {
+  const normalized = String(value || 'all').toLowerCase()
+
+  if (/^q[1-4]$/.test(normalized)) {
+    return { quarter: Number(normalized.slice(1)), month: null }
+  }
+
+  if (/^m(?:[1-9]|1[0-2])$/.test(normalized)) {
+    return { quarter: null, month: Number(normalized.slice(1)) }
+  }
+
+  return { quarter: null, month: null }
+}
+
+function formatOptionalNumber(value) {
+  if (value === null || value === undefined || value === '') return '—'
+  const number = Number(value)
+  return Number.isFinite(number) ? formatNumber(number) : '—'
+}
+
+function getCaseShare(value, total) {
+  const numericValue = Number(value || 0)
+  const numericTotal = Number(total || 0)
+  if (!Number.isFinite(numericValue) || !Number.isFinite(numericTotal) || numericTotal <= 0) return 0
+  return Math.max(0, Math.min(100, (numericValue / numericTotal) * 100))
+}
+
+function getTrendDirectionStyle(direction = '') {
+  if (direction === 'Increasing') {
+    return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200'
+  }
+
+  if (direction === 'Decreasing') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200'
+  }
+
+  if (direction === 'Stable') {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200'
+  }
+
+  return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
 }
 
 function getBoundaryGeoJson(boundaryRecords = []) {
@@ -1053,7 +1134,7 @@ function getMetricTheme(tone = 'blue') {
   return themes[tone] || themes.blue
 }
 
-function MetricCard({ icon: Icon, label, value, helper, tone = 'blue' }) {
+function MetricCard({ icon: Icon, label, value, helper, tone = 'blue', informationType = '' }) {
   const theme = getMetricTheme(tone)
 
   return (
@@ -1068,9 +1149,13 @@ function MetricCard({ icon: Icon, label, value, helper, tone = 'blue' }) {
             <Icon className="h-5 w-5" strokeWidth={2.25} />
           </div>
 
-          <span className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm dark:border-white/5 dark:bg-white/5 dark:text-slate-400">
-            Live
-          </span>
+          {informationType ? (
+            <InformationTypeBadge type={informationType} />
+          ) : (
+            <span className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm dark:border-white/5 dark:bg-white/5 dark:text-slate-400">
+              Live
+            </span>
+          )}
         </div>
 
         <p className="mt-4 text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
@@ -1187,7 +1272,7 @@ function BHWPageStyles() {
           .bhw-mobile-compact .inline-flex.items-center.gap-2.rounded-full,
           .bhw-mobile-compact .rounded-full.border {
             padding: 0.32rem 0.55rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.05 !important;
             letter-spacing: 0.075em !important;
           }
@@ -1213,12 +1298,12 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.28 !important;
           }
 
           .bhw-mobile-compact .text-sm { font-size: 0.875rem !important; line-height: 1.28 !important; }
-          .bhw-mobile-compact .text-xs { font-size: 0.75rem !important; line-height: 1.18 !important; }
+          .bhw-mobile-compact .text-xs { font-size: 0.8125rem !important; line-height: 1.18 !important; }
           .bhw-mobile-compact .text-2xl { font-size: 1.08rem !important; line-height: 1.05 !important; }
           .bhw-mobile-compact .text-3xl { font-size: 1.25rem !important; line-height: 1.05 !important; }
           .bhw-mobile-compact .text-4xl { font-size: 1.65rem !important; line-height: 1.05 !important; }
@@ -1262,7 +1347,7 @@ function BHWPageStyles() {
 
           .bhw-mobile-grid-3 p:first-child,
           .bhw-mobile-grid-4 p:first-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.08 !important;
             letter-spacing: 0.055em !important;
           }
@@ -1277,7 +1362,7 @@ function BHWPageStyles() {
 
           .bhw-mobile-grid-3 p:last-child,
           .bhw-mobile-grid-4 p:last-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.16 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -1417,13 +1502,13 @@ function BHWPageStyles() {
 
           .bhw-mobile-compact a.group.relative.overflow-hidden h3,
           .bhw-mobile-compact .bhw-mobile-grid-3 h3 {
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
           }
 
           .bhw-mobile-compact a.group.relative.overflow-hidden p,
           .bhw-mobile-compact .bhw-mobile-grid-3 p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.16 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 3;
@@ -1525,7 +1610,7 @@ function BHWPageStyles() {
             margin-top: 0.75rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.5 !important;
           }
 
@@ -1550,12 +1635,12 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact .bhw-barangay-selector > button .block.text-\[10px\] {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
           .bhw-mobile-compact .bhw-barangay-selector > button .text-sm {
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -1588,7 +1673,7 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact .bhw-hero-metrics span {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.06em !important;
           }
@@ -1604,7 +1689,7 @@ function BHWPageStyles() {
             margin-top: 0.35rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -1686,7 +1771,7 @@ function BHWPageStyles() {
             -webkit-line-clamp: 2 !important;
             -webkit-box-orient: vertical !important;
             overflow: hidden !important;
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -1706,7 +1791,7 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact .bhw-boundary-panel h2 + p {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
@@ -1728,7 +1813,7 @@ function BHWPageStyles() {
             min-height: 36px !important;
             justify-content: center !important;
             padding: 0.45rem 0.65rem !important;
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.08em !important;
             text-align: center !important;
           }
@@ -1741,7 +1826,7 @@ function BHWPageStyles() {
             left: 0.65rem !important;
             top: 3.8rem !important;
             padding: 0.35rem 0.55rem !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .bhw-mobile-compact .bhw-boundary-svg > .absolute.inset-x-0.bottom-0 {
@@ -1749,7 +1834,7 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact .bhw-boundary-svg > .absolute.inset-x-0.bottom-0 p:first-child {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .bhw-mobile-compact .bhw-boundary-svg > .absolute.inset-x-0.bottom-0 p:last-child {
@@ -1795,7 +1880,7 @@ function BHWPageStyles() {
 
           .bhw-mobile-compact .bhw-recommended-actions > div p {
             margin-top: 0.65rem !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
@@ -1828,7 +1913,7 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm > span:last-child {
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
           }
 
           /* Field update/checklist */
@@ -1863,7 +1948,7 @@ function BHWPageStyles() {
           .bhw-mobile-compact .bhw-field-update-panel textarea {
             min-height: 120px !important;
             border-radius: 16px !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
@@ -1884,7 +1969,7 @@ function BHWPageStyles() {
             align-items: flex-start !important;
             border-radius: 13px !important;
             padding: 0.65rem !important;
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -1897,7 +1982,7 @@ function BHWPageStyles() {
             width: 100% !important;
             min-height: 50px !important;
             border-radius: 15px !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
           }
 
           /* Bottom support links */
@@ -1914,32 +1999,32 @@ function BHWPageStyles() {
 
           /* Restore readable body type after the earlier broad shrinking rules */
           .bhw-mobile-compact p {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
           .bhw-mobile-compact .text-base {
-            font-size: 0.86rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.45 !important;
           }
 
           .bhw-mobile-compact .text-sm {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
           .bhw-mobile-compact .text-xs {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
           .bhw-mobile-compact .text-\[11px\] {
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
           .bhw-mobile-compact .text-\[10px\] {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.22 !important;
           }
         }
@@ -1985,8 +2070,6 @@ function BHWPageStyles() {
 export default function BHWPage() {
   const {
     riskRows = [],
-    weeklyTotals = [],
-    dashboardStats = {},
     backendForecastResult,
     boundaryRecords = [],
     loadLatestSavedBoundaryGeoJson,
@@ -2006,6 +2089,32 @@ export default function BHWPage() {
   const currentRole = session?.role || 'viewer'
   const assignedBarangay = session?.assignedBarangay || 'Baan KM 3'
   const canSelectBarangay = currentRole === 'admin' || currentRole === 'cho'
+  const [trendBarangays, setTrendBarangays] = useState([])
+
+  useEffect(() => {
+    if (!canSelectBarangay) {
+      setTrendBarangays([])
+      return undefined
+    }
+
+    let active = true
+
+    getTrendAnalyticsBarangays()
+      .then((result) => {
+        if (!active) return
+        const names = (result?.barangays || [])
+          .map((item) => String(item?.barangay || '').trim())
+          .filter(Boolean)
+        setTrendBarangays(names)
+      })
+      .catch(() => {
+        if (active) setTrendBarangays([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [canSelectBarangay])
 
   const savedForecastRows = useMemo(() => (
     Array.isArray(backendForecastResult?.forecast_results)
@@ -2032,6 +2141,15 @@ export default function BHWPage() {
       }
     })
 
+    trendBarangays.forEach((nameValue) => {
+      const name = String(nameValue || '').trim()
+      const key = normalizeName(name)
+
+      if (name && key && !namesByKey.has(key)) {
+        namesByKey.set(key, name)
+      }
+    })
+
     if (assignedBarangay) {
       const assignedKey = normalizeName(assignedBarangay)
 
@@ -2041,7 +2159,7 @@ export default function BHWPage() {
     }
 
     return [...namesByKey.values()].sort((a, b) => a.localeCompare(b))
-  }, [assignedBarangay, forecastRows, riskRows, savedForecastRows])
+  }, [assignedBarangay, forecastRows, riskRows, savedForecastRows, trendBarangays])
 
   const [selectedBarangay, setSelectedBarangay] = useState(() => {
     if (!canSelectBarangay) return assignedBarangay
@@ -2084,6 +2202,61 @@ export default function BHWPage() {
     ? selectedBarangay || availableBarangays[0] || ''
     : assignedBarangay
 
+  const [trendAnalytics, setTrendAnalytics] = useState(null)
+  const [trendYear, setTrendYear] = useState('')
+  const [trendPeriod, setTrendPeriod] = useState('all')
+  const [trendLoading, setTrendLoading] = useState(false)
+  const [trendError, setTrendError] = useState('')
+
+  useEffect(() => {
+    if (!activeBarangay) {
+      setTrendAnalytics(null)
+      setTrendError('')
+      return undefined
+    }
+
+    let active = true
+    const { quarter, month } = getTrendPeriodParams(trendPeriod)
+
+    setTrendLoading(true)
+    setTrendError('')
+
+    getBarangayTrendAnalytics({
+      barangay: activeBarangay,
+      year: trendYear ? Number(trendYear) : null,
+      quarter,
+      month,
+    })
+      .then((result) => {
+        if (!active) return
+        setTrendAnalytics(result)
+
+        const resolvedYear = result?.filters?.year
+        if (trendYear && resolvedYear && String(resolvedYear) !== String(trendYear)) {
+          setTrendYear(String(resolvedYear))
+        }
+      })
+      .catch((error) => {
+        if (!active) return
+        const message = String(error?.message || '').toLowerCase()
+        setTrendAnalytics(null)
+        setTrendError(
+          message.includes('authentication') || message.includes('token')
+            ? 'Your session has expired. Please sign in again to refresh the recorded dengue trend.'
+            : message.includes('fetch') || message.includes('network') || message.includes('backend')
+              ? 'The recorded dengue trend could not be reached. Check that the backend is running, then try again.'
+              : 'The recorded dengue trend could not be loaded. Please try again.'
+        )
+      })
+      .finally(() => {
+        if (active) setTrendLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [activeBarangay, trendPeriod, trendYear])
+
   const barangayRisk = useMemo(() => {
     const activeKey = normalizeName(activeBarangay)
 
@@ -2125,6 +2298,40 @@ export default function BHWPage() {
   const predictedCases = getCases(barangayRisk)
   const scorePercent = Math.min(100, Math.max(0, score))
 
+  const trendSummary = trendAnalytics?.summary || {}
+  const trendMonthlyRows = Array.isArray(trendAnalytics?.monthly) ? trendAnalytics.monthly : []
+  const trendAvailableYears = Array.isArray(trendAnalytics?.filters?.available_years)
+    ? trendAnalytics.filters.available_years
+    : []
+  const activeTrendYear = String(trendYear || trendAnalytics?.filters?.year || '')
+  const trendScopeLabel = trendAnalytics?.filters?.scope_label || activeTrendYear || 'Selected period'
+  const trendHighestMonthLabel = String(trendPeriod).startsWith('m')
+    ? 'Selected month'
+    : `Highest month in ${trendScopeLabel}`
+  const trendTotalCases = trendSummary?.total_cases
+  const trendPeakMonth = trendSummary?.peak_month || null
+  const trendLowestMonth = trendSummary?.lowest_month || null
+  const trendDirection = trendSummary?.trend_direction || 'No comparison'
+  const trendHistoricalPeak = trendAnalytics?.historical_peak || null
+  const trendCaseClassification = trendAnalytics?.case_classification || {}
+  const caseClassificationAvailable = Boolean(trendCaseClassification?.available)
+  const confirmedAvailable = Boolean(trendCaseClassification?.confirmed_available)
+  const probableAvailable = Boolean(trendCaseClassification?.probable_available)
+  const suspectedAvailable = Boolean(trendCaseClassification?.suspected_available)
+  const confirmedCases = confirmedAvailable ? Number(trendCaseClassification?.confirmed_cases || 0) : null
+  const probableCases = probableAvailable ? Number(trendCaseClassification?.probable_cases || 0) : null
+  const suspectedCases = suspectedAvailable ? Number(trendCaseClassification?.suspected_cases || 0) : null
+  const classifiedCaseTotal = Number(trendCaseClassification?.classified_total || 0)
+  const reportedClassificationTotal = Number(trendCaseClassification?.reported_total || 0)
+  const unclassifiedCases = Number(trendCaseClassification?.unclassified_cases || 0)
+  const confirmedShare = confirmedAvailable ? getCaseShare(confirmedCases, classifiedCaseTotal) : 0
+  const probableShare = probableAvailable ? getCaseShare(probableCases, classifiedCaseTotal) : 0
+  const suspectedShare = suspectedAvailable ? getCaseShare(suspectedCases, classifiedCaseTotal) : 0
+  const classificationYearLabel = activeTrendYear || trendScopeLabel || 'the selected year'
+  const classificationHasUnavailableFields = !confirmedAvailable || !probableAvailable || !suspectedAvailable
+  const trendChartValues = trendMonthlyRows.map((row) => Number(row?.cases || 0))
+  const trendChartLabels = trendMonthlyRows.map((row) => row?.month_short || row?.month_label || '')
+
   const riskIconTone = risk === 'High'
     ? {
         wrap: 'border-rose-300/30 bg-rose-500/15 text-rose-300 shadow-[0_14px_34px_rgba(244,63,94,0.24)]',
@@ -2156,19 +2363,6 @@ export default function BHWPage() {
   const selectedBoundaryFeature = useMemo(() => (
     getBoundaryFeatureForBarangay(boundaryRecords, barangayName)
   ), [barangayName, boundaryRecords])
-
-  const cityHighRiskCount = useMemo(() => {
-    const persistedCityCount = Number(
-      backendForecastResult?.city_summary?.risk_counts?.High ??
-        backendForecastResult?.risk_counts?.High
-    )
-    if (Number.isFinite(persistedCityCount)) return persistedCityCount
-
-    const sourceRows = savedForecastRows.length ? savedForecastRows : riskRows
-    return sourceRows.filter((row) => (
-      normalizeRiskLevel(row?.risk_level ?? row?.risk, 'Low') === 'High'
-    )).length
-  }, [backendForecastResult, riskRows, savedForecastRows])
 
   const selectedSavedForecastRow = useMemo(() => {
     const activeKey = normalizeName(barangayName)
@@ -2241,6 +2435,7 @@ export default function BHWPage() {
     fieldUpdateId: '',
     tasks: {},
     note: '',
+    environmentalObservations: {},
     status: 'Draft',
     savedAt: '',
     submittedAt: '',
@@ -2275,6 +2470,7 @@ export default function BHWPage() {
           fieldUpdateId: saved.field_update_id || '',
           tasks: saved.tasks || {},
           note: saved.observation_note || '',
+          environmentalObservations: saved.environmental_observations || {},
           status: saved.status || 'Draft',
           savedAt: saved.saved_at || '',
           submittedAt: saved.submitted_at || '',
@@ -2312,6 +2508,18 @@ export default function BHWPage() {
     setFieldSaveMessage('')
   }
 
+  function toggleEnvironmentalObservation(key) {
+    if (!canEditFieldUpdate) return
+    setFieldUpdate((current) => ({
+      ...current,
+      environmentalObservations: {
+        ...(current.environmentalObservations || {}),
+        [key]: !current.environmentalObservations?.[key],
+      },
+    }))
+    setFieldSaveMessage('')
+  }
+
   function buildFieldUpdatePayload() {
     return {
       barangay: barangayName,
@@ -2319,6 +2527,9 @@ export default function BHWPage() {
       tasks: Object.fromEntries(checklist.map((item) => [item.id, Boolean(fieldUpdate.tasks?.[item.id])])),
       total_tasks: checklist.length,
       observation_note: fieldUpdate.note || '',
+      environmental_observations: Object.fromEntries(
+        ENVIRONMENTAL_OBSERVATION_OPTIONS.map((item) => [item.key, Boolean(fieldUpdate.environmentalObservations?.[item.key])])
+      ),
       risk_level: risk,
       predicted_cases: Number(predictedCases || 0),
       is_urgent: Boolean(fieldUpdate.isUrgent),
@@ -2334,6 +2545,7 @@ export default function BHWPage() {
       fieldUpdateId: saved?.field_update_id || current.fieldUpdateId,
       tasks: saved?.tasks || current.tasks,
       note: saved?.observation_note ?? current.note,
+      environmentalObservations: saved?.environmental_observations || current.environmentalObservations || {},
       status: saved?.status || current.status,
       savedAt: saved?.saved_at || current.savedAt,
       submittedAt: saved?.submitted_at || current.submittedAt,
@@ -2416,12 +2628,12 @@ export default function BHWPage() {
               </span>
             </div>
 
-            <h1 className="mt-6 max-w-3xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
+            <h1 className="dengue-hero-title mt-6 max-w-3xl text-[2.15rem] font-bold leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
               {barangayName} dengue field intelligence.
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
-              Review barangay risk, expected cases, focused boundary coverage, field tasks, community advisories, and reporting progress from one coordinated workspace.
+            <p className="dengue-hero-copy mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
+              Review actual dengue cases and historical trends first, then use the forecast, risk score, boundary coverage, and field tasks to support barangay response.
             </p>
 
             <div className="bhw-selector-shell relative z-40 mt-6 max-w-xl rounded-[28px] border border-white/[0.15] bg-slate-950/[0.45] p-4 shadow-[0_18px_46px_rgba(2,6,23,0.34)] backdrop-blur-xl">
@@ -2456,9 +2668,9 @@ export default function BHWPage() {
 
             <div className="bhw-hero-metrics bhw-mobile-grid-3 mt-6 grid max-w-2xl gap-3 sm:grid-cols-3">
               {[
-                { label: 'Expected cases', value: formatNumber(predictedCases), helper: 'Cumulative four-horizon forecast', icon: Activity },
-                { label: 'Combined priority score', value: `${score}/100`, helper: '0–100 multi-source decision-support score', icon: ShieldAlert },
-                { label: 'City hotspots', value: formatNumber(cityHighRiskCount), helper: 'High-risk barangays', icon: MapPinned },
+                { label: 'Actual cases', value: trendLoading ? '…' : formatOptionalNumber(trendTotalCases), helper: trendScopeLabel, icon: Activity },
+                { label: trendHighestMonthLabel, value: trendLoading ? '…' : (trendPeakMonth?.month_label || 'No data'), helper: trendPeakMonth ? `${formatNumber(trendPeakMonth.cases)} recorded cases` : 'No recorded cases in this period', icon: CalendarDays },
+                { label: 'Current trend', value: trendLoading ? '…' : trendDirection, helper: trendSummary?.change_label || 'Monthly movement from actual records', icon: TrendingUp },
               ].map((item) => {
                 const Icon = item.icon
 
@@ -2536,11 +2748,256 @@ export default function BHWPage() {
         </div>
       </section>
 
+      <PremiumPanel tone="blue" className="bhw-trend-panel p-5 sm:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <SectionBadge icon={TrendingUp} tone="blue">Actual dengue situation</SectionBadge>
+              <InformationTypeBadge type="recorded" />
+            </div>
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-white">Historical dengue trend</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+              See the recorded dengue pattern for {barangayName}, including the highest month, lowest month, and month-to-month movement before reviewing the forecast.
+            </p>
+          </div>
+
+          <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-auto xl:min-w-[390px]">
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Year</span>
+              <select
+                value={activeTrendYear}
+                onChange={(event) => setTrendYear(event.target.value)}
+                disabled={trendLoading || !trendAvailableYears.length}
+                className="min-h-[46px] w-full rounded-[16px] border border-slate-200 bg-white px-3 text-sm font-black text-brand-text outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                {!trendAvailableYears.length ? <option value="">No years available</option> : null}
+                {trendAvailableYears.map((yearValue) => (
+                  <option key={yearValue} value={String(yearValue)}>{yearValue}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Period</span>
+              <select
+                value={trendPeriod}
+                onChange={(event) => setTrendPeriod(event.target.value)}
+                disabled={trendLoading}
+                className="min-h-[46px] w-full rounded-[16px] border border-slate-200 bg-white px-3 text-sm font-black text-brand-text outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                {TREND_PERIOD_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {trendError ? (
+          <div className="mt-5 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold leading-6 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
+            {trendError}
+          </div>
+        ) : null}
+
+        <div className="bhw-trend-metrics mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="rounded-[24px] border border-blue-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4 shadow-sm dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Actual cases</p>
+            <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">{trendLoading ? '…' : formatOptionalNumber(trendTotalCases)}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{trendScopeLabel}</p>
+          </div>
+
+          <div className="rounded-[24px] border border-rose-200/70 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-4 shadow-sm dark:border-rose-400/20 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{trendHighestMonthLabel}</p>
+            <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">{trendLoading ? '…' : (trendPeakMonth?.month_label || 'No data')}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{trendPeakMonth ? `${formatNumber(trendPeakMonth.cases)} recorded cases` : 'No cases recorded in this period'}</p>
+          </div>
+
+          <div className="rounded-[24px] border border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4 shadow-sm dark:border-emerald-400/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Lowest month</p>
+            <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">{trendLoading ? '…' : (trendLowestMonth?.month_label || '—')}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{trendLowestMonth ? `${formatNumber(trendLowestMonth.cases)} recorded cases` : 'No monthly record available'}</p>
+          </div>
+
+          <div className={`rounded-[24px] border p-4 shadow-sm ${getTrendDirectionStyle(trendDirection)}`}>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-75">Current movement</p>
+            <p className="mt-2 text-2xl font-black tracking-[-0.04em]">{trendLoading ? '…' : trendDirection}</p>
+            <p className="mt-1 text-xs font-semibold opacity-80">{trendSummary?.change_label || 'No previous month available'}</p>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <div className="relative -mx-2 min-w-0 overflow-hidden rounded-[24px] border border-cyan-400/[0.15] bg-gradient-to-b from-[#061321] via-[#06111d] to-[#020817] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_70px_rgba(2,8,23,0.42)] sm:mx-0 sm:rounded-[30px] sm:p-5">
+            <div className="mb-3 flex flex-col gap-2 px-1 sm:mb-4 sm:flex-row sm:items-center sm:justify-between sm:px-0">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">
+                  Barangay actual dengue trend
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Recorded cases only. Forecast values are shown separately below.
+                </p>
+              </div>
+              <div className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold text-cyan-200">
+                {trendScopeLabel}
+              </div>
+            </div>
+
+            <div className="w-full min-h-[300px] sm:min-h-[430px] lg:min-h-[560px] xl:min-h-[620px]">
+              <SparkChart
+                values={trendChartValues}
+                labels={trendChartLabels}
+                title={`${barangayName} actual dengue cases`}
+                subtitle={`Recorded monthly dengue cases · ${trendScopeLabel}`}
+                emptyLabel="No monthly dengue records for this period"
+                loading={trendLoading}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-[26px] border border-blue-200/70 bg-blue-50/70 p-5 dark:border-blue-400/20 dark:bg-blue-500/10">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 dark:text-blue-300">Simple interpretation</p>
+              </div>
+              <p className="mt-3 text-sm font-semibold leading-7 text-brand-text dark:text-slate-200">
+                {trendLoading
+                  ? 'Reading the actual monthly dengue pattern…'
+                  : (trendAnalytics?.interpretation || 'No trend interpretation is available yet.')}
+              </p>
+            </div>
+
+            <div className="rounded-[26px] border border-amber-200/70 bg-amber-50/70 p-5 dark:border-amber-400/20 dark:bg-amber-500/10">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Usual peak month</p>
+              {trendHistoricalPeak ? (
+                <>
+                  <p className="mt-2 text-xl font-black text-brand-text dark:text-white">{trendHistoricalPeak.month_label}</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">
+                    Based on past records, dengue cases are usually highest in {trendHistoricalPeak.month_label}.
+                    <span className="mt-1 block text-xs font-bold text-amber-700/80 dark:text-amber-200/70">Historical monthly average: {trendHistoricalPeak.average_cases} cases.</span>
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">A usual peak month cannot be identified from the available records yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 shadow-sm dark:border-white/10 dark:bg-slate-950/55">
+            <div className="flex flex-col gap-3 border-b border-slate-200/80 px-4 py-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">Actual case classification</p>
+                </div>
+                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Confirmed, probable, and suspected recorded dengue cases.</p>
+              </div>
+              <span className="w-fit rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-black text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">
+                {trendScopeLabel}
+              </span>
+            </div>
+
+            {trendLoading ? (
+              <div className="flex min-h-[180px] items-center justify-center px-5 py-8 text-sm font-bold text-slate-500 dark:text-slate-400">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reading recorded case classifications…
+              </div>
+            ) : caseClassificationAvailable ? (
+              <div className="p-4 sm:p-5">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <div className="rounded-[22px] border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-400/20 dark:bg-emerald-500/10">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">Confirmed</p>
+                    <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{confirmedAvailable ? formatNumber(confirmedCases) : 'N/A'}</p>
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 dark:text-slate-400">
+                      {confirmedAvailable
+                        ? `${confirmedShare.toFixed(1)}% of classified cases`
+                        : `Not separately reported in the source for ${classificationYearLabel}.`}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] border border-amber-200/80 bg-amber-50/70 p-4 dark:border-amber-400/20 dark:bg-amber-500/10">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">Probable</p>
+                    <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{probableAvailable ? formatNumber(probableCases) : 'N/A'}</p>
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 dark:text-slate-400">
+                      {probableAvailable
+                        ? `${probableShare.toFixed(1)}% of classified cases`
+                        : `Not separately reported in the source for ${classificationYearLabel}.`}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] border border-rose-200/80 bg-rose-50/70 p-4 dark:border-rose-400/20 dark:bg-rose-500/10">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">Suspected</p>
+                    <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{suspectedAvailable ? formatNumber(suspectedCases) : 'N/A'}</p>
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 dark:text-slate-400">
+                      {suspectedAvailable
+                        ? `${suspectedShare.toFixed(1)}% of classified cases`
+                        : `Not separately reported in the source for ${classificationYearLabel}.`}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] border border-sky-200/80 bg-sky-50/70 p-4 dark:border-sky-400/20 dark:bg-sky-500/10">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">Total reported</p>
+                    <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{formatNumber(reportedClassificationTotal)}</p>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Recorded cases in {trendScopeLabel}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-[22px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-white/10 dark:bg-slate-900/70">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Case mix comparison</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Share of the cases that have an official classification.</p>
+                    </div>
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-200">{formatNumber(classifiedCaseTotal)} classified</span>
+                  </div>
+
+                  <div className="mt-3 flex h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                    {classifiedCaseTotal > 0 ? (
+                      <>
+                        {confirmedAvailable ? <div className="h-full bg-emerald-500" style={{ width: `${confirmedShare}%` }} title={`Confirmed ${confirmedShare.toFixed(1)}%`} /> : null}
+                        {probableAvailable ? <div className="h-full bg-amber-400" style={{ width: `${probableShare}%` }} title={`Probable ${probableShare.toFixed(1)}%`} /> : null}
+                        {suspectedAvailable ? <div className="h-full bg-rose-500" style={{ width: `${suspectedShare}%` }} title={`Suspected ${suspectedShare.toFixed(1)}%`} /> : null}
+                      </>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    <span className={`inline-flex items-center gap-1.5 ${confirmedAvailable ? '' : 'opacity-50'}`}><span className="h-2 w-2 rounded-full bg-emerald-500" />Confirmed{confirmedAvailable ? '' : ' — N/A'}</span>
+                    <span className={`inline-flex items-center gap-1.5 ${probableAvailable ? '' : 'opacity-50'}`}><span className="h-2 w-2 rounded-full bg-amber-400" />Probable{probableAvailable ? '' : ' — N/A'}</span>
+                    <span className={`inline-flex items-center gap-1.5 ${suspectedAvailable ? '' : 'opacity-50'}`}><span className="h-2 w-2 rounded-full bg-rose-500" />Suspected{suspectedAvailable ? '' : ' — N/A'}</span>
+                  </div>
+
+                  {classificationHasUnavailableFields ? (
+                    <p className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold leading-5 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200">
+                      N/A means that classification was not separately reported in the official source for {classificationYearLabel}. It is not counted as zero.
+                    </p>
+                  ) : null}
+
+                  {unclassifiedCases > 0 ? (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+                      {formatNumber(unclassifiedCases)} reported case{unclassifiedCases === 1 ? '' : 's'} are not represented by the available classification values in the source for this period.
+                    </p>
+                  ) : null}
+                </div>
+
+                <p className="mt-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                  {trendCaseClassification?.source_note}
+                </p>
+              </div>
+            ) : (
+              <div className="px-5 py-6">
+                <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+                  <p className="text-sm font-black text-slate-800 dark:text-slate-100">Case classification is unavailable for this source.</p>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                    {trendCaseClassification?.source_note || 'The uploaded dengue dataset does not provide confirmed, probable, and suspected case fields. No values are estimated.'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </PremiumPanel>
+
       <section className="bhw-summary-metrics bhw-mobile-grid-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={ShieldAlert} label="Expected cases" value={formatNumber(predictedCases)} helper="Cumulative forecast across the four direct horizons." tone="rose" />
-        <MetricCard icon={Activity} label="Combined priority score" value={`${score}/100`} helper="Saved 0–100 multi-source decision-support score." tone="blue" />
-        <MetricCard icon={TrendingUp} label="Trend records" value={formatNumber(weeklyTotals.length)} helper="Available historical and projected reporting points." tone="amber" />
-        <MetricCard icon={MapPinned} label="City hotspots" value={formatNumber(cityHighRiskCount)} helper="High-risk barangays across the city workspace." tone="sky" />
+        <MetricCard icon={Activity} label="Actual cases" value={trendLoading ? '…' : formatOptionalNumber(trendTotalCases)} helper={`Recorded dengue cases for ${trendScopeLabel}.`} tone="sky" informationType="recorded" />
+        <MetricCard icon={CalendarDays} label={trendHighestMonthLabel} value={trendLoading ? '…' : (trendPeakMonth?.month_label || 'No data')} helper={trendPeakMonth ? `${formatNumber(trendPeakMonth.cases)} recorded cases.` : 'No recorded cases in the selected period.'} tone="amber" informationType="recorded" />
+        <MetricCard icon={ShieldAlert} label="Forecast cases" value={formatNumber(predictedCases)} helper="Forecast total across the four future periods." tone="rose" informationType="forecast" />
+        <MetricCard icon={TrendingUp} label="Combined priority score" value={`${score}/100`} helper="Overall planning priority based on forecast, weather, trend, population, and density." tone="blue" informationType="decision" />
       </section>
 
       <PremiumPanel tone="sky" className="bhw-boundary-panel p-5 sm:p-6">
@@ -2602,7 +3059,7 @@ export default function BHWPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-[24px] border border-rose-200/70 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-4 shadow-sm dark:border-rose-400/20 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5">
-                <p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">Expected cases</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">Forecast cases</p>
                 <p className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950 dark:text-white">{formatNumber(predictedCases)}</p>
               </div>
               <div className="rounded-[24px] border border-blue-200/70 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4 shadow-sm dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5">
@@ -2631,7 +3088,10 @@ export default function BHWPage() {
               <ClipboardCheck className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Recommended today</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Recommended today</p>
+                <InformationTypeBadge type="decision" />
+              </div>
               <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Barangay response action</h2>
             </div>
           </div>
@@ -2668,7 +3128,10 @@ export default function BHWPage() {
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Direct multi-step forecast</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Four-period forecast</p>
+                <InformationTypeBadge type="forecast" />
+              </div>
               <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Local forecast timeline</h2>
             </div>
           </div>
@@ -2676,7 +3139,7 @@ export default function BHWPage() {
           <div className="mt-3 rounded-[20px] border border-blue-200/70 bg-blue-50/70 px-4 py-3 text-xs font-semibold leading-5 text-blue-800 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
             {localForecasts.length === 4 ? (
               <>
-                These are the saved direct multi-step horizon predictions for {barangayName}. The four values total{' '}
+                These are four future periods predicted separately for {barangayName} using the direct multi-step method. The four values total{' '}
                 <span className="font-black">{formatNumber(localForecastTotal)} cases</span>
                 {localForecastMatchesCumulative
                   ? ', matching the cumulative barangay forecast.'
@@ -2684,7 +3147,7 @@ export default function BHWPage() {
               </>
             ) : (
               <>
-                Direct horizon predictions are not available for this barangay yet. The workspace will not invent period values from the cumulative forecast.
+                Separate future-period predictions are not available for this barangay yet. The workspace will not invent period values from the cumulative forecast.
               </>
             )}
           </div>
@@ -2714,7 +3177,7 @@ export default function BHWPage() {
                           </span>
                         </div>
                         <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-600/70 dark:text-blue-300/70">
-                          Horizon {row.horizon || index + 1} · Direct multi-step prediction
+                          Period {row.horizon || index + 1} · Horizon {row.horizon || index + 1} · direct multi-step
                         </p>
                         <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white shadow-inner dark:bg-slate-800">
                           <div className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-cyan-300" style={{ width: `${width}%` }} />
@@ -2726,7 +3189,7 @@ export default function BHWPage() {
               })
             ) : (
               <div className="rounded-[24px] border border-dashed border-slate-300 p-5 text-sm font-bold leading-6 text-brand-muted dark:border-slate-700 dark:text-slate-400">
-                No direct barangay horizon forecast is available yet. Ask the CHO account to run the latest dengue forecast so the four saved CatBoost horizon predictions can be displayed here.
+                No four-period barangay forecast is available yet. Ask the CHO account to run the latest dengue forecast so the four saved future-period predictions can be displayed here.
               </div>
             )}
           </div>
@@ -2740,7 +3203,10 @@ export default function BHWPage() {
               <CheckCircle2 className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Field checklist</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Field checklist</p>
+                <InformationTypeBadge type="field" label="Field observation" />
+              </div>
               <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Today&apos;s monitoring tasks</h2>
             </div>
           </div>
@@ -2783,9 +3249,36 @@ export default function BHWPage() {
             })}
           </div>
 
+          <div className="mt-5 rounded-[24px] border border-cyan-200/80 bg-gradient-to-br from-cyan-50/90 via-white to-blue-50/70 p-4 shadow-sm dark:border-cyan-400/20 dark:from-cyan-500/10 dark:via-slate-950 dark:to-blue-500/5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-brand-text dark:text-white">Observed environmental factors</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">Mark only what was directly observed or locally known during field monitoring. These are observations, not confirmed causes of dengue.</p>
+              </div>
+              <span className="w-fit rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-xs font-black text-cyan-700 shadow-sm dark:border-cyan-400/20 dark:bg-slate-950 dark:text-cyan-200">{ENVIRONMENTAL_OBSERVATION_OPTIONS.filter((item) => fieldUpdate.environmentalObservations?.[item.key]).length} marked</span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 min-[340px]:grid-cols-2">
+              {ENVIRONMENTAL_OBSERVATION_OPTIONS.map((item) => {
+                const checked = Boolean(fieldUpdate.environmentalObservations?.[item.key])
+                return (
+                  <label key={item.key} className={`flex min-h-[46px] items-center gap-2.5 rounded-[14px] border px-2.5 py-2.5 text-[11px] font-black leading-[1.25] transition sm:min-h-[50px] sm:px-3 sm:text-xs ${checked ? 'border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm dark:border-cyan-400/30 dark:bg-cyan-500/10 dark:text-cyan-100' : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'} ${!canEditFieldUpdate ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-cyan-300'}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!canEditFieldUpdate || isLoadingFieldUpdate}
+                      onChange={() => toggleEnvironmentalObservation(item.key)}
+                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                    />
+                    <span className="min-w-0">{item.label}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
           <label className="mt-5 block">
             <span className="text-sm font-black text-brand-text dark:text-white">Field observation note</span>
-            <span className="mt-1 block text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">Record breeding sites, household concerns, symptoms reported, supplies needed, or coordination completed.</span>
+            <span className="mt-1 block text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">Add the location, household details, other observations, symptoms reported, supplies needed, or coordination completed.</span>
             <textarea
               value={fieldUpdate.note || ''}
               onChange={(event) => {

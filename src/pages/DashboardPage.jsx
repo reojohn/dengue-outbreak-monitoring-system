@@ -27,6 +27,8 @@ import {
   X,
 } from 'lucide-react'
 import SectionTitle from '../components/SectionTitle'
+import CityTrendAnalyticsPanel from '../components/CityTrendAnalyticsPanel'
+import InformationTypeBadge from '../components/InformationTypeBadge'
 import dashboardBackground from '../assets/dashboard1.png'
 import { useData } from '../context/DataContext'
 import {
@@ -62,7 +64,7 @@ const actions = [
   },
   {
     label: 'Run forecast',
-    description: 'Review projected cases and risk level changes',
+    description: 'Review forecast cases and risk level changes',
     icon: TrendingUp,
     style:
       'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
@@ -1038,7 +1040,7 @@ function buildBackendPriorityRows(backendForecastResult = null, backendMergedDat
           ? [recommendation]
           : computedDecisionSupport.actions,
         rationale: [
-          `${barangay} has a combined multi-source prioritization score of ${formatNumber(combinedRiskScore)}/100.`,
+          `${barangay} has a combined priority score of ${formatNumber(combinedRiskScore)}/100.`,
           `${formatNumber(forecast)} cases are expected in the forecast window.`,
           rowData.environmentalSuitability,
         ].filter(Boolean),
@@ -1679,7 +1681,7 @@ function DashboardBarangayListModal({ config, onClose, onOpenForecast }) {
                             {row?.barangay || 'Unspecified barangay'}
                           </p>
                           <p className="mt-1 text-xs font-semibold text-slate-400">
-                            {formatNumber(row?.forecast || 0)} projected cases · {formatNumber(score)}/100 combined priority score
+                            {formatNumber(row?.forecast || 0)} forecast cases · {formatNumber(score)}/100 combined priority score
                           </p>
                         </div>
                       </div>
@@ -2866,7 +2868,7 @@ export default function DashboardPage() {
       {
         title: highestRisk ? `${highestRisk.risk} risk priority` : 'No risk data yet',
         message: highestRisk
-          ? `${highestRisk.barangay} has the highest priority with ${formatNumber(getMultiSourceScore(highestRisk))}/100 multi-source score and ${formatNumber(highestRisk.forecast)} projected cases.`
+          ? `${highestRisk.barangay} has the highest priority with ${formatNumber(getMultiSourceScore(highestRisk))}/100 multi-source score and ${formatNumber(highestRisk.forecast)} forecast cases.`
           : 'Upload dengue, weather, population, and boundary records to generate priority alerts.',
         icon: ShieldAlert,
         style: highestRisk?.risk === 'High'
@@ -2942,13 +2944,14 @@ export default function DashboardPage() {
                 <span className={`h-2 w-2 rounded-full ${usingBackendForecast ? 'bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.9)]' : 'bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.9)]'}`} />
                 {usingBackendForecast ? 'Analysis online' : 'Awaiting analysis'}
               </div>
+              <InformationTypeBadge type="decision" className="border-amber-300/20 bg-amber-300/10 text-amber-100 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100" />
             </div>
 
-            <h2 className="mt-5 max-w-3xl text-[1.9rem] font-black sm:mt-6 sm:text-[3rem] leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] xl:text-[3.6rem]">
+            <h2 className="dengue-hero-title mt-5 max-w-3xl text-[1.9rem] font-bold sm:mt-6 sm:text-[3rem] leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] xl:text-[3.6rem]">
               Barangay-level dengue intelligence, built for faster decisions.
             </h2>
 
-            <p className="mt-4 max-w-2xl text-[13px] font-medium leading-6 sm:mt-5 sm:text-[15px] sm:leading-8 text-slate-200/90 ">
+            <p className="dengue-hero-copy mt-4 max-w-2xl text-[13px] font-medium leading-6 sm:mt-5 sm:text-[15px] sm:leading-8 text-slate-200/90">
               Monitor dengue cases, environmental pressure, population exposure, and spatial risk from one coordinated command view.
             </p>
 
@@ -3010,9 +3013,10 @@ export default function DashboardPage() {
             <div className="group/top-priority relative overflow-hidden rounded-[24px] sm:rounded-[32px] border border-cyan-300/20 bg-gradient-to-br from-slate-950/75 via-slate-950/60 to-cyan-950/[0.45] p-4 text-white shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:shadow-[0_36px_90px_rgba(2,6,23,0.60)] sm:p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/75">
-                    Current top priority
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/75">Current top priority</p>
+                    <InformationTypeBadge type="decision" className="border-amber-300/20 bg-amber-300/10 text-amber-100 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100" />
+                  </div>
                   <h3 className="mt-2 max-w-[180px] break-words text-xl font-black leading-tight sm:max-w-[230px] sm:text-2xl tracking-[-0.03em]">
                     {topPriority?.barangay || 'No barangay yet'}
                   </h3>
@@ -3033,7 +3037,7 @@ export default function DashboardPage() {
 
               <p className="mt-4 text-sm font-medium leading-6 text-slate-300">
                 {topPriority
-                  ? `${formatNumber(topPriority.forecast)} projected cases. ${topDecision.environmentalSuitability}.`
+                  ? `${formatNumber(topPriority.forecast)} forecast cases. ${topDecision.environmentalSuitability}.`
                   : 'Upload the required files to generate a barangay-level priority assessment.'}
               </p>
 
@@ -3105,7 +3109,7 @@ export default function DashboardPage() {
           helper={`Expected dengue cases for ${forecastHorizonLabel}`}
           icon={BarChart3}
           tone="orange"
-          clickLabel="View projected cases"
+          clickLabel="View forecast cases"
           onClick={() =>
             openBarangayList({
               title: 'Barangays by projected dengue cases',
@@ -3138,10 +3142,13 @@ export default function DashboardPage() {
       <Panel className="p-4 sm:p-6" tabTone="blue" tabLabel="Integrated" tabIcon={Layers3} curve="bottom-right">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <SectionBadge tone="blue">
-              <Layers3 className="h-3.5 w-3.5" />
-              Multi-source command summary
-            </SectionBadge>
+            <div className="flex flex-wrap items-center gap-2">
+              <SectionBadge tone="blue">
+                <Layers3 className="h-3.5 w-3.5" />
+                Multi-source command summary
+              </SectionBadge>
+              <InformationTypeBadge type="decision" />
+            </div>
 
             <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
               Integrated dengue risk intelligence
@@ -3161,7 +3168,7 @@ export default function DashboardPage() {
           <SignalCard
             label="Avg. priority score"
             value={averageMultiSourceScore > 0 ? `${formatNumber(averageMultiSourceScore)}/100` : 'No data'}
-            helper="Average 0–100 combined prioritization score across computed barangay rows."
+            helper="Average 0–100 overall planning-priority score across computed barangay rows."
             icon={Gauge}
             tone="blue"
           />
@@ -3260,23 +3267,28 @@ export default function DashboardPage() {
         </div>
       </Panel>
 
+      <CityTrendAnalyticsPanel context="dashboard" />
+
       <div className="grid items-start gap-5 xl:grid-cols-[1.35fr_0.85fr]">
         <div className="min-w-0 space-y-5">
         <Panel className="p-4 sm:p-6" tabTone="rose" tabLabel="Trend" tabIcon={TrendingUp} curve="bottom-left">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <SectionBadge tone="rose">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Trend analysis
-              </SectionBadge>
+              <div className="flex flex-wrap items-center gap-2">
+                <SectionBadge tone="rose">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  Forecast outlook
+                </SectionBadge>
+                <InformationTypeBadge type="forecast" />
+              </div>
 
               <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                Citywide dengue outlook
+                Citywide dengue forecast outlook
               </h3>
 
               <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
                 {usingBackendForecast
-                  ? `Combined totals across all barangays compare the earlier and latest three-${forecastPeriodDisplay.singular} averages with independent predictions for ${forecastHorizonLabel}.`
+                  ? `Combined totals across all barangays compare recent recorded patterns with separate future-period predictions for ${forecastHorizonLabel}.`
                   : 'Weekly case values are recalculated from uploaded or sample dengue records.'}
               </p>
             </div>
@@ -3291,7 +3303,7 @@ export default function DashboardPage() {
     <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">
-          Citywide case outlook
+          Citywide forecast outlook
         </p>
 
         <p className="mt-1 text-xs text-slate-400">
@@ -3548,7 +3560,7 @@ export default function DashboardPage() {
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Ranked by risk level, combined multi-source score, response priority, and projected cases.
+                Ranked by risk level, combined priority score, response priority, and forecast cases.
               </p>
             </div>
           </div>
@@ -3581,7 +3593,7 @@ export default function DashboardPage() {
                           </p>
 
                           <p className="mt-1 text-[11px] font-semibold leading-4 text-brand-muted dark:text-slate-400 sm:text-xs sm:leading-5">
-                            {formatNumber(row.forecast)} projected cases
+                            {formatNumber(row.forecast)} forecast cases
                           </p>
 
                           <div className="mt-2 flex flex-wrap items-center gap-2">

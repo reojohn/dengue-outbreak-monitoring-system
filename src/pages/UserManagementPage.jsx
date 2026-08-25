@@ -811,11 +811,11 @@ export default function UserManagementPage() {
               </span>
             </div>
 
-            <h1 className="mt-6 max-w-3xl text-[2.15rem] font-black leading-[1.04] tracking-[-0.045em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
+            <h1 className="dengue-hero-title mt-6 max-w-3xl text-[2.15rem] font-bold leading-[1.08] tracking-[-0.035em] text-white drop-shadow-[0_5px_24px_rgba(2,6,23,0.65)] sm:text-[3rem] xl:text-[3.55rem]">
               Manage every account from one secure workspace.
             </h1>
 
-            <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
+            <p className="dengue-hero-copy mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-200/90 sm:text-[15px] sm:leading-8">
               Create authorized accounts, assign role-based access, connect BHW users to barangays, reset credentials, and review account activity without leaving the administration workspace.
             </p>
 
@@ -1489,7 +1489,7 @@ export default function UserManagementPage() {
             margin-top: 0.75rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.5 !important;
           }
 
@@ -1506,7 +1506,7 @@ export default function UserManagementPage() {
             min-width: 0 !important;
             min-height: 48px !important;
             padding: 0.65rem !important;
-            font-size: 0.74rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
             white-space: normal !important;
           }
@@ -1530,7 +1530,7 @@ export default function UserManagementPage() {
           }
 
           .user-mobile-compact .user-hero-metrics span {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.055em !important;
           }
@@ -1544,7 +1544,7 @@ export default function UserManagementPage() {
           .user-mobile-compact .user-hero-metrics p:last-child {
             display: block !important;
             margin-top: 0.3rem !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -1601,7 +1601,7 @@ export default function UserManagementPage() {
             -webkit-line-clamp: 2 !important;
             -webkit-box-orient: vertical !important;
             overflow: hidden !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }
 
@@ -1627,7 +1627,7 @@ export default function UserManagementPage() {
             min-height: 48px !important;
             border-radius: 14px !important;
             padding: 0.65rem 0.75rem !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .user-mobile-compact .user-form-panel .relative.mt-2 > button span.block {
@@ -1721,13 +1721,13 @@ export default function UserManagementPage() {
 
           .user-mobile-compact .user-account-card .flex.flex-wrap.items-center.gap-2 > span {
             padding: 0.3rem 0.45rem !important;
-            font-size: 0.64rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             white-space: nowrap !important;
           }
 
           .user-mobile-compact .user-account-card p.font-black {
-            font-size: 0.84rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.25 !important;
             overflow-wrap: anywhere !important;
           }
@@ -1769,13 +1769,13 @@ export default function UserManagementPage() {
             gap: 0.4rem !important;
             border-radius: 12px !important;
             padding: 0.5rem 0.55rem !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
           }
 
           .user-mobile-compact .user-action-label {
             display: inline !important;
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             font-weight: 800 !important;
           }
 
@@ -1836,17 +1836,17 @@ export default function UserManagementPage() {
 
           /* Readable typography */
           .user-mobile-compact .text-sm {
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
           .user-mobile-compact .text-xs {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
           .user-mobile-compact .text-\[10px\] {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.22 !important;
           }
         }

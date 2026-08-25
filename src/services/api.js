@@ -36,6 +36,12 @@ async function handleApiResponse(response) {
   const data = await response.json().catch(() => null)
 
   if (!response.ok) {
+    const isLoginRequest = String(response.url || '').includes('/auth/login')
+
+    if (response.status === 401 && !isLoginRequest) {
+      throw new Error('Your session has expired. Please sign in again to continue.')
+    }
+
     const message =
       data?.detail?.message ||
       data?.detail ||
@@ -222,6 +228,49 @@ export async function getBackendAlignmentReport() {
     {},
     90000
   )
+  return handleApiResponse(response)
+}
+
+export async function getTrendAnalyticsBarangays() {
+  const response = await apiFetch(`${API_BASE_URL}/analytics/barangays`)
+  return handleApiResponse(response)
+}
+
+export async function getCityTrendAnalytics({ year, quarter, month } = {}) {
+  const params = new URLSearchParams()
+
+  if (year) params.set('year', String(year))
+  if (quarter) params.set('quarter', String(quarter))
+  if (month) params.set('month', String(month))
+
+  const query = params.toString()
+  const response = await apiFetch(`${API_BASE_URL}/analytics/city-trends${query ? `?${query}` : ''}`)
+  return handleApiResponse(response)
+}
+
+export async function getBarangayTrendAnalytics({
+  barangay,
+  year = null,
+  quarter = null,
+  month = null,
+} = {}) {
+  const params = new URLSearchParams({
+    barangay: String(barangay || ''),
+  })
+
+  if (year !== null && year !== undefined && year !== '') {
+    params.set('year', String(year))
+  }
+
+  if (quarter !== null && quarter !== undefined && quarter !== '') {
+    params.set('quarter', String(quarter))
+  }
+
+  if (month !== null && month !== undefined && month !== '') {
+    params.set('month', String(month))
+  }
+
+  const response = await apiFetch(`${API_BASE_URL}/analytics/barangay-trends?${params.toString()}`)
   return handleApiResponse(response)
 }
 

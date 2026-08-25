@@ -29,6 +29,7 @@ import {
   X,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import InformationTypeBadge from '../components/InformationTypeBadge'
 import {
   compareCanonicalBarangayPriority,
   computeDecisionSupport,
@@ -1548,7 +1549,7 @@ function getRiskComponentItems(row = {}) {
     : readNumber(components, ['currentCases', 'current_cases'], 0)
 
   return [
-    ['Expected cases', readNumber(components, ['forecast'], 0)],
+    ['Forecast cases', readNumber(components, ['forecast'], 0)],
     [currentCaseLabel, currentCaseValue],
     ['Recent change', readNumber(components, ['trend'], 0)],
     ['Weather', readNumber(components, ['environment'], 0)],
@@ -3022,7 +3023,7 @@ function SummaryBarangayListModal({
                           {row.barangay}
                         </p>
                         <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                          {formatNumber(row.forecast || 0)} projected cases · {formatNumber(getRowRiskScore(row))}/100 combined priority score
+                          {formatNumber(row.forecast || 0)} forecast cases · {formatNumber(getRowRiskScore(row))}/100 combined priority score
                         </p>
                       </div>
                     </div>
@@ -3731,8 +3732,8 @@ export default function ForecastPage() {
     (/^next\s/i.test(rawForecastHorizonLabel) || !rawForecastHorizonLabel
       ? `${forecastHorizonPeriods}-${forecastPeriodDisplay.singular} forecast after latest available data`
       : rawForecastHorizonLabel)
-  const forecastHorizonHelper = `Expected cases for ${forecastHorizonLabel}`
-  const projectedHorizonHelper = `Projected cases for ${forecastHorizonLabel}`
+  const forecastHorizonHelper = `Forecast cases for ${forecastHorizonLabel}`
+  const projectedHorizonHelper = `Forecast cases for ${forecastHorizonLabel}`
   const [showModelDetails, setShowModelDetails] = useState(false)
 
   const selectedModelName = formatModelName(
@@ -3888,7 +3889,7 @@ export default function ForecastPage() {
     ? finalForecastPeriodTotal
     : latestSourceTotal
   const periodSummaryHelper = usingBackendForecast
-    ? `${forecastPeriodDisplay.prefix}${Math.max(projectedWeeklyValues.length, 1)} citywide projected cases`
+    ? `${forecastPeriodDisplay.prefix}${Math.max(projectedWeeklyValues.length, 1)} citywide forecast cases`
     : 'Most recent source period'
 
   const highestRiskBarangay = useMemo(() => {
@@ -4043,7 +4044,7 @@ export default function ForecastPage() {
 
     return {
       title: 'Priority barangay ranking',
-      description: 'All barangays are ranked by risk level, combined multi-source score, response priority, projected cases, and deterministic tie-breakers.',
+      description: 'All barangays are ranked by risk level, combined priority score, response priority, forecast cases, and consistent tie-break rules.',
       rows: rankedRows,
       tone: 'rose',
       emptyMessage: 'No priority ranking is available until forecast results are ready.',
@@ -4057,7 +4058,7 @@ export default function ForecastPage() {
         riskExplanationScore > 0
           ? `${formatNumber(riskExplanationScore)}/100`
           : 'No data',
-      helper: '0–100 multi-source decision-support score, separate from forecast case-risk class',
+      helper: 'Overall planning priority from forecast, weather, trend, population, and density',
       icon: Gauge,
       tone: 'blue',
     },
@@ -4317,7 +4318,7 @@ const topBarangayRecommendationRationale = normalizeRecommendationText(
 
 const secondaryPrioritySummary = secondaryPriorityRows
   .map((row, index) => {
-    return `#${index + 2} ${row.barangay}, ${row.risk || 'Pending'} risk, ${formatNumber(row.forecast || 0)} projected cases, and a ${formatNumber(getRowRiskScore(row))}/100 combined score`
+    return `#${index + 2} ${row.barangay}, ${row.risk || 'Pending'} risk, ${formatNumber(row.forecast || 0)} forecast cases, and a ${formatNumber(getRowRiskScore(row))}/100 combined score`
   })
   .join('; ')
 
@@ -4374,7 +4375,7 @@ const forecastFindingMessages = forecastRows.length
           : `${highestRiskBarangay.barangay} has a ${String(highestRiskBarangay.trendLabel || 'Stable').toLowerCase()} recent trend, with a recent average of ${formatDecimal(topBarangayRecentAverage)} cases.`
         : '',
       highestRiskBarangay && topBarangayConditionParts.length
-        ? `The environmental context considered for ${highestRiskBarangay.barangay} includes ${topBarangayConditionParts.join('; ')}. These conditions support the risk interpretation but do not prove that weather directly caused the projected cases.`
+        ? `The environmental context considered for ${highestRiskBarangay.barangay} includes ${topBarangayConditionParts.join('; ')}. These conditions support the risk interpretation but do not prove that weather directly caused the forecast cases.`
         : highestRiskBarangay
           ? `Weather measurements were not complete enough for a detailed environmental explanation for ${highestRiskBarangay.barangay}.`
           : '',
@@ -4385,7 +4386,7 @@ const forecastFindingMessages = forecastRows.length
         ? `The strongest contributors in ${highestRiskBarangay.barangay}’s combined score were ${topRiskDriverSummary}. The score is multi-source, so no single factor determines the final priority by itself.`
         : '',
       highestRiskBarangay && highestRiskBarangay.risk === 'Low'
-        ? `${highestRiskBarangay.barangay} is still ranked first even though it is classified as Low risk. That is because the priority order also considers its combined score, projected cases, recent trend, and response-priority indicators relative to the other barangays.`
+        ? `${highestRiskBarangay.barangay} is still ranked first even though it is classified as Low risk. That is because the priority order also considers its combined score, forecast cases, recent trend, and response-priority indicators relative to the other barangays.`
         : '',
       topBarangayRecommendationSummary
         ? `My main recommendation for ${highestRiskBarangay?.barangay || 'the top barangay'} is: ${topBarangayRecommendationSummary}`
@@ -4561,13 +4562,14 @@ const activeModelComparison = (() => {
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.9)]" />
                   Forecast ready
                 </div>
+                <InformationTypeBadge type="forecast" className="border-violet-300/20 bg-violet-300/10 text-violet-100 dark:border-violet-300/20 dark:bg-violet-300/10 dark:text-violet-100" />
               </div>
 
-              <h1 className="mt-7 max-w-4xl text-4xl font-black leading-[0.98] tracking-[-0.055em] text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.46)] sm:text-5xl lg:text-[4rem]">
+              <h1 className="dengue-hero-title mt-7 max-w-4xl text-4xl font-bold leading-[1.06] tracking-[-0.035em] text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.46)] sm:text-5xl lg:text-[4rem]">
                 Anticipate dengue pressure before it becomes an outbreak.
               </h1>
 
-              <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-200/90 sm:text-base">
+              <p className="dengue-hero-copy mt-5 max-w-2xl text-sm leading-7 text-slate-200/90 sm:text-base">
                 {usingBackendForecast
                   ? 'The latest validated dengue, weather, population, and barangay boundary records are combined into one decision-ready forecast for Butuan City.'
                   : 'Upload validated records to estimate future cases, identify priority barangays, and prepare targeted response decisions from one coordinated view.'}
@@ -4607,7 +4609,7 @@ const activeModelComparison = (() => {
 
             <div className="forecast-hero-metrics mt-9 grid gap-3 sm:grid-cols-3">
               <HeroMetric
-                label="Expected cases"
+                label="Forecast cases"
                 value={formatNumber(projectedTotal)}
                 helper={forecastHorizonHelper}
                 icon={LineChart}
@@ -4615,7 +4617,7 @@ const activeModelComparison = (() => {
               <HeroMetric
                 label="Moderate/High risk"
                 value={formatNumber(attentionRiskCount)}
-                helper="Cumulative forecast case-risk"
+                helper="Barangays needing closer forecast attention"
                 icon={ShieldAlert}
               />
               <HeroMetric
@@ -4627,9 +4629,9 @@ const activeModelComparison = (() => {
             </div>
           </div>
 
-          <div className="forecast-scenario-card relative flex flex-col rounded-[28px] border border-white/15 bg-slate-950/60 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
+          <div className="forecast-scenario-card relative flex min-w-0 flex-col rounded-[28px] border border-white/15 bg-slate-950/60 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
+            <div className="flex min-w-0 items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-black uppercase tracking-[0.19em] text-cyan-100/70">
                   Scenario control
                 </p>
@@ -4640,7 +4642,7 @@ const activeModelComparison = (() => {
                   Adjust the planning view without changing the selected AI model.
                 </p>
               </div>
-              <div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+              <div className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
                 {formatDecimal(selectedMode.multiplier, 2)}x
               </div>
             </div>
@@ -4659,24 +4661,24 @@ const activeModelComparison = (() => {
                     type="button"
                     onClick={() => setMode(key)}
                     style={isActive ? { backgroundColor: '#ffffff', backgroundImage: 'none', color: '#0f172a' } : { backgroundImage: 'none' }}
-                    className={`group/scenario flex items-center justify-between gap-3 rounded-[18px] border px-3.5 py-3 text-left transition ${
+                    className={`group/scenario grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[18px] border px-3 py-3 text-left transition ${
                       isActive
                         ? 'border-white shadow-[0_12px_28px_rgba(255,255,255,0.13)]'
                         : 'border-white/10 bg-white/5 text-white hover:border-white/25 hover:bg-white/10'
                     }`}
                   >
-                    <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex min-w-0 items-center gap-2.5">
                       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border ${isActive ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-white/10 bg-white/5 text-cyan-200'}`}>
                         <ScenarioIcon className="h-4 w-4" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-black">{label}</span>
+                        <span className="block text-sm font-bold leading-tight">{label}</span>
                         <span className={`mt-0.5 block text-[10px] font-bold ${isActive ? 'text-slate-500' : 'text-white/45'}`}>
                           {key === 'caution' ? 'Improvement planning' : key === 'baseline' ? 'Most likely outlook' : 'Escalation planning'}
                         </span>
                       </span>
                     </span>
-                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-slate-900 text-white' : 'bg-white/10 text-white/70'}`}>
+                    <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-slate-900 text-white' : 'bg-white/10 text-white/70'}`}>
                       {helper}
                     </span>
                   </button>
@@ -5000,7 +5002,7 @@ const activeModelComparison = (() => {
             {[
               ['Model version', selectedModelVersion],
               ['Forecast scenario', selectedMode.label],
-              ['Forecast horizon', forecastHorizonLabel],
+              ['Forecast period range', forecastHorizonLabel],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -5519,7 +5521,7 @@ const activeModelComparison = (() => {
               {selectedRiskExplanationRow?.risk || 'its'} risk level
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              The score combines expected cases, recent activity, weather, population exposure, and crowding. Open the breakdown only when supporting details are needed.
+              The score combines forecast cases, recent activity, weather, population exposure, and crowding. Open the breakdown only when supporting details are needed.
             </p>
           </div>
 
@@ -5547,7 +5549,7 @@ const activeModelComparison = (() => {
             </h2>
 
             <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              The current #1 ranked barangay is selected by default. Search for another barangay to review how expected cases, recent changes, rainfall, temperature, humidity, population, crowding, and land area affected its score.
+              The current #1 ranked barangay is selected by default. Search for another barangay to review how forecast cases, recent changes, rainfall, temperature, humidity, population, crowding, and land area affected its score.
             </p>
           </div>
 
@@ -5715,7 +5717,7 @@ const activeModelComparison = (() => {
               Forecast basis:
             </span>{' '}
             {usingBackendForecast && selectedResponseUsesDirectMultiStep
-              ? `${selectedModelName} uses direct multi-step forecasting. A horizon-specific model output is generated for each horizon in ${forecastHorizonLabel}, and the individual predictions are summed to produce the cumulative barangay forecast used for risk classification.`
+              ? `${selectedModelName} predicts each future period separately using the direct multi-step method. The four period predictions in ${forecastHorizonLabel} are added to produce the cumulative barangay forecast used for risk classification.`
               : usingBackendForecast
                 ? `${selectedModelName} is used for this forecast. Recent case changes, weather, population, crowding level, and the selected forecast setting are used to show priority recommendations.`
                 : 'Recent case averages, case changes, rainfall, temperature, humidity, population, crowding level, and barangay map details are used to estimate risk and rank barangays by priority.'}
@@ -5726,14 +5728,17 @@ const activeModelComparison = (() => {
 
             <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700 dark:text-violet-300">
-                  Selected barangay horizon breakdown
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700 dark:text-violet-300">
+                    Selected barangay four-period breakdown
+                  </p>
+                  <InformationTypeBadge type="forecast" />
+                </div>
                 <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-brand-text dark:text-slate-100">
                   {selectedResponseRow?.barangay || 'No barangay selected'} direct forecast
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-                  Each card shows one horizon-specific prediction. The four values are added to obtain the cumulative forecast used by the risk and decision-support sections.
+                  Each card shows one future period predicted separately. The technical horizon number is kept as secondary information. The four values are added to obtain the cumulative forecast used by the risk and decision-support sections.
                 </p>
               </div>
 
@@ -5762,9 +5767,12 @@ const activeModelComparison = (() => {
                       className="group relative overflow-hidden rounded-[22px] border border-slate-200/80 bg-white px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md dark:border-white/10 dark:bg-slate-950/80"
                     >
                       <div className="absolute inset-x-4 top-0 h-[2px] rounded-full bg-gradient-to-r from-violet-500 via-sky-400 to-cyan-400" />
-                      <p className="text-[10px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
-                        Horizon {formatNumber(item.horizon || index + 1)}
-                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
+                          Period {formatNumber(item.horizon || index + 1)}
+                        </p>
+                        <span className="text-[10px] font-semibold text-slate-400">Horizon {formatNumber(item.horizon || index + 1)}</span>
+                      </div>
                       <p className="mt-2 truncate text-xs font-bold text-violet-700 dark:text-violet-300" title={item.period}>
                         {item.period || `${forecastPeriodDisplay.adjective} ${index + 1}`}
                       </p>
@@ -5772,7 +5780,7 @@ const activeModelComparison = (() => {
                         {formatNumber(item.predictedCases)}
                       </p>
                       <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-400">
-                        Predicted dengue cases
+                        Forecast dengue cases
                       </p>
                     </div>
                   ))}
@@ -5781,7 +5789,7 @@ const activeModelComparison = (() => {
                 <div className="relative mt-4 grid gap-3 md:grid-cols-3">
                   <div className="rounded-[20px] border border-sky-200 bg-sky-50/80 px-4 py-3 dark:border-sky-400/20 dark:bg-sky-500/10">
                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
-                      Horizon sum
+                      Four-period total
                     </p>
                     <p className="mt-1 text-xl font-black text-brand-text dark:text-slate-100">
                       {formatNumber(selectedResponsePredictionTotal)} cases
@@ -5898,7 +5906,7 @@ const activeModelComparison = (() => {
       </p>
 
       <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-        Barangays are ranked by risk level, combined multi-source score, response priority, and expected cases.
+        Barangays are ranked by risk level, combined priority score, response priority, and forecast cases.
       </p>
     </div>
   </div>
@@ -6106,7 +6114,7 @@ const activeModelComparison = (() => {
                 searchPlaceholder: 'Search sorting method',
                 options: [
                   { value: 'priority', label: 'Priority', helper: 'Highest response priority first' },
-                  { value: 'forecast', label: 'Expected cases', helper: 'Highest expected cases first' },
+                  { value: 'forecast', label: 'Forecast cases', helper: 'Highest forecast cases first' },
                   { value: 'risk', label: 'Combined priority', helper: 'Highest forecast risk class and combined score first' },
                   { value: 'barangay', label: 'Barangay name', helper: 'Alphabetical order' },
                 ],
@@ -6375,7 +6383,7 @@ const activeModelComparison = (() => {
                 <div className="group relative overflow-hidden rounded-[24px] border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 px-4 py-4 shadow-[0_12px_28px_rgba(14,165,233,0.10)] dark:border-sky-400/20 dark:from-sky-500/10 dark:via-slate-950 dark:to-cyan-950/20">
                   <div className="absolute inset-x-4 top-0 h-[2px] rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" />
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-blue dark:text-blue-300">
-                    Expected cases
+                    Forecast cases
                   </p>
                   <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
                     {formatNumber(selectedResponseRow.forecast)}
@@ -6394,7 +6402,7 @@ const activeModelComparison = (() => {
                     {formatNumber(getRowRiskScore(selectedResponseRow))}/100
                   </p>
                   <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-400">
-                    0–100 multi-source decision-support score
+                    Overall planning priority from forecast, weather, trend, population, and density
                   </p>
                 </div>
 
@@ -6447,7 +6455,7 @@ const activeModelComparison = (() => {
                 </p>
 
                 <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-300">
-                  {selectedResponseRow.barangay} is ranked using its {String(selectedResponseRow.risk || 'current').toLowerCase()} risk level, {formatNumber(selectedResponseRow.forecast)} expected cases, {String(selectedResponseRow.trendLabel || 'stable').toLowerCase()} case trend, and {String(selectedResponseRow.environmentalSuitability || 'available weather context').toLowerCase()}.
+                  {selectedResponseRow.barangay} is ranked using its {String(selectedResponseRow.risk || 'current').toLowerCase()} risk level, {formatNumber(selectedResponseRow.forecast)} forecast cases, {String(selectedResponseRow.trendLabel || 'stable').toLowerCase()} case trend, and {String(selectedResponseRow.environmentalSuitability || 'available weather context').toLowerCase()}.
                 </p>
               </div>
 
@@ -6697,7 +6705,7 @@ const activeModelComparison = (() => {
           .forecast-premium-hero .mt-7.flex.flex-wrap > button {
             min-height: 42px !important;
             padding: 0.55rem 0.65rem !important;
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .forecast-premium-hero .mt-9.grid {
@@ -6725,7 +6733,7 @@ const activeModelComparison = (() => {
 
           .forecast-premium-hero .mt-9.grid p:last-child {
             margin-top: 0.25rem !important;
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -6788,14 +6796,14 @@ const activeModelComparison = (() => {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden !important;
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
           .forecast-mobile-compact > section:first-of-type .mb-4.inline-flex,
           .forecast-mobile-compact .inline-flex.items-center.gap-2.rounded-full.border {
             padding: 0.32rem 0.58rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.1em !important;
           }
 
@@ -6813,7 +6821,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact > section:first-of-type .mt-6.grid p:first-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.075em !important;
           }
@@ -6826,7 +6834,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact > section:first-of-type .mt-6.grid p:last-child {
             margin-top: 0.2rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.18 !important;
           }
 
@@ -6844,7 +6852,7 @@ const activeModelComparison = (() => {
             min-height: 42px !important;
             border-radius: 13px !important;
             padding: 0.48rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             justify-content: center !important;
             text-align: center !important;
@@ -6854,7 +6862,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] button span:last-child {
             padding: 0.2rem 0.38rem !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .forecast-mobile-compact > section:first-of-type .rounded-\[28px\] .mt-4.rounded-2xl {
@@ -6878,7 +6886,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] p:first-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.12 !important;
             letter-spacing: 0.08em !important;
           }
@@ -6891,7 +6899,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .group.relative.overflow-hidden.rounded-\[28px\] p:last-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -6922,7 +6930,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.32 !important;
           }
 
@@ -6943,7 +6951,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact p {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.32 !important;
           }
 
@@ -6969,17 +6977,17 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 p:first-of-type {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.07em !important;
           }
 
           .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 p:nth-of-type(2) {
-            font-size: 0.84rem !important;
+            font-size: 0.875rem !important;
             line-height: 1.05 !important;
           }
 
           .forecast-mobile-compact [id="machine-learning-controls"] > .mt-5.grid.gap-3.md\:grid-cols-2.xl\:grid-cols-6 p:nth-of-type(3) {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.14 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -7030,7 +7038,7 @@ const activeModelComparison = (() => {
             min-height: 42px !important;
             border-radius: 16px !important;
             padding: 0.65rem 0.8rem !important;
-            font-size: 0.76rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .forecast-mobile-compact [id="machine-learning-controls"] .mt-5.space-y-5 > :not([hidden]) ~ :not([hidden]) {
@@ -7171,7 +7179,7 @@ const activeModelComparison = (() => {
             height: 2rem !important;
             width: 2rem !important;
             border-radius: 12px !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .forecast-mobile-compact [id="top-barangays"] .mt-4.grid.gap-2.sm\:grid-cols-2.xl\:grid-cols-4 {
@@ -7199,7 +7207,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact [id="top-barangays"] .flex.flex-wrap.items-center.gap-2 span,
           .forecast-mobile-compact [id="top-barangays"] button.inline-flex {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             padding: 0.38rem 0.55rem !important;
           }
 
@@ -7237,11 +7245,11 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact .text-xl { font-size: 0.98rem !important; line-height: 1.12 !important; }
           .forecast-mobile-compact .text-lg { font-size: 0.9rem !important; line-height: 1.12 !important; }
-          .forecast-mobile-compact .text-base { font-size: 0.82rem !important; line-height: 1.18 !important; }
+          .forecast-mobile-compact .text-base { font-size: 0.8125rem !important; line-height: 1.18 !important; }
           .forecast-mobile-compact .text-sm { font-size: 0.875rem !important; line-height: 1.3 !important; }
-          .forecast-mobile-compact .text-xs { font-size: 0.75rem !important; line-height: 1.25 !important; }
-          .forecast-mobile-compact .text-\[11px\] { font-size: 0.75rem !important; line-height: 1.12 !important; }
-          .forecast-mobile-compact .text-\[10px\] { font-size: 0.75rem !important; line-height: 1.12 !important; }
+          .forecast-mobile-compact .text-xs { font-size: 0.8125rem !important; line-height: 1.25 !important; }
+          .forecast-mobile-compact .text-\[11px\] { font-size: 0.8125rem !important; line-height: 1.12 !important; }
+          .forecast-mobile-compact .text-\[10px\] { font-size: 0.8125rem !important; line-height: 1.12 !important; }
 
 
           .forecast-mobile-compact .mobile-field-grid-4 {
@@ -7290,14 +7298,14 @@ const activeModelComparison = (() => {
           .forecast-mobile-compact .mobile-field-grid-6 .text-2xl,
           .forecast-mobile-compact .mobile-field-grid-6 .text-xl,
           .forecast-mobile-compact .mobile-field-grid-6 .text-sm {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
           }
 
           .forecast-mobile-compact .mobile-field-grid-6 p:first-child,
           .forecast-mobile-compact .mobile-field-grid-6 .text-\[11px\],
           .forecast-mobile-compact .mobile-field-grid-6 .text-\[10px\] {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.055em !important;
             line-height: 1.1 !important;
           }
@@ -7305,7 +7313,7 @@ const activeModelComparison = (() => {
           .forecast-mobile-compact .mobile-field-grid-4 p:first-child,
           .forecast-mobile-compact .mobile-field-grid-4 .text-\[11px\],
           .forecast-mobile-compact .mobile-field-grid-4 .text-\[10px\] {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             letter-spacing: 0.065em !important;
             line-height: 1.1 !important;
           }
@@ -7362,7 +7370,7 @@ const activeModelComparison = (() => {
             width: 1.75rem !important;
             height: 1.75rem !important;
             border-radius: 10px !important;
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid img.h-32.w-32 {
@@ -7371,7 +7379,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid p.text-lg {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.08 !important;
             display: -webkit-box !important;
             -webkit-line-clamp: 2;
@@ -7395,13 +7403,13 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 p:first-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1 !important;
             letter-spacing: 0.04em !important;
           }
 
           .forecast-mobile-compact .mobile-model-comparison-grid .grid.grid-cols-3.gap-2 p:last-child {
-            font-size: 0.75rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.05 !important;
           }
 
@@ -7471,7 +7479,7 @@ const activeModelComparison = (() => {
             margin-top: 0.75rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.5 !important;
           }
 
@@ -7487,7 +7495,7 @@ const activeModelComparison = (() => {
             min-width: 0 !important;
             min-height: 48px !important;
             padding: 0.7rem 0.65rem !important;
-            font-size: 0.76rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
             white-space: normal !important;
           }
@@ -7520,7 +7528,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .forecast-hero-metrics p:first-child {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.1 !important;
             letter-spacing: 0.07em !important;
           }
@@ -7537,7 +7545,7 @@ const activeModelComparison = (() => {
             margin-top: 0.35rem !important;
             overflow: visible !important;
             -webkit-line-clamp: unset !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -7592,7 +7600,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .forecast-stat-card p:first-child {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.06em !important;
           }
@@ -7609,12 +7617,12 @@ const activeModelComparison = (() => {
             -webkit-line-clamp: 2 !important;
             -webkit-box-orient: vertical !important;
             overflow: hidden !important;
-            font-size: 0.74rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.28 !important;
           }
 
           .forecast-mobile-compact .forecast-stat-card .mt-3.inline-flex {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.05em !important;
           }
@@ -7664,7 +7672,7 @@ const activeModelComparison = (() => {
           .forecast-mobile-compact .mobile-field-grid-6 p:first-child,
           .forecast-mobile-compact .mobile-field-grid-6 .text-\[10px\],
           .forecast-mobile-compact .mobile-field-grid-6 .text-\[11px\] {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.05em !important;
           }
@@ -7678,7 +7686,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact .mobile-field-grid-6 p:last-child {
             -webkit-line-clamp: 2 !important;
-            font-size: 0.7rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.25 !important;
           }
 
@@ -7753,7 +7761,7 @@ const activeModelComparison = (() => {
             width: 100% !important;
             justify-content: center !important;
             padding: 0.55rem !important;
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
           }
 
           .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] {
@@ -7763,7 +7771,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] p {
             min-height: 94px !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.65 !important;
           }
 
@@ -7912,7 +7920,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-summary-modal-card h2 + p {
-            font-size: 0.78rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
@@ -7939,22 +7947,22 @@ const activeModelComparison = (() => {
 
           /* Restore comfortable readable body copy after earlier broad rules. */
           .forecast-mobile-compact .text-sm {
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.45 !important;
           }
 
           .forecast-mobile-compact .text-xs {
-            font-size: 0.74rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.35 !important;
           }
 
           .forecast-mobile-compact .text-\[10px\] {
-            font-size: 0.68rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.22 !important;
           }
 
           .forecast-mobile-compact .text-\[11px\] {
-            font-size: 0.72rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.28 !important;
           }
         }
@@ -8015,19 +8023,29 @@ const activeModelComparison = (() => {
            Only affects the expanded AI/model section.
            ========================================================= */
         @media (max-width: 639px) {
-          /* Allow this one section to use the otherwise-unused AppShell gutters.
-             The section itself stays inside the physical viewport. */
+          /* Keep the Forecast page inside the mobile viewport.
+             A previous full-bleed AI panel used 100vw + negative margins;
+             with larger Phase 5 fonts that could create horizontal overflow
+             and collapse the whole page into a narrow strip in long screenshots. */
           .forecast-mobile-compact {
-            overflow-x: visible !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+          }
+
+          .forecast-mobile-compact > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
           }
 
           .forecast-mobile-compact .forecast-ai-wide-panel {
-            width: calc(100vw - 0.75rem) !important;
-            max-width: none !important;
-            margin-left: calc(50% - 50vw + 0.375rem) !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: 0 !important;
             margin-right: 0 !important;
-            padding: 0.4rem !important;
+            padding: 0.55rem !important;
             border-radius: 18px !important;
+            overflow: hidden !important;
           }
 
           /* Header uses nearly the full panel width. */
@@ -8047,7 +8065,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .flex:first-child h2 + p {
             max-width: none !important;
-            font-size: 0.76rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.4 !important;
           }
 
@@ -8072,12 +8090,12 @@ const activeModelComparison = (() => {
             overflow: visible !important;
             text-overflow: clip !important;
             overflow-wrap: anywhere !important;
-            font-size: 0.82rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.18 !important;
           }
 
           .forecast-mobile-compact .forecast-ai-wide-panel .mobile-field-grid-6 p.relative.mt-1 {
-            font-size: 0.66rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.28 !important;
           }
 
@@ -8164,7 +8182,7 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 p:last-child {
-            font-size: 0.6rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
 
@@ -8201,7 +8219,7 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact .forecast-ai-chat .relative.mt-3.min-h-\[112px\] p {
             min-height: 84px !important;
-            font-size: 0.8rem !important;
+            font-size: 0.8125rem !important;
             line-height: 1.55 !important;
           }
 
@@ -8323,9 +8341,11 @@ const activeModelComparison = (() => {
            simplify before their labels become unreadable. */
         @media (max-width: 374px) {
           .forecast-mobile-compact .forecast-ai-wide-panel {
-            width: calc(100vw - 0.5rem) !important;
-            margin-left: calc(50% - 50vw + 0.25rem) !important;
-            padding: 0.32rem !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding: 0.45rem !important;
           }
 
           .forecast-mobile-compact .forecast-ai-wide-panel > .relative.z-10 > .mobile-field-grid-6 {
@@ -8342,6 +8362,45 @@ const activeModelComparison = (() => {
 
           .forecast-mobile-compact .forecast-ai-control-metrics {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
+
+        /* Phase 5 mobile overflow safety: no forecast section may widen the document. */
+        @media (max-width: 639px) {
+          .forecast-mobile-compact,
+          .forecast-mobile-compact section,
+          .forecast-mobile-compact [id="machine-learning-controls"],
+          .forecast-mobile-compact [id="multi-source-risk-factors"],
+          .forecast-mobile-compact [id="forecast-model"],
+          .forecast-mobile-compact [id="risk-summary"],
+          .forecast-mobile-compact [id="top-barangays"],
+          .forecast-mobile-compact [id="recommended-actions"] {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+
+          .forecast-mobile-compact .forecast-ai-wide-panel,
+          .forecast-mobile-compact .forecast-ai-selected-card,
+          .forecast-mobile-compact .forecast-ai-control-card,
+          .forecast-mobile-compact .forecast-ai-model-board,
+          .forecast-mobile-compact .forecast-ai-conversation-shell,
+          .forecast-mobile-compact .forecast-ai-chat,
+          .forecast-mobile-compact .forecast-3d-chart-inner {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            box-sizing: border-box !important;
+          }
+
+          .forecast-mobile-compact img,
+          .forecast-mobile-compact svg,
+          .forecast-mobile-compact canvas {
+            max-width: 100% !important;
           }
         }
 

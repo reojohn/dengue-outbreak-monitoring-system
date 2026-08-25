@@ -505,7 +505,8 @@ html.dengue-wide-layout .dengue-layout-shell {
   }
 
   .dengue-scaled-content {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
   }
 
   .dengue-scaled-content .mobile-page-compact,
@@ -572,7 +573,7 @@ html.dengue-wide-layout .dengue-layout-shell {
   .dengue-scaled-content .mobile-stat-card p,
   .dengue-scaled-content .mobile-stat-card .mobile-stat-label,
   .dengue-scaled-content .mobile-stat-card .mobile-stat-helper {
-    font-size: 0.75rem !important;
+    font-size: 0.8125rem !important;
     line-height: 1.35 !important;
   }
 
@@ -1069,7 +1070,7 @@ html:not(.dark) .leaflet-popup-tip {
     justify-self: start;
     margin-left: 3.3rem;
     padding: 0.35rem 0.65rem !important;
-    font-size: 0.72rem !important;
+    font-size: 0.8rem !important;
   }
 
   .dengue-mobile-settings-panel .dengue-settings-slider-card {
@@ -1080,7 +1081,7 @@ html:not(.dark) .leaflet-popup-tip {
 
   .dengue-mobile-settings-panel .dengue-settings-scale-labels {
     gap: 0.25rem !important;
-    font-size: 0.62rem !important;
+    font-size: 0.75rem !important;
     letter-spacing: 0.06em !important;
   }
 
@@ -1117,7 +1118,7 @@ html:not(.dark) .leaflet-popup-tip {
 
   .dengue-mobile-settings-panel .dengue-settings-toggle-copy > span:last-child {
     margin-top: 0.15rem !important;
-    font-size: 0.75rem !important;
+    font-size: 0.8125rem !important;
     line-height: 1.35 !important;
   }
 
@@ -1240,7 +1241,7 @@ html:not(.dark) .leaflet-popup-tip {
 
   .dengue-mobile-settings-panel .dengue-settings-header-copy {
     margin-top: 0.2rem !important;
-    font-size: 0.78rem !important;
+    font-size: 0.8125rem !important;
     line-height: 1.4 !important;
   }
 
@@ -1272,7 +1273,28 @@ html:not(.dark) .leaflet-popup-tip {
   }
 
   .dengue-mobile-settings-panel .dengue-settings-toggle-copy > span:last-child {
-    font-size: 0.74rem !important;
+    font-size: 0.8rem !important;
     line-height: 1.35 !important;
   }
+}
+
+
+/* Login readability uses the same health-worker-friendly minimums even though
+   the login screen sits outside AppShell's scaled content wrapper. */
+#root .dengue-login-page [class*="text-[8px]"],
+#root .dengue-login-page [class*="text-[9px]"] {
+  font-size: 0.8125rem !important;
+  line-height: 1.15rem !important;
+}
+
+#root .dengue-login-page [class*="text-[10px]"],
+#root .dengue-login-page [class*="text-[11px]"],
+#root .dengue-login-page .text-xs {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+}
+
+#root .dengue-login-page .text-sm {
+  font-size: 0.96875rem !important;
+  line-height: 1.45rem !important;
 }

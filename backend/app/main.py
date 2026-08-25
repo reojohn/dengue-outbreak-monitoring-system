@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.auth_security import require_roles
 from app.database import engine, test_database_connection
 from app.routers import (
+    analytics,
     auth,
     decision_actions,
     field_updates,
@@ -85,6 +86,7 @@ async def add_security_headers(request: Request, call_next):
 
 
 app.include_router(auth.router)
+app.include_router(analytics.router)
 app.include_router(uploads.router, dependencies=[Depends(require_roles("cho", "admin"))])
 app.include_router(integration.router, dependencies=[Depends(require_roles("cho", "admin"))])
 app.include_router(forecasts.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
