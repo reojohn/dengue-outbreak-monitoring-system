@@ -1,3 +1,4 @@
+import gzip
 import json
 import uuid
 from threading import Lock
@@ -248,6 +249,38 @@ def ensure_dataset_uploads_schema() -> None:
                 """)
             )
 
+            # Keep the exact current source file for each dataset type so an
+            # authorized CHO/Admin user can download it on another computer,
+            # correct it in Excel/a compatible editor, and upload it again.
+            # Only ONE current source file per dataset type is retained, so old
+            # file blobs do not accumulate in the database. Bytes are gzip-
+            # compressed before storage and restored exactly when downloaded.
+            connection.execute(
+                text("""
+                    create table if not exists public.dataset_source_files (
+                        dataset_type text primary key,
+                        upload_id uuid not null references public.dataset_uploads(upload_id) on delete cascade,
+                        original_filename text not null,
+                        content_type text not null default 'application/octet-stream',
+                        size_bytes bigint not null default 0,
+                        compressed boolean not null default true,
+                        file_bytes bytea not null,
+                        updated_at timestamptz not null default now()
+                    )
+                """)
+            )
+
+            source_file_columns = [
+                "alter table public.dataset_source_files add column if not exists original_filename text not null default 'source_file'",
+                "alter table public.dataset_source_files add column if not exists content_type text not null default 'application/octet-stream'",
+                "alter table public.dataset_source_files add column if not exists size_bytes bigint not null default 0",
+                "alter table public.dataset_source_files add column if not exists compressed boolean not null default true",
+                "alter table public.dataset_source_files add column if not exists file_bytes bytea",
+                "alter table public.dataset_source_files add column if not exists updated_at timestamptz not null default now()",
+            ]
+            for statement in source_file_columns:
+                connection.execute(text(statement))
+
             # Persistent singleton describing the upload cards' current source set.
             # Starting a fresh cycle replaces only this tiny pointer map; historical
             # upload rows, integrations, forecasts, and source payloads remain intact.
@@ -378,6 +411,103 @@ def _normalize_upload_id_map(value: Any) -> dict:
         if upload_id:
             normalized[dataset_type] = upload_id
     return normalized
+
+
+def save_dataset_source_file(
+    *,
+    dataset_type: str,
+    upload_id: str,
+    original_filename: str,
+    content_bytes: bytes,
+    content_type: str = "application/octet-stream",
+) -> None:
+    """Persist the exact current uploaded file without accumulating history.
+
+    The browser only downloads this blob after an explicit user action. Keeping
+    one compressed row per source type preserves cross-device review while
+    avoiding repeated source-file storage growth.
+    """
+    ensure_dataset_uploads_schema()
+
+    raw = bytes(content_bytes or b"")
+    compressed_bytes = gzip.compress(raw, compresslevel=6)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("""
+                insert into public.dataset_source_files (
+                    dataset_type, upload_id, original_filename, content_type,
+                    size_bytes, compressed, file_bytes, updated_at
+                )
+                values (
+                    :dataset_type, cast(:upload_id as uuid), :original_filename,
+                    :content_type, :size_bytes, true, :file_bytes, now()
+                )
+                on conflict (dataset_type) do update
+                set upload_id = excluded.upload_id,
+                    original_filename = excluded.original_filename,
+                    content_type = excluded.content_type,
+                    size_bytes = excluded.size_bytes,
+                    compressed = excluded.compressed,
+                    file_bytes = excluded.file_bytes,
+                    updated_at = now()
+            """),
+            {
+                "dataset_type": str(dataset_type or "").strip().lower(),
+                "upload_id": str(upload_id),
+                "original_filename": str(original_filename or "source_file")[:255],
+                "content_type": str(content_type or "application/octet-stream")[:160],
+                "size_bytes": len(raw),
+                "file_bytes": compressed_bytes,
+            },
+        )
+
+
+def get_current_dataset_source_file(dataset_type: str) -> dict | None:
+    """Return the exact source file for the upload currently shown on its card."""
+    ensure_dataset_uploads_schema()
+    dataset_type = str(dataset_type or "").strip().lower()
+    if dataset_type not in REQUIRED_DATASET_TYPES:
+        return None
+
+    with engine.connect() as connection:
+        current_ids = _current_upload_ids_for_connection(connection)
+        upload_id = current_ids.get(dataset_type)
+        if not upload_id:
+            return None
+
+        row = connection.execute(
+            text("""
+                select dataset_type, upload_id, original_filename, content_type,
+                       size_bytes, compressed, file_bytes, updated_at
+                from public.dataset_source_files
+                where dataset_type = :dataset_type
+                  and upload_id = cast(:upload_id as uuid)
+                limit 1
+            """),
+            {"dataset_type": dataset_type, "upload_id": upload_id},
+        ).mappings().first()
+
+    if not row or row["file_bytes"] is None:
+        return None
+
+    stored = bytes(row["file_bytes"])
+    try:
+        content = gzip.decompress(stored) if bool(row["compressed"]) else stored
+    except (OSError, EOFError):
+        # Defensive compatibility fallback if an interrupted migration left an
+        # uncompressed row marked incorrectly.
+        content = stored
+
+    return {
+        "dataset_type": str(row["dataset_type"]),
+        "upload_id": str(row["upload_id"]),
+        "original_filename": str(row["original_filename"] or "source_file"),
+        "content_type": str(row["content_type"] or "application/octet-stream"),
+        "size_bytes": int(row["size_bytes"] or len(content)),
+        "content": content,
+        "updated_at": str(row["updated_at"] or ""),
+    }
 
 
 def _latest_validated_upload_ids_for_connection(connection) -> dict:
@@ -619,6 +749,19 @@ def get_latest_dataset_uploads() -> dict:
                             nullif(detection_result->>'coverage_end', ''),
                             nullif(validation_summary->>'coverage_end', '')
                         ) as coverage_end,
+                        exists (
+                            select 1
+                            from public.dataset_source_files source_file
+                            where source_file.dataset_type = :dataset_type
+                              and source_file.upload_id = cast(:upload_id as uuid)
+                        ) as source_file_available,
+                        coalesce((
+                            select source_file.size_bytes
+                            from public.dataset_source_files source_file
+                            where source_file.dataset_type = :dataset_type
+                              and source_file.upload_id = cast(:upload_id as uuid)
+                            limit 1
+                        ), 0) as source_file_size_bytes,
                         uploaded_at
                     from public.dataset_uploads
                     where upload_id = cast(:upload_id as uuid)
@@ -792,6 +935,8 @@ def get_latest_dataset_uploads() -> dict:
             # downloading dengue rows just to calculate the displayed range.
             "coverage_start": row["coverage_start"] or "",
             "coverage_end": row["coverage_end"] or "",
+            "source_file_available": bool(row["source_file_available"]),
+            "source_file_size_bytes": int(row["source_file_size_bytes"] or 0),
             "uploaded_at": str(row["uploaded_at"]),
         }
 

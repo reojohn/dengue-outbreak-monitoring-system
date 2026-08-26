@@ -357,6 +357,175 @@ def _get_case_classification(
     }
 
 
+
+def _get_city_case_classification(
+    connection,
+    *,
+    dengue_upload_id: Any,
+    year: int | None,
+    quarter: int | None,
+    month: int | None,
+    scope_label: str,
+) -> dict[str, Any]:
+    """Aggregate official case classifications citywide for export/report review.
+
+    This is intentionally opt-in from the city-trends endpoint so normal
+    dashboard trend loading stays lightweight. The aggregation happens inside
+    PostgreSQL; raw dengue rows are never sent to the browser.
+    """
+    if not dengue_upload_id or year is None:
+        return _empty_case_classification(
+            scope_label,
+            "Citywide case classification is not available for the current integrated dataset.",
+        )
+
+    result = connection.execute(
+        text(
+            """
+            with dengue_source as (
+                select payload
+                from public.dataset_source_payloads
+                where dataset_type = 'dengue'
+                  and upload_id = cast(:dengue_upload_id as uuid)
+                limit 1
+            ),
+            source_records as (
+                select record
+                from dengue_source
+                cross join lateral jsonb_array_elements(
+                    case
+                        when jsonb_typeof(payload->'records') = 'array' then payload->'records'
+                        else '[]'::jsonb
+                    end
+                ) as item(record)
+            ),
+            parsed as (
+                select
+                    record,
+                    case
+                        when coalesce(record->>'year', '') ~ '^[0-9]+([.][0-9]+)?$'
+                        then round((record->>'year')::numeric)::integer
+                        else null
+                    end as record_year,
+                    case
+                        when coalesce(record->>'month', '') ~ '^[0-9]+([.][0-9]+)?$'
+                        then round((record->>'month')::numeric)::integer
+                        else null
+                    end as record_month
+                from source_records
+            ),
+            scoped as (
+                select record
+                from parsed
+                where record_year = cast(:year as integer)
+                  and (cast(:month as integer) is null or record_month = cast(:month as integer))
+                  and (
+                      cast(:quarter as integer) is null
+                      or record_month between ((cast(:quarter as integer) - 1) * 3 + 1) and ((cast(:quarter as integer) - 1) * 3 + 3)
+                  )
+            )
+            select
+                count(*)::bigint as record_count,
+                coalesce(bool_or(
+                    coalesce(record->>'confirmed_cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                ), false) as has_confirmed_values,
+                coalesce(bool_or(
+                    coalesce(record->>'probable_cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                ), false) as has_probable_values,
+                coalesce(bool_or(
+                    coalesce(record->>'suspect_cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                ), false) as has_suspected_values,
+                coalesce(sum(
+                    case
+                        when coalesce(record->>'confirmed_cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                        then round((record->>'confirmed_cases')::numeric)::bigint
+                        else 0
+                    end
+                ), 0)::bigint as confirmed_cases,
+                coalesce(sum(
+                    case
+                        when coalesce(record->>'probable_cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                        then round((record->>'probable_cases')::numeric)::bigint
+                        else 0
+                    end
+                ), 0)::bigint as probable_cases,
+                coalesce(sum(
+                    case
+                        when coalesce(record->>'suspect_cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                        then round((record->>'suspect_cases')::numeric)::bigint
+                        else 0
+                    end
+                ), 0)::bigint as suspected_cases,
+                coalesce(sum(
+                    case
+                        when coalesce(record->>'cases', '') ~ '^[+-]?[0-9]+([.][0-9]+)?$'
+                        then round((record->>'cases')::numeric)::bigint
+                        else 0
+                    end
+                ), 0)::bigint as reported_total
+            from scoped
+            """
+        ),
+        {
+            "dengue_upload_id": dengue_upload_id,
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+        },
+    ).mappings().first()
+
+    confirmed_available = bool(result.get("has_confirmed_values")) if result else False
+    probable_available = bool(result.get("has_probable_values")) if result else False
+    suspected_available = bool(result.get("has_suspected_values")) if result else False
+    any_classification_available = confirmed_available or probable_available or suspected_available
+
+    if not result or not any_classification_available:
+        return _empty_case_classification(
+            scope_label,
+            "The current dengue source does not separately report confirmed, probable, or suspected cases for this selected period. N/A is shown instead of zero.",
+        )
+
+    confirmed = int(result.get("confirmed_cases") or 0) if confirmed_available else None
+    probable = int(result.get("probable_cases") or 0) if probable_available else None
+    suspected = int(result.get("suspected_cases") or 0) if suspected_available else None
+    reported_total = int(result.get("reported_total") or 0)
+    classified_total = sum(value for value in (confirmed, probable, suspected) if value is not None)
+
+    unavailable_labels = [
+        label
+        for label, available in (
+            ("confirmed", confirmed_available),
+            ("probable", probable_available),
+            ("suspected", suspected_available),
+        )
+        if not available
+    ]
+    source_note = "Official citywide case classifications from the current cleaned dengue source."
+    if unavailable_labels:
+        source_note += (
+            " The following classification field(s) are not separately reported for this period: "
+            + ", ".join(unavailable_labels)
+            + ". N/A is shown instead of treating missing source fields as zero."
+        )
+
+    return {
+        "available": True,
+        "scope_label": scope_label,
+        "record_count": int(result.get("record_count") or 0),
+        "confirmed_available": confirmed_available,
+        "probable_available": probable_available,
+        "suspected_available": suspected_available,
+        "confirmed_cases": confirmed,
+        "probable_cases": probable,
+        "suspected_cases": suspected,
+        "classified_total": classified_total,
+        "reported_total": reported_total,
+        "unclassified_cases": max(0, reported_total - classified_total),
+        "classification_matches_total": classified_total == reported_total,
+        "source_note": source_note,
+    }
+
+
 def _period_key(year: int, month: int) -> tuple[int, int]:
     return int(year), int(month)
 
@@ -850,6 +1019,7 @@ def get_city_trend_analytics(
     year: int | None = None,
     quarter: int | None = None,
     month: int | None = None,
+    include_classification: bool = False,
 ) -> dict[str, Any]:
     """Return lightweight citywide actual-case trend analytics.
 
@@ -872,6 +1042,7 @@ def get_city_trend_analytics(
                 "annual": [],
                 "historical_peak": None,
                 "interpretation": "No saved integrated dengue dataset is available yet.",
+                "case_classification": _empty_case_classification("", "No saved integrated dengue dataset is available yet.") if include_classification else None,
             }
 
         rows = connection.execute(
@@ -905,5 +1076,14 @@ def get_city_trend_analytics(
         )
         payload["scope"] = "citywide"
         payload["has_saved_dataset"] = True
+        if include_classification:
+            payload["case_classification"] = _get_city_case_classification(
+                connection,
+                dengue_upload_id=latest_run.get("dengue_upload_id"),
+                year=payload.get("filters", {}).get("year"),
+                quarter=quarter,
+                month=month,
+                scope_label=payload.get("filters", {}).get("scope_label") or "",
+            )
         return payload
 

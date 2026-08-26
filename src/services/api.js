@@ -32,6 +32,63 @@ function apiFetch(url, options = {}) {
   return fetch(url, withAuthHeaders(options))
 }
 
+// Small in-memory GET cache. It survives route changes for the current browser
+// session, but never writes large API responses to localStorage. The auth token
+// is part of the cache key so data cannot leak between signed-in users.
+const readResponseCache = new Map()
+
+function getReadCacheNamespace() {
+  const token = getAuthToken()
+  return token ? token.slice(-24) : 'public'
+}
+
+async function cachedJsonGet(cacheKey, url, { ttlMs = 90_000, force = false } = {}) {
+  const namespacedKey = `${getReadCacheNamespace()}:${cacheKey}`
+  const now = Date.now()
+  const cached = readResponseCache.get(namespacedKey)
+
+  if (!force && cached?.value !== undefined && Number(cached.expiresAt || 0) > now) {
+    return cached.value
+  }
+
+  if (!force && cached?.promise) {
+    return cached.promise
+  }
+
+  const promise = apiFetch(url)
+    .then(handleApiResponse)
+    .then((value) => {
+      readResponseCache.set(namespacedKey, {
+        value,
+        expiresAt: Date.now() + ttlMs,
+        promise: null,
+      })
+      return value
+    })
+    .catch((error) => {
+      readResponseCache.delete(namespacedKey)
+      throw error
+    })
+
+  readResponseCache.set(namespacedKey, {
+    value: cached?.value,
+    expiresAt: cached?.expiresAt || 0,
+    promise,
+  })
+
+  return promise
+}
+
+function clearReadResponseCache(prefix = '') {
+  const namespace = `${getReadCacheNamespace()}:`
+  for (const key of readResponseCache.keys()) {
+    if (!key.startsWith(namespace)) continue
+    if (!prefix || key.slice(namespace.length).startsWith(prefix)) {
+      readResponseCache.delete(key)
+    }
+  }
+}
+
 async function handleApiResponse(response) {
   const data = await response.json().catch(() => null)
 
@@ -177,6 +234,7 @@ export async function getUploadJobStatus(jobId) {
 }
 
 export async function startFreshUploadCycle() {
+  clearReadResponseCache('analytics:')
   const response = await apiFetch(`${API_BASE_URL}/uploads/fresh-cycle`, {
     method: 'POST',
   })
@@ -193,12 +251,50 @@ export async function getUploadDatabasePreview(limit = 100) {
   return handleApiResponse(response)
 }
 
+export async function downloadCurrentSourceFile(datasetType) {
+  const response = await apiFetch(`${API_BASE_URL}/uploads/source-file/${encodeURIComponent(datasetType)}`)
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    if (response.status === 401) {
+      throw new Error('Your session has expired. Please sign in again to continue.')
+    }
+
+    const message =
+      data?.detail?.message ||
+      data?.detail ||
+      data?.message ||
+      `Download failed with status ${response.status}`
+    throw new Error(typeof message === 'string' ? message : JSON.stringify(message))
+  }
+
+  const disposition = response.headers.get('content-disposition') || ''
+  let filename = ''
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i)
+  if (utf8Match?.[1]) {
+    try {
+      filename = decodeURIComponent(utf8Match[1])
+    } catch {
+      filename = utf8Match[1]
+    }
+  } else if (plainMatch?.[1]) {
+    filename = plainMatch[1]
+  }
+
+  return {
+    blob: await response.blob(),
+    filename,
+  }
+}
+
 export async function getBackendIntegrationStatus() {
   const response = await apiFetch(`${API_BASE_URL}/integration/status`)
   return handleApiResponse(response)
 }
 
 export async function buildBackendIntegrationDataset() {
+  clearReadResponseCache('analytics:')
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/integration/build-dataset`,
     { method: 'POST' },
@@ -209,6 +305,7 @@ export async function buildBackendIntegrationDataset() {
 }
 
 export async function resetBackendIntegrationWorkspace() {
+  clearReadResponseCache('analytics:')
   const response = await apiFetch(`${API_BASE_URL}/integration/reset`, {
     method: 'DELETE',
   })
@@ -232,20 +329,24 @@ export async function getBackendAlignmentReport() {
 }
 
 export async function getTrendAnalyticsBarangays() {
-  const response = await apiFetch(`${API_BASE_URL}/analytics/barangays`)
-  return handleApiResponse(response)
+  return cachedJsonGet(
+    'analytics:barangays',
+    `${API_BASE_URL}/analytics/barangays`,
+    { ttlMs: 5 * 60_000 }
+  )
 }
 
-export async function getCityTrendAnalytics({ year, quarter, month } = {}) {
+export async function getCityTrendAnalytics({ year, quarter, month, includeClassification = false } = {}) {
   const params = new URLSearchParams()
 
   if (year) params.set('year', String(year))
   if (quarter) params.set('quarter', String(quarter))
   if (month) params.set('month', String(month))
+  if (includeClassification) params.set('include_classification', 'true')
 
   const query = params.toString()
-  const response = await apiFetch(`${API_BASE_URL}/analytics/city-trends${query ? `?${query}` : ''}`)
-  return handleApiResponse(response)
+  const url = `${API_BASE_URL}/analytics/city-trends${query ? `?${query}` : ''}`
+  return cachedJsonGet(`analytics:city-trends:${query || 'default'}`, url, { ttlMs: 2 * 60_000 })
 }
 
 export async function getBarangayTrendAnalytics({
@@ -270,8 +371,9 @@ export async function getBarangayTrendAnalytics({
     params.set('month', String(month))
   }
 
-  const response = await apiFetch(`${API_BASE_URL}/analytics/barangay-trends?${params.toString()}`)
-  return handleApiResponse(response)
+  const query = params.toString()
+  const url = `${API_BASE_URL}/analytics/barangay-trends?${query}`
+  return cachedJsonGet(`analytics:barangay-trends:${query}`, url, { ttlMs: 2 * 60_000 })
 }
 
 
@@ -536,6 +638,7 @@ export async function markNotificationsRead(notificationIds, _options = {}) {
 
 
 export async function loginUser({ email, password }) {
+  readResponseCache.clear()
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/auth/login`,
     {
@@ -557,6 +660,7 @@ export async function loginUser({ email, password }) {
 }
 
 export async function logoutUser() {
+  readResponseCache.clear()
   const response = await apiFetch(`${API_BASE_URL}/auth/logout`, {
     method: 'POST',
   })

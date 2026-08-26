@@ -4633,58 +4633,76 @@ const activeModelComparison = (() => {
             <div className="flex min-w-0 items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-black uppercase tracking-[0.19em] text-cyan-100/70">
-                  Scenario control
+                  Planning scenario
                 </p>
-                <h2 className="mt-2 text-xl font-black tracking-[-0.035em] text-white">
+                <h2 className="mt-2 text-xl font-bold tracking-[-0.025em] text-white">
                   {selectedMode.label}
                 </h2>
-                <p className="mt-1 text-xs leading-5 text-white/55">
-                  Adjust the planning view without changing the selected AI model.
+                <p className="mt-1 text-xs leading-5 text-white/60">
+                  Current planning view for the forecast.
                 </p>
               </div>
               <div className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
-                {formatDecimal(selectedMode.multiplier, 2)}x
+                Current
               </div>
             </div>
 
-            <div className="mt-5 grid gap-2">
-              {[
-                ['caution', 'Reduced transmission', '0.90x', TrendingDown],
-                ['baseline', 'Expected scenario', '1.00x', Activity],
-                ['elevated', 'Worsening transmission', '1.15x', TrendingUp],
-              ].map(([key, label, helper, ScenarioIcon]) => {
-                const isActive = mode === key
+            <button
+              type="button"
+              onClick={() => setShowScenarioDetails((current) => !current)}
+              className="mt-4 inline-flex min-h-[46px] items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-white/5 px-3.5 py-2.5 text-left text-xs font-black text-white/80 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              aria-expanded={showScenarioDetails}
+            >
+              <span>{showScenarioDetails ? 'Hide scenario options' : 'Change scenario (optional)'}</span>
+              {showScenarioDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
 
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setMode(key)}
-                    style={isActive ? { backgroundColor: '#ffffff', backgroundImage: 'none', color: '#0f172a' } : { backgroundImage: 'none' }}
-                    className={`group/scenario grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[18px] border px-3 py-3 text-left transition ${
-                      isActive
-                        ? 'border-white shadow-[0_12px_28px_rgba(255,255,255,0.13)]'
-                        : 'border-white/10 bg-white/5 text-white hover:border-white/25 hover:bg-white/10'
-                    }`}
-                  >
-                    <span className="flex min-w-0 items-center gap-2.5">
-                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border ${isActive ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-white/10 bg-white/5 text-cyan-200'}`}>
-                        <ScenarioIcon className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-bold leading-tight">{label}</span>
-                        <span className={`mt-0.5 block text-[10px] font-bold ${isActive ? 'text-slate-500' : 'text-white/45'}`}>
-                          {key === 'caution' ? 'Improvement planning' : key === 'baseline' ? 'Most likely outlook' : 'Escalation planning'}
+            {showScenarioDetails && (
+              <div className="mt-3 rounded-[20px] border border-white/10 bg-slate-950/35 p-3">
+                <div className="grid gap-2">
+                  {[
+                    ['caution', 'Reduced transmission', '0.90x', TrendingDown],
+                    ['baseline', 'Expected scenario', '1.00x', Activity],
+                    ['elevated', 'Worsening transmission', '1.15x', TrendingUp],
+                  ].map(([key, label, helper, ScenarioIcon]) => {
+                    const isActive = mode === key
+
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setMode(key)}
+                        style={isActive ? { backgroundColor: '#ffffff', backgroundImage: 'none', color: '#0f172a' } : { backgroundImage: 'none' }}
+                        className={`group/scenario grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[18px] border px-3 py-3 text-left transition ${
+                          isActive
+                            ? 'border-white shadow-[0_12px_28px_rgba(255,255,255,0.13)]'
+                            : 'border-white/10 bg-white/5 text-white hover:border-white/25 hover:bg-white/10'
+                        }`}
+                      >
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border ${isActive ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-white/10 bg-white/5 text-cyan-200'}`}>
+                            <ScenarioIcon className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold leading-tight">{label}</span>
+                            <span className={`mt-0.5 block text-[10px] font-bold ${isActive ? 'text-slate-500' : 'text-white/45'}`}>
+                              {key === 'caution' ? 'Improvement planning' : key === 'baseline' ? 'Most likely outlook' : 'Escalation planning'}
+                            </span>
+                          </span>
                         </span>
-                      </span>
-                    </span>
-                    <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-slate-900 text-white' : 'bg-white/10 text-white/70'}`}>
-                      {helper}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+                        <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-slate-900 text-white' : 'bg-white/10 text-white/70'}`}>
+                          {helper}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <p className="mt-3 rounded-[15px] border border-white/10 bg-white/5 px-3 py-2.5 text-[10px] leading-4 text-white/55">
+                  These options adjust the planning view only. They do not change the AI model or the saved forecast.
+                </p>
+              </div>
+            )}
 
             <div className="mt-4 rounded-[20px] border border-white/10 bg-white/5 p-3.5">
               <div className="flex items-center justify-between gap-3">
@@ -4697,14 +4715,14 @@ const activeModelComparison = (() => {
                   </p>
                 </div>
                 <div
-                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full p-[5px]"
+                  className="dengue-hero-score-ring flex h-14 w-14 shrink-0 items-center justify-center rounded-full p-[5px] shadow-[0_0_36px_rgba(56,189,248,0.18)]"
                   style={{
                     background: `conic-gradient(#22d3ee ${Math.min(100, Math.max(0, topRiskScore)) * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
                   }}
                 >
                   <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 text-white">
-                    <span className="text-sm font-black leading-none">{formatNumber(topRiskScore)}</span>
-                    <span className="mt-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-white/45">risk</span>
+                    <span className="dengue-hero-score-value text-sm font-black leading-none">{formatNumber(topRiskScore)}</span>
+                    <span className="dengue-hero-score-label mt-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-cyan-100/70">Risk</span>
                   </div>
                 </div>
               </div>
@@ -4715,26 +4733,11 @@ const activeModelComparison = (() => {
                   <p className="mt-1 text-xs font-black text-white">{highestRiskBarangay?.risk || 'Pending'}</p>
                 </div>
                 <div className="rounded-[15px] border border-white/10 bg-slate-950/35 px-3 py-2.5">
-                  <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Expected</p>
+                  <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Forecast cases</p>
                   <p className="mt-1 text-xs font-black text-white">{formatNumber(highestRiskBarangay?.forecast || 0)} cases</p>
                 </div>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowScenarioDetails((current) => !current)}
-              className="mt-3 inline-flex items-center justify-between gap-2 rounded-[16px] border border-white/10 bg-transparent px-3 py-2.5 text-left text-[11px] font-black text-white/70 transition hover:border-white/20 hover:text-white"
-            >
-              <span>{showScenarioDetails ? 'Hide scenario explanation' : 'How scenario adjustments work'}</span>
-              {showScenarioDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-
-            {showScenarioDetails && (
-              <p className="mt-2 rounded-[16px] border border-white/10 bg-slate-950/35 px-3 py-2.5 text-[10px] leading-4 text-white/55">
-                Reduced transmission applies 0.90x, the expected scenario keeps the original 1.00x forecast, and worsening transmission applies 1.15x. These are planning adjustments, not separate AI models.
-              </p>
-            )}
           </div>
         </div>
       </section>
@@ -5521,7 +5524,7 @@ const activeModelComparison = (() => {
               {selectedRiskExplanationRow?.risk || 'its'} risk level
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              The score combines forecast cases, recent activity, weather, population exposure, and crowding. Open the breakdown only when supporting details are needed.
+              Based on the forecasted cases and current dengue conditions. Open the details only if you want to see the supporting factors.
             </p>
           </div>
 
@@ -6189,7 +6192,7 @@ const activeModelComparison = (() => {
                             </span>
 
                             <p className="text-xs font-semibold text-brand-muted dark:text-slate-400">
-                              Forecast: {formatNumber(row.forecast)} cases • Risk: {formatNumber(getRowRiskScore(row))}/100
+                              Forecast: {formatNumber(row.forecast)} cases
                             </p>
                           </div>
                         </div>
@@ -6202,44 +6205,11 @@ const activeModelComparison = (() => {
                           <span className={`w-fit rounded-full border px-3 py-1 text-xs font-black ${getPriorityBadgeStyle(row.responsePriority)}`}>
                             {row.responsePriority}
                           </span>
-                        </div>
-                      </div>
 
-                      <div className="mobile-field-grid-4 mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                        <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            Decision score
-                          </p>
-                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                            {formatNumber(row.decisionScore)} points
-                          </p>
-                        </div>
-
-                        <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            Trend
-                          </p>
-                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
+                          <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${getTrendStyle(row.trendLabel)}`}>
+                            <TrendIcon className="h-3.5 w-3.5" />
                             {row.trendLabel}
-                          </p>
-                        </div>
-
-                        <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            HISTORICAL TOTAL
-                          </p>
-                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                            {formatNumber(row.totalCases)} cases
-                          </p>
-                        </div>
-
-                        <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                            Weather status
-                          </p>
-                          <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">
-                            {row.environmentalSuitability || 'Unavailable'}
-                          </p>
+                          </span>
                         </div>
                       </div>
 
@@ -6272,7 +6242,30 @@ const activeModelComparison = (() => {
 
                       {isExpanded && (
                         <div className="mt-4 rounded-[22px] border border-slate-200 bg-white p-4 shadow-inner dark:border-slate-800 dark:bg-slate-950/80">
-                          <div className="forecast-priority-detail-grid grid gap-2 sm:grid-cols-3">
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
+                            Supporting details
+                          </p>
+
+                          <div className="mobile-field-grid-4 mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
+                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">Priority score</p>
+                              <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{formatNumber(row.decisionScore)} points</p>
+                            </div>
+                            <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
+                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">Risk score</p>
+                              <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{formatNumber(getRowRiskScore(row))}/100</p>
+                            </div>
+                            <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
+                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">Historical total</p>
+                              <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{formatNumber(row.totalCases)} cases</p>
+                            </div>
+                            <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
+                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">Weather status</p>
+                              <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{row.environmentalSuitability || 'Unavailable'}</p>
+                            </div>
+                          </div>
+
+                          <div className="forecast-priority-detail-grid mt-4 grid gap-2 sm:grid-cols-3">
                             <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black ${getTrendStyle(row.trendLabel)}`}>
                               <TrendIcon className="h-3.5 w-3.5" />
                               {row.trendLabel}

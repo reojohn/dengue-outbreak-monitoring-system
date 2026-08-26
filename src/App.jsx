@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import UploadPage from './pages/UploadPage'
@@ -10,9 +10,17 @@ import SupervisorPage from './pages/SupervisorPage'
 import UserManagementPage from './pages/UserManagementPage'
 import AppShell from './components/AppShell'
 import { canAccessRole, getAuthSession, getRoleHome } from './utils/auth'
+import { useData } from './context/DataContext'
+import SystemPageSkeleton from './components/SystemSkeleton'
 
 function AuthenticatedShell() {
   const session = getAuthSession()
+  const location = useLocation()
+  const {
+    initialDataLoading = false,
+    initialDataError = '',
+    refreshAuthenticatedWorkspace,
+  } = useData()
 
   if (!session) {
     return <Navigate to="/login" replace />
@@ -20,7 +28,26 @@ function AuthenticatedShell() {
 
   return (
     <AppShell>
-      <Outlet />
+      {initialDataLoading ? (
+        <SystemPageSkeleton pathname={location.pathname} />
+      ) : initialDataError ? (
+        <div className="space-y-4">
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50/90 p-5 text-amber-900 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+            <p className="text-base font-black">Saved information could not be refreshed.</p>
+            <p className="mt-2 text-sm font-semibold leading-6 opacity-80">{initialDataError}</p>
+            <button
+              type="button"
+              onClick={() => refreshAuthenticatedWorkspace?.({ silent: true, initial: true, force: true })}
+              className="mt-4 min-h-[44px] rounded-2xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-black text-amber-800 shadow-sm transition hover:-translate-y-0.5 dark:border-amber-300/20 dark:bg-slate-950 dark:text-amber-100"
+            >
+              Retry loading
+            </button>
+          </div>
+          <Outlet />
+        </div>
+      ) : (
+        <Outlet />
+      )}
     </AppShell>
   )
 }

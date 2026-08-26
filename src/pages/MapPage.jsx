@@ -3262,14 +3262,14 @@ export default function MapPage() {
                 </div>
 
                 <div
-                  className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[6px] shadow-[0_0_38px_rgba(56,189,248,0.20)]"
+                  className="dengue-hero-score-ring relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[6px] shadow-[0_0_38px_rgba(56,189,248,0.20)]"
                   style={{
                     background: `conic-gradient(#22d3ee ${selectedHeroScore * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
                   }}
                 >
                   <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
-                    <span className="text-xl font-black leading-none">{formatNumber(selectedHeroScore)}</span>
-                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">{selectedHeroScoreLabel}</span>
+                    <span className="dengue-hero-score-value text-xl font-black leading-none">{formatNumber(selectedHeroScore)}</span>
+                    <span className="dengue-hero-score-label mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">{selectedHeroScoreLabel}</span>
                   </div>
                 </div>
               </div>

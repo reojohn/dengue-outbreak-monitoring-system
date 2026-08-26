@@ -1,11 +1,14 @@
 from io import BytesIO
 
 import asyncio
+import mimetypes
 import os
 import time
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 
 from app.services.auto_ml_forecast import generate_auto_ml_dengue_forecast_from_dataframe
 from app.services.boundary_inspector import validate_boundary_file
@@ -13,9 +16,11 @@ from app.services.database_boundaries import get_latest_boundary_geojson, save_b
 from app.services.database_forecasts import save_forecast_result
 from app.auth_security import get_current_user
 from app.services.database_uploads import (
+    get_current_dataset_source_file,
     get_latest_dataset_previews,
     get_latest_dataset_uploads,
     register_upload_in_current_cycle,
+    save_dataset_source_file,
     save_dataset_source_payload,
     save_dataset_upload,
     start_fresh_upload_cycle,
@@ -69,6 +74,14 @@ async def _read_upload_bytes_limited(file: UploadFile) -> bytes:
 
 def _safe_filename(file: UploadFile, fallback: str) -> str:
     return str(file.filename or fallback).strip()[:255] or fallback
+
+
+def _guess_content_type(filename: str) -> str:
+    lowered = str(filename or "").lower()
+    if lowered.endswith(".geojson"):
+        return "application/geo+json"
+    guessed, _ = mimetypes.guess_type(filename or "")
+    return guessed or "application/octet-stream"
 
 
 def _prune_upload_jobs():
@@ -173,6 +186,39 @@ async def get_upload_database_preview(limit: int = 300):
     return get_latest_dataset_previews(limit=limit)
 
 
+@router.get("/source-file/{dataset_type}")
+async def download_current_source_file(dataset_type: str):
+    normalized_type = str(dataset_type or "").strip().lower()
+    if normalized_type not in {"dengue", "weather", "population", "boundary"}:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This source type is not available for download.",
+        )
+
+    source_file = get_current_dataset_source_file(normalized_type)
+    if not source_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "The exact uploaded source file is not stored for this saved upload yet. "
+                "Upload this source once using the updated system, then it can be downloaded "
+                "from any authorized computer."
+            ),
+        )
+
+    filename = source_file.get("original_filename") or f"{normalized_type}_source"
+    encoded_filename = quote(str(filename), safe="")
+    return Response(
+        content=source_file.get("content") or b"",
+        media_type=source_file.get("content_type") or "application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/latest-boundary-geojson")
 async def get_latest_saved_boundary_geojson():
     return get_latest_boundary_geojson()
@@ -271,7 +317,7 @@ def _upload_from_bytes(filename: str, content: bytes):
     return UploadFile(file=BytesIO(content), filename=filename)
 
 
-def _save_population_upload(result: dict, fallback_filename: str):
+def _save_population_upload(result: dict, fallback_filename: str, source_bytes: bytes | None = None):
     upload_id = save_dataset_upload(
         dataset_type="population",
         original_filename=result.get("filename", fallback_filename or "population_dataset"),
@@ -285,6 +331,15 @@ def _save_population_upload(result: dict, fallback_filename: str):
         detection_result=result.get("population_detection", {}),
         error_message=None,
     )
+    if source_bytes is not None:
+        source_filename = result.get("filename", fallback_filename or "population_dataset")
+        save_dataset_source_file(
+            dataset_type="population",
+            upload_id=upload_id,
+            original_filename=source_filename,
+            content_bytes=source_bytes,
+            content_type=_guess_content_type(source_filename),
+        )
     save_dataset_source_payload(
         dataset_type="population",
         upload_id=upload_id,
@@ -302,7 +357,7 @@ def _save_population_upload(result: dict, fallback_filename: str):
     register_upload_in_current_cycle(dataset_type="population", upload_id=upload_id)
     return upload_id
 
-def _save_weather_upload(result: dict, fallback_filename: str):
+def _save_weather_upload(result: dict, fallback_filename: str, source_bytes: bytes | None = None):
     upload_id = save_dataset_upload(
         dataset_type="weather",
         original_filename=result.get("filename", fallback_filename or "weather_dataset"),
@@ -316,6 +371,15 @@ def _save_weather_upload(result: dict, fallback_filename: str):
         detection_result=result.get("weather_detection", {}),
         error_message=None,
     )
+    if source_bytes is not None:
+        source_filename = result.get("filename", fallback_filename or "weather_dataset")
+        save_dataset_source_file(
+            dataset_type="weather",
+            upload_id=upload_id,
+            original_filename=source_filename,
+            content_bytes=source_bytes,
+            content_type=_guess_content_type(source_filename),
+        )
     save_dataset_source_payload(
         dataset_type="weather",
         upload_id=upload_id,
@@ -333,7 +397,7 @@ def _save_weather_upload(result: dict, fallback_filename: str):
     register_upload_in_current_cycle(dataset_type="weather", upload_id=upload_id)
     return upload_id
 
-def _save_boundary_upload(result: dict, fallback_filename: str):
+def _save_boundary_upload(result: dict, fallback_filename: str, source_bytes: bytes | None = None):
     upload_id = save_dataset_upload(
         dataset_type="boundary",
         original_filename=result.get("filename", fallback_filename or "barangay_boundary_dataset"),
@@ -347,6 +411,15 @@ def _save_boundary_upload(result: dict, fallback_filename: str):
         detection_result=result.get("boundary_detection", {}),
         error_message=None,
     )
+    if source_bytes is not None:
+        source_filename = result.get("filename", fallback_filename or "barangay_boundary_dataset")
+        save_dataset_source_file(
+            dataset_type="boundary",
+            upload_id=upload_id,
+            original_filename=source_filename,
+            content_bytes=source_bytes,
+            content_type=_guess_content_type(source_filename),
+        )
     save_dataset_source_payload(
         dataset_type="boundary",
         upload_id=upload_id,
@@ -365,7 +438,7 @@ def _save_boundary_upload(result: dict, fallback_filename: str):
     register_upload_in_current_cycle(dataset_type="boundary", upload_id=upload_id)
     return upload_id
 
-def _save_dengue_upload(clean_result: dict, fallback_filename: str):
+def _save_dengue_upload(clean_result: dict, fallback_filename: str, source_bytes: bytes | None = None):
     upload_id = save_dataset_upload(
         dataset_type="dengue",
         original_filename=clean_result.get("filename", fallback_filename or "dengue_dataset"),
@@ -379,6 +452,15 @@ def _save_dengue_upload(clean_result: dict, fallback_filename: str):
         detection_result=clean_result.get("dengue_detection", {}),
         error_message=None,
     )
+    if source_bytes is not None:
+        source_filename = clean_result.get("filename", fallback_filename or "dengue_dataset")
+        save_dataset_source_file(
+            dataset_type="dengue",
+            upload_id=upload_id,
+            original_filename=source_filename,
+            content_bytes=source_bytes,
+            content_type=_guess_content_type(source_filename),
+        )
     save_dataset_source_payload(
         dataset_type="dengue",
         upload_id=upload_id,
@@ -420,7 +502,7 @@ async def _process_dengue_validation_bytes(content: bytes, filename: str):
     )
 
     _store_dengue_result(clean_result)
-    upload_id = _save_dengue_upload(clean_result, filename)
+    upload_id = _save_dengue_upload(clean_result, filename, content)
 
     preliminary_forecast = generate_auto_ml_dengue_forecast_from_dataframe(
         df,
@@ -479,7 +561,7 @@ async def _process_dengue_validation_bytes(content: bytes, filename: str):
 async def _process_population_bytes(content: bytes, filename: str):
     result = await validate_population_file(_upload_from_bytes(filename, content))
     _store_population_result(result)
-    upload_id = _save_population_upload(result, filename or "population_dataset")
+    upload_id = _save_population_upload(result, filename or "population_dataset", content)
     result["database_upload_id"] = upload_id
     return _compact_validation_response(result)
 
@@ -487,7 +569,7 @@ async def _process_population_bytes(content: bytes, filename: str):
 async def _process_weather_bytes(content: bytes, filename: str):
     result = await validate_weather_file(_upload_from_bytes(filename, content))
     _store_weather_result(result)
-    upload_id = _save_weather_upload(result, filename or "weather_dataset")
+    upload_id = _save_weather_upload(result, filename or "weather_dataset", content)
     result["database_upload_id"] = upload_id
     return _compact_validation_response(result)
 
@@ -496,7 +578,7 @@ async def _process_boundary_bytes(content: bytes, filename: str):
     result = await validate_boundary_file(_upload_from_bytes(filename, content))
     _store_boundary_result(result)
 
-    upload_id = _save_boundary_upload(result, filename or "barangay_boundary_dataset")
+    upload_id = _save_boundary_upload(result, filename or "barangay_boundary_dataset", content)
     boundary_database_result = save_boundary_geojson(
         boundary_result=result,
         upload_id=upload_id,
@@ -605,7 +687,7 @@ async def upload_dengue_source(file: UploadFile = File(...)):
     )
 
     _store_dengue_result(clean_result)
-    upload_id = _save_dengue_upload(clean_result, filename)
+    upload_id = _save_dengue_upload(clean_result, filename, content)
 
     forecast_result = generate_auto_ml_dengue_forecast_from_dataframe(
         df,
@@ -669,7 +751,7 @@ async def upload_population_source(file: UploadFile = File(...)):
     result = await validate_population_file(_upload_from_bytes(filename, content))
     _store_population_result(result)
 
-    upload_id = _save_population_upload(result, filename)
+    upload_id = _save_population_upload(result, filename, content)
 
     return {
         "message": "Population source uploaded, validated, stored for backend integration, and saved to Supabase.",
@@ -685,7 +767,7 @@ async def upload_weather_source(file: UploadFile = File(...)):
     result = await validate_weather_file(_upload_from_bytes(filename, content))
     _store_weather_result(result)
 
-    upload_id = _save_weather_upload(result, filename)
+    upload_id = _save_weather_upload(result, filename, content)
 
     return {
         "message": "Weather source uploaded, validated, stored for backend integration, and saved to Supabase.",
@@ -701,7 +783,7 @@ async def upload_boundary_source(file: UploadFile = File(...)):
     result = await validate_boundary_file(_upload_from_bytes(filename, content))
     _store_boundary_result(result)
 
-    upload_id = _save_boundary_upload(result, filename)
+    upload_id = _save_boundary_upload(result, filename, content)
 
     boundary_database_result = save_boundary_geojson(
         boundary_result=result,

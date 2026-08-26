@@ -36,7 +36,10 @@ import {
   updateUserAccount,
 } from '../services/api'
 import { getAuthSession } from '../utils/auth'
+import { UserAccountsSkeleton } from '../components/SystemSkeleton'
 
+let userManagementSessionCache = null
+const USER_MANAGEMENT_CACHE_TTL_MS = 60_000
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
@@ -604,10 +607,14 @@ function BarangaySearchSelect({ value, barangays = [], onChange }) {
 
 export default function UserManagementPage() {
   const session = getAuthSession()
-  const [users, setUsers] = useState([])
-  const [barangays, setBarangays] = useState([])
-  const [auditLogs, setAuditLogs] = useState([])
-  const [loading, setLoading] = useState(true)
+  const sessionCacheKey = String(session?.userId || session?.email || '').toLowerCase()
+  const usableSessionCache = userManagementSessionCache?.sessionCacheKey === sessionCacheKey
+    ? userManagementSessionCache
+    : null
+  const [users, setUsers] = useState(() => usableSessionCache?.users || [])
+  const [barangays, setBarangays] = useState(() => usableSessionCache?.barangays || [])
+  const [auditLogs, setAuditLogs] = useState(() => usableSessionCache?.auditLogs || [])
+  const [loading, setLoading] = useState(() => !usableSessionCache)
   const [saving, setSaving] = useState(false)
   const [editingUserId, setEditingUserId] = useState('')
   const [resetUser, setResetUser] = useState(null)
@@ -640,8 +647,24 @@ export default function UserManagementPage() {
       .sort((a, b) => `${a.role}-${a.full_name}`.localeCompare(`${b.role}-${b.full_name}`))
   }, [users, searchTerm, roleFilter])
 
-  async function loadAll() {
-    setLoading(true)
+  async function loadAll({ force = false } = {}) {
+    const matchingCache = userManagementSessionCache?.sessionCacheKey === sessionCacheKey
+      ? userManagementSessionCache
+      : null
+    const cacheAge = matchingCache
+      ? Date.now() - Number(matchingCache.savedAt || 0)
+      : Number.POSITIVE_INFINITY
+
+    if (!force && matchingCache && cacheAge < USER_MANAGEMENT_CACHE_TTL_MS) {
+      setUsers(matchingCache.users || [])
+      setBarangays(matchingCache.barangays || [])
+      setAuditLogs(matchingCache.auditLogs || [])
+      setLoading(false)
+      return
+    }
+
+    const hasCachedRows = Boolean(matchingCache)
+    if (!hasCachedRows) setLoading(true)
     setError('')
 
     try {
@@ -651,9 +674,17 @@ export default function UserManagementPage() {
         getUserAuditLogs().catch(() => ({ logs: [] })),
       ])
 
-      setUsers(userResult.users || [])
-      setBarangays(barangayResult.barangays || [])
-      setAuditLogs(auditResult.logs || [])
+      const nextCache = {
+        sessionCacheKey,
+        users: userResult.users || [],
+        barangays: barangayResult.barangays || [],
+        auditLogs: auditResult.logs || [],
+        savedAt: Date.now(),
+      }
+      userManagementSessionCache = nextCache
+      setUsers(nextCache.users)
+      setBarangays(nextCache.barangays)
+      setAuditLogs(nextCache.auditLogs)
     } catch (loadError) {
       setError(loadError.message || 'User management data could not be loaded.')
     } finally {
@@ -721,7 +752,7 @@ export default function UserManagementPage() {
 
       setForm(initialForm)
       setEditingUserId('')
-      await loadAll()
+      await loadAll({ force: true })
     } catch (saveError) {
       setError(saveError.message || 'The account could not be saved.')
     } finally {
@@ -743,7 +774,7 @@ export default function UserManagementPage() {
       })
 
       setSuccess(user.is_active ? 'Account disabled.' : 'Account activated.')
-      await loadAll()
+      await loadAll({ force: true })
     } catch (toggleError) {
       setError(toggleError.message || 'Account status could not be changed.')
     }
@@ -763,7 +794,7 @@ export default function UserManagementPage() {
       setSuccess(`Password reset for ${resetUser.full_name}.`)
       setResetUser(null)
       setResetPasswordValue('')
-      await loadAll()
+      await loadAll({ force: true })
     } catch (resetError) {
       setError(resetError.message || 'Password could not be reset.')
     } finally {
@@ -782,10 +813,14 @@ export default function UserManagementPage() {
     try {
       await deleteUserAccount(user.id)
       setSuccess('User account deleted.')
-      await loadAll()
+      await loadAll({ force: true })
     } catch (deleteError) {
       setError(deleteError.message || 'User account could not be deleted.')
     }
+  }
+
+  if (loading && users.length === 0) {
+    return <UserAccountsSkeleton />
   }
 
   return (
@@ -822,7 +857,7 @@ export default function UserManagementPage() {
             <div className="user-hero-actions mt-6 flex flex-wrap gap-3">
               <button
   type="button"
-  onClick={loadAll}
+  onClick={() => loadAll({ force: true })}
   disabled={loading}
   style={{
     backgroundColor: loading ? '#e2e8f0' : '#ffffff',
@@ -881,12 +916,12 @@ export default function UserManagementPage() {
                 </div>
 
                 <div
-                  className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(34,211,238,0.18)]"
+                  className="dengue-hero-score-ring relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(34,211,238,0.18)]"
                   style={{ background: `conic-gradient(#22d3ee ${activeRate * 3.6}deg, rgba(255,255,255,0.10) 0deg)` }}
                 >
                   <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
-                    <span className="text-2xl font-black leading-none">{activeCount}</span>
-                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">active</span>
+                    <span className="dengue-hero-score-value text-2xl font-black leading-none">{activeCount}</span>
+                    <span className="dengue-hero-score-label mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Active</span>
                   </div>
                 </div>
               </div>

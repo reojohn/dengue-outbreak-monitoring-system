@@ -25,6 +25,7 @@ import {
 import { useData } from '../context/DataContext'
 import SparkChart from '../components/SparkChart'
 import InformationTypeBadge from '../components/InformationTypeBadge'
+import { TrendPanelSkeleton } from '../components/SystemSkeleton'
 import {
   getBarangayTrendAnalytics,
   getCurrentFieldUpdate,
@@ -2712,14 +2713,14 @@ export default function BHWPage() {
                 </div>
 
                 <div
-                  className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(56,189,248,0.18)]"
+                  className="dengue-hero-score-ring relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(56,189,248,0.18)]"
                   style={{
                     background: `conic-gradient(${risk === 'High' ? '#f43f5e' : risk === 'Moderate' ? '#f59e0b' : risk === 'Low' ? '#10b981' : '#64748b'} ${scorePercent * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
                   }}
                 >
                   <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
-                    <span className="text-2xl font-black leading-none">{score}</span>
-                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">of 100</span>
+                    <span className="dengue-hero-score-value text-2xl font-black leading-none">{score}</span>
+                    <span className="dengue-hero-score-label mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">of 100</span>
                   </div>
                 </div>
               </div>
@@ -2748,6 +2749,9 @@ export default function BHWPage() {
         </div>
       </section>
 
+      {trendLoading && !trendAnalytics ? (
+        <TrendPanelSkeleton className="bhw-trend-panel" />
+      ) : (
       <PremiumPanel tone="blue" className="bhw-trend-panel p-5 sm:p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
@@ -2992,6 +2996,8 @@ export default function BHWPage() {
           </div>
         </div>
       </PremiumPanel>
+
+      )}
 
       <section className="bhw-summary-metrics bhw-mobile-grid-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Activity} label="Actual cases" value={trendLoading ? '…' : formatOptionalNumber(trendTotalCases)} helper={`Recorded dengue cases for ${trendScopeLabel}.`} tone="sky" informationType="recorded" />

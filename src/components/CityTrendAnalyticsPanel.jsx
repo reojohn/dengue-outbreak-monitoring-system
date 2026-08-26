@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Activity, CalendarDays, Loader2, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import SparkChart from './SparkChart'
 import InformationTypeBadge from './InformationTypeBadge'
+import { TrendPanelSkeleton } from './SystemSkeleton'
 import { getCityTrendAnalytics } from '../services/api'
 import { getUserRole } from '../utils/auth'
 
@@ -64,7 +65,7 @@ function movementTone(direction = '') {
   }
 }
 
-export default function CityTrendAnalyticsPanel({ context = 'dashboard' }) {
+export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnalyticsChange = null }) {
   const role = getUserRole()
   const canViewCitywide = ['cho', 'admin', 'supervisor', 'viewer'].includes(role)
   const [analytics, setAnalytics] = useState(null)
@@ -93,6 +94,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard' }) {
 
         if (!active) return
         setAnalytics(result || null)
+        onAnalyticsChange?.(result || null)
 
         const resolvedYear = result?.filters?.year
         if (!year && resolvedYear) setYear(String(resolvedYear))
@@ -100,6 +102,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard' }) {
         if (!active) return
         const message = String(loadError?.message || '').toLowerCase()
         setAnalytics(null)
+        onAnalyticsChange?.(null)
         setError(
           message.includes('authentication') || message.includes('token')
             ? 'Your session has expired. Please sign in again to refresh the recorded citywide trend.'
@@ -116,9 +119,10 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard' }) {
     return () => {
       active = false
     }
-  }, [canViewCitywide, periodParams.month, periodParams.quarter, year])
+  }, [canViewCitywide, onAnalyticsChange, periodParams.month, periodParams.quarter, year])
 
   if (!canViewCitywide) return null
+  if (loading && !analytics) return <TrendPanelSkeleton />
 
   const availableYears = Array.isArray(analytics?.filters?.available_years)
     ? analytics.filters.available_years

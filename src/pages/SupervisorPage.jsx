@@ -2441,10 +2441,10 @@ export default function SupervisorPage() {
                   <p className={`mt-1 text-sm font-black ${topTone.text}`}>{topPriority?.risk || 'Pending'} risk</p>
                 </div>
 
-                <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(56,189,248,0.18)]" style={{ background: `conic-gradient(${topTone.ring} ${topScore * 3.6}deg, rgba(255,255,255,0.10) 0deg)` }}>
+                <div className="dengue-hero-score-ring relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-[8px] shadow-[0_0_42px_rgba(56,189,248,0.18)]" style={{ background: `conic-gradient(${topTone.ring} ${topScore * 3.6}deg, rgba(255,255,255,0.10) 0deg)` }}>
                   <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
-                    <span className="text-2xl font-black leading-none">{topScore}</span>
-                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">of 100</span>
+                    <span className="dengue-hero-score-value text-2xl font-black leading-none">{topScore}</span>
+                    <span className="dengue-hero-score-label mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">of 100</span>
                   </div>
                 </div>
               </div>

@@ -21,6 +21,10 @@ import {
   getDecisionActions,
   updateDecisionAction,
 } from '../services/api'
+import { getAuthSession } from '../utils/auth'
+
+let decisionActionSessionCache = null
+const DECISION_ACTION_CACHE_TTL_MS = 30_000
 
 const ACTION_STATUSES = ['Pending', 'In Progress', 'Completed']
 
@@ -468,12 +472,17 @@ function getInterventionOptions() {
 }
 
 export default function DecisionActionTracker({ priorityRows = [] }) {
-  const [actions, setActions] = useState([])
-  const [summary, setSummary] = useState({ total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 })
+  const session = getAuthSession()
+  const sessionCacheKey = String(session?.userId || session?.email || '').toLowerCase()
+  const usableActionCache = decisionActionSessionCache?.sessionCacheKey === sessionCacheKey
+    ? decisionActionSessionCache
+    : null
+  const [actions, setActions] = useState(() => usableActionCache?.actions || [])
+  const [summary, setSummary] = useState(() => usableActionCache?.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 })
   const [form, setForm] = useState(() => buildEmptyForm(priorityRows))
   const [selectedBarangay, setSelectedBarangay] = useState(priorityRows[0]?.barangay || '')
   const [editedActions, setEditedActions] = useState({})
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(() => !usableActionCache)
   const [isSaving, setIsSaving] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -507,14 +516,31 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
     return lookup
   }, [availableRows])
 
-  async function loadActions() {
-    setIsLoading(true)
+  async function loadActions({ force = false } = {}) {
+    const matchingCache = decisionActionSessionCache?.sessionCacheKey === sessionCacheKey
+      ? decisionActionSessionCache
+      : null
+    const cacheAge = matchingCache
+      ? Date.now() - Number(matchingCache.savedAt || 0)
+      : Number.POSITIVE_INFINITY
+
+    if (!force && matchingCache && cacheAge < DECISION_ACTION_CACHE_TTL_MS) {
+      setActions(matchingCache.actions || [])
+      setSummary(matchingCache.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 })
+      setIsLoading(false)
+      return
+    }
+
+    if (!matchingCache) setIsLoading(true)
     setErrorMessage('')
 
     try {
       const result = await getDecisionActions()
-      setActions(Array.isArray(result?.actions) ? result.actions : [])
-      setSummary(result?.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 })
+      const nextActions = Array.isArray(result?.actions) ? result.actions : []
+      const nextSummary = result?.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 }
+      decisionActionSessionCache = { sessionCacheKey, actions: nextActions, summary: nextSummary, savedAt: Date.now() }
+      setActions(nextActions)
+      setSummary(nextSummary)
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to load action records.')
     } finally {
@@ -563,7 +589,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
         action: normalizeText(form.action, getDefaultAction(selectedRow)),
       })
       setStatusMessage(`Action created for ${result?.action?.barangay || form.barangay}.`)
-      await loadActions()
+      await loadActions({ force: true })
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to create action record.')
     } finally {
@@ -594,7 +620,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
         delete next[action.id]
         return next
       })
-      await loadActions()
+      await loadActions({ force: true })
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to update action record.')
     } finally {
@@ -610,7 +636,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
     try {
       await deleteDecisionAction(action.id)
       setStatusMessage(`Action for ${action.barangay} removed.`)
-      await loadActions()
+      await loadActions({ force: true })
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to remove action record.')
     } finally {
@@ -743,7 +769,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
 
           <button
             type="button"
-            onClick={loadActions}
+            onClick={() => loadActions({ force: true })}
             disabled={isLoading}
             className="inline-flex w-fit items-center justify-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -1042,9 +1068,23 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
 
             <TaskBoardScrollArea>
               {isLoading ? (
-                <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm font-semibold text-brand-muted dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                  <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin" />
-                  Loading action records...
+                <div className="space-y-3 rounded-[28px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900" role="status" aria-label="Loading response actions" aria-busy="true">
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="rounded-[22px] border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950">
+                      <div className="flex items-center gap-3">
+                        <div className="system-skeleton-shimmer h-10 w-10 shrink-0 rounded-2xl bg-slate-200 dark:bg-slate-800" />
+                        <div className="min-w-0 flex-1">
+                          <div className="system-skeleton-shimmer h-4 w-36 rounded-full bg-slate-200 dark:bg-slate-800" />
+                          <div className="system-skeleton-shimmer mt-2 h-3 w-2/3 rounded-full bg-slate-200 dark:bg-slate-800" />
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <div className="system-skeleton-shimmer h-9 rounded-xl bg-slate-200 dark:bg-slate-800" />
+                        <div className="system-skeleton-shimmer h-9 rounded-xl bg-slate-200 dark:bg-slate-800" />
+                        <div className="system-skeleton-shimmer h-9 rounded-xl bg-slate-200 dark:bg-slate-800" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : recentActions.length > 0 ? (
                 recentActions.map((action) => {

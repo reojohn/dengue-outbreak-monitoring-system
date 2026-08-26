@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   ArrowRight,
@@ -9,8 +10,11 @@ import {
   ClipboardCheck,
   CloudRain,
   Database,
+  Download,
   FileCheck2,
+  FileSpreadsheet,
   FileText,
+  PencilLine,
   Loader2,
   Map as MapIcon,
   RotateCcw,
@@ -27,6 +31,7 @@ import { useData } from '../context/DataContext'
 import {
   autoRunModel,
   cleanDengueFile,
+  downloadCurrentSourceFile,
   validateDengueFile,
   getBackendAlignmentReport,
   getUploadDatabasePreview,
@@ -2650,12 +2655,29 @@ export default function UploadPage() {
   })
   const [freshUploadSession, setFreshUploadSession] = useState(false)
   const [freshUploadedSources, setFreshUploadedSources] = useState({})
+  const [reviewSourceId, setReviewSourceId] = useState(null)
+  const [reviewDownloadState, setReviewDownloadState] = useState({ status: 'idle', message: '' })
   const autoPreparationKeyRef = useRef(getStoredAutoPreparationKey())
   const autoPreparationRunningRef = useRef(false)
   const autoPreparationArmedRef = useRef(false)
   const autoPreparationRunIdRef = useRef(0)
   const updateWorkspaceRef = useRef(updateWorkspace)
   updateWorkspaceRef.current = updateWorkspace
+
+  useEffect(() => {
+    setReviewDownloadState({ status: 'idle', message: '' })
+  }, [reviewSourceId])
+
+  useEffect(() => {
+    if (!reviewSourceId || typeof document === 'undefined') return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [reviewSourceId])
 
   useEffect(() => {
     function getSourceIdFromDatasetType(datasetType = '') {
@@ -2871,6 +2893,65 @@ export default function UploadPage() {
     : 0
   const readyChecklistCount = checklist.filter((item) => item.ready).length
   const databaseUploads = databaseUploadStatus?.uploads || {}
+  const reviewSource = sources.find((source) => source.id === reviewSourceId) || null
+  const reviewSourceStatus = reviewSource ? (sourceStatus?.[reviewSource.contextKey] || {}) : {}
+  const reviewDatabaseUpload = reviewSource ? (databaseUploads?.[reviewSource.contextKey] || {}) : {}
+  const reviewFileName = reviewSource
+    ? (reviewSourceStatus.uploadedName || reviewDatabaseUpload.original_filename || 'Current uploaded file')
+    : ''
+  const reviewSourceIsBoundary = reviewSource?.contextKey === 'boundary'
+  const reviewSourceFileAvailable = Boolean(
+    reviewDatabaseUpload?.source_file_available ??
+      reviewDatabaseUpload?.sourceFileAvailable ??
+      reviewSourceStatus?.sourceFileAvailable ??
+      false
+  )
+  const reviewSourceFileSizeBytes = Number(
+    reviewDatabaseUpload?.source_file_size_bytes ??
+      reviewDatabaseUpload?.sourceFileSizeBytes ??
+      reviewSourceStatus?.sourceFileSizeBytes ??
+      0
+  )
+  const reviewSourceFileSizeLabel = reviewSourceFileSizeBytes > 0
+    ? reviewSourceFileSizeBytes >= 1024 * 1024
+      ? `${(reviewSourceFileSizeBytes / (1024 * 1024)).toFixed(1)} MB`
+      : `${Math.max(1, Math.round(reviewSourceFileSizeBytes / 1024))} KB`
+    : ''
+  async function handleDownloadReviewSource() {
+    if (!reviewSource || reviewDownloadState.status === 'loading') return
+
+    setReviewDownloadState({ status: 'loading', message: '' })
+
+    try {
+      const result = await downloadCurrentSourceFile(reviewSource.contextKey)
+      const blob = result?.blob
+      if (!blob) throw new Error('The source file could not be prepared for download.')
+
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = result?.filename || reviewFileName || `${reviewSource.contextKey}_source`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+
+      setReviewDownloadState({
+        status: 'success',
+        message: 'File downloaded. Open it in the recommended app, make your corrections, then upload the saved copy here.',
+      })
+      addActivityLog(
+        'Source file downloaded for review',
+        `${reviewSource.title} downloaded as ${result?.filename || reviewFileName || 'source file'}.`
+      )
+    } catch (error) {
+      setReviewDownloadState({
+        status: 'error',
+        message: error?.message || 'The current source file could not be downloaded.',
+      })
+    }
+  }
+
   const loadedSourceCount = sources.filter((source) => {
     return (
       Number(sourceStatus?.[source.contextKey]?.validCount || 0) > 0 ||
@@ -4511,7 +4592,199 @@ export default function UploadPage() {
         barangayNames={processingBarangayNames}
       />
 
-      <><div className="pointer-events-none absolute -left-24 -top-10 -z-10 h-80 w-80 rounded-full bg-blue-200/[0.45] blur-3xl dark:bg-blue-500/10" /><div className="pointer-events-none absolute -right-24 top-[520px] -z-10 h-72 w-72 rounded-full bg-cyan-100/[0.55] blur-3xl dark:bg-cyan-500/10" /></>
+      {reviewSource && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/72 p-3 backdrop-blur-md sm:p-5 lg:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="review-records-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setReviewSourceId(null)
+          }}
+        >
+          <div
+            className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_32px_100px_rgba(2,6,23,0.42)] dark:border-slate-700 dark:bg-slate-900 sm:max-h-[calc(100vh-2.5rem)]"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="shrink-0 border-b border-slate-200/90 bg-white/98 px-5 py-4 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/98 sm:px-7 sm:py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                    <PencilLine className="h-3.5 w-3.5" />
+                    Manual review
+                  </div>
+                  <h2 id="review-records-title" className="mt-2 text-2xl font-bold tracking-tight text-brand-text dark:text-slate-100 sm:text-3xl">
+                    {reviewSourceIsBoundary ? 'Review the Boundary File' : 'Review & Correct Records'}
+                  </h2>
+                  <p className="mt-1.5 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-300 sm:text-base">
+                    Download the source saved in the system, make only the needed corrections, then upload the corrected copy for validation.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setReviewSourceId(null)}
+                  className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  aria-label="Close review instructions"
+                >
+                  Close
+                </button>
+              </div>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7 sm:py-6">
+              <div className="space-y-5">
+                <section className="flex flex-col gap-4 rounded-[24px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-cyan-50/70 p-4 dark:border-blue-500/20 dark:from-blue-500/10 dark:via-slate-900 dark:to-cyan-500/5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-white text-brand-blue shadow-sm dark:border-blue-500/20 dark:bg-slate-950 dark:text-blue-300">
+                      {reviewSourceIsBoundary ? <MapIcon className="h-5 w-5" /> : <FileSpreadsheet className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">Current uploaded file</p>
+                      <p className="mt-1 break-words text-base font-bold text-brand-text dark:text-slate-100 sm:text-lg">{reviewFileName}</p>
+                      {reviewSourceFileSizeLabel && (
+                        <p className="mt-1 text-sm font-semibold text-brand-muted dark:text-slate-400">File size: {reviewSourceFileSizeLabel}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0">
+                    {reviewSourceFileAvailable ? (
+                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">Saved for download</span>
+                    ) : (
+                      <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">Older saved upload</span>
+                    )}
+                  </div>
+                </section>
+
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black uppercase tracking-[0.11em] text-brand-muted dark:text-slate-400">Three simple steps</p>
+                      <p className="mt-1 text-sm text-brand-muted dark:text-slate-400">The original source stays unchanged until you upload a corrected copy.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <article className="flex min-w-0 flex-col rounded-[22px] border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-500/20 dark:bg-blue-500/10 sm:p-5">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-blue text-sm font-black text-white">1</span>
+                        <div className="min-w-0">
+                          <p className="text-base font-bold text-brand-text dark:text-slate-100">Download the current file</p>
+                          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-300">
+                            Get the exact source saved in the system, even when you are using another computer.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-4">
+                        <button
+                          type="button"
+                          onClick={handleDownloadReviewSource}
+                          disabled={!reviewSourceFileAvailable || reviewDownloadState.status === 'loading'}
+                          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-[16px] border border-brand-blue bg-brand-blue px-4 py-2.5 text-sm font-black text-white shadow-[0_10px_24px_rgba(37,95,143,0.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                        >
+                          {reviewDownloadState.status === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          {reviewDownloadState.status === 'loading'
+                            ? 'Preparing download...'
+                            : reviewSourceIsBoundary
+                              ? 'Download boundary file'
+                              : 'Download current file'}
+                        </button>
+                      </div>
+                    </article>
+
+                    <article className="flex min-w-0 flex-col rounded-[22px] border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-black text-white dark:bg-slate-700">2</span>
+                        <div className="min-w-0">
+                          <p className="text-base font-bold text-brand-text dark:text-slate-100">{reviewSourceIsBoundary ? 'Open and correct the boundary file' : 'Open and correct the records'}</p>
+                          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                            {reviewSourceIsBoundary
+                              ? 'Open the downloaded GeoJSON in a compatible GIS, map, or text editor. Make only the needed correction, then save the file.'
+                              : 'Open the downloaded file in Microsoft Excel or another spreadsheet app. Make only the needed corrections, then save the file.'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-auto pt-4">
+                        <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm leading-5 text-brand-muted dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
+                          Tip: keep the same columns and file type so validation can recognize the corrected source.
+                        </div>
+                      </div>
+                    </article>
+
+                    <article className="flex min-w-0 flex-col rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10 sm:p-5">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-black text-white">3</span>
+                        <div className="min-w-0">
+                          <p className="text-base font-bold text-brand-text dark:text-slate-100">Upload the corrected file</p>
+                          <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-300">
+                            The system validates the corrected copy again before it becomes the working source.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-4">
+                        <label className="inline-flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded-[16px] border border-emerald-600 bg-emerald-600 px-4 py-2.5 text-sm font-black text-white shadow-[0_10px_24px_rgba(5,150,105,0.18)] transition hover:-translate-y-0.5">
+                          <UploadCloud className="h-4 w-4" />
+                          Upload corrected file
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept={reviewSource.accept}
+                            onChange={(event) => {
+                              setReviewSourceId(null)
+                              handleFileUpload(event)
+                            }}
+                            disabled={isProcessing}
+                          />
+                        </label>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+
+                {!reviewSourceFileAvailable && (
+                  <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                    <span className="font-black">Older saved upload:</span> this source was uploaded before downloadable file storage was added. Re-upload it once using the updated system, then cross-device download will be available.
+                  </div>
+                )}
+
+                {reviewDownloadState.message && (
+                  <div
+                    className={`rounded-[18px] border px-4 py-3 text-sm leading-6 ${
+                      reviewDownloadState.status === 'error'
+                        ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                    }`}
+                  >
+                    {reviewDownloadState.message}
+                  </div>
+                )}
+
+                <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                  <span className="font-black">Before you continue:</span> Re-uploading a corrected source may change the combined dataset, risk results, and forecast. The corrected file will be checked again before new values are used.
+                </div>
+              </div>
+            </div>
+
+            <footer className="shrink-0 border-t border-slate-200/90 bg-white/98 px-5 py-3.5 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/98 sm:px-7">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm leading-5 text-brand-muted dark:text-slate-400">
+                  The original saved source is not edited inside the system.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setReviewSourceId(null)}
+                  className="min-h-[46px] rounded-[16px] border border-slate-200 bg-white px-5 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Done
+                </button>
+              </div>
+            </footer>
+          </div>
+        </div>,
+        document.body
+      )}
 
       <section className="premium-upload-hero relative isolate min-h-[470px] overflow-hidden rounded-[38px] border border-slate-900/10 bg-slate-950 shadow-[0_30px_90px_rgba(15,23,42,0.30)] dark:border-slate-800">
         <img
@@ -4617,14 +4890,14 @@ export default function UploadPage() {
               </div>
 
               <div
-                className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[5px] shadow-[0_0_35px_rgba(34,211,238,0.16)]"
+                className="dengue-hero-score-ring relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[5px] shadow-[0_0_35px_rgba(34,211,238,0.16)]"
                 style={{
                   background: `conic-gradient(#22d3ee ${Math.round((loadedSourceCount / Math.max(sources.length, 1)) * 100)}%, rgba(255,255,255,0.10) 0)`,
                 }}
               >
                 <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 ring-1 ring-white/10">
-                  <span className="text-xl font-black">{loadedSourceCount}</span>
-                  <span className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">of {sources.length}</span>
+                  <span className="dengue-hero-score-value text-xl font-black">{loadedSourceCount}</span>
+                  <span className="dengue-hero-score-label text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">of {sources.length}</span>
                 </div>
               </div>
             </div>
@@ -4725,17 +4998,32 @@ export default function UploadPage() {
                 const hasSourceError = hasSourceFileError || hasSourceBackendError
                 const hasSourceSuccess = uploadState?.status === 'success'
 
+                const reviewReady = Boolean(
+                  status.uploadedName ||
+                  Number(status.validCount || 0) > 0 ||
+                  Number(databaseUploads?.[source.contextKey]?.valid_row_count || 0) > 0
+                )
+
                 return (
-                  <button
+                  <div
                     key={source.id}
                     id={source.id === 'boundary' ? 'boundary-upload' : undefined}
-                    type="button"
                     onClick={() => {
                       setSelected(source.id)
                       setUploadMessage('')
                       setUploadError('')
                     }}
-                    className={`group premium-source-card relative overflow-hidden rounded-[26px] border p-5 text-left shadow-[0_12px_34px_rgba(15,23,42,0.065)] transition-all duration-300 hover:-translate-y-0.5 dark:shadow-none ${
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setSelected(source.id)
+                        setUploadMessage('')
+                        setUploadError('')
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={`group premium-source-card relative overflow-hidden rounded-[26px] border p-5 text-left shadow-[0_12px_34px_rgba(15,23,42,0.065)] transition-all duration-300 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-brand-blue/30 dark:shadow-none ${
                       isSourceProcessing
                         ? 'border-cyan-300 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.28),transparent_38%),linear-gradient(135deg,#ecfeff,#ffffff_54%,#eff6ff)] ring-4 ring-cyan-300/30 shadow-[0_24px_58px_rgba(14,165,233,0.22)] dark:border-cyan-400/60 dark:bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.24),transparent_40%),linear-gradient(135deg,#082f49,#0f172a_58%,#111827)] dark:ring-cyan-400/20'
                         : isActive
@@ -4858,8 +5146,26 @@ export default function UploadPage() {
                           style={{ width: `${sourcePercent}%` }}
                         />
                       </div>
+
+                      <button
+                        type="button"
+                        disabled={!reviewReady || isSourceProcessing}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setSelected(source.id)
+                          setUploadMessage('')
+                          setUploadError('')
+                          setReviewSourceId(source.id)
+                        }}
+                        className="mt-4 inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white/90 px-3 py-2.5 text-sm font-black text-brand-blue shadow-sm transition hover:border-brand-blue/40 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-950/70 dark:text-blue-300 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/10"
+                      >
+                        <PencilLine className="h-4 w-4" />
+                        {reviewReady
+                          ? (source.contextKey === 'boundary' ? 'Review Boundary File' : 'Review & Correct Records')
+                          : 'Upload a file first'}
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>
@@ -5661,37 +5967,37 @@ export default function UploadPage() {
               {checklist.map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between gap-3 rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
+                  className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-[22px] border border-brand-line bg-gradient-to-r from-slate-50 to-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900 dark:shadow-none"
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${
-                        item.ready
-                          ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-                          : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
-                      }`}
-                    >
-                      {item.ready ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4" />
-                      )}
-                    </div>
-
-                    <span className="text-sm font-bold leading-6 text-brand-text dark:text-slate-100">
-                      {item.label}
-                    </span>
-                  </div>
-
-                  <span
-                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${
                       item.ready
                         ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
                         : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
                     }`}
                   >
-                    {item.ready ? 'Ready' : 'Pending'}
-                  </span>
+                    {item.ready ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <span className="block break-words text-sm font-bold leading-5 text-brand-text dark:text-slate-100">
+                      {item.label}
+                    </span>
+
+                    <span
+                      className={`mt-2 inline-flex max-w-full items-center rounded-full border px-3 py-1 text-[11px] font-black leading-4 ${
+                        item.ready
+                          ? 'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : 'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+                      }`}
+                    >
+                      {item.ready ? 'Ready' : 'Pending'}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

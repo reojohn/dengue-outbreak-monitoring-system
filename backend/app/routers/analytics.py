@@ -34,6 +34,7 @@ def get_citywide_trends(
     year: int | None = Query(default=None, ge=1900, le=2200),
     quarter: int | None = Query(default=None, ge=1, le=4),
     month: int | None = Query(default=None, ge=1, le=12),
+    include_classification: bool = Query(default=False),
     current_user=Depends(require_roles("cho", "supervisor", "admin", "viewer")),
 ):
     if quarter is not None and month is not None:
@@ -46,6 +47,7 @@ def get_citywide_trends(
         year=year,
         quarter=quarter,
         month=month,
+        include_classification=include_classification,
     )
 
 

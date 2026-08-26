@@ -332,18 +332,25 @@ export default function LoginPage() {
     // small persisted state now that authentication is available so the
     // dashboard and Forecast workflow status are correct without a manual
     // browser refresh.
-    await refreshAuthenticatedWorkspace?.({ silent: true })
-
-    // Warm the small shared page caches after authentication without delaying
-    // navigation. Forecast, Map and Reports can then reuse the same in-memory
-    // model/boundary/hotspot data instead of waiting 2–3 seconds on first open.
-    window.setTimeout(() => {
-      Promise.resolve(
-        warmNavigationCache?.({ role: authenticatedUser.role })
-      ).catch(() => {})
-    }, 0)
+    // Start restoring the small saved workspace immediately, but do not keep
+    // the user waiting on the login screen. The authenticated route shows a
+    // page-shaped skeleton until this first refresh is ready.
+    const initialRefreshPromise = Promise.resolve(
+      refreshAuthenticatedWorkspace?.({ silent: true, initial: true })
+    )
 
     navigate(getRoleHome(authenticatedUser.role), { replace: true })
+
+    // Warm shared route data after the first refresh. These session-only
+    // caches let Forecast, Map and Reports reuse data on later navigation
+    // instead of replaying the initial loading state.
+    initialRefreshPromise.finally(() => {
+      window.setTimeout(() => {
+        Promise.resolve(
+          warmNavigationCache?.({ role: authenticatedUser.role })
+        ).catch(() => {})
+      }, 0)
+    })
   } catch (loginError) {
     setError(loginError.message || 'Login failed. Please try again.')
     setScanStage(0)

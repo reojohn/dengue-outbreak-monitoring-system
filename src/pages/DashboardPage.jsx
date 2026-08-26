@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Clock3,
   CloudRain,
@@ -3023,14 +3024,14 @@ export default function DashboardPage() {
                 </div>
 
                 <div
-                  className="relative flex h-[68px] w-[68px] shrink-0 sm:h-20 sm:w-20 items-center justify-center rounded-full p-[7px] shadow-[0_0_36px_rgba(56,189,248,0.18)]"
+                  className="dengue-hero-score-ring relative flex h-[68px] w-[68px] shrink-0 sm:h-20 sm:w-20 items-center justify-center rounded-full p-[7px] shadow-[0_0_36px_rgba(56,189,248,0.18)]"
                   style={{
                     background: `conic-gradient(#22d3ee ${Math.min(100, Math.max(0, topMultiSourceScore)) * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
                   }}
                 >
                   <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
-                    <span className="text-xl font-black leading-none">{formatNumber(topMultiSourceScore)}</span>
-                    <span className="mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Score</span>
+                    <span className="dengue-hero-score-value text-xl font-black leading-none">{formatNumber(topMultiSourceScore)}</span>
+                    <span className="dengue-hero-score-label mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Score</span>
                   </div>
                 </div>
               </div>
@@ -3139,30 +3140,56 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Panel className="p-4 sm:p-6" tabTone="blue" tabLabel="Integrated" tabIcon={Layers3} curve="bottom-right">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <SectionBadge tone="blue">
-                <Layers3 className="h-3.5 w-3.5" />
-                Multi-source command summary
-              </SectionBadge>
-              <InformationTypeBadge type="decision" />
+      <Panel className="p-4 sm:p-6" tabTone="blue" tabLabel="System data" tabIcon={Layers3} curve="bottom-right">
+        <details className="group/system-data">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-[22px] border border-blue-100/80 bg-gradient-to-r from-blue-50/90 via-white to-cyan-50/70 px-4 py-4 shadow-[0_10px_28px_rgba(15,23,42,0.06)] transition hover:border-blue-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40 dark:border-blue-400/15 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5 [&::-webkit-details-marker]:hidden">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-200/80 bg-white text-brand-blue shadow-sm dark:border-blue-400/20 dark:bg-slate-900 dark:text-blue-300">
+                  <Layers3 className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                    System data details
+                  </p>
+                  <p className="mt-0.5 text-sm leading-5 text-brand-muted dark:text-slate-400">
+                    Data sources, weather conditions, and calculation checks.
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-              Integrated dengue risk intelligence
-            </h3>
+            <div className="flex shrink-0 items-center gap-2 text-sm font-black text-brand-blue dark:text-blue-300">
+              <span className="group-open/system-data:hidden">View details</span>
+              <span className="hidden group-open/system-data:inline">Hide details</span>
+              <ChevronDown className="h-4 w-4 transition-transform duration-200 group-open/system-data:rotate-180" />
+            </div>
+          </summary>
 
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Shows whether dengue, weather, population, and boundary files are working together for forecasting, mapping, and response planning.
-            </p>
-          </div>
+          <div className="mt-5 border-t border-slate-200/80 pt-5 dark:border-slate-800">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SectionBadge tone="blue">
+                    <Layers3 className="h-3.5 w-3.5" />
+                    Data and calculation details
+                  </SectionBadge>
+                  <InformationTypeBadge type="decision" />
+                </div>
 
-          <span className={`inline-flex w-fit rounded-full border px-4 py-1.5 text-xs font-black shadow-sm ${getIntegrationStatusStyle(integrationStatus)}`}>
-            {integrationStatus} • {formatNumber(integrationScore)}% ready
-          </span>
-        </div>
+                <h3 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
+                  Integrated dengue risk intelligence
+                </h3>
+
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
+                  Shows whether dengue, weather, population, and boundary files are working together for forecasting, mapping, and response planning.
+                </p>
+              </div>
+
+              <span className={`inline-flex w-fit rounded-full border px-4 py-1.5 text-xs font-black shadow-sm ${getIntegrationStatusStyle(integrationStatus)}`}>
+                {integrationStatus} • {formatNumber(integrationScore)}% ready
+              </span>
+            </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SignalCard
@@ -3265,6 +3292,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+          </div>
+        </details>
       </Panel>
 
       <CityTrendAnalyticsPanel context="dashboard" />

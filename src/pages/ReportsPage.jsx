@@ -31,13 +31,14 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getFieldUpdate, saveGeneratedReport } from '../services/api'
+import { createBackendNotificationEvent, getCityTrendAnalytics, getFieldUpdate, getFieldUpdates, saveGeneratedReport } from '../services/api'
 import reportsHeroBackground from '../assets/reports.png'
 import FieldUpdateReportCard from '../components/FieldUpdateReportCard'
 import CityTrendAnalyticsPanel from '../components/CityTrendAnalyticsPanel'
 import InformationTypeBadge from '../components/InformationTypeBadge'
 
-const REPORT_TITLE = 'Four-Month Dengue Response Planning Report'
+const REPORT_TITLE = 'Dengue Situation and Four-Month Response Planning Report'
+const REPORT_SYSTEM_NAME = 'Barangay-Level Dengue Outbreak Response System'
 const REPORT_EXPORT_BASENAME = 'dengue-four-month-response-planning-report'
 
 const exportFormats = [
@@ -45,6 +46,7 @@ const exportFormats = [
     id: 'pdf',
     label: 'PDF report',
     desc: 'Downloads a PDF response report',
+    actionLabel: 'Generate PDF report',
     icon: FileText,
     style:
       'border-rose-100 bg-rose-50 text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300',
@@ -53,6 +55,7 @@ const exportFormats = [
     id: 'excel',
     label: 'Excel workbook',
     desc: 'Downloads an XLSX workbook with response planning sheets',
+    actionLabel: 'Generate Excel workbook',
     icon: FileSpreadsheet,
     style:
       'border-emerald-100 bg-emerald-50 text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -61,6 +64,7 @@ const exportFormats = [
     id: 'powerpoint',
     label: 'PowerPoint deck',
     desc: 'Generates a designed briefing presentation',
+    actionLabel: 'Generate PowerPoint deck',
     icon: Presentation,
     style:
       'border-blue-100 bg-blue-50 text-brand-blue dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
@@ -69,11 +73,71 @@ const exportFormats = [
     id: 'print',
     label: 'Print view',
     desc: 'Opens a browser print-ready response report',
+    actionLabel: 'Open print view',
     icon: Printer,
     style:
       'border-amber-100 bg-amber-50 text-brand-orange dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
   },
 ]
+
+const exportSelectionThemes = {
+  pdf: {
+    card:
+      'border-rose-400/90 bg-gradient-to-br from-rose-100 via-white to-orange-100/90 ring-2 ring-rose-300/70 shadow-[0_20px_50px_rgba(244,63,94,0.22)] -translate-y-0.5 scale-[1.015] dark:border-rose-400/60 dark:from-rose-500/20 dark:via-slate-950 dark:to-orange-500/10 dark:ring-rose-400/30 dark:shadow-[0_20px_50px_rgba(244,63,94,0.12)]',
+    icon:
+      'border-rose-300 bg-rose-600 text-white shadow-[0_10px_24px_rgba(225,29,72,0.28)] dark:border-rose-300/30 dark:bg-rose-500 dark:text-white',
+    badge:
+      'border-rose-300 bg-rose-600 text-white shadow-[0_8px_20px_rgba(225,29,72,0.24)] dark:border-rose-300/30 dark:bg-rose-500',
+    summary:
+      'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50/80 shadow-[0_14px_34px_rgba(244,63,94,0.12)] dark:border-rose-400/25 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5',
+    summaryLabel: 'text-rose-700 dark:text-rose-300',
+    bar: 'bg-rose-500 dark:bg-rose-400',
+    button:
+      'bg-rose-600 shadow-[0_14px_30px_rgba(225,29,72,0.28)] hover:bg-rose-700 hover:shadow-[0_18px_38px_rgba(225,29,72,0.34)] dark:bg-rose-500 dark:hover:bg-rose-400',
+  },
+  excel: {
+    card:
+      'border-emerald-400/90 bg-gradient-to-br from-emerald-100 via-white to-teal-100/90 ring-2 ring-emerald-300/70 shadow-[0_20px_50px_rgba(16,185,129,0.22)] -translate-y-0.5 scale-[1.015] dark:border-emerald-400/60 dark:from-emerald-500/20 dark:via-slate-950 dark:to-teal-500/10 dark:ring-emerald-400/30 dark:shadow-[0_20px_50px_rgba(16,185,129,0.12)]',
+    icon:
+      'border-emerald-300 bg-emerald-600 text-white shadow-[0_10px_24px_rgba(5,150,105,0.28)] dark:border-emerald-300/30 dark:bg-emerald-500 dark:text-white',
+    badge:
+      'border-emerald-300 bg-emerald-600 text-white shadow-[0_8px_20px_rgba(5,150,105,0.24)] dark:border-emerald-300/30 dark:bg-emerald-500',
+    summary:
+      'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50/80 shadow-[0_14px_34px_rgba(16,185,129,0.12)] dark:border-emerald-400/25 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5',
+    summaryLabel: 'text-emerald-700 dark:text-emerald-300',
+    bar: 'bg-emerald-500 dark:bg-emerald-400',
+    button:
+      'bg-emerald-600 shadow-[0_14px_30px_rgba(5,150,105,0.28)] hover:bg-emerald-700 hover:shadow-[0_18px_38px_rgba(5,150,105,0.34)] dark:bg-emerald-500 dark:hover:bg-emerald-400',
+  },
+  powerpoint: {
+    card:
+      'border-blue-400/90 bg-gradient-to-br from-blue-100 via-white to-cyan-100/90 ring-2 ring-blue-300/70 shadow-[0_20px_50px_rgba(59,130,246,0.22)] -translate-y-0.5 scale-[1.015] dark:border-blue-400/60 dark:from-blue-500/20 dark:via-slate-950 dark:to-cyan-500/10 dark:ring-blue-400/30 dark:shadow-[0_20px_50px_rgba(59,130,246,0.12)]',
+    icon:
+      'border-blue-300 bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.28)] dark:border-blue-300/30 dark:bg-blue-500 dark:text-white',
+    badge:
+      'border-blue-300 bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.24)] dark:border-blue-300/30 dark:bg-blue-500',
+    summary:
+      'border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50/80 shadow-[0_14px_34px_rgba(59,130,246,0.12)] dark:border-blue-400/25 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5',
+    summaryLabel: 'text-blue-700 dark:text-blue-300',
+    bar: 'bg-blue-500 dark:bg-blue-400',
+    button:
+      'bg-blue-600 shadow-[0_14px_30px_rgba(37,99,235,0.28)] hover:bg-blue-700 hover:shadow-[0_18px_38px_rgba(37,99,235,0.34)] dark:bg-blue-500 dark:hover:bg-blue-400',
+  },
+  print: {
+    card:
+      'border-amber-400/90 bg-gradient-to-br from-amber-100 via-white to-orange-100/90 ring-2 ring-amber-300/70 shadow-[0_20px_50px_rgba(245,158,11,0.22)] -translate-y-0.5 scale-[1.015] dark:border-amber-400/60 dark:from-amber-500/20 dark:via-slate-950 dark:to-orange-500/10 dark:ring-amber-400/30 dark:shadow-[0_20px_50px_rgba(245,158,11,0.12)]',
+    icon:
+      'border-amber-300 bg-amber-500 text-white shadow-[0_10px_24px_rgba(217,119,6,0.28)] dark:border-amber-300/30 dark:bg-amber-500 dark:text-white',
+    badge:
+      'border-amber-300 bg-amber-500 text-white shadow-[0_8px_20px_rgba(217,119,6,0.24)] dark:border-amber-300/30 dark:bg-amber-500',
+    summary:
+      'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50/80 shadow-[0_14px_34px_rgba(245,158,11,0.12)] dark:border-amber-400/25 dark:from-amber-500/10 dark:via-slate-950 dark:to-orange-500/5',
+    summaryLabel: 'text-amber-700 dark:text-amber-300',
+    bar: 'bg-amber-500 dark:bg-amber-400',
+    button:
+      'bg-amber-500 shadow-[0_14px_30px_rgba(217,119,6,0.28)] hover:bg-amber-600 hover:shadow-[0_18px_38px_rgba(217,119,6,0.34)] dark:bg-amber-500 dark:hover:bg-amber-400',
+  },
+}
 
 const distributionItems = [
   {
@@ -374,13 +438,16 @@ function getDecisionCounts(riskRows = []) {
         acc.urgent += 1
       } else if (priority.includes('preventive')) {
         acc.preventive += 1
+      } else if (priority.includes('routine')) {
+        // Check Routine Monitoring before the generic word "monitoring" so
+        // routine barangays are not incorrectly counted as watch barangays.
+        acc.routine += 1
       } else if (
-        priority.includes('monitoring') ||
-        priority.includes('early')
+        priority.includes('early') ||
+        priority.includes('watch') ||
+        priority.includes('monitoring')
       ) {
         acc.watch += 1
-      } else if (priority.includes('routine')) {
-        acc.routine += 1
       } else {
         acc.pending += 1
       }
@@ -1420,70 +1487,289 @@ function formatModelNameForReport(value = '') {
 }
 
 
+
+function hasMeaningfulValue(value) {
+  if (value === undefined || value === null || value === '') return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'object') return Object.keys(value).length > 0
+  return true
+}
+
+function firstMeaningfulValue(...values) {
+  return values.find((value) => hasMeaningfulValue(value))
+}
+
+function formatSelectionExplanationForReport(value) {
+  if (!hasMeaningfulValue(value)) return 'Not recorded'
+  if (typeof value === 'string') return value
+
+  if (typeof value === 'object') {
+    const direct = firstMeaningfulValue(
+      value.explanation,
+      value.summary,
+      value.reason,
+      value.message,
+      value.label
+    )
+    if (direct) return String(direct)
+
+    const readable = Object.entries(value)
+      .filter(([, item]) => ['string', 'number', 'boolean'].includes(typeof item))
+      .map(([key, item]) => `${toTitleCase(key)}: ${item}`)
+      .join('; ')
+
+    return readable || 'Not recorded'
+  }
+
+  return String(value)
+}
+
+function getForecastPeriodDetails(row = {}) {
+  const direct = firstMeaningfulValue(
+    row.forecastPeriodPredictions,
+    row.forecast_period_predictions,
+    row.period_predictions,
+    row.periodPredictions
+  )
+
+  const items = Array.isArray(direct)
+    ? direct
+    : Array.isArray(row.series)
+      ? row.series.filter((item) => item?.isForecast)
+      : Array.isArray(row.caseHistory)
+        ? row.caseHistory.filter((item) => item?.isForecast)
+        : []
+
+  const normalized = items.slice(0, 4).map((item, index) => ({
+    horizon: Number(item?.horizon || index + 1),
+    label: String(item?.period_label || item?.period || item?.label || `Period ${index + 1}`),
+    predictedCases: Number(item?.predicted_cases ?? item?.predictedCases ?? item?.cases ?? 0),
+  }))
+
+  while (normalized.length < 4) {
+    normalized.push({
+      horizon: normalized.length + 1,
+      label: `Period ${normalized.length + 1}`,
+      predictedCases: 0,
+    })
+  }
+
+  return normalized
+}
+
+function getCitySurveillanceSummary(cityTrendAnalytics = null) {
+  const summary = cityTrendAnalytics?.summary || {}
+  const filters = cityTrendAnalytics?.filters || {}
+  const historicalPeak = cityTrendAnalytics?.historical_peak || null
+  const classification = cityTrendAnalytics?.case_classification || null
+
+  return {
+    hasData: Boolean(cityTrendAnalytics?.has_data),
+    scopeLabel: filters.scope_label || filters.year || 'Latest available year',
+    year: filters.year || '',
+    totalCases: Number(summary.total_cases || 0),
+    highestMonth: summary.peak_month || null,
+    lowestMonth: summary.lowest_month || null,
+    trendDirection: summary.trend_direction || 'No comparison',
+    changeLabel: summary.change_label || 'No previous month available',
+    usualPeakMonth: historicalPeak?.month_label || 'Not available',
+    usualPeakAverage: Number(historicalPeak?.average_cases || 0),
+    interpretation: cityTrendAnalytics?.interpretation || 'No citywide trend interpretation is available yet.',
+    monthly: Array.isArray(cityTrendAnalytics?.monthly) ? cityTrendAnalytics.monthly : [],
+    classification,
+  }
+}
+
+function formatCaseClassificationValue(classification, field, availabilityField) {
+  if (!classification?.available || !classification?.[availabilityField]) return 'N/A'
+  return formatNumber(classification?.[field] || 0)
+}
+
+function buildActualTrendSvg(monthly = []) {
+  const rows = Array.isArray(monthly) ? monthly.slice(0, 12) : []
+
+  if (!rows.length) {
+    return '<div class="trend-empty">No monthly actual case data available.</div>'
+  }
+
+  const width = 720
+  const height = 230
+  const padLeft = 48
+  const padRight = 18
+  const padTop = 18
+  const padBottom = 38
+  const plotWidth = width - padLeft - padRight
+  const plotHeight = height - padTop - padBottom
+  const maxCases = Math.max(1, ...rows.map((row) => Number(row?.cases || 0)))
+  const xStep = rows.length > 1 ? plotWidth / (rows.length - 1) : 0
+  const points = rows.map((row, index) => {
+    const cases = Number(row?.cases || 0)
+    const x = padLeft + index * xStep
+    const y = padTop + plotHeight - (cases / maxCases) * plotHeight
+    return { x, y, cases, label: row?.month_short || row?.month_label || `M${index + 1}` }
+  })
+
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const y = padTop + plotHeight - ratio * plotHeight
+    const value = Math.round(maxCases * ratio)
+    return `
+      <line x1="${padLeft}" y1="${y.toFixed(1)}" x2="${width - padRight}" y2="${y.toFixed(1)}" stroke="#dbe4ee" stroke-width="1" />
+      <text x="${padLeft - 8}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="#64748b">${value}</text>
+    `
+  }).join('')
+
+  const labels = points.map((point) => `
+    <text x="${point.x.toFixed(1)}" y="${height - 12}" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(point.label)}</text>
+  `).join('')
+
+  const dots = points.map((point) => `
+    <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="#255f8f" stroke="#ffffff" stroke-width="2" />
+  `).join('')
+
+  return `
+    <div class="trend-chart-card">
+      <div class="trend-chart-heading">Jan-Dec actual dengue trend</div>
+      <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly actual dengue case trend">
+        ${gridLines}
+        <polyline points="${points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ')}" fill="none" stroke="#255f8f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+        ${dots}
+        ${labels}
+      </svg>
+    </div>
+  `
+}
+
+const FIELD_OBSERVATION_LABELS = {
+  standing_water: 'Standing water observed',
+  uncovered_water_containers: 'Uncovered water containers',
+  possible_breeding_sites: 'Possible mosquito breeding sites',
+  flood_prone_area: 'Flood-prone area',
+  low_lying_area: 'Low-lying area',
+  waste_accumulation: 'Waste accumulation',
+  clogged_drainage: 'Clogged drainage',
+}
+
+function getFieldMonitoringSummary(fieldUpdateResult = null) {
+  const allRows = Array.isArray(fieldUpdateResult?.field_updates) ? fieldUpdateResult.field_updates : []
+  const rows = allRows.filter((item) => item?.status && item.status !== 'Draft')
+  const observationCounts = new Map()
+
+  rows.forEach((item) => {
+    Object.entries(item?.environmental_observations || {}).forEach(([key, observed]) => {
+      if (!observed) return
+      const label = FIELD_OBSERVATION_LABELS[key] || toTitleCase(key)
+      observationCounts.set(label, Number(observationCounts.get(label) || 0) + 1)
+    })
+  })
+
+  const commonObservations = Array.from(observationCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 5)
+
+  const latestDate = rows
+    .map((item) => item.reporting_date || item.submitted_at || item.updated_at || '')
+    .filter(Boolean)
+    .sort()
+    .at(-1) || ''
+
+  return {
+    available: Boolean(fieldUpdateResult),
+    total: rows.length,
+    awaitingReview: rows.filter((item) => item.status === 'Submitted').length,
+    reviewed: rows.filter((item) => item.status === 'Reviewed').length,
+    followUpRequired: rows.filter((item) => item.status === 'Follow-up Required').length,
+    urgent: rows.filter((item) => item.is_urgent || item.risk_level === 'High').length,
+    suppliesNeeded: rows.filter((item) => item.supplies_needed).length,
+    assistanceNeeded: rows.filter((item) => item.assistance_needed).length,
+    latestDate,
+    commonObservations,
+  }
+}
+
 function getActiveModelPayload(backendForecastResult = null, latestModelMetrics = null) {
-  const trainingSummary =
-    backendForecastResult?.training_summary ||
-    latestModelMetrics?.training_summary ||
+  const trainingSummary = firstMeaningfulValue(
+    backendForecastResult?.training_summary,
+    latestModelMetrics?.training_summary,
+    latestModelMetrics?.metrics?.training_summary,
     {}
+  ) || {}
 
-  const modelMetrics =
-    backendForecastResult?.model_metrics ||
-    latestModelMetrics?.metrics ||
+  const modelMetrics = firstMeaningfulValue(
+    backendForecastResult?.model_metrics,
+    backendForecastResult?.metrics,
+    latestModelMetrics?.metrics,
+    latestModelMetrics?.model_metrics,
     {}
+  ) || {}
 
-  const modelComparison = Array.isArray(backendForecastResult?.model_comparison)
-    ? backendForecastResult.model_comparison
-    : Array.isArray(latestModelMetrics?.model_comparison)
-      ? latestModelMetrics.model_comparison
-      : []
-
-  const selectionConfidence =
-    backendForecastResult?.selection_confidence ||
-    latestModelMetrics?.selection_confidence ||
-    trainingSummary?.selection_confidence ||
-    modelMetrics?.selection_confidence ||
-    null
-
-  const selectionExplanation =
-    backendForecastResult?.selection_explanation ||
-    latestModelMetrics?.selection_explanation ||
-    trainingSummary?.selection_explanation ||
-    modelMetrics?.selection_explanation ||
-    ''
-
-  const featureImportance =
-    backendForecastResult?.feature_importance ||
-    latestModelMetrics?.feature_importance ||
-    modelMetrics?.feature_importance ||
+  const modelComparison = firstMeaningfulValue(
+    backendForecastResult?.model_comparison,
+    backendForecastResult?.modelComparison,
+    latestModelMetrics?.model_comparison,
+    latestModelMetrics?.modelComparison,
     []
+  ) || []
 
-  const selectedModel =
-    backendForecastResult?.model_display_name ||
-    modelMetrics?.model_name ||
-    latestModelMetrics?.best_model_name ||
-    trainingSummary?.selected_model_name ||
-    backendForecastResult?.best_model_name ||
-    backendForecastResult?.model_name ||
-    backendForecastResult?.forecast_run?.model_name ||
-    backendForecastResult?.forecastRun?.model_name ||
+  const selectionConfidence = firstMeaningfulValue(
+    backendForecastResult?.selection_confidence,
+    backendForecastResult?.selectionConfidence,
+    latestModelMetrics?.selection_confidence,
+    latestModelMetrics?.selectionConfidence,
+    trainingSummary?.selection_confidence,
+    modelMetrics?.selection_confidence,
+    null
+  )
+
+  const selectionExplanation = firstMeaningfulValue(
+    backendForecastResult?.selection_explanation,
+    backendForecastResult?.selectionExplanation,
+    latestModelMetrics?.selection_explanation,
+    latestModelMetrics?.selectionExplanation,
+    trainingSummary?.selection_explanation,
+    modelMetrics?.selection_explanation,
     ''
+  )
 
-  const selectedModelKey =
-    modelMetrics?.model_key ||
-    latestModelMetrics?.best_model_key ||
-    backendForecastResult?.best_model_key ||
-    backendForecastResult?.model_key ||
-    backendForecastResult?.model_name ||
-    selectedModel ||
+  const featureImportance = firstMeaningfulValue(
+    backendForecastResult?.feature_importance,
+    backendForecastResult?.featureImportance,
+    latestModelMetrics?.feature_importance,
+    latestModelMetrics?.featureImportance,
+    modelMetrics?.feature_importance,
+    []
+  ) || []
+
+  const selectedModel = firstMeaningfulValue(
+    backendForecastResult?.model_display_name,
+    modelMetrics?.model_name,
+    latestModelMetrics?.best_model_name,
+    trainingSummary?.selected_model_name,
+    backendForecastResult?.best_model_name,
+    backendForecastResult?.model_name,
+    backendForecastResult?.forecast_run?.model_name,
+    backendForecastResult?.forecastRun?.model_name,
     ''
+  ) || ''
 
-  const modelVersion =
-    modelMetrics?.model_version ||
-    backendForecastResult?.model_version ||
-    backendForecastResult?.forecast_run?.model_version ||
-    backendForecastResult?.forecastRun?.model_version ||
-    latestModelMetrics?.model_version ||
+  const selectedModelKey = firstMeaningfulValue(
+    modelMetrics?.model_key,
+    latestModelMetrics?.best_model_key,
+    backendForecastResult?.best_model_key,
+    backendForecastResult?.model_key,
+    backendForecastResult?.model_name,
+    selectedModel,
+    ''
+  ) || ''
+
+  const modelVersion = firstMeaningfulValue(
+    modelMetrics?.model_version,
+    backendForecastResult?.model_version,
+    backendForecastResult?.forecast_run?.model_version,
+    backendForecastResult?.forecastRun?.model_version,
+    latestModelMetrics?.model_version,
     'v1'
+  ) || 'v1'
 
   const hasMachineLearningMetadata = Boolean(
     selectedModel ||
@@ -1498,10 +1784,10 @@ function getActiveModelPayload(backendForecastResult = null, latestModelMetrics 
   return {
     trainingSummary,
     modelMetrics,
-    modelComparison,
+    modelComparison: Array.isArray(modelComparison) ? modelComparison : [],
     selectionConfidence,
     selectionExplanation,
-    featureImportance,
+    featureImportance: Array.isArray(featureImportance) ? featureImportance : [],
     selectedModel,
     selectedModelKey,
     modelVersion,
@@ -1521,6 +1807,7 @@ function getModelMetricsSummaryForReport(modelMetrics = {}) {
   const metrics = [
     ['RMSE', modelMetrics?.rmse],
     ['MAE', modelMetrics?.mae],
+    ['R²', modelMetrics?.r2],
     ['Risk-class accuracy', modelMetrics?.accuracy, '%'],
     ['Risk-class precision', modelMetrics?.precision, '%'],
     ['Risk-class recall', modelMetrics?.recall, '%'],
@@ -1646,12 +1933,12 @@ function getOfficialReportMetadata({
     selectedModel: selectedModel ? formatModelNameForReport(selectedModel) : 'Not recorded',
     trainTestSplit: trainingSummary?.train_test_split || backendForecastResult?.train_test_split || latestModelMetrics?.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard',
     randomState: trainingSummary?.random_state ?? backendForecastResult?.random_state ?? latestModelMetrics?.random_state ?? '42',
-    modelsEvaluated: trainingSummary?.models_evaluated || modelComparison.length || latestModelMetrics?.models_evaluated || 'Not recorded',
+    modelsEvaluated: Number(trainingSummary?.models_evaluated || latestModelMetrics?.models_evaluated || modelComparison.length || 0) || 'Not recorded',
     aiConfidence: selectionConfidence?.score ? `${selectionConfidence.score}/100 · ${selectionConfidence.label || 'Selection strength'} · heuristic model-selection score, not forecast probability` : 'Not available yet',
     featureImportanceSummary: getFeatureImportanceSummaryForReport(backendForecastResult, latestModelMetrics),
     selectedModelMetrics: getModelMetricsSummaryForReport(modelMetrics),
     modelComparisonSummary: getModelComparisonSummaryForReport(modelComparison),
-    selectionExplanation: selectionExplanation || 'Not recorded',
+    selectionExplanation: formatSelectionExplanationForReport(selectionExplanation),
     riskThresholds: formatThresholds(
       backendForecastResult?.risk_thresholds || backendForecastResult?.riskThresholds
     ),
@@ -2287,7 +2574,7 @@ function buildPrintableRationaleList(rationale = []) {
     .join('')
 }
 
-function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
+function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -2301,6 +2588,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
     generatedAt,
     sortedRiskRows,
   })
+  const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
 
   const metadataHtml = getOfficialMetadataRows(officialMetadata)
     .map(([label, value]) => `
@@ -2354,6 +2642,45 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
       `
     })
     .join('')
+
+  const forecastRowsHtml = sortedRiskRows
+    .map((row, index) => {
+      const periods = getForecastPeriodDetails(row)
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(row.barangay)}</td>
+          <td>${formatNumber(periods[0]?.predictedCases || 0)}</td>
+          <td>${formatNumber(periods[1]?.predictedCases || 0)}</td>
+          <td>${formatNumber(periods[2]?.predictedCases || 0)}</td>
+          <td>${formatNumber(periods[3]?.predictedCases || 0)}</td>
+          <td>${formatNumber(row.forecast || 0)}</td>
+          <td>${escapeHtml(row.risk || 'Unknown')}</td>
+        </tr>
+      `
+    })
+    .join('')
+
+  const actualMonthlyHtml = actualSurveillance.monthly
+    .map((row) => `
+      <tr>
+        <td>${escapeHtml(row.month_label || row.month_short || '')}</td>
+        <td>${formatNumber(row.cases || 0)}</td>
+      </tr>
+    `)
+    .join('')
+
+  const actualTrendHtml = buildActualTrendSvg(actualSurveillance.monthly)
+
+  const classification = actualSurveillance.classification
+  const classificationHtml = classification
+    ? `
+      <tr><td>Confirmed</td><td>${escapeHtml(formatCaseClassificationValue(classification, 'confirmed_cases', 'confirmed_available'))}</td></tr>
+      <tr><td>Probable</td><td>${escapeHtml(formatCaseClassificationValue(classification, 'probable_cases', 'probable_available'))}</td></tr>
+      <tr><td>Suspected</td><td>${escapeHtml(formatCaseClassificationValue(classification, 'suspected_cases', 'suspected_available'))}</td></tr>
+      <tr><td>Total reported</td><td>${classification.reported_total === null || classification.reported_total === undefined ? 'N/A' : formatNumber(classification.reported_total)}</td></tr>
+    `
+    : '<tr><td colspan="2">Case classification is not available for this report period.</td></tr>'
 
   const priorityHtml = priorityDistribution
     .map(
@@ -2447,6 +2774,36 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
             background: #eef6ff;
           }
 
+          .trend-chart-card {
+            margin: 18px 0 20px;
+            border: 1px solid #dbe4ee;
+            border-radius: 14px;
+            padding: 12px 14px 8px;
+            background: #f8fafc;
+            break-inside: avoid;
+          }
+
+          .trend-chart-heading {
+            font-size: 13px;
+            font-weight: 700;
+            color: #1e4e75;
+            margin-bottom: 6px;
+          }
+
+          .trend-chart {
+            width: 100%;
+            height: auto;
+            display: block;
+          }
+
+          .trend-empty {
+            padding: 16px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            color: #64748b;
+            background: #f8fafc;
+          }
+
           .note {
             margin-top: 20px;
             border: 1px solid #fde68a;
@@ -2509,6 +2866,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
         </button>
 
         <h1>${escapeHtml(title)}</h1>
+        <p class="muted">${escapeHtml(REPORT_SYSTEM_NAME)}</p>
         <p class="muted">Generated: ${escapeHtml(generatedAt)}</p>
         <p class="muted">Report data: ${escapeHtml(dataSourceLabel)}</p>
 
@@ -2527,7 +2885,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
 
         <div class="cards">
           <div class="card">
-            <small>Barangay-Matched Cases</small>
+            <small>Historical Cases Used in Analysis</small>
             <strong>${formatNumber(dashboardStats.totalCases)}</strong>
           </div>
 
@@ -2546,6 +2904,46 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
             <strong>${escapeHtml(dashboardStats.dataQuality)}%</strong>
           </div>
         </div>
+
+        <h2>Actual Dengue Surveillance</h2>
+        <p class="muted">Recorded citywide dengue situation for ${escapeHtml(actualSurveillance.scopeLabel)}. Forecast values are shown separately.</p>
+        <div class="cards">
+          <div class="card"><small>Actual cases</small><strong>${formatNumber(actualSurveillance.totalCases)}</strong></div>
+          <div class="card"><small>Highest month</small><strong>${escapeHtml(actualSurveillance.highestMonth?.month_label || 'No data')}</strong></div>
+          <div class="card"><small>Lowest month</small><strong>${escapeHtml(actualSurveillance.lowestMonth?.month_label || 'No data')}</strong></div>
+          <div class="card"><small>Current movement</small><strong>${escapeHtml(actualSurveillance.trendDirection)}</strong></div>
+        </div>
+        <p><strong>Usual peak month:</strong> ${escapeHtml(actualSurveillance.usualPeakMonth)}</p>
+        ${actualTrendHtml}
+        <p><strong>Simple interpretation:</strong> ${escapeHtml(actualSurveillance.interpretation)}</p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+          <div>
+            <h3>Monthly Actual Cases</h3>
+            <table>
+              <thead><tr><th>Month</th><th>Actual Cases</th></tr></thead>
+              <tbody>${actualMonthlyHtml || '<tr><td colspan="2">No monthly actual case data available.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div>
+            <h3>Actual Case Classification</h3>
+            <table>
+              <thead><tr><th>Classification</th><th>Recorded Cases</th></tr></thead>
+              <tbody>${classificationHtml}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <h2>Field Monitoring Summary</h2>
+        <p class="muted">Summary of submitted BHW field monitoring records. Detailed individual field reports remain available separately.</p>
+        <div class="cards">
+          <div class="card"><small>Total Field Reports</small><strong>${formatNumber(fieldMonitoringSummary?.total || 0)}</strong></div>
+          <div class="card"><small>Awaiting Review</small><strong>${formatNumber(fieldMonitoringSummary?.awaitingReview || 0)}</strong></div>
+          <div class="card"><small>Follow-up Required</small><strong>${formatNumber(fieldMonitoringSummary?.followUpRequired || 0)}</strong></div>
+          <div class="card"><small>Urgent Reports</small><strong>${formatNumber(fieldMonitoringSummary?.urgent || 0)}</strong></div>
+        </div>
+        <p><strong>Common observations:</strong> ${escapeHtml((fieldMonitoringSummary?.commonObservations || []).map((item) => `${item.label} (${item.count})`).join(', ') || 'No submitted environmental observations available.')}</p>
+        <p><strong>Supplies needed:</strong> ${formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)} &nbsp; <strong>Assistance needed:</strong> ${formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)}</p>
 
         <h2>Risk Distribution</h2>
         <p>High risk barangays: ${formatNumber(highRiskCount)}</p>
@@ -2599,6 +2997,17 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           <tbody>
             ${rowsHtml || '<tr><td colspan="14">No barangay response planning data available.</td></tr>'}
           </tbody>
+        </table>
+
+        <h2>Four-Period Forecast Detail</h2>
+        <p class="muted">Each future period is forecast separately. The four values are summed for cumulative forecast case-risk classification.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th><th>Barangay</th><th>Period 1</th><th>Period 2</th><th>Period 3</th><th>Period 4</th><th>4-Period Total</th><th>Risk</th>
+            </tr>
+          </thead>
+          <tbody>${forecastRowsHtml || '<tr><td colspan="8">No forecast detail available.</td></tr>'}</tbody>
         </table>
 
         <div class="decision">
@@ -2672,7 +3081,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
   reportWindow.document.close()
 }
 
-function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
+function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -2686,6 +3095,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     generatedAt,
     sortedRiskRows,
   })
+  const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -2705,13 +3115,13 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   doc.text(`Generated: ${generatedAt}`, margin, 62)
 
   doc.setFontSize(11)
-  doc.text('Barangay-Level Dengue Outbreak Prevention System', margin, 84)
+  doc.text(REPORT_SYSTEM_NAME, margin, 84)
 
   autoTable(doc, {
     startY: 106,
     head: [['Metric', 'Value']],
     body: [
-      ['Total recorded cases', formatNumber(dashboardStats.totalCases)],
+      ['Historical cases used in analysis', formatNumber(dashboardStats.totalCases)],
       ['Urgent alerts', formatNumber(decisionCounts.urgent)],
       ['High-risk barangays', formatNumber(highRiskCount)],
       ['Moderate-risk barangays', formatNumber(moderateRiskCount)],
@@ -2766,6 +3176,169 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       left: margin,
       right: margin,
     },
+  })
+
+  doc.addPage()
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text('Actual Dengue Surveillance', margin, 42)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.text(
+    `Recorded citywide dengue situation for ${actualSurveillance.scopeLabel}. Forecast values are shown separately.`,
+    margin,
+    60
+  )
+
+  autoTable(doc, {
+    startY: 74,
+    head: [['Indicator', 'Recorded value']],
+    body: [
+      ['Actual recorded cases', formatNumber(actualSurveillance.totalCases)],
+      ['Highest month', actualSurveillance.highestMonth ? `${actualSurveillance.highestMonth.month_label} · ${formatNumber(actualSurveillance.highestMonth.cases)} cases` : 'No data'],
+      ['Lowest month', actualSurveillance.lowestMonth ? `${actualSurveillance.lowestMonth.month_label} · ${formatNumber(actualSurveillance.lowestMonth.cases)} cases` : 'No data'],
+      ['Current movement', `${actualSurveillance.trendDirection} · ${actualSurveillance.changeLabel}`],
+      ['Usual peak month', actualSurveillance.usualPeakMonth === 'Not available' ? 'Not available' : `${actualSurveillance.usualPeakMonth}${actualSurveillance.usualPeakAverage > 0 ? ` · historical average ${actualSurveillance.usualPeakAverage.toFixed(1)} cases` : ''}`],
+    ],
+    theme: 'grid',
+    styles: { fontSize: 8.5, cellPadding: 5 },
+    headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+    columnStyles: { 0: { cellWidth: 180 }, 1: { cellWidth: 590 } },
+    margin: { left: margin, right: margin },
+  })
+
+  const trendRows = actualSurveillance.monthly.slice(0, 12)
+  const trendTop = doc.lastAutoTable.finalY + 18
+  const chartX = margin
+  const chartY = trendTop + 20
+  const chartWidth = 500
+  const chartHeight = 150
+  const chartPadLeft = 34
+  const chartPadRight = 12
+  const chartPadTop = 12
+  const chartPadBottom = 24
+  const plotWidth = chartWidth - chartPadLeft - chartPadRight
+  const plotHeight = chartHeight - chartPadTop - chartPadBottom
+  const maxCases = Math.max(1, ...trendRows.map((row) => Number(row?.cases || 0)))
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(30, 78, 117)
+  doc.text('Jan-Dec actual dengue trend', chartX, trendTop + 8)
+  doc.setDrawColor(219, 228, 238)
+  doc.setFillColor(248, 250, 252)
+  doc.roundedRect(chartX, chartY, chartWidth, chartHeight, 6, 6, 'FD')
+
+  if (trendRows.length) {
+    const xStep = trendRows.length > 1 ? plotWidth / (trendRows.length - 1) : 0
+    const points = trendRows.map((row, index) => {
+      const cases = Number(row?.cases || 0)
+      return {
+        x: chartX + chartPadLeft + index * xStep,
+        y: chartY + chartPadTop + plotHeight - (cases / maxCases) * plotHeight,
+        label: row?.month_short || row?.month_label || `M${index + 1}`,
+      }
+    })
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    ;[0, 0.25, 0.5, 0.75, 1].forEach((ratio) => {
+      const y = chartY + chartPadTop + plotHeight - ratio * plotHeight
+      doc.setDrawColor(219, 228, 238)
+      doc.line(chartX + chartPadLeft, y, chartX + chartWidth - chartPadRight, y)
+      doc.text(String(Math.round(maxCases * ratio)), chartX + chartPadLeft - 6, y + 2, { align: 'right' })
+    })
+
+    doc.setDrawColor(37, 95, 143)
+    doc.setLineWidth(2)
+    for (let index = 1; index < points.length; index += 1) {
+      doc.line(points[index - 1].x, points[index - 1].y, points[index].x, points[index].y)
+    }
+
+    points.forEach((point) => {
+      doc.setFillColor(37, 95, 143)
+      doc.circle(point.x, point.y, 2.6, 'F')
+      doc.setTextColor(100, 116, 139)
+      doc.text(String(point.label).slice(0, 3), point.x, chartY + chartHeight - 7, { align: 'center' })
+    })
+  } else {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(100, 116, 139)
+    doc.text('No monthly actual case data available.', chartX + 18, chartY + 34)
+  }
+
+  const classification = actualSurveillance.classification
+  let classificationBottom = chartY + chartHeight
+  autoTable(doc, {
+    startY: chartY,
+    head: [['Actual Case Classification', 'Recorded Cases']],
+    body: classification
+      ? [
+          ['Confirmed', formatCaseClassificationValue(classification, 'confirmed_cases', 'confirmed_available')],
+          ['Probable', formatCaseClassificationValue(classification, 'probable_cases', 'probable_available')],
+          ['Suspected', formatCaseClassificationValue(classification, 'suspected_cases', 'suspected_available')],
+          ['Total reported', classification.reported_total === null || classification.reported_total === undefined ? 'N/A' : formatNumber(classification.reported_total)],
+        ]
+      : [['Case classification', 'Not available']],
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 5 },
+    headStyles: { fillColor: [180, 83, 9], textColor: [255, 255, 255] },
+    columnStyles: { 0: { cellWidth: 160 }, 1: { cellWidth: 95 } },
+    margin: { left: 548, right: margin },
+  })
+  classificationBottom = doc.lastAutoTable?.finalY || classificationBottom
+
+  const interpretationY = Math.max(chartY + chartHeight, classificationBottom) + 20
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(23, 32, 51)
+  doc.text('Simple Interpretation', margin, interpretationY)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.text(doc.splitTextToSize(actualSurveillance.interpretation, pageWidth - margin * 2), margin, interpretationY + 14)
+
+  doc.addPage()
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text('Field Monitoring Summary', margin, 42)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.text('Summary of BHW field monitoring submissions. Individual detailed field reports remain separate.', margin, 60)
+
+  autoTable(doc, {
+    startY: 76,
+    head: [['Field monitoring indicator', 'Count']],
+    body: [
+      ['Total field reports', formatNumber(fieldMonitoringSummary?.total || 0)],
+      ['Awaiting review', formatNumber(fieldMonitoringSummary?.awaitingReview || 0)],
+      ['Reviewed', formatNumber(fieldMonitoringSummary?.reviewed || 0)],
+      ['Follow-up required', formatNumber(fieldMonitoringSummary?.followUpRequired || 0)],
+      ['Urgent reports', formatNumber(fieldMonitoringSummary?.urgent || 0)],
+      ['Reports needing supplies', formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)],
+      ['Reports needing assistance', formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)],
+    ],
+    theme: 'grid',
+    styles: { fontSize: 8.5, cellPadding: 5 },
+    headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+    columnStyles: { 0: { cellWidth: 260 }, 1: { cellWidth: 120 } },
+    margin: { left: margin, right: margin },
+  })
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 18,
+    head: [['Common observed environmental factors', 'Reports']],
+    body: fieldMonitoringSummary?.commonObservations?.length
+      ? fieldMonitoringSummary.commonObservations.map((item) => [item.label, formatNumber(item.count)])
+      : [['No submitted environmental observations available', '-']],
+    theme: 'grid',
+    styles: { fontSize: 8.5, cellPadding: 5 },
+    headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+    columnStyles: { 0: { cellWidth: 360 }, 1: { cellWidth: 120 } },
+    margin: { left: margin, right: margin },
   })
 
   doc.addPage()
@@ -2833,6 +3406,49 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       left: margin,
       right: margin,
     },
+  })
+
+  doc.addPage()
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text('Four-Period Forecast Detail', margin, 42)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.text('Each period is forecast separately. The four values are summed for the cumulative case-risk classification.', margin, 60)
+
+  autoTable(doc, {
+    startY: 74,
+    head: [['Rank', 'Barangay', 'Period 1', 'Period 2', 'Period 3', 'Period 4', '4-Period Total', 'Risk']],
+    body: sortedRiskRows.length
+      ? sortedRiskRows.map((row, index) => {
+          const periods = getForecastPeriodDetails(row)
+          return [
+            index + 1,
+            row.barangay,
+            formatNumber(periods[0]?.predictedCases || 0),
+            formatNumber(periods[1]?.predictedCases || 0),
+            formatNumber(periods[2]?.predictedCases || 0),
+            formatNumber(periods[3]?.predictedCases || 0),
+            formatNumber(row.forecast || 0),
+            row.risk || 'Unknown',
+          ]
+        })
+      : [['-', 'No forecast data available', '-', '-', '-', '-', '-', '-']],
+    theme: 'grid',
+    styles: { fontSize: 7.5, cellPadding: 4 },
+    headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255] },
+    columnStyles: {
+      0: { cellWidth: 38 },
+      1: { cellWidth: 170 },
+      2: { cellWidth: 82 },
+      3: { cellWidth: 82 },
+      4: { cellWidth: 82 },
+      5: { cellWidth: 82 },
+      6: { cellWidth: 100 },
+      7: { cellWidth: 85 },
+    },
+    margin: { left: margin, right: margin },
   })
 
   doc.addPage()
@@ -3077,7 +3693,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   doc.save(`${REPORT_EXPORT_BASENAME}.pdf`)
 }
 
-function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
+function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -3091,11 +3707,13 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     generatedAt,
     sortedRiskRows,
   })
+  const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
 
   const workbook = XLSX.utils.book_new()
 
   const summarySheet = XLSX.utils.aoa_to_sheet([
     [REPORT_TITLE],
+    ['System', REPORT_SYSTEM_NAME],
     ['Generated', generatedAt],
     ['Report ID', officialMetadata.reportId],
     ['Generated by', officialMetadata.generatedBy],
@@ -3114,10 +3732,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Forecast period/window', officialMetadata.forecastWindow],
     [],
     ['Metric', 'Value'],
-    ['Barangay-matched cases used', Number(dashboardStats.totalCases || 0)],
+    ['Historical cases used in analysis', Number(dashboardStats.totalCases || 0)],
     ['Urgent alerts', decisionCounts.urgent],
     ['Preventive priority barangays', decisionCounts.preventive],
-    ['Watch or monitoring barangays', decisionCounts.watch],
+    ['Early warning / watch barangays', decisionCounts.watch],
     ['Routine monitoring barangays', decisionCounts.routine],
     ['High-risk barangays', highRiskCount],
     ['Moderate-risk barangays', moderateRiskCount],
@@ -3146,6 +3764,62 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   summarySheet['!cols'] = [{ wch: 34 }, { wch: 110 }]
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary')
+
+  const classification = actualSurveillance.classification
+  const actualSurveillanceSheet = XLSX.utils.aoa_to_sheet([
+    ['Actual Dengue Surveillance'],
+    ['Scope', actualSurveillance.scopeLabel],
+    ['Actual recorded cases', actualSurveillance.totalCases],
+    ['Highest month', actualSurveillance.highestMonth?.month_label || 'No data'],
+    ['Highest month cases', actualSurveillance.highestMonth?.cases ?? 'N/A'],
+    ['Lowest month', actualSurveillance.lowestMonth?.month_label || 'No data'],
+    ['Lowest month cases', actualSurveillance.lowestMonth?.cases ?? 'N/A'],
+    ['Current movement', actualSurveillance.trendDirection],
+    ['Month-to-month change', actualSurveillance.changeLabel],
+    ['Usual peak month', actualSurveillance.usualPeakMonth],
+    ['Usual peak historical average', actualSurveillance.usualPeakAverage || 'N/A'],
+    ['Simple interpretation', actualSurveillance.interpretation],
+    [],
+    ['Actual Case Classification', 'Value'],
+    ['Confirmed', classification?.available && classification?.confirmed_available ? Number(classification.confirmed_cases || 0) : 'N/A'],
+    ['Probable', classification?.available && classification?.probable_available ? Number(classification.probable_cases || 0) : 'N/A'],
+    ['Suspected', classification?.available && classification?.suspected_available ? Number(classification.suspected_cases || 0) : 'N/A'],
+    ['Total reported', classification?.reported_total ?? 'N/A'],
+    ['Classification source note', classification?.source_note || 'Not available'],
+    [],
+    ['Month', 'Actual Recorded Cases', 'Visual Trend'],
+    ...(actualSurveillance.monthly.length
+      ? (() => {
+          const maxCases = Math.max(1, ...actualSurveillance.monthly.map((row) => Number(row?.cases || 0)))
+          return actualSurveillance.monthly.map((row) => {
+            const cases = Number(row?.cases || 0)
+            const barLength = cases > 0 ? Math.max(1, Math.round((cases / maxCases) * 28)) : 0
+            return [row.month_label || row.month_short, cases, '█'.repeat(barLength)]
+          })
+        })()
+      : [['No monthly recorded data', 'N/A', '']]),
+  ])
+  actualSurveillanceSheet['!cols'] = [{ wch: 34 }, { wch: 24 }, { wch: 36 }]
+  XLSX.utils.book_append_sheet(workbook, actualSurveillanceSheet, 'Actual Surveillance')
+
+  const fieldMonitoringSheet = XLSX.utils.aoa_to_sheet([
+    ['Field Monitoring Summary'],
+    ['Total field reports', Number(fieldMonitoringSummary?.total || 0)],
+    ['Awaiting review', Number(fieldMonitoringSummary?.awaitingReview || 0)],
+    ['Reviewed', Number(fieldMonitoringSummary?.reviewed || 0)],
+    ['Follow-up required', Number(fieldMonitoringSummary?.followUpRequired || 0)],
+    ['Urgent reports', Number(fieldMonitoringSummary?.urgent || 0)],
+    ['Reports needing supplies', Number(fieldMonitoringSummary?.suppliesNeeded || 0)],
+    ['Reports needing assistance', Number(fieldMonitoringSummary?.assistanceNeeded || 0)],
+    ['Latest reporting date', fieldMonitoringSummary?.latestDate || 'Not available'],
+    [],
+    ['Common observed environmental factor', 'Reports'],
+    ...((fieldMonitoringSummary?.commonObservations || []).length
+      ? fieldMonitoringSummary.commonObservations.map((item) => [item.label, Number(item.count || 0)])
+      : [['No submitted environmental observations available', 'N/A']]),
+  ])
+  fieldMonitoringSheet['!cols'] = [{ wch: 52 }, { wch: 22 }]
+  XLSX.utils.book_append_sheet(workbook, fieldMonitoringSheet, 'Field Monitoring')
 
   const metadataSheet = XLSX.utils.aoa_to_sheet([
     ['Official Report Metadata', 'Details'],
@@ -3196,6 +3870,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       'Combined Risk Score',
       'Decision Score',
       'Forecast Cases',
+      'Period 1 Forecast',
+      'Period 2 Forecast',
+      'Period 3 Forecast',
+      'Period 4 Forecast',
       'Historical Total Cases',
       'Next-Period Forecast',
       'Previous Cases',
@@ -3225,6 +3903,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
         Number(profile.score || 0),
         Number(decision.score || 0),
         Number(row.forecast || 0),
+        ...getForecastPeriodDetails(row).map((item) => Number(item.predictedCases || 0)),
         Number(row.totalCases || 0),
         Number(row.currentCases || 0),
         Number(row.previousCases || 0),
@@ -3253,6 +3932,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 22 },
     { wch: 16 },
     { wch: 18 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 16 },
     { wch: 24 },
     { wch: 16 },
     { wch: 16 },
@@ -3483,7 +4166,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   XLSX.writeFile(workbook, `${REPORT_EXPORT_BASENAME}.xlsx`)
 }
 
-async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null }) {
+async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -3499,11 +4182,19 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     generatedAt,
     sortedRiskRows,
   })
+  const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
+  const pptMetadataRows = getOfficialMetadataRows(officialMetadata).filter(([label]) => ![
+    'Model selection strength',
+    'Top feature importance',
+    'Selected model metrics',
+    'Model ranking summary',
+    'Model selection explanation',
+  ].includes(label))
 
   const pptx = new pptxgen()
 
   pptx.layout = 'LAYOUT_WIDE'
-  pptx.author = 'Barangay-Level Dengue Outbreak Prevention System'
+  pptx.author = REPORT_SYSTEM_NAME
   pptx.subject = REPORT_TITLE
   pptx.title = REPORT_TITLE
   pptx.company = 'Caraga State University'
@@ -3684,7 +4375,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     charSpace: 1.5,
   })
 
-  titleSlide.addText('Four-Month Forecast Briefing', {
+  titleSlide.addText('Dengue Situation and Four-Month Response Briefing', {
     x: 0.8,
     y: 1.7,
     w: 11.2,
@@ -3696,7 +4387,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     fit: 'shrink',
   })
 
-  titleSlide.addText('Barangay-Level Dengue Outbreak Prevention System', {
+  titleSlide.addText(REPORT_SYSTEM_NAME, {
     x: 0.82,
     y: 2.72,
     w: 10.8,
@@ -3760,7 +4451,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   metadataSlide.addTable(
     [
       ['Field', 'Details'],
-      ...getOfficialMetadataRows(officialMetadata),
+      ...pptMetadataRows,
     ],
     {
       x: 0.65,
@@ -3775,6 +4466,73 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     }
   )
 
+  const actualSlide = pptx.addSlide()
+  addSlideTitle(
+    actualSlide,
+    'Actual Dengue Situation',
+    `Recorded citywide dengue cases for ${actualSurveillance.scopeLabel}. Forecast values are presented separately.`
+  )
+
+  addMetricCard(actualSlide, 'Actual cases', formatNumber(actualSurveillance.totalCases), 0.72, 1.42, COLORS.lightBlue, COLORS.blue)
+  addMetricCard(actualSlide, 'Highest month', actualSurveillance.highestMonth?.month_label || 'No data', 3.55, 1.42, COLORS.yellow, COLORS.amber)
+  addMetricCard(actualSlide, 'Lowest month', actualSurveillance.lowestMonth?.month_label || 'No data', 6.38, 1.42, COLORS.emerald, COLORS.green)
+  addMetricCard(actualSlide, 'Current movement', actualSurveillance.trendDirection, 9.21, 1.42, COLORS.lightBlue, COLORS.blueDark)
+
+  const chartRows = actualSurveillance.monthly.slice(0, 12)
+  actualSlide.addText('Jan-Dec actual dengue trend', {
+    x: 0.72, y: 2.78, w: 6.25, h: 0.28, fontSize: 12, bold: true, color: COLORS.blueDark, margin: 0,
+  })
+
+  if (chartRows.length) {
+    actualSlide.addChart(
+      pptx.ChartType.line,
+      [{
+        name: 'Actual cases',
+        labels: chartRows.map((row) => row.month_short || row.month_label),
+        values: chartRows.map((row) => Number(row.cases || 0)),
+      }],
+      {
+        x: 0.72, y: 3.08, w: 6.25, h: 2.15,
+        showLegend: false,
+        showTitle: false,
+        showValue: false,
+        chartColors: [COLORS.blue],
+        catAxisLabelFontSize: 8,
+        valAxisLabelFontSize: 8,
+        showCatName: false,
+        showValAxisTitle: false,
+        showCatAxisTitle: false,
+        valGridLine: { color: COLORS.line, pt: 1 },
+      }
+    )
+  } else {
+    actualSlide.addText('No monthly actual case data available.', {
+      x: 0.72, y: 3.08, w: 6.25, h: 2.15, fontSize: 12, color: COLORS.slate, align: 'center', valign: 'mid',
+      fill: { color: COLORS.white }, line: { color: COLORS.line },
+    })
+  }
+
+  const classification = actualSurveillance.classification
+  actualSlide.addTable([
+    ['Actual Case Classification', 'Recorded Cases'],
+    ['Confirmed', classification?.available && classification?.confirmed_available ? formatNumber(classification.confirmed_cases) : 'N/A'],
+    ['Probable', classification?.available && classification?.probable_available ? formatNumber(classification.probable_cases) : 'N/A'],
+    ['Suspected', classification?.available && classification?.suspected_available ? formatNumber(classification.suspected_cases) : 'N/A'],
+    ['Total reported', classification?.reported_total === null || classification?.reported_total === undefined ? 'N/A' : formatNumber(classification.reported_total)],
+  ], {
+    x: 7.2, y: 3.0, w: 5.35, h: 1.85, fontSize: 9.5, color: COLORS.navy,
+    border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.06,
+  })
+
+  actualSlide.addText(`Usual peak month: ${actualSurveillance.usualPeakMonth}`, {
+    x: 7.2, y: 5.02, w: 5.35, h: 0.35, fontSize: 11, bold: true, color: COLORS.amber,
+    margin: 0.08, fill: { color: COLORS.yellow }, line: { color: 'FDE68A' }, fit: 'shrink',
+  })
+  actualSlide.addText(actualSurveillance.interpretation, {
+    x: 0.72, y: 5.72, w: 11.83, h: 0.86, fontSize: 10.5, color: COLORS.navy,
+    margin: 0.12, fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+  })
+
   const summarySlide = pptx.addSlide()
   addSlideTitle(
     summarySlide,
@@ -3784,7 +4542,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   addMetricCard(
     summarySlide,
-    'Barangay-matched cases',
+    'Historical cases used in analysis',
     formatNumber(dashboardStats.totalCases),
     0.7,
     1.45,
@@ -4006,6 +4764,47 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     })
   })
 
+  const forecastSlide = pptx.addSlide()
+  addSlideTitle(
+    forecastSlide,
+    'Four-Month Forecast Outlook',
+    'Period 1 through Period 4 are generated separately; the total is used for forecast case-risk classification.'
+  )
+
+  forecastSlide.addTable(
+    [
+      ['Barangay', 'Period 1', 'Period 2', 'Period 3', 'Period 4', '4-Period Total', 'Risk'],
+      ...(topBarangays.length
+        ? topBarangays.map((row) => {
+            const periods = getForecastPeriodDetails(row)
+            return [
+              row.barangay,
+              formatNumber(periods[0]?.predictedCases || 0),
+              formatNumber(periods[1]?.predictedCases || 0),
+              formatNumber(periods[2]?.predictedCases || 0),
+              formatNumber(periods[3]?.predictedCases || 0),
+              formatNumber(row.forecast || 0),
+              row.risk || 'Unknown',
+            ]
+          })
+        : [['No forecast data', '-', '-', '-', '-', '-', '-']]),
+    ],
+    {
+      x: 0.72, y: 1.55, w: 11.85, h: 3.2, fontSize: 10.5, color: COLORS.navy,
+      border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.08,
+    }
+  )
+
+  forecastSlide.addText(
+    topBarangay
+      ? `${topBarangay.barangay} has ${formatNumber(topBarangay.forecast || 0)} projected cases across the four forecast periods. This forecast is decision-support information and should be reviewed together with actual case trends and field observations.`
+      : 'Forecast details will appear after the forecasting workflow is ready.',
+    {
+      x: 0.72, y: 5.15, w: 11.85, h: 0.9, fontSize: 12, bold: true, color: COLORS.navy,
+      margin: 0.14, fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+    }
+  )
+
   const factorSlide = pptx.addSlide()
   addSlideTitle(
     factorSlide,
@@ -4118,6 +4917,72 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
       line: { color: COLORS.line },
       fit: 'shrink',
     })
+  })
+
+  const fieldSlide = pptx.addSlide()
+  addSlideTitle(
+    fieldSlide,
+    'Field Monitoring Summary',
+    'BHW submissions are summarized here; detailed individual field reports remain separate.'
+  )
+
+  addMetricCard(fieldSlide, 'Total field reports', formatNumber(fieldMonitoringSummary?.total || 0), 0.72, 1.45, COLORS.lightBlue, COLORS.blue)
+  addMetricCard(fieldSlide, 'Awaiting review', formatNumber(fieldMonitoringSummary?.awaitingReview || 0), 3.55, 1.45, COLORS.yellow, COLORS.amber)
+  addMetricCard(fieldSlide, 'Follow-up required', formatNumber(fieldMonitoringSummary?.followUpRequired || 0), 6.38, 1.45, COLORS.yellow, COLORS.amber)
+  addMetricCard(fieldSlide, 'Urgent reports', formatNumber(fieldMonitoringSummary?.urgent || 0), 9.21, 1.45, COLORS.rose, COLORS.red)
+
+  fieldSlide.addTable([
+    ['Common observed environmental factor', 'Reports'],
+    ...((fieldMonitoringSummary?.commonObservations || []).length
+      ? fieldMonitoringSummary.commonObservations.map((item) => [item.label, formatNumber(item.count)])
+      : [['No submitted environmental observations available', '-']]),
+  ], {
+    x: 0.72, y: 3.15, w: 7.2, h: 2.35, fontSize: 10, color: COLORS.navy,
+    border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.07,
+  })
+
+  fieldSlide.addTable([
+    ['Operational need', 'Reports'],
+    ['Supplies needed', formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)],
+    ['Assistance needed', formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)],
+    ['Reviewed', formatNumber(fieldMonitoringSummary?.reviewed || 0)],
+  ], {
+    x: 8.15, y: 3.15, w: 4.4, h: 1.8, fontSize: 10, color: COLORS.navy,
+    border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.07,
+  })
+
+  const technicalSlide = pptx.addSlide()
+  addSlideTitle(
+    technicalSlide,
+    'Technical Model Review',
+    'Model evaluation details are kept separate from the health-worker response summary.'
+  )
+
+  technicalSlide.addTable([
+    ['Technical field', 'Current model information'],
+    ['Selected model', officialMetadata.selectedModel || 'Not recorded'],
+    ['Models evaluated', String(officialMetadata.modelsEvaluated || 'Not recorded')],
+    ['Model selection strength', officialMetadata.aiConfidence || 'Not available yet'],
+    ['Selected model metrics', officialMetadata.selectedModelMetrics || 'Not recorded'],
+    ['Top feature importance', officialMetadata.featureImportanceSummary || 'Not available yet'],
+  ], {
+    x: 0.72, y: 1.4, w: 11.85, h: 2.5, fontSize: 9.5, color: COLORS.navy,
+    border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.07,
+  })
+
+  technicalSlide.addText('Why this model was selected', {
+    x: 0.72, y: 4.18, w: 4.2, h: 0.3, fontSize: 15, bold: true, color: COLORS.navy, margin: 0,
+  })
+  technicalSlide.addText(officialMetadata.selectionExplanation || 'Not recorded', {
+    x: 0.72, y: 4.55, w: 11.85, h: 0.82, fontSize: 10.2, color: COLORS.navy,
+    margin: 0.12, fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+  })
+  technicalSlide.addText('Model ranking summary', {
+    x: 0.72, y: 5.62, w: 4.2, h: 0.3, fontSize: 15, bold: true, color: COLORS.navy, margin: 0,
+  })
+  technicalSlide.addText(officialMetadata.modelComparisonSummary || 'Not recorded', {
+    x: 0.72, y: 5.98, w: 11.85, h: 0.7, fontSize: 8.8, color: COLORS.slate,
+    margin: 0.1, fill: { color: COLORS.white }, line: { color: COLORS.line }, fit: 'shrink',
   })
 
   const sourceSlide = pptx.addSlide()
@@ -4430,7 +5295,7 @@ function DisclosureCard({
   const theme = getReportVisualTheme(tone)
 
   return (
-    <PremiumPanel id={id} tone={tone} className="p-4 sm:p-5">
+    <PremiumPanel id={id} tone={tone} className="reports-disclosure-card p-4 sm:p-5">
       <button
         type="button"
         onClick={onToggle}
@@ -4448,7 +5313,7 @@ function DisclosureCard({
                 {title}
               </h2>
               <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] ${theme.chip}`}>
-                {open ? 'Expanded' : 'Collapsed'}
+                {open ? 'Hide details' : 'View details'}
               </span>
             </div>
 
@@ -4614,6 +5479,7 @@ export default function ReportsPage() {
   const [isSupportingDetailsOpen, setIsSupportingDetailsOpen] = useState(false)
   const [isActivityOpen, setIsActivityOpen] = useState(false)
   const [isTopResponseDetailsOpen, setIsTopResponseDetailsOpen] = useState(false)
+  const [reportCityTrendAnalytics, setReportCityTrendAnalytics] = useState(null)
 
   const boundaryLoadRequestedRef = useRef(false)
 
@@ -4923,6 +5789,7 @@ export default function ReportsPage() {
 
   const selectedExport = exportFormats.find((item) => item.id === format) || exportFormats[0]
   const SelectedExportIcon = selectedExport.icon
+  const selectedExportTheme = exportSelectionThemes[selectedExport.id] || exportSelectionThemes.pdf
   const selectedOutputTone =
     format === 'pdf'
       ? 'rose'
@@ -5053,20 +5920,58 @@ export default function ReportsPage() {
     const title = REPORT_TITLE
     const exportedAt = getCurrentDateTime()
     const exportedAtIso = new Date().toISOString()
+
+    let exportModelMetrics = latestModelMetrics
+    try {
+      const refreshedMetrics = await loadLatestModelMetricsCached?.({ silent: true })
+      if (refreshedMetrics?.has_metrics || refreshedMetrics?.metrics) {
+        exportModelMetrics = refreshedMetrics
+      }
+    } catch {
+      // Use the already loaded metrics snapshot if the refresh is unavailable.
+    }
+
     const reportMetadataForExport = getOfficialReportMetadata({
       sourceStatus,
       backendForecastResult,
-      latestModelMetrics,
+      latestModelMetrics: exportModelMetrics,
       generatedAt: exportedAt,
       sortedRiskRows,
       usingBackendForecast,
     })
 
     let exportHotspotRows = hotspotRows
-let exportHotspotSummary = hotspotSummary
+    let exportHotspotSummary = hotspotSummary
+    let exportCityTrendAnalytics = null
+    let exportFieldMonitoringSummary = getFieldMonitoringSummary(null)
 
-try {
-  const latestHotspotResult = await loadGeospatialHotspotsCached?.({
+    try {
+      const fieldUpdateResult = await getFieldUpdates({ limit: 200 })
+      exportFieldMonitoringSummary = getFieldMonitoringSummary(fieldUpdateResult)
+    } catch (error) {
+      addActivityLog?.(
+        'Field monitoring export fallback',
+        error?.message || 'BHW field monitoring summary could not be refreshed for this export.'
+      )
+    }
+
+    try {
+      const trendFilters = reportCityTrendAnalytics?.filters || {}
+      exportCityTrendAnalytics = await getCityTrendAnalytics({
+        year: trendFilters.year || undefined,
+        quarter: trendFilters.quarter || undefined,
+        month: trendFilters.month || undefined,
+        includeClassification: true,
+      })
+    } catch (error) {
+      addActivityLog?.(
+        'Actual surveillance export fallback',
+        error?.message || 'Citywide actual dengue surveillance could not be refreshed for this export.'
+      )
+    }
+
+    try {
+      const latestHotspotResult = await loadGeospatialHotspotsCached?.({
     silent: true,
   })
   const latestRawHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
@@ -5081,12 +5986,12 @@ try {
     exportHotspotCounts,
     sortedRiskRows.length
   )
-} catch {
-  exportHotspotRows = hotspotRows
-  exportHotspotSummary = hotspotSummary
-}
+    } catch {
+      exportHotspotRows = hotspotRows
+      exportHotspotSummary = hotspotSummary
+    }
 
-const exportPayload = {
+    const exportPayload = {
   dashboardStats: displayDashboardStats,
   riskRows: sortedRiskRows,
   sourceStatus,
@@ -5095,6 +6000,8 @@ const exportPayload = {
   hotspotSummary: exportHotspotSummary,
   dataSourceLabel: reportDataSourceLabel,
   reportMetadata: reportMetadataForExport,
+  cityTrendAnalytics: exportCityTrendAnalytics,
+  fieldMonitoringSummary: exportFieldMonitoringSummary,
 }
 
     if (format === 'pdf') {
@@ -5139,15 +6046,59 @@ const exportPayload = {
 
 
   return (
-    <div className="reports-mobile-compact relative space-y-6 pb-10">
+    <div className="reports-mobile-compact relative flex flex-col gap-6 pb-10">
       <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
 
 
       <style>{`
         @media (max-width: 639px) {
           .reports-mobile-compact {
-            gap: 0.75rem;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+            width: 100% !important;
+            min-width: 0 !important;
             padding-bottom: 1.25rem;
+          }
+
+          /* Keep collapsed report sections and the response/export workspace in normal document flow.
+             This prevents long-screenshot/mobile browsers from reserving large invisible grid space. */
+          .reports-mobile-compact > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
+          }
+
+          .reports-mobile-compact .reports-disclosure-card,
+          .reports-mobile-compact > .relative.overflow-hidden.rounded-\[28px\].border {
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+          }
+
+          .reports-mobile-compact .reports-decision-export-layout {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.75rem !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+          }
+
+          .reports-mobile-compact #decision-brief,
+          .reports-mobile-compact #export-center {
+            position: relative !important;
+            inset: auto !important;
+            transform: none !important;
+            align-self: stretch !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 !important;
           }
 
           .reports-mobile-compact section,
@@ -6400,7 +7351,7 @@ const exportPayload = {
         </div>
       </section>
 
-      <CityTrendAnalyticsPanel context="reports" />
+      <CityTrendAnalyticsPanel context="reports" onAnalyticsChange={setReportCityTrendAnalytics} />
 
       <DisclosureCard
         id="additional-report-indicators"
@@ -7399,6 +8350,7 @@ const exportPayload = {
                       ? 'blue'
                       : 'amber'
               const itemTheme = getReportVisualTheme(itemTone)
+              const selectionTheme = exportSelectionThemes[item.id] || exportSelectionThemes.pdf
               const isSelected = format === item.id
 
               return (
@@ -7406,47 +8358,108 @@ const exportPayload = {
                   key={item.id}
                   type="button"
                   onClick={() => setFormat(item.id)}
-                  className={`group relative overflow-hidden rounded-[26px] border p-4 text-left text-sm font-semibold shadow-[0_12px_30px_rgba(15,23,42,0.07)] ring-1 ring-white/70 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(15,23,42,0.14)] dark:ring-white/5 ${itemTheme.surface} ${
+                  aria-pressed={isSelected}
+                  className={`group relative overflow-hidden rounded-[26px] border p-4 text-left text-sm font-semibold transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(15,23,42,0.14)] ${
                     isSelected
-                      ? 'ring-2 ring-cyan-400 ring-offset-2 dark:ring-offset-slate-950'
-                      : ''
+                      ? selectionTheme.card
+                      : `${itemTheme.surface} opacity-90 shadow-[0_10px_26px_rgba(15,23,42,0.06)] ring-1 ring-white/70 hover:opacity-100 dark:ring-white/5`
                   }`}
                 >
-                  <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${itemTheme.line}`} />
-                  <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl ${itemTheme.glow}`} />
-                  <div className="flex items-start gap-3">
-                    <div className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm ${itemTheme.icon}`}>
+                  <div
+                    className={`pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-r ${itemTheme.line} ${
+                      isSelected ? 'h-1.5' : 'h-1'
+                    }`}
+                  />
+                  <div
+                    className={`pointer-events-none absolute -right-10 -top-10 rounded-full blur-3xl ${itemTheme.glow} ${
+                      isSelected ? 'h-36 w-36 opacity-100' : 'h-28 w-28 opacity-60'
+                    }`}
+                  />
+
+                  {isSelected && (
+                    <div className="relative mb-3 flex justify-end">
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] shadow-sm ${selectionTheme.badge}`}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                        Selected
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="relative flex items-start gap-3">
+                    <div
+                      className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-all duration-300 ${
+                        isSelected ? selectionTheme.icon : itemTheme.icon
+                      }`}
+                    >
                       <Icon className="h-5 w-5" />
                     </div>
 
-                    <div>
-                      <span className="font-black">{item.label}</span>
+                    <div className="min-w-0">
+                      <span
+                        className={`block font-black transition-colors ${
+                          isSelected ? 'text-brand-text dark:text-white' : ''
+                        }`}
+                      >
+                        {item.label}
+                      </span>
 
-                      <span className="mt-1 block text-xs font-semibold leading-5 opacity-75">
+                      <span
+                        className={`mt-1 block text-xs font-semibold leading-5 transition-opacity ${
+                          isSelected ? 'opacity-90' : 'opacity-70'
+                        }`}
+                      >
                         {item.desc}
                       </span>
                     </div>
                   </div>
+
+                  {isSelected && (
+                    <div
+                      className={`relative mt-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.12em] ${selectionTheme.summaryLabel}`}
+                    >
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      Ready to generate
+                    </div>
+                  )}
                 </button>
               )
             })}
           </div>
 
-          <div className="mt-5 rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/60 p-4 text-sm text-brand-muted shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:text-slate-400">
-            <div className="flex items-center gap-3">
+          <div
+            className={`relative mt-5 overflow-hidden rounded-[24px] border-2 p-4 text-sm text-brand-muted transition-all duration-300 dark:text-slate-400 ${selectedExportTheme.summary}`}
+          >
+            <div
+              className={`pointer-events-none absolute inset-y-0 left-0 w-1.5 ${selectedExportTheme.bar}`}
+            />
+
+            <div className="flex items-start gap-3 pl-1">
               <div
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${selectedExport.style}`}
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${selectedExportTheme.icon}`}
               >
                 <SelectedExportIcon className="h-5 w-5" />
               </div>
 
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
-                  Selected output
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2
+                    className={`h-4 w-4 shrink-0 ${selectedExportTheme.summaryLabel}`}
+                  />
+                  <p
+                    className={`text-xs font-black uppercase tracking-[0.14em] ${selectedExportTheme.summaryLabel}`}
+                  >
+                    Currently selected
+                  </p>
+                </div>
+
+                <p className="mt-1 text-base font-black text-brand-text dark:text-slate-100">
+                  {selectedExport.label}
                 </p>
 
-                <p className="font-black text-brand-text dark:text-slate-100">
-                  {selectedExport.label}
+                <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
+                  {selectedExport.desc}
                 </p>
               </div>
             </div>
@@ -7455,10 +8468,14 @@ const exportPayload = {
           <button
             type="button"
             onClick={handleExport}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[22px] bg-brand-blue px-4 py-3.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(37,95,143,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#255f8f] hover:shadow-[0_18px_38px_rgba(37,95,143,0.34)]"
+            className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[22px] px-4 py-3.5 text-sm font-black text-white transition-all duration-200 hover:-translate-y-0.5 ${selectedExportTheme.button}`}
           >
-            <Download className="h-4 w-4" />
-            Generate selected output
+            {format === 'print' ? (
+              <Printer className="h-4 w-4" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {selectedExport.actionLabel || 'Generate selected output'}
           </button>
 
           <button
@@ -7506,7 +8523,7 @@ const exportPayload = {
 
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {usingBackendForecast
-               ? 'PDF, Excel, PowerPoint, and print reports now include forecast totals, response priorities, combined priority score, rainfall, temperature, humidity, population exposure, density level, hotspot summary, recommended actions, and reasons for the recommendation.'
+               ? 'PDF, Excel, PowerPoint, and print reports now include actual dengue trends, case classification, four-period forecasts, response priorities, hotspot context, field-monitoring summaries, model transparency details, recommended actions, and supporting rationale.'
                 : 'PDF, Excel, PowerPoint, and print reports include response priority, combined priority score, rainfall, temperature, humidity, population, density, action plan, and reasons for the recommendation.'}
             </p>
           </div>

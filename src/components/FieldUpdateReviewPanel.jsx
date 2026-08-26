@@ -20,6 +20,7 @@ import {
   reviewFieldUpdate,
 } from '../services/api'
 import InformationTypeBadge from './InformationTypeBadge'
+import { getAuthSession } from '../utils/auth'
 
 const TASK_LABELS = {
   'inspect-water': 'Inspect stagnant water areas',
@@ -44,6 +45,9 @@ function getEnvironmentalObservationLabels(update) {
     .filter(([, observed]) => Boolean(observed))
     .map(([key]) => ENVIRONMENTAL_OBSERVATION_LABELS[key] || key)
 }
+
+let fieldUpdateReviewCache = null
+const FIELD_UPDATE_CACHE_TTL_MS = 30_000
 
 function formatDate(value) {
   if (!value) return 'Not recorded'
@@ -70,21 +74,45 @@ function riskTone(risk) {
 }
 
 export default function FieldUpdateReviewPanel() {
-  const [updates, setUpdates] = useState([])
+  const session = getAuthSession()
+  const sessionCacheKey = String(session?.userId || session?.email || '').toLowerCase()
+  const usableReviewCache = fieldUpdateReviewCache?.sessionCacheKey === sessionCacheKey
+    ? fieldUpdateReviewCache
+    : null
+  const [updates, setUpdates] = useState(() => usableReviewCache?.rows || [])
   const [selectedId, setSelectedId] = useState('')
   const [comment, setComment] = useState('')
   const [filter, setFilter] = useState('Active')
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => !usableReviewCache)
   const [busyAction, setBusyAction] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  async function loadUpdates({ preserveSelection = true } = {}) {
-    setIsLoading(true)
+  async function loadUpdates({ preserveSelection = true, force = false } = {}) {
+    const matchingCache = fieldUpdateReviewCache?.sessionCacheKey === sessionCacheKey
+      ? fieldUpdateReviewCache
+      : null
+    const cacheAge = matchingCache
+      ? Date.now() - Number(matchingCache.savedAt || 0)
+      : Number.POSITIVE_INFINITY
+
+    if (!force && matchingCache && cacheAge < FIELD_UPDATE_CACHE_TTL_MS) {
+      const rows = matchingCache.rows || []
+      setUpdates(rows)
+      setSelectedId((current) => {
+        if (preserveSelection && rows.some((item) => item.field_update_id === current)) return current
+        return rows[0]?.field_update_id || ''
+      })
+      setIsLoading(false)
+      return
+    }
+
+    if (!matchingCache) setIsLoading(true)
     setError('')
     try {
       const result = await getFieldUpdates({ limit: 200 })
       const rows = Array.isArray(result?.field_updates) ? result.field_updates : []
+      fieldUpdateReviewCache = { sessionCacheKey, rows, savedAt: Date.now() }
       setUpdates(rows)
       setSelectedId((current) => {
         if (preserveSelection && rows.some((item) => item.field_update_id === current)) return current
@@ -137,7 +165,7 @@ export default function FieldUpdateReviewPanel() {
         supervisorComment: comment,
       })
       setMessage(result?.message || `Field update marked as ${status}.`)
-      await loadUpdates()
+      await loadUpdates({ force: true })
     } catch (reviewError) {
       setError(reviewError?.message || 'The field update could not be reviewed.')
     } finally {
@@ -193,7 +221,7 @@ export default function FieldUpdateReviewPanel() {
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Open a submitted checklist, review the field observation, request follow-up, or turn the report into a response action.</p>
           </div>
         </div>
-        <button type="button" onClick={() => loadUpdates()} disabled={isLoading} className="flex min-h-[44px] items-center justify-center gap-2 rounded-[18px] border border-blue-200 bg-white px-4 py-2 text-sm font-black text-blue-700 shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-400/20 dark:bg-slate-950 dark:text-blue-200">
+        <button type="button" onClick={() => loadUpdates({ force: true })} disabled={isLoading} className="flex min-h-[44px] items-center justify-center gap-2 rounded-[18px] border border-blue-200 bg-white px-4 py-2 text-sm font-black text-blue-700 shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-400/20 dark:bg-slate-950 dark:text-blue-200">
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh submissions
         </button>
       </div>
@@ -228,7 +256,20 @@ export default function FieldUpdateReviewPanel() {
           </div>
           <div className="max-h-[620px] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
             {isLoading ? (
-              <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm font-bold text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /> Loading field updates</div>
+              <div className="space-y-3 p-4" role="status" aria-label="Loading field updates" aria-busy="true">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="flex items-center gap-3">
+                      <div className="system-skeleton-shimmer h-10 w-10 shrink-0 rounded-2xl bg-slate-200 dark:bg-slate-800" />
+                      <div className="min-w-0 flex-1">
+                        <div className="system-skeleton-shimmer h-4 w-32 rounded-full bg-slate-200 dark:bg-slate-800" />
+                        <div className="system-skeleton-shimmer mt-2 h-3 w-3/5 rounded-full bg-slate-200 dark:bg-slate-800" />
+                      </div>
+                      <div className="system-skeleton-shimmer h-7 w-20 rounded-full bg-slate-200 dark:bg-slate-800" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : visibleUpdates.length ? visibleUpdates.map((item) => {
               const selectedRow = item.field_update_id === selectedId
               return (

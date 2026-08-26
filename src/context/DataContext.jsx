@@ -1663,6 +1663,10 @@ function buildIntegrationReadiness(workspace = {}, riskRows = []) {
 export function DataProvider({ children }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false)
+  const authenticatedAtMount = Boolean(getAuthSession())
+  const [initialDataLoading, setInitialDataLoading] = useState(authenticatedAtMount)
+  const [initialDataReady, setInitialDataReady] = useState(!authenticatedAtMount)
+  const [initialDataError, setInitialDataError] = useState('')
 
   // Small session-only caches used by Forecast/Map/Reports/Upload. These stay
   // alive while the user navigates between routes, so reopening a page does
@@ -1674,6 +1678,8 @@ export function DataProvider({ children }) {
   const [cachedHotspotForecastKey, setCachedHotspotForecastKey] = useState('')
 
   const workspaceRef = useRef(workspace)
+  const initialDataReadyRef = useRef(!authenticatedAtMount)
+  const initialRefreshPromiseRef = useRef(null)
   const modelMetricsRequestRef = useRef(null)
   const hotspotRequestRef = useRef(null)
   const boundaryRequestRef = useRef(null)
@@ -1928,6 +1934,13 @@ export function DataProvider({ children }) {
     boundaryRequestRef.current = null
     modelMetricsCacheRef.current = { forecastKey: '', value: null }
     hotspotCacheRef.current = { forecastKey: '', value: null }
+    initialDataReadyRef.current = false
+    initialRefreshPromiseRef.current = null
+    if (getAuthSession()) {
+      setInitialDataReady(false)
+      setInitialDataLoading(true)
+      setInitialDataError('')
+    }
   }
 
   function clearWorkspace() {
@@ -2497,76 +2510,129 @@ export function DataProvider({ children }) {
     return Promise.allSettled(tasks)
   }
 
-  async function refreshAuthenticatedWorkspace({ silent = true } = {}) {
+  async function refreshAuthenticatedWorkspace({ silent = true, initial = false, force = false } = {}) {
     const session = getAuthSession()
 
     if (!session) {
+      initialDataReadyRef.current = true
+      setInitialDataReady(true)
+      setInitialDataLoading(false)
+      setInitialDataError('')
       return {
         refreshed: false,
         reason: 'not_authenticated',
       }
     }
 
-    const role = String(session.role || '').toLowerCase()
-    let requestCount = 0
-    let fulfilledCount = 0
-    let statusResult = null
+    const shouldTrackInitial = initial || !initialDataReadyRef.current
 
-    // Always fetch the tiny readiness snapshot first. This lets us avoid
-    // downloading a stale 86-row forecast when one of the four source uploads
-    // changed and the new forecast has not been generated yet.
-    try {
-      if (role === 'cho' || role === 'admin') {
-        requestCount += 1
-        statusResult = await loadLatestUploadDatabaseStatus({
-          silent,
-          includePreview: false,
-        })
-      } else if (['supervisor', 'bhw', 'viewer'].includes(role)) {
-        requestCount += 1
-        statusResult = await loadSharedSystemStatus({ silent })
+    if (!force && initialRefreshPromiseRef.current) {
+      return initialRefreshPromiseRef.current
+    }
+
+    if (shouldTrackInitial) {
+      setInitialDataLoading(true)
+      setInitialDataError('')
+    }
+
+    let requestPromise = null
+
+    requestPromise = (async () => {
+      const role = String(session.role || '').toLowerCase()
+      let requestCount = 0
+      let fulfilledCount = 0
+      let statusResult = null
+
+      // Always fetch the tiny readiness snapshot first. This lets us avoid
+      // downloading a stale 86-row forecast when one of the four source uploads
+      // changed and the new forecast has not been generated yet.
+      try {
+        if (role === 'cho' || role === 'admin') {
+          requestCount += 1
+          statusResult = await loadLatestUploadDatabaseStatus({
+            silent,
+            includePreview: false,
+          })
+        } else if (['supervisor', 'bhw', 'viewer'].includes(role)) {
+          requestCount += 1
+          statusResult = await loadSharedSystemStatus({ silent })
+        }
+        if (statusResult) fulfilledCount += 1
+      } catch {
+        statusResult = null
       }
-      if (statusResult) fulfilledCount += 1
-    } catch {
-      statusResult = null
+
+      const forecastMatchesCurrentUploads = Boolean(
+        statusResult?.forecast_status?.ready &&
+          statusResult?.forecast_status?.matches_current_uploads
+      )
+      const publishedForecastAvailable = Boolean(
+        statusResult?.forecast_status?.published_ready || forecastMatchesCurrentUploads
+      )
+
+      const followUpTasks = []
+
+      if (
+        ['cho', 'supervisor', 'bhw', 'admin', 'viewer'].includes(role) &&
+        (publishedForecastAvailable || !statusResult)
+      ) {
+        requestCount += 1
+        followUpTasks.push(loadLatestSavedForecast({ silent }))
+      }
+
+      // BHW lands directly on the field workspace, so load only its assigned
+      // polygon at sign-in. Full city boundaries for CHO/Admin/Supervisor/Viewer
+      // are lazy-loaded only when a map/report/BHW command view is actually opened.
+      if (role === 'bhw') {
+        requestCount += 1
+        followUpTasks.push(loadLatestSavedBoundaryGeoJson({ silent }))
+      }
+
+      if (followUpTasks.length) {
+        const results = await Promise.allSettled(followUpTasks)
+        fulfilledCount += results.filter((result) => result.status === 'fulfilled').length
+      }
+
+      const result = {
+        refreshed: true,
+        requestCount,
+        fulfilledCount,
+        forecastMatchesCurrentUploads,
+      }
+
+      if (shouldTrackInitial) {
+        if (requestCount > 0 && fulfilledCount === 0) {
+          setInitialDataError('Saved system information could not be loaded. You can retry without refreshing the whole page.')
+        }
+        initialDataReadyRef.current = true
+        setInitialDataReady(true)
+      }
+
+      return result
+    })()
+
+    if (shouldTrackInitial) {
+      initialRefreshPromiseRef.current = requestPromise
     }
 
-    const forecastMatchesCurrentUploads = Boolean(
-      statusResult?.forecast_status?.ready &&
-        statusResult?.forecast_status?.matches_current_uploads
-    )
-    const publishedForecastAvailable = Boolean(
-      statusResult?.forecast_status?.published_ready || forecastMatchesCurrentUploads
-    )
-
-    const followUpTasks = []
-
-    if (
-      ['cho', 'supervisor', 'bhw', 'admin', 'viewer'].includes(role) &&
-      (publishedForecastAvailable || !statusResult)
-    ) {
-      requestCount += 1
-      followUpTasks.push(loadLatestSavedForecast({ silent }))
-    }
-
-    // BHW lands directly on the field workspace, so load only its assigned
-    // polygon at sign-in. Full city boundaries for CHO/Admin/Supervisor/Viewer
-    // are lazy-loaded only when a map/report/BHW command view is actually opened.
-    if (role === 'bhw') {
-      requestCount += 1
-      followUpTasks.push(loadLatestSavedBoundaryGeoJson({ silent }))
-    }
-
-    if (followUpTasks.length) {
-      const results = await Promise.allSettled(followUpTasks)
-      fulfilledCount += results.filter((result) => result.status === 'fulfilled').length
-    }
-
-    return {
-      refreshed: true,
-      requestCount,
-      fulfilledCount,
-      forecastMatchesCurrentUploads,
+    try {
+      return await requestPromise
+    } catch (error) {
+      if (shouldTrackInitial) {
+        setInitialDataError(
+          error?.message || 'Saved system information could not be loaded. Please try again.'
+        )
+        initialDataReadyRef.current = true
+        setInitialDataReady(true)
+      }
+      throw error
+    } finally {
+      if (shouldTrackInitial) {
+        setInitialDataLoading(false)
+        if (initialRefreshPromiseRef.current === requestPromise) {
+          initialRefreshPromiseRef.current = null
+        }
+      }
     }
   }
 
@@ -2595,7 +2661,7 @@ export function DataProvider({ children }) {
     // When the app is opened while already signed in, restore only the small
     // pieces of persisted state needed by the dashboard and workflow status.
     // Data Upload fetches its preview rows lazily when that page is opened.
-    refreshAuthenticatedWorkspace({ silent: true }).finally(() => {
+    refreshAuthenticatedWorkspace({ silent: true, initial: true }).finally(() => {
       // Do not block the current page. Warm shared route data in the background
       // so later navigation can render from memory immediately.
       window.setTimeout(() => {
@@ -2670,6 +2736,13 @@ export function DataProvider({ children }) {
     weeklyTotals,
     dashboardStats,
     integrationReadiness,
+
+    // First authenticated hydration state. The route shell uses this to show
+    // a page-shaped skeleton instead of temporary zero/N/A values while the
+    // saved Supabase-backed state is being restored.
+    initialDataLoading,
+    initialDataReady,
+    initialDataError,
 
     // Session-only navigation caches. Pages can render these immediately on
     // remount instead of showing a loading state for data already fetched.
