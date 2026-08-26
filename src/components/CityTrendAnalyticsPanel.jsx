@@ -3,27 +3,29 @@ import { Activity, CalendarDays, Loader2, Sparkles, TrendingDown, TrendingUp } f
 import SparkChart from './SparkChart'
 import InformationTypeBadge from './InformationTypeBadge'
 import { TrendPanelSkeleton } from './SystemSkeleton'
+import TrendFilterDropdown from './TrendFilterDropdown'
+import TrendMetricCard from './TrendMetricCard'
 import { getCityTrendAnalytics } from '../services/api'
 import { getUserRole } from '../utils/auth'
 
 const PERIOD_OPTIONS = [
-  { value: 'all', label: 'Full year' },
-  { value: 'q1', label: 'Q1 · Jan–Mar' },
-  { value: 'q2', label: 'Q2 · Apr–Jun' },
-  { value: 'q3', label: 'Q3 · Jul–Sep' },
-  { value: 'q4', label: 'Q4 · Oct–Dec' },
-  { value: 'm1', label: 'January' },
-  { value: 'm2', label: 'February' },
-  { value: 'm3', label: 'March' },
-  { value: 'm4', label: 'April' },
-  { value: 'm5', label: 'May' },
-  { value: 'm6', label: 'June' },
-  { value: 'm7', label: 'July' },
-  { value: 'm8', label: 'August' },
-  { value: 'm9', label: 'September' },
-  { value: 'm10', label: 'October' },
-  { value: 'm11', label: 'November' },
-  { value: 'm12', label: 'December' },
+  { value: 'all', label: 'Full year', note: 'Show all recorded months for the selected year' },
+  { value: 'q1', label: 'Q1 · Jan–Mar', note: 'First quarter trend' },
+  { value: 'q2', label: 'Q2 · Apr–Jun', note: 'Second quarter trend' },
+  { value: 'q3', label: 'Q3 · Jul–Sep', note: 'Third quarter trend' },
+  { value: 'q4', label: 'Q4 · Oct–Dec', note: 'Fourth quarter trend' },
+  { value: 'm1', label: 'January', note: 'Recorded cases for January' },
+  { value: 'm2', label: 'February', note: 'Recorded cases for February' },
+  { value: 'm3', label: 'March', note: 'Recorded cases for March' },
+  { value: 'm4', label: 'April', note: 'Recorded cases for April' },
+  { value: 'm5', label: 'May', note: 'Recorded cases for May' },
+  { value: 'm6', label: 'June', note: 'Recorded cases for June' },
+  { value: 'm7', label: 'July', note: 'Recorded cases for July' },
+  { value: 'm8', label: 'August', note: 'Recorded cases for August' },
+  { value: 'm9', label: 'September', note: 'Recorded cases for September' },
+  { value: 'm10', label: 'October', note: 'Recorded cases for October' },
+  { value: 'm11', label: 'November', note: 'Recorded cases for November' },
+  { value: 'm12', label: 'December', note: 'Recorded cases for December' },
 ]
 
 function parsePeriod(value) {
@@ -45,24 +47,9 @@ function formatNumber(value) {
 }
 
 function movementTone(direction = '') {
-  if (direction === 'Increasing') {
-    return {
-      card: 'border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-orange-50 text-rose-800 dark:border-rose-400/20 dark:from-rose-500/10 dark:via-slate-950 dark:to-orange-500/5 dark:text-rose-200',
-      Icon: TrendingUp,
-    }
-  }
-
-  if (direction === 'Decreasing') {
-    return {
-      card: 'border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-teal-50 text-emerald-800 dark:border-emerald-400/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5 dark:text-emerald-200',
-      Icon: TrendingDown,
-    }
-  }
-
-  return {
-    card: 'border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-blue-50 text-slate-800 dark:border-white/10 dark:from-slate-800/70 dark:via-slate-950 dark:to-blue-500/5 dark:text-slate-200',
-    Icon: Activity,
-  }
+  if (direction === 'Increasing') return { tone: 'rose', Icon: TrendingUp }
+  if (direction === 'Decreasing') return { tone: 'emerald', Icon: TrendingDown }
+  return { tone: 'slate', Icon: Activity }
 }
 
 export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnalyticsChange = null }) {
@@ -127,6 +114,11 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
   const availableYears = Array.isArray(analytics?.filters?.available_years)
     ? analytics.filters.available_years
     : []
+  const yearOptions = availableYears.map((availableYear) => ({
+    value: String(availableYear),
+    label: String(availableYear),
+    note: `Recorded citywide cases for ${availableYear}`,
+  }))
   const summary = analytics?.summary || {}
   const monthly = Array.isArray(analytics?.monthly) ? analytics.monthly : []
   const chartValues = monthly.map((row) => Number(row?.cases || 0))
@@ -163,33 +155,24 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
           <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500 dark:text-slate-400">{panelDescription}</p>
         </div>
 
-        <div className="grid w-full grid-cols-2 gap-2 lg:w-auto lg:min-w-[360px]">
-          <label className="min-w-0">
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Year</span>
-            <select
-              value={year}
-              onChange={(event) => setYear(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-800 outline-none transition focus:border-cyan-400 dark:border-white/10 dark:bg-slate-900 dark:text-white"
-            >
-              {!availableYears.length && <option value="">No years available</option>}
-              {availableYears.map((availableYear) => (
-                <option key={availableYear} value={availableYear}>{availableYear}</option>
-              ))}
-            </select>
-          </label>
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto lg:min-w-[440px]">
+          <TrendFilterDropdown
+            label="Year"
+            value={year}
+            options={yearOptions}
+            onChange={setYear}
+            emptyLabel="No years available"
+            tone="cyan"
+          />
 
-          <label className="min-w-0">
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Period</span>
-            <select
-              value={period}
-              onChange={(event) => setPeriod(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-800 outline-none transition focus:border-cyan-400 dark:border-white/10 dark:bg-slate-900 dark:text-white"
-            >
-              {PERIOD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
+          <TrendFilterDropdown
+            label="Period"
+            value={period}
+            options={PERIOD_OPTIONS}
+            onChange={setPeriod}
+            emptyLabel="Choose a period"
+            tone="amber"
+          />
         </div>
       </div>
 
@@ -200,32 +183,41 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
       )}
 
       <div className="relative mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <div className="rounded-[22px] border border-blue-200/80 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4 dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Actual cases</p>
-          <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{loading ? '…' : formatNumber(summary?.total_cases)}</p>
-          <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{scopeLabel}</p>
-        </div>
+        <TrendMetricCard
+          label="Actual cases"
+          value={loading ? '…' : formatNumber(summary?.total_cases)}
+          helper={scopeLabel}
+          icon={Activity}
+          tone="blue"
+          badge="Recorded"
+        />
 
-        <div className="rounded-[22px] border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-4 dark:border-amber-400/20 dark:from-amber-500/10 dark:via-slate-950 dark:to-orange-500/5">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{highestMonthLabel}</p>
-          <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{loading ? '…' : (peak?.month_label || 'No data')}</p>
-          <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{peak ? `${formatNumber(peak.cases)} recorded cases` : 'No recorded cases'}</p>
-        </div>
+        <TrendMetricCard
+          label={highestMonthLabel}
+          value={loading ? '…' : (peak?.month_label || 'No data')}
+          helper={peak ? `${formatNumber(peak.cases)} recorded cases` : 'No recorded cases'}
+          icon={TrendingUp}
+          tone="amber"
+          badge="Peak"
+        />
 
-        <div className="rounded-[22px] border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4 dark:border-emerald-400/20 dark:from-emerald-500/10 dark:via-slate-950 dark:to-teal-500/5">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Lowest month</p>
-          <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{loading ? '…' : (lowest?.month_label || '—')}</p>
-          <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{lowest ? `${formatNumber(lowest.cases)} recorded cases` : 'No monthly record'}</p>
-        </div>
+        <TrendMetricCard
+          label="Lowest month"
+          value={loading ? '…' : (lowest?.month_label || '—')}
+          helper={lowest ? `${formatNumber(lowest.cases)} recorded cases` : 'No monthly record'}
+          icon={TrendingDown}
+          tone="emerald"
+          badge="Lowest"
+        />
 
-        <div className={`rounded-[22px] border p-4 ${movement.card}`}>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-75">Current movement</p>
-            <MovementIcon className="h-4 w-4 opacity-80" />
-          </div>
-          <p className="mt-2 text-2xl font-black">{loading ? '…' : direction}</p>
-          <p className="mt-1 text-[11px] font-semibold opacity-80">{summary?.change_label || 'No previous month available'}</p>
-        </div>
+        <TrendMetricCard
+          label="Current movement"
+          value={loading ? '…' : direction}
+          helper={summary?.change_label || 'No previous month available'}
+          icon={MovementIcon}
+          tone={movement.tone}
+          badge="Trend"
+        />
       </div>
 
       <div className="relative mt-4 overflow-hidden rounded-[24px] border border-cyan-400/15 bg-gradient-to-b from-[#061321] via-[#06111d] to-[#020817] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_70px_rgba(2,8,23,0.42)] sm:rounded-[30px] sm:p-5">
