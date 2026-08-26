@@ -558,8 +558,12 @@ export async function getSharedSystemStatus() {
   return handleApiResponse(response)
 }
 
-export async function getLatestSavedBoundaryGeoJson() {
-  const response = await apiFetch(`${API_BASE_URL}/geospatial/boundary`)
+export async function getLatestSavedBoundaryGeoJson({ scope = '' } = {}) {
+  const params = new URLSearchParams()
+  if (scope) params.set('scope', scope)
+
+  const query = params.toString()
+  const response = await apiFetch(`${API_BASE_URL}/geospatial/boundary${query ? `?${query}` : ''}`)
   return handleApiResponse(response)
 }
 

@@ -21,17 +21,20 @@ import {
   Moon,
   Navigation,
   Radar,
+  Search,
   Satellite,
   ShieldAlert,
   Sun,
   Thermometer,
   TrendingUp,
   Users,
+  X,
 } from 'lucide-react'
 import LeafletRiskMap from '../components/LeafletRiskMap'
 import InformationTypeBadge from '../components/InformationTypeBadge'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
+import { getAuthSession } from '../utils/auth'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 import mapHeroBackground from '../assets/map.png'
 
@@ -1806,6 +1809,10 @@ function buildBackendPeriodCount(backendForecastResult = null) {
 
 export default function MapPage() {
   const data = useData()
+  const session = getAuthSession()
+  const currentRole = String(session?.role || '').toLowerCase()
+  const isBhwMap = currentRole === 'bhw'
+  const assignedBarangay = String(session?.assignedBarangay || session?.assigned_barangay || '').trim()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedBarangay = searchParams.get('barangay') || ''
 
@@ -1824,13 +1831,39 @@ export default function MapPage() {
   const boundaryLoadRequestedRef = useRef(false)
 
   useEffect(() => {
-    if (boundaryRecords.length > 0 || boundaryLoadRequestedRef.current) return
+    const existingGeoJson = getBoundaryGeoJson(boundaryRecords)
+    const existingFeatureCount = Array.isArray(existingGeoJson?.features)
+      ? existingGeoJson.features.length
+      : 0
+
+    // CHO/Admin/Supervisor/Viewer keep the normal city map behavior. BHW may
+    // already have only its assigned polygon from sign-in, so the Map page
+    // upgrades that lightweight boundary to the full 86-barangay city layer.
+    // Only the assigned barangay has a role-scoped risk row; the remaining
+    // polygons are rendered as neutral geographic context.
+    const needsBoundary = isBhwMap
+      ? existingFeatureCount <= 1
+      : existingFeatureCount === 0
+
+    if (!needsBoundary || boundaryLoadRequestedRef.current) return
+
     boundaryLoadRequestedRef.current = true
-    Promise.resolve(loadLatestSavedBoundaryGeoJson?.({ silent: true })).finally(() => {
-      // Allow a later retry only if no boundary was restored.
-      if (!boundaryRecords.length) boundaryLoadRequestedRef.current = false
+    Promise.resolve(
+      loadLatestSavedBoundaryGeoJson?.({
+        silent: true,
+        fullCity: isBhwMap,
+      })
+    ).finally(() => {
+      const refreshedGeoJson = getBoundaryGeoJson(boundaryRecords)
+      const refreshedFeatureCount = Array.isArray(refreshedGeoJson?.features)
+        ? refreshedGeoJson.features.length
+        : 0
+
+      if (isBhwMap ? refreshedFeatureCount <= 1 : refreshedFeatureCount === 0) {
+        boundaryLoadRequestedRef.current = false
+      }
     })
-  }, [boundaryRecords.length])
+  }, [boundaryRecords, isBhwMap, loadLatestSavedBoundaryGeoJson])
 
   const populationRecords = useMemo(() => {
     const candidates = [
@@ -1927,6 +1960,9 @@ export default function MapPage() {
   const [hotspotResult, setHotspotResult] = useState(() => geospatialHotspotResult || null)
   const [hotspotError, setHotspotError] = useState('')
   const [isLoadingHotspots, setIsLoadingHotspots] = useState(false)
+  const [barangaySearch, setBarangaySearch] = useState('')
+  const [barangaySearchOpen, setBarangaySearchOpen] = useState(false)
+  const barangaySearchRef = useRef(null)
 
   useEffect(() => {
     if (geospatialHotspotResult) {
@@ -2023,6 +2059,44 @@ export default function MapPage() {
 
   const activeMapRows = showingHotspotLayer ? hotspotMapRows : displayRiskRows
 
+  const searchableBarangays = useMemo(() => {
+    const names = []
+
+    activeMapRows.forEach((row) => {
+      const name = String(row?.barangay || '').trim()
+      if (name) names.push(name)
+    })
+
+    boundaryFeatures.forEach((feature) => {
+      const name = String(getFeatureName(feature) || '').trim()
+      const referenceName = String(getFeatureReferenceName(feature) || '').trim()
+      if (name) names.push(name)
+      if (referenceName) names.push(referenceName)
+    })
+
+    const unique = new Map()
+
+    names.forEach((name) => {
+      const normalized = normalizeBarangayName(name)
+      if (!normalized || unique.has(normalized)) return
+      unique.set(normalized, name)
+    })
+
+    return [...unique.values()].sort((a, b) => a.localeCompare(b))
+  }, [activeMapRows, boundaryFeatures])
+
+  const filteredBarangaySearch = useMemo(() => {
+    const query = normalizeBarangayName(barangaySearch)
+    if (!query) return []
+
+    return searchableBarangays
+      .filter((name) => {
+        const normalized = normalizeBarangayName(name)
+        return normalized.includes(query) || query.includes(normalized)
+      })
+      .slice(0, 8)
+  }, [barangaySearch, searchableBarangays])
+
   const activeMatchedBoundaryCount = useMemo(() => {
     if (!boundaryFeatures.length || !activeMapRows.length) return 0
 
@@ -2095,6 +2169,38 @@ export default function MapPage() {
       window.removeEventListener('resize', handleResize)
     }
   }, [])
+
+  useEffect(() => {
+    function handleSearchOutsideClick(event) {
+      if (!barangaySearchRef.current?.contains(event.target)) {
+        setBarangaySearchOpen(false)
+      }
+    }
+
+    function handleSearchEscape(event) {
+      if (event.key === 'Escape') {
+        setBarangaySearchOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleSearchOutsideClick)
+    document.addEventListener('keydown', handleSearchEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handleSearchOutsideClick)
+      document.removeEventListener('keydown', handleSearchEscape)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isBhwMap || !assignedBarangay) return
+
+    if (!selected || !namesMatch(selected, assignedBarangay)) {
+      setSelected(assignedBarangay)
+      setFocusSelectedBarangay(false)
+      setSelectedPanelOpen(false)
+    }
+  }, [assignedBarangay, isBhwMap, selected])
 
   useEffect(() => {
     if (!requestedBarangay) return
@@ -2379,6 +2485,7 @@ export default function MapPage() {
     const name = getSelectedBarangayName(value)
 
     if (!name) return
+    if (isBhwMap && assignedBarangay && !namesMatch(name, assignedBarangay)) return
 
     setSelected(name)
     setFocusSelectedBarangay(true)
@@ -2396,6 +2503,27 @@ export default function MapPage() {
       'Barangay selected on map',
       `${name} was selected on the hotspot map. Current risk: ${selectedRow?.risk || (selectedFeature ? 'Boundary only' : 'No risk data')}.`
     )
+  }
+
+  function handleBarangaySearchSelect(name) {
+    const resolvedName = String(name || '').trim()
+    if (!resolvedName) return
+
+    setBarangaySearch(resolvedName)
+    setBarangaySearchOpen(false)
+    handleSelectBarangay(resolvedName)
+  }
+
+  function handleBarangaySearchKeyDown(event) {
+    if (event.key !== 'Enter') return
+
+    event.preventDefault()
+    const exactMatch = searchableBarangays.find((name) => namesMatch(name, barangaySearch))
+    const firstMatch = exactMatch || filteredBarangaySearch[0]
+
+    if (firstMatch) {
+      handleBarangaySearchSelect(firstMatch)
+    }
   }
 
   const highRiskCount = displayRiskRows.filter((row) => row.risk === 'High').length
@@ -2777,11 +2905,11 @@ export default function MapPage() {
     <div
       className={
         isMapExpanded
-          ? 'map-workspace-canvas map-workspace-canvas-expanded h-[calc(100vh-190px)] min-h-[720px] max-h-[920px] overflow-hidden rounded-[30px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)]'
-          : 'map-workspace-canvas map-workspace-canvas-compact h-[560px] overflow-hidden rounded-[28px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)] sm:h-[680px] 2xl:h-[780px]'
+          ? 'map-workspace-canvas map-workspace-canvas-expanded relative z-0 h-[calc(100vh-190px)] min-h-[720px] max-h-[920px] overflow-hidden rounded-[30px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)]'
+          : 'map-workspace-canvas map-workspace-canvas-compact relative z-0 h-[560px] overflow-hidden rounded-[28px] border border-cyan-200/70 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_38%),linear-gradient(145deg,#eff6ff,#ffffff_58%,#ecfeff)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_20px_52px_rgba(15,23,42,0.10)] dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_38%),linear-gradient(145deg,#020617,#0f172a_58%,#082f49)] sm:h-[680px] 2xl:h-[780px]'
       }
     >
-      <div className="h-full overflow-hidden rounded-[22px] dark:[&_.leaflet-container]:bg-slate-950">
+      <div className="relative z-0 h-full overflow-hidden rounded-[22px] dark:[&_.leaflet-container]:bg-slate-950">
         {canShowMap ? (
           <LeafletRiskMap
             key={`${mapStyle}-${mapLayerMode}-${isMapExpanded ? 'expanded' : 'normal'}`}
@@ -2797,6 +2925,8 @@ export default function MapPage() {
             layoutKey={isMapExpanded ? 'expanded' : 'normal'}
             showDetailsPanel={false}
             focusSelected={focusSelectedBarangay}
+            restrictSelectionToRows={isBhwMap}
+            contextBoundaryLabel={isBhwMap ? 'Other Butuan barangay · context only' : ''}
           />
         ) : (
           <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-white/[0.80] p-8 text-center dark:border-slate-700 dark:bg-slate-950">
@@ -3415,6 +3545,142 @@ export default function MapPage() {
                 {renderMapControls()}
               </div>
             </div>
+
+            {!isBhwMap && (
+              <div ref={barangaySearchRef} className="relative z-[2000] mb-3">
+              <div className="relative overflow-visible rounded-[24px] border border-cyan-200/80 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.15),transparent_42%),linear-gradient(145deg,#ffffff,#f8fafc_58%,#ecfeff)] p-3 shadow-[0_14px_36px_rgba(14,165,233,0.10)] ring-1 ring-white/80 dark:border-cyan-500/20 dark:bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.10),transparent_42%),linear-gradient(145deg,#07111f,#0f172a_58%,#082f49)] dark:ring-white/5 sm:p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-200 bg-cyan-50 text-cyan-700 shadow-[0_8px_18px_rgba(14,165,233,0.12)] dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">
+                      <Search className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-950 dark:text-white">Search a barangay on the map</p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Choose a barangay to focus the map and open its current risk details.</p>
+                    </div>
+                  </div>
+
+                  <span className="w-fit shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">
+                    {searchableBarangays.length} searchable barangays
+                  </span>
+                </div>
+
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600 dark:text-cyan-300" />
+                  <input
+                    type="search"
+                    value={barangaySearch}
+                    onChange={(event) => {
+                      setBarangaySearch(event.target.value)
+                      setBarangaySearchOpen(true)
+                    }}
+                    onFocus={() => setBarangaySearchOpen(true)}
+                    onKeyDown={handleBarangaySearchKeyDown}
+                    placeholder="Search barangay, e.g. Ampayon, Libertad, Port Poyohon..."
+                    className="h-12 w-full rounded-[18px] border border-slate-200 bg-white pl-11 pr-12 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100/70 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-cyan-400/50 dark:focus:ring-cyan-400/10"
+                    aria-label="Search barangay on map"
+                    autoComplete="off"
+                  />
+
+                  {barangaySearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBarangaySearch('')
+                        setBarangaySearchOpen(false)
+                      }}
+                      className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label="Clear barangay search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  {barangaySearchOpen && barangaySearch.trim() && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[2100] overflow-hidden rounded-[22px] border border-cyan-200/90 bg-white/98 shadow-[0_24px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl dark:border-cyan-500/20 dark:bg-slate-950/98">
+                      {filteredBarangaySearch.length > 0 ? (
+                        <div className="p-2">
+                          <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Matching barangays</p>
+                            <span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-black text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-200">Press Enter for first match</span>
+                          </div>
+
+                          <div className="grid gap-1 sm:grid-cols-2">
+                            {filteredBarangaySearch.map((name) => {
+                              const row = activeMapRows.find((candidate) => namesMatch(candidate?.barangay, name))
+                              const isSelected = namesMatch(selected, name)
+
+                              return (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  onClick={() => handleBarangaySearchSelect(name)}
+                                  className={`flex items-center justify-between gap-3 rounded-[16px] border px-3 py-2.5 text-left transition ${
+                                    isSelected
+                                      ? 'border-cyan-300 bg-cyan-50 text-cyan-900 ring-2 ring-cyan-500/10 dark:border-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-100'
+                                      : 'border-transparent bg-slate-50/80 text-slate-800 hover:border-cyan-200 hover:bg-cyan-50/70 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-cyan-400/20 dark:hover:bg-cyan-400/10'
+                                  }`}
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-black">{name}</p>
+                                    <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                      {row
+                                        ? showingHotspotLayer
+                                          ? `${getHotspotLevelLabel(row.hotspot_level || row.hotspotLevel || 'Not checked')} · Hotspot score ${formatHotspotScore(row.hotspot_score || row.hotspotScore)}`
+                                          : `${row.risk || 'Risk pending'} · Forecast ${formatNumber(row.forecast || row.forecastedCases || row.predictedCases || 0)} cases`
+                                        : 'Barangay boundary available'}
+                                    </p>
+                                  </div>
+
+                                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${
+                                    isSelected
+                                      ? 'border-cyan-300 bg-white text-cyan-700 dark:border-cyan-400/30 dark:bg-slate-900 dark:text-cyan-200'
+                                      : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400'
+                                  }`}>
+                                    {isSelected ? 'Selected' : 'Focus'}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 text-center">
+                          <p className="text-sm font-black text-slate-800 dark:text-slate-100">No barangay found</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">Check the spelling or try a shorter barangay name.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {selected && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200">
+                      <Crosshair className="h-3.5 w-3.5" />
+                      Map focused on {selected}
+                    </span>
+                    <span>Click another result or map polygon to change the selected barangay.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            )}
+
+            {isBhwMap && (
+              <div className="mb-3 flex flex-col gap-2 rounded-[22px] border border-slate-300/80 bg-slate-100/90 px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">Assigned barangay map view</p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                    {assignedBarangay || 'Your assigned barangay'} keeps its current forecast or hotspot color. Other Butuan barangay boundaries are shown in gray for geographic context only.
+                  </p>
+                </div>
+                <span className="w-fit shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">
+                  Assigned area only
+                </span>
+              </div>
+            )}
 
             {mapContent}
           </div>

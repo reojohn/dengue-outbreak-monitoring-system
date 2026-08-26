@@ -2276,7 +2276,7 @@ export function DataProvider({ children }) {
     }
   }
 
-  async function loadLatestSavedBoundaryGeoJson({ silent = false, force = false } = {}) {
+  async function loadLatestSavedBoundaryGeoJson({ silent = false, force = false, fullCity = false } = {}) {
     if (!force) {
       const existingBoundary = getBoundaryGeoJson(
         workspaceRef.current?.boundaryRecords || []
@@ -2285,11 +2285,21 @@ export function DataProvider({ children }) {
         ? existingBoundary.features
         : []
 
-      if (existingFeatures.length > 0) {
+      // A single assigned BHW polygon is enough for the field workspace, but
+      // not for the Map page's city-context view. When fullCity is requested,
+      // reuse memory only after the complete boundary layer has already been
+      // loaded.
+      const hasReusableBoundary = fullCity
+        ? existingFeatures.length > 1
+        : existingFeatures.length > 0
+
+      if (hasReusableBoundary) {
         return {
           has_saved_boundary: true,
           boundary_geojson: existingBoundary,
           feature_count: existingFeatures.length,
+          returned_feature_count: existingFeatures.length,
+          boundary_scope: fullCity ? 'city_context' : 'memory',
           memoryCached: true,
         }
       }
@@ -2303,7 +2313,7 @@ export function DataProvider({ children }) {
 
     requestPromise = (async () => {
       try {
-        const result = await getLatestSavedBoundaryGeoJson()
+        const result = await getLatestSavedBoundaryGeoJson({ scope: fullCity ? 'city' : '' })
 
         if (!result?.has_saved_boundary) {
           return null

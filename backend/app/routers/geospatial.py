@@ -12,14 +12,33 @@ router = APIRouter(
 
 
 @router.get("/boundary")
-def get_shared_boundary_geojson(current_user=Depends(get_current_user)):
+def get_shared_boundary_geojson(
+    scope: str = Query(
+        "",
+        description="Use 'city' when the map needs all Butuan barangay boundaries for geographic context.",
+    ),
+    current_user=Depends(get_current_user),
+):
     role = str(current_user.get("role") or "").strip().lower()
     assigned_barangay = str(current_user.get("assigned_barangay") or "").strip()
+    requested_scope = str(scope or "").strip().lower()
 
-    # BHW accounts receive only their assigned polygon. Other authorized roles
-    # receive the city boundary layer when they actually open a map/report view.
-    scope_barangay = assigned_barangay if role == "bhw" else None
-    return get_latest_boundary_geojson(barangay=scope_barangay)
+    # Keep the lightweight assigned-polygon response as the BHW default so
+    # sign-in/BHW workspace loading stays small. The dedicated Map page may
+    # explicitly request the complete city boundary layer for geographic
+    # context; forecast/hotspot rows remain role-scoped, so other polygons are
+    # context only and contain no other-barangay risk details.
+    scope_barangay = (
+        None
+        if role != "bhw" or requested_scope == "city"
+        else assigned_barangay
+    )
+
+    result = get_latest_boundary_geojson(barangay=scope_barangay)
+    return {
+        **result,
+        "boundary_scope": "city_context" if scope_barangay is None else "assigned_barangay",
+    }
 
 
 @router.get("/hotspots")
