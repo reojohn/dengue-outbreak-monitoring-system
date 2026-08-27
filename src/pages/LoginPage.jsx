@@ -872,7 +872,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isSigningIn}
-              className="group relative mt-4 flex h-[108px] w-full items-center justify-center overflow-visible bg-transparent px-5 text-sm font-black text-white transition-all duration-200 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-75 sm:h-[116px]"
+              className="group relative mt-4 flex h-[102px] w-full items-center justify-center overflow-visible bg-transparent px-5 text-sm font-black text-white transition-all duration-200 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-75 sm:h-[110px]"
               aria-label={`Login as ${getLoginButtonRoleLabel(selectedRole)}`}
             >
               <img
@@ -880,10 +880,10 @@ export default function LoginPage() {
                 alt=""
                 aria-hidden="true"
                 draggable="false"
-                className="pointer-events-none absolute left-1/2 top-1/2 h-[138%] w-[104%] -translate-x-1/2 -translate-y-1/2 select-none object-fill drop-shadow-[0_16px_32px_rgba(34,211,238,0.28)] transition-transform duration-200 group-hover:scale-[1.02]"
+                className="pointer-events-none absolute left-1/2 top-1/2 h-[132%] w-[103%] -translate-x-1/2 -translate-y-1/2 select-none object-fill drop-shadow-[0_16px_32px_rgba(34,211,238,0.28)] transition-transform duration-200 group-hover:scale-[1.02]"
               />
 
-              <span className="relative z-10 flex items-center justify-center gap-2 pt-[1px] text-[14px] font-black tracking-[0.02em] text-white drop-shadow-[0_0_9px_rgba(34,211,238,0.98)] sm:text-[15px]">
+              <span className="relative z-10 flex items-center justify-center gap-2 pt-[1px] text-[16px] font-black tracking-[0.02em] text-white drop-shadow-[0_0_9px_rgba(34,211,238,0.98)] sm:text-[17px]">
                 {isSigningIn ? (
                   <>
                     <Loader2 className="animate-spin" size={17} />
