@@ -9,6 +9,7 @@ import {
   useMap,
 } from 'react-leaflet'
 import L from 'leaflet'
+import { Maximize2, Minimize2 } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { useData } from '../context/DataContext'
 
@@ -1094,6 +1095,8 @@ export default function LeafletRiskMap({
   focusSelected = true,
   restrictSelectionToRows = false,
   contextBoundaryLabel = '',
+  isExpanded = false,
+  onToggleExpanded = null,
 }) {
   const {
     boundaryRecords = [],
@@ -1397,14 +1400,34 @@ export default function LeafletRiskMap({
         </p>
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-4 z-[500] rounded-[18px] border border-white/10 bg-slate-950/80 px-4 py-3 text-white shadow-xl backdrop-blur">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
-          Base Map
-        </p>
+      <div className="absolute right-4 top-4 z-[500] flex max-w-[calc(100%-2rem)] items-start gap-2">
+        {typeof onToggleExpanded === 'function' && (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="group pointer-events-auto inline-flex min-h-[58px] items-center gap-2 rounded-[18px] border border-cyan-300/20 bg-slate-950/85 px-3.5 py-2.5 text-white shadow-xl backdrop-blur transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+            aria-label={isExpanded ? 'Compact map' : 'Expand map'}
+            title={isExpanded ? 'Compact map' : 'Expand map'}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/10 text-cyan-200 shadow-[0_8px_18px_rgba(34,211,238,0.12)]">
+              {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </span>
+            <span className="hidden min-w-0 text-left sm:block">
+              <span className="block text-[9px] font-black uppercase tracking-[0.16em] text-cyan-300/75">Map view</span>
+              <span className="mt-0.5 block whitespace-nowrap text-xs font-black">{isExpanded ? 'Compact map' : 'Expand map'}</span>
+            </span>
+          </button>
+        )}
 
-        <p className="mt-1 text-sm font-bold">
-          {activeTileLayer.name}
-        </p>
+        <div className="pointer-events-none min-h-[58px] rounded-[18px] border border-white/10 bg-slate-950/80 px-4 py-3 text-white shadow-xl backdrop-blur">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
+            Base Map
+          </p>
+
+          <p className="mt-1 text-sm font-bold">
+            {activeTileLayer.name}
+          </p>
+        </div>
       </div>
 
       <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] flex-wrap gap-2">

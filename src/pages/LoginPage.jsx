@@ -651,9 +651,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => handleSelectAccount(account)}
                     disabled={isSigningIn}
-                    className={`rounded-[20px] border px-4 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${
+                    className={`login-role-card rounded-[20px] border px-4 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${
                       selectedRole === account.role
-                        ? `${accountVisual.ring} ${accountVisual.bg} shadow-[0_0_24px_rgba(34,211,238,0.12)]`
+                        ? `login-role-card-selected ${accountVisual.ring} ${accountVisual.bg} shadow-[0_0_24px_rgba(34,211,238,0.12)]`
                         : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.07]'
                     }`}
                   >
@@ -677,7 +677,7 @@ export default function LoginPage() {
                       )}
                     </div>
 
-                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                    <p className="login-role-description mt-2 text-xs leading-5 text-slate-400">
                       {account.description}
                     </p>
                   </button>
@@ -748,7 +748,17 @@ export default function LoginPage() {
               )}
             </button>
 
-            <div className="mt-5 rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+            <details className="login-mobile-access-details mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:hidden">
+              <summary className="cursor-pointer list-none text-xs font-bold uppercase tracking-[0.14em] text-slate-300">
+                Account & access information
+              </summary>
+              <div className="mt-2 space-y-2 text-xs leading-5 text-slate-400">
+                <p>Use an account created in User Management. Role cards only help fill the expected email format. Passwords are not stored or shown in the browser.</p>
+                <p>Role-based access separates City Health Office, Barangay Health Worker, and Supervisor workflows.</p>
+              </div>
+            </details>
+
+            <div className="login-access-note mt-5 rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Account Access
               </p>
@@ -758,7 +768,7 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <div className="mt-5 rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+            <div className="login-access-note mt-5 rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Access Notice
               </p>

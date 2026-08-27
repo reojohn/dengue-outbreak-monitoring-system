@@ -28,7 +28,7 @@ export default function InformationTypeBadge({ type = 'recorded', label, classNa
     <span
       data-information-type={type}
       title={config.title}
-      className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.11em] shadow-sm ${config.className} ${className}`.trim()}
+      className={`information-type-badge inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.11em] shadow-sm ${config.className} ${className}`.trim()}
     >
       {label || config.label}
     </span>

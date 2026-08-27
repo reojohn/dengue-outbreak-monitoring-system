@@ -1997,6 +1997,64 @@ export default function AppShell({ children }) {
         border-color: rgba(148, 163, 184, 0.48) !important;
       }
 
+
+      /* Phone typography baseline: the desktop readability floor above is too
+         large for dense 2-column mobile cards. Keep scaling support, but use
+         a smaller floor on phones so page-level compact layouts can breathe. */
+      @media (max-width: 639px) {
+        #root .dengue-scaled-content [class*="text-[7px]"],
+        #root .dengue-scaled-content [class*="text-[8px]"],
+        #root .dengue-scaled-content [class*="text-[9px]"] {
+          font-size: clamp(0.64rem, calc(0.64rem * var(--dengue-scale)), 0.84rem) !important;
+          line-height: clamp(0.88rem, calc(0.88rem * var(--dengue-scale)), 1.18rem) !important;
+        }
+
+        #root .dengue-scaled-content [class*="text-[10px]"],
+        #root .dengue-scaled-content [class*="text-[11px]"] {
+          font-size: clamp(0.7rem, calc(0.7rem * var(--dengue-scale)), 0.92rem) !important;
+          line-height: clamp(0.96rem, calc(0.96rem * var(--dengue-scale)), 1.28rem) !important;
+        }
+
+        #root .dengue-scaled-content [class*="text-[12px]"],
+        #root .dengue-scaled-content .text-xs {
+          font-size: clamp(0.74rem, calc(0.74rem * var(--dengue-scale)), 0.98rem) !important;
+          line-height: clamp(1.02rem, calc(1.02rem * var(--dengue-scale)), 1.36rem) !important;
+        }
+
+        #root .dengue-scaled-content .text-sm {
+          font-size: clamp(0.8rem, calc(0.8rem * var(--dengue-scale)), 1.06rem) !important;
+          line-height: clamp(1.12rem, calc(1.12rem * var(--dengue-scale)), 1.5rem) !important;
+        }
+
+        #root .dengue-scaled-content .text-base {
+          font-size: clamp(0.88rem, calc(0.88rem * var(--dengue-scale)), 1.16rem) !important;
+          line-height: clamp(1.24rem, calc(1.24rem * var(--dengue-scale)), 1.62rem) !important;
+        }
+
+        #root .dengue-scaled-content .text-lg {
+          font-size: clamp(0.98rem, calc(0.98rem * var(--dengue-scale)), 1.28rem) !important;
+          line-height: clamp(1.28rem, calc(1.28rem * var(--dengue-scale)), 1.72rem) !important;
+        }
+
+        #root .dengue-scaled-content .text-xl {
+          font-size: clamp(1.08rem, calc(1.08rem * var(--dengue-scale)), 1.42rem) !important;
+          line-height: clamp(1.4rem, calc(1.4rem * var(--dengue-scale)), 1.86rem) !important;
+        }
+
+        #root .dengue-scaled-content .text-2xl {
+          font-size: clamp(1.22rem, calc(1.22rem * var(--dengue-scale)), 1.62rem) !important;
+          line-height: clamp(1.52rem, calc(1.52rem * var(--dengue-scale)), 2rem) !important;
+        }
+
+        #root .dengue-scaled-content [data-information-type] {
+          font-size: clamp(0.62rem, calc(0.62rem * var(--dengue-scale)), 0.82rem) !important;
+          line-height: 1.05 !important;
+          letter-spacing: 0.04em !important;
+          padding: 0.24rem 0.45rem !important;
+          white-space: nowrap !important;
+        }
+      }
+
       html.dengue-reduce-motion *,
       html.dengue-reduce-motion *::before,
       html.dengue-reduce-motion *::after {

@@ -1142,7 +1142,7 @@ function MetricCard({ icon: Icon, label, value, helper, tone = 'blue', informati
   const theme = getMetricTheme(tone)
 
   return (
-    <article className={`group relative min-h-[176px] overflow-hidden rounded-[30px] border p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)] ring-1 ring-white/75 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_68px_rgba(15,23,42,0.15)] dark:ring-white/5 ${theme.surface}`}>
+    <article className={`bhw-summary-metric-card group relative min-h-[176px] overflow-hidden rounded-[30px] border p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)] ring-1 ring-white/75 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_68px_rgba(15,23,42,0.15)] dark:ring-white/5 ${theme.surface}`}>
       <div className={`pointer-events-none absolute -right-12 -top-14 h-36 w-36 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${theme.glow}`} />
       <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.line}`} />
       <div className="pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full border border-white/70 opacity-60 dark:border-white/5" />
@@ -1162,14 +1162,14 @@ function MetricCard({ icon: Icon, label, value, helper, tone = 'blue', informati
           )}
         </div>
 
-        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
-        <p className="mt-1 text-3xl font-black tracking-[-0.05em] text-slate-950 dark:text-white">{value}</p>
+        <p className="bhw-summary-metric-label mt-4 text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="bhw-summary-metric-value mt-1 text-3xl font-black tracking-[-0.05em] text-slate-950 dark:text-white">{value}</p>
 
         <div className="mt-auto pt-4">
           <div className="h-1.5 overflow-hidden rounded-full bg-white/80 shadow-inner dark:bg-slate-800">
             <div className={`h-full w-[72%] rounded-full bg-gradient-to-r ${theme.meter}`} />
           </div>
-          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-400">{helper}</p>
+          <p className="bhw-summary-metric-helper mt-3 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-400">{helper}</p>
         </div>
       </div>
     </article>
@@ -1554,7 +1554,7 @@ function BHWPageStyles() {
           .bhw-mobile-compact h1,
           .bhw-mobile-compact h2,
           .bhw-mobile-compact h3 {
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
         }
 
@@ -1739,7 +1739,7 @@ function BHWPageStyles() {
           }
 
           .bhw-mobile-compact .bhw-hero-risk-wrap .relative.mt-5.grid p {
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .bhw-mobile-compact .bhw-hero-risk-wrap a {
@@ -2898,7 +2898,7 @@ export default function BHWPage() {
             </div>
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 shadow-sm dark:border-white/10 dark:bg-slate-950/55">
+          <div className="bhw-case-classification-panel mt-4 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 shadow-sm dark:border-white/10 dark:bg-slate-950/55">
             <div className="flex flex-col gap-3 border-b border-slate-200/80 px-4 py-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div>
                 <div className="flex items-center gap-2">
@@ -2918,7 +2918,7 @@ export default function BHWPage() {
               </div>
             ) : caseClassificationAvailable ? (
               <div className="p-4 sm:p-5">
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="bhw-case-classification-grid grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <div className="rounded-[22px] border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-400/20 dark:bg-emerald-500/10">
                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">Confirmed</p>
                     <p className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{confirmedAvailable ? formatNumber(confirmedCases) : 'N/A'}</p>
@@ -2953,7 +2953,7 @@ export default function BHWPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-[22px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-white/10 dark:bg-slate-900/70">
+                <div className="bhw-case-mix-panel mt-4 rounded-[22px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-white/10 dark:bg-slate-900/70">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Case mix comparison</p>

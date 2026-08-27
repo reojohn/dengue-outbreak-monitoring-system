@@ -1452,7 +1452,7 @@ function PremiumStatCard({
       type={onClick ? 'button' : undefined}
       onClick={onClick || undefined}
       aria-label={onClick ? `${title}. ${clickLabel}` : undefined}
-      className={`group relative min-h-[164px] w-full overflow-hidden rounded-[22px] border p-3.5 text-left sm:min-h-[205px] sm:rounded-[30px] sm:p-6 shadow-[0_20px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_30px_76px_rgba(15,23,42,0.15)] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300/40 dark:ring-white/5 dark:hover:shadow-[0_30px_76px_rgba(2,6,23,0.38)] ${onClick ? 'cursor-pointer' : ''} ${style.surface}`}
+      className={`dashboard-summary-stat-card group relative min-h-[164px] w-full overflow-hidden rounded-[22px] border p-3.5 text-left sm:min-h-[205px] sm:rounded-[30px] sm:p-6 shadow-[0_20px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_30px_76px_rgba(15,23,42,0.15)] focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300/40 dark:ring-white/5 dark:hover:shadow-[0_30px_76px_rgba(2,6,23,0.38)] ${onClick ? 'cursor-pointer' : ''} ${style.surface}`}
     >
       <div className={`pointer-events-none absolute -right-14 -top-16 h-44 w-44 rounded-full blur-3xl transition-transform duration-500 group-hover:scale-125 ${style.glow}`} />
       <div className="pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full border border-white/70 opacity-60 dark:border-white/5" />
@@ -1463,7 +1463,7 @@ function PremiumStatCard({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.19em] text-slate-500 dark:text-slate-400 sm:text-[11px]">
+              <p className="dashboard-summary-stat-label text-[10px] font-black uppercase tracking-[0.19em] text-slate-500 dark:text-slate-400 sm:text-[11px]">
                 {title}
               </p>
               <span className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] ${style.chip}`}>
@@ -1496,12 +1496,12 @@ function PremiumStatCard({
             ))}
           </div>
 
-          <p className="max-w-[270px] text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-400 sm:text-[13px] sm:leading-5">
+          <p className="dashboard-summary-stat-helper max-w-[270px] text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-400 sm:text-[13px] sm:leading-5">
             {helper}
           </p>
 
           {onClick && (
-            <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-sky-700 dark:text-slate-400 dark:group-hover:text-sky-300">
+            <div className="dashboard-summary-stat-action mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-sky-700 dark:text-slate-400 dark:group-hover:text-sky-300">
               {clickLabel}
               <ArrowRight className="h-3.5 w-3.5" />
             </div>
@@ -2993,11 +2993,11 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={item.label}
-                    className="group/hero-metric relative overflow-hidden rounded-[18px] border border-white/[0.15] bg-gradient-to-br from-white/[0.12] via-slate-950/[0.35] to-cyan-400/[0.07] p-3 shadow-[0_14px_32px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.14]"
+                    className="dashboard-hero-metric-card group/hero-metric relative overflow-hidden rounded-[18px] border border-white/[0.15] bg-gradient-to-br from-white/[0.12] via-slate-950/[0.35] to-cyan-400/[0.07] p-3 shadow-[0_14px_32px_rgba(2,6,23,0.30)] ring-1 ring-white/5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.14]"
                   >
                     <div className="flex items-center gap-2 text-slate-300">
                       <Icon className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-black uppercase leading-4 tracking-[0.12em] sm:tracking-[0.15em]">
+                      <span className="dashboard-hero-metric-label text-[10px] font-black uppercase leading-4 tracking-[0.12em] sm:tracking-[0.15em]">
                         {item.label}
                       </span>
                     </div>
@@ -3604,7 +3604,7 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={`${row.barangay}-${index}`}
-                    className={`group/priority relative overflow-hidden rounded-[24px] border p-4 shadow-[0_16px_42px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_62px_rgba(15,23,42,0.14)] dark:ring-white/5 sm:rounded-[28px] ${riskTheme.surface}`}
+                    className={`dashboard-priority-card group/priority relative overflow-hidden rounded-[24px] border p-4 shadow-[0_16px_42px_rgba(15,23,42,0.08)] ring-1 ring-white/70 transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_62px_rgba(15,23,42,0.14)] dark:ring-white/5 sm:rounded-[28px] ${riskTheme.surface}`}
                   >
                     <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskTheme.rail}`} />
                     <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl transition-transform duration-500 group-hover/priority:scale-125 ${riskTheme.glow}`} />

@@ -206,7 +206,7 @@ export default function FieldUpdateReviewPanel() {
   }
 
   return (
-    <section id="barangay-field-updates" className="scroll-mt-28 rounded-[32px] border border-blue-200/70 bg-gradient-to-br from-blue-50/95 via-white to-cyan-50/70 p-5 shadow-[0_22px_58px_rgba(15,23,42,0.09)] dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5 sm:p-6">
+    <section id="barangay-field-updates" className="field-update-review-panel scroll-mt-28 rounded-[32px] border border-blue-200/70 bg-gradient-to-br from-blue-50/95 via-white to-cyan-50/70 p-5 shadow-[0_22px_58px_rgba(15,23,42,0.09)] dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/5 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-blue-200 bg-white text-blue-700 shadow-sm dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200">
@@ -226,7 +226,7 @@ export default function FieldUpdateReviewPanel() {
         </button>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="field-review-summary-grid mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['Awaiting review', summary.awaiting, 'text-blue-700 dark:text-blue-300'],
           ['Follow-up required', summary.followUp, 'text-amber-700 dark:text-amber-300'],
@@ -234,7 +234,7 @@ export default function FieldUpdateReviewPanel() {
           ['Urgent or High Risk', summary.urgent, 'text-rose-700 dark:text-rose-300'],
         ].map(([label, value, tone]) => (
           <div key={label} className="rounded-[22px] border border-white/80 bg-white/80 p-4 shadow-sm dark:border-white/5 dark:bg-slate-950/70">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{label}</p>
+            <p className="field-review-summary-label text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{label}</p>
             <p className={`mt-2 text-3xl font-black ${tone}`}>{value}</p>
           </div>
         ))}
@@ -249,8 +249,8 @@ export default function FieldUpdateReviewPanel() {
       {error && <div className="mt-4 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">{error}</div>}
       {message && <div className="mt-4 rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200">{message}</div>}
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-        <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white/90 shadow-sm dark:border-slate-700 dark:bg-slate-950/80">
+      <div className="field-review-main-grid mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+        <div className="field-review-list-panel overflow-hidden rounded-[26px] border border-slate-200 bg-white/90 shadow-sm dark:border-slate-700 dark:bg-slate-950/80">
           <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
             <p className="text-sm font-black text-brand-text dark:text-white">{visibleUpdates.length} submission{visibleUpdates.length === 1 ? '' : 's'}</p>
           </div>
@@ -276,8 +276,8 @@ export default function FieldUpdateReviewPanel() {
                 <button key={item.field_update_id} type="button" onClick={() => setSelectedId(item.field_update_id)} className={`w-full p-4 text-left transition ${selectedRow ? 'bg-blue-50 dark:bg-blue-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-900'}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-base font-black text-brand-text dark:text-white">{item.barangay}</p>
-                      <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{item.submitted_by_name} • {formatDate(item.reporting_date)}</p>
+                      <p className="field-review-submission-title truncate text-base font-black text-brand-text dark:text-white">{item.barangay}</p>
+                      <p className="field-review-submission-meta mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{item.submitted_by_name} • {formatDate(item.reporting_date)}</p>
                     </div>
                     {selectedRow ? <ChevronUp className="h-4 w-4 shrink-0 text-blue-600" /> : <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />}
                   </div>
@@ -295,7 +295,7 @@ export default function FieldUpdateReviewPanel() {
           </div>
         </div>
 
-        <div className="rounded-[26px] border border-slate-200 bg-white/90 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-950/80">
+        <div className="field-review-detail-panel rounded-[26px] border border-slate-200 bg-white/90 p-5 shadow-sm dark:border-slate-700 dark:bg-slate-950/80">
           {selected ? (
             <>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -372,7 +372,7 @@ export default function FieldUpdateReviewPanel() {
               </div>
             </>
           ) : (
-            <div className="flex min-h-[360px] flex-col items-center justify-center text-center">
+            <div className="field-review-empty-state flex min-h-[360px] flex-col items-center justify-center text-center">
               <ClipboardCheck className="h-10 w-10 text-slate-300" />
               <p className="mt-3 text-base font-black text-brand-text dark:text-white">Select a field update</p>
               <p className="mt-2 max-w-sm text-sm font-semibold leading-6 text-slate-500 dark:text-slate-400">Choose a BHW submission to view its checklist, observation, risk, and review actions.</p>

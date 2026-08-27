@@ -1764,12 +1764,12 @@ export default function UserManagementPage() {
           .user-mobile-compact .user-account-card p.font-black {
             font-size: 0.875rem !important;
             line-height: 1.25 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .user-mobile-compact .user-account-card p.flex.items-center {
             align-items: flex-start !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           /* Barangay + last login chips remain one per row on phone */
@@ -1783,7 +1783,7 @@ export default function UserManagementPage() {
             padding: 0.45rem 0.55rem !important;
             border-radius: 12px !important;
             white-space: normal !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           /* Actions = clear 2x2 grid instead of four mixed-size controls */

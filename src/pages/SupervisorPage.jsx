@@ -601,14 +601,14 @@ function SupervisorPageStyles() {
           font-size: 0.8125rem !important;
           line-height: 1.15 !important;
           letter-spacing: 0.055em !important;
-          overflow-wrap: anywhere !important;
+          overflow-wrap: break-word !important;
         }
 
         .supervisor-mobile-compact .supervisor-hero-metrics p {
           margin-top: 0.45rem !important;
           font-size: 1.15rem !important;
           line-height: 1.06 !important;
-          overflow-wrap: anywhere !important;
+          overflow-wrap: break-word !important;
         }
 
         /* Top priority hero card */
@@ -700,7 +700,7 @@ function SupervisorPageStyles() {
           margin-top: 0.3rem !important;
           font-size: 0.95rem !important;
           line-height: 1.1 !important;
-          overflow-wrap: anywhere !important;
+          overflow-wrap: break-word !important;
         }
 
         /* CITY-WIDE RISK CARDS = 2x2 */
@@ -780,7 +780,7 @@ function SupervisorPageStyles() {
           text-overflow: clip !important;
           font-size: 0.8125rem !important;
           line-height: 1.22 !important;
-          overflow-wrap: anywhere !important;
+          overflow-wrap: break-word !important;
         }
 
         .supervisor-mobile-compact .supervisor-priority-suggestions .rounded-full.border {
@@ -911,7 +911,7 @@ function SupervisorPageStyles() {
           padding-right: 1.8rem !important;
           font-size: 0.8125rem !important;
           line-height: 1.25 !important;
-          overflow-wrap: anywhere !important;
+          overflow-wrap: break-word !important;
         }
 
         .supervisor-mobile-compact .supervisor-action-grid > a p {
@@ -1369,7 +1369,7 @@ function SupervisorPageStyles() {
           white-space: normal !important;
           overflow: visible !important;
           text-overflow: clip !important;
-          overflow-wrap: anywhere !important;
+          overflow-wrap: break-word !important;
         }
 
         /* Update record = full-width */
@@ -2305,6 +2305,654 @@ function SupervisorPageStyles() {
         }
       }
 
+      /* =========================================================
+         FINAL SUPERVISOR MOBILE WIDTH + TEXT COMPLETION FIX
+         Removes redundant nested shells on phones and prevents
+         response-card labels/values from breaking mid-word.
+         Desktop/tablet presentation is intentionally untouched.
+         ========================================================= */
+      @media (max-width: 639px) {
+        /* Response workspace uses the phone width instead of stacking
+           panel padding + shell padding + tracker padding. */
+        .supervisor-mobile-compact #response-action-center {
+          width: calc(100vw - 0.5rem) !important;
+          max-width: calc(100vw - 0.5rem) !important;
+          margin-left: calc(50% - 50vw + 0.25rem) !important;
+          margin-right: 0 !important;
+        }
+
+        .supervisor-mobile-compact #response-action-center > .supervisor-response-panel {
+          overflow: visible !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
+          transform: none !important;
+          backdrop-filter: none !important;
+        }
+
+        .supervisor-mobile-compact #response-action-center > .supervisor-response-panel > .pointer-events-none {
+          display: none !important;
+        }
+
+        .supervisor-mobile-compact #response-action-center > .supervisor-response-panel > .relative.z-\[1\] {
+          width: 100% !important;
+        }
+
+        /* Keep the workspace introduction readable but give it a simple
+           flat mobile header instead of another full card. */
+        .supervisor-mobile-compact #response-action-center > .supervisor-response-panel > .relative.z-\[1\] > .flex:first-child {
+          margin: 0 0 0.45rem !important;
+          padding: 0.55rem 0.65rem !important;
+          border: 0 !important;
+          border-radius: 14px !important;
+          background: rgba(239, 246, 255, 0.72) !important;
+        }
+
+        html.dark .supervisor-mobile-compact #response-action-center > .supervisor-response-panel > .relative.z-\[1\] > .flex:first-child {
+          background: rgba(15, 23, 42, 0.58) !important;
+        }
+
+        .supervisor-mobile-compact #response-action-center .supervisor-priority-suggestions {
+          margin: 0 0.45rem 0.5rem !important;
+        }
+
+        .supervisor-mobile-compact #response-action-center .supervisor-priority-suggestions .truncate {
+          white-space: normal !important;
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+
+        /* This was a decorative container around another full tracker card.
+           Remove it on phones so the tracker gets the lost width back. */
+        .supervisor-mobile-compact #response-action-center .supervisor-action-shell {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          overflow: visible !important;
+        }
+
+        .supervisor-mobile-compact .supervisor-action-command-mobile,
+        .supervisor-mobile-compact .decision-action-tracker {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-tracker {
+          border-radius: 15px !important;
+        }
+
+        /* Status summary: two columns, then one full-width card.
+           Three columns caused TOTAL/PENDING/COMPLETED to split letter-by-letter. */
+        .supervisor-mobile-compact .decision-action-stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 0.42rem !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-stats > .decision-action-stat-pill {
+          min-height: 84px !important;
+          padding: 0.58rem !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-stats > .decision-action-stat-pill:last-child:nth-child(odd) {
+          grid-column: 1 / -1 !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-stat-label {
+          display: block !important;
+          max-width: 100% !important;
+          font-size: 0.72rem !important;
+          line-height: 1.15 !important;
+          letter-spacing: 0.055em !important;
+          white-space: nowrap !important;
+          word-break: keep-all !important;
+          overflow-wrap: normal !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-stat-pill p {
+          word-break: normal !important;
+          overflow-wrap: normal !important;
+        }
+
+        /* Flatten the create form and live task-board cards. The tracker is
+           already the containing card, so another bordered card only narrows fields. */
+        .supervisor-mobile-compact .decision-action-workspace {
+          gap: 0 !important;
+          margin-top: 0.45rem !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-form,
+        .supervisor-mobile-compact .decision-action-board {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0.65rem 0.52rem !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-board {
+          margin-top: 0.45rem !important;
+          padding-top: 0.75rem !important;
+          border-top: 1px solid rgba(148, 163, 184, 0.32) !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-suggestion {
+          padding: 0.5rem !important;
+          border-radius: 12px !important;
+          box-shadow: none !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-taskboard {
+          margin-top: 0.5rem !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-taskboard > .pointer-events-none {
+          display: none !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-taskboard > .max-h-\[1120px\].min-h-\[720px\] {
+          padding: 0 !important;
+        }
+
+        .supervisor-mobile-compact .decision-action-record {
+          padding: 0.62rem !important;
+          border-radius: 13px !important;
+        }
+
+        /* Never clip owner/type/follow-up text in the small summary boxes. */
+        .supervisor-mobile-compact .action-mini-value {
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+
+        /* Field-update review is another major supervisor section. Flatten
+           its list/detail cards on mobile so it also gains horizontal room. */
+        .supervisor-mobile-compact .supervisor-field-review-wrap {
+          width: calc(100vw - 0.5rem) !important;
+          max-width: calc(100vw - 0.5rem) !important;
+          margin-left: calc(50% - 50vw + 0.25rem) !important;
+          overflow: visible !important;
+        }
+
+        .supervisor-mobile-compact .field-update-review-panel {
+          padding: 0.65rem !important;
+        }
+
+        .supervisor-mobile-compact .field-review-list-panel,
+        .supervisor-mobile-compact .field-review-detail-panel {
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+        }
+
+        .supervisor-mobile-compact .field-review-detail-panel {
+          padding-left: 0.3rem !important;
+          padding-right: 0.3rem !important;
+        }
+
+        .supervisor-mobile-compact .field-review-summary-label {
+          word-break: normal !important;
+          overflow-wrap: normal !important;
+        }
+      }
+
+      /* Highest-specificity mobile overrides for the older responsive
+         rules above. These intentionally use the section IDs so the
+         final mobile layout wins without changing desktop styles. */
+      @media (max-width: 639px) {
+        #root .supervisor-mobile-compact #response-action-center > .supervisor-response-panel {
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center .supervisor-action-shell {
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body {
+          padding: 0.32rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 0.42rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-stats > .decision-action-stat-pill {
+          min-height: 84px !important;
+          padding: 0.58rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-stats > .decision-action-stat-pill:nth-child(5) {
+          grid-column: 1 / -1 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-label {
+          font-size: 0.72rem !important;
+          line-height: 1.15 !important;
+          letter-spacing: 0.055em !important;
+          white-space: nowrap !important;
+          word-break: keep-all !important;
+          overflow-wrap: normal !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-workspace {
+          grid-template-columns: minmax(0, 1fr) !important;
+          gap: 0 !important;
+          margin-top: 0.45rem !important;
+          padding: 0 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-workspace > .decision-action-form,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-workspace > .decision-action-board {
+          grid-column: 1 / -1 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0.5rem !important;
+          padding-right: 0.5rem !important;
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body > .decision-action-workspace > .decision-action-board {
+          border-top: 1px solid rgba(148, 163, 184, 0.32) !important;
+          padding-top: 0.75rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard {
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .action-mini-value {
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+
+        #root .supervisor-mobile-compact #barangay-field-updates.field-update-review-panel {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding: 0.6rem !important;
+        }
+
+        #root .supervisor-mobile-compact #barangay-field-updates .field-review-list-panel,
+        #root .supervisor-mobile-compact #barangay-field-updates .field-review-detail-panel {
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+        }
+
+        #root .supervisor-mobile-compact #barangay-field-updates .field-review-submission-title,
+        #root .supervisor-mobile-compact #barangay-field-updates .field-review-submission-meta {
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+
+        #root .supervisor-mobile-compact #barangay-field-updates .field-review-summary-label {
+          line-height: 1.2 !important;
+          letter-spacing: 0.06em !important;
+          word-break: normal !important;
+          overflow-wrap: normal !important;
+        }
+      }
+
+      @media (max-width: 374px) {
+        .supervisor-mobile-compact .decision-action-stat-label {
+          font-size: 0.69rem !important;
+          letter-spacing: 0.035em !important;
+        }
+      }
+
+      /* =========================================================
+         FINAL SUPERVISOR MOBILE WIDTH PASS
+         Give Response Coordination the phone viewport instead of
+         inheriting every desktop/card gutter. Keep desktop untouched.
+         ========================================================= */
+      @media (max-width: 639px) {
+        #root .supervisor-mobile-compact #response-action-center {
+          width: calc(100vw - 8px) !important;
+          max-width: none !important;
+          margin-left: calc(50% - 50vw + 4px) !important;
+          margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          overflow: visible !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center > .supervisor-response-panel,
+        #root .supervisor-mobile-compact #response-action-center .supervisor-action-shell,
+        #root .supervisor-mobile-compact #response-action-center .supervisor-action-command-mobile,
+        #root .supervisor-mobile-compact #response-action-center .decision-action-tracker {
+          width: 100% !important;
+          max-width: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+
+        /* The outer workspace panel is only decorative on a phone.
+           Removing its side chrome returns the lost content width. */
+        #root .supervisor-mobile-compact #response-action-center > .supervisor-response-panel {
+          padding: 0 !important;
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          background: transparent !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center .supervisor-action-shell {
+          margin-top: 0.45rem !important;
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center .decision-action-tracker {
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 16px !important;
+          box-shadow: none !important;
+        }
+
+        /* Keep the Command Center header nearly edge-to-edge too. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-header {
+          padding-left: 0.72rem !important;
+          padding-right: 0.72rem !important;
+          border-radius: 16px 16px 0 0 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > .decision-action-body {
+          padding: 0.35rem 0 !important;
+        }
+
+        /* The live-board title and count should share one row. A full-width
+           "Showing" card was another unnecessary nested container. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.flex {
+          flex-direction: row !important;
+          align-items: flex-start !important;
+          justify-content: space-between !important;
+          gap: 0.5rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.flex > div:first-child {
+          min-width: 0 !important;
+          flex: 1 1 auto !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.flex > div:last-child {
+          width: auto !important;
+          min-width: 58px !important;
+          flex: 0 0 auto !important;
+          padding: 0.38rem 0.5rem !important;
+          border-radius: 10px !important;
+          text-align: center !important;
+          box-shadow: none !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.flex > div:last-child p:first-child {
+          font-size: 0.58rem !important;
+          letter-spacing: 0.08em !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.flex > div:last-child p:last-child {
+          margin-top: 0.15rem !important;
+          font-size: 1rem !important;
+          line-height: 1 !important;
+        }
+
+        /* Five equal status cards. At common phone widths they use three
+           columns (3 + 2) instead of making Overdue a different full-width card. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stats {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          gap: 0.38rem !important;
+          padding: 0 0.15rem !important;
+          align-items: stretch !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stats > .decision-action-stat-pill,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stats > .decision-action-stat-pill:nth-child(5) {
+          grid-column: auto !important;
+          width: 100% !important;
+          min-width: 0 !important;
+          min-height: 88px !important;
+          height: 100% !important;
+          padding: 0.52rem !important;
+          border-radius: 12px !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-pill > .relative {
+          height: 100% !important;
+          align-items: flex-start !important;
+          gap: 0.28rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-label {
+          font-size: 0.64rem !important;
+          line-height: 1.12 !important;
+          letter-spacing: 0.035em !important;
+          white-space: nowrap !important;
+          word-break: keep-all !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-pill p.mt-2 {
+          margin-top: 0.32rem !important;
+          font-size: 1.08rem !important;
+          line-height: 1 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-pill p.mt-1 {
+          margin-top: 0.28rem !important;
+          font-size: 0.69rem !important;
+          line-height: 1.18 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-pill .h-11.w-11 {
+          width: 1.72rem !important;
+          height: 1.72rem !important;
+          border-radius: 0.65rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-pill .h-5.w-5 {
+          width: 0.9rem !important;
+          height: 0.9rem !important;
+        }
+
+        /* Remove one more nesting layer from form and task board. The
+           individual controls/cards remain visible and readable. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-workspace {
+          padding: 0 !important;
+          gap: 0 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-form,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board {
+          width: 100% !important;
+          max-width: none !important;
+          padding-left: 0.28rem !important;
+          padding-right: 0.28rem !important;
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          --tw-ring-shadow: 0 0 #0000 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-suggestion {
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding: 0.55rem !important;
+          border-radius: 12px !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board {
+          padding-top: 0.65rem !important;
+          margin-top: 0.42rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard {
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record {
+          width: 100% !important;
+          max-width: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding: 0.62rem !important;
+          border-radius: 12px !important;
+        }
+
+        /* Let long values use the newly available width instead of clipping. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking input,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking textarea,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking button {
+          max-width: 100% !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .truncate {
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+      }
+
+      /* Three columns are intentionally used for ordinary phone widths.
+         Only genuinely narrow devices fall back to two equal columns. */
+      @media (max-width: 359px) {
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-stat-label {
+          font-size: 0.68rem !important;
+        }
+      }
+
+      /* =========================================================
+         LIVE TASK BOARD — MOBILE FULL-WIDTH OVERRIDE
+         Uses semantic classes instead of fragile Tailwind-class selectors.
+         This is mobile-only; desktop/tablet spacing remains unchanged.
+         ========================================================= */
+      @media (max-width: 639px) {
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board {
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          overflow: visible !important;
+        }
+
+        /* Keep only a small readable inset for the board heading. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.flex,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board > .relative.mt-5 {
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0.42rem !important;
+          padding-right: 0.42rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard {
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          overflow: visible !important;
+        }
+
+        /* The old px-3 + reserved scrollbar gutter was the main source of
+           the narrow-looking task cards on phones. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard-scroll {
+          box-sizing: border-box !important;
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          scrollbar-gutter: auto !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record {
+          box-sizing: border-box !important;
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding: 0.72rem !important;
+          border-radius: 14px !important;
+        }
+
+        /* Make controls inside each live task card use every available pixel. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record input,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record textarea,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record .relative.mt-2,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record .relative.mt-2 > button {
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+        }
+      }
+
     `}</style>
   )
 }
@@ -2525,7 +3173,7 @@ export default function SupervisorPage() {
       </section>
 
       <section id="response-action-center" className="scroll-mt-24">
-        <PremiumPanel tone="blue" className="p-5 sm:p-6">
+        <PremiumPanel tone="blue" className="supervisor-response-panel p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <SectionBadge icon={ClipboardCheck} tone="blue">Response coordination workspace</SectionBadge>
@@ -2564,7 +3212,7 @@ export default function SupervisorPage() {
             )}
           </div>
 
-          <div className="mt-5 rounded-[28px] border border-white/80 bg-white/75 p-3 shadow-inner dark:border-white/10 dark:bg-slate-950/60 sm:p-4">
+          <div className="supervisor-action-shell mt-5 rounded-[28px] border border-white/80 bg-white/75 p-3 shadow-inner dark:border-white/10 dark:bg-slate-950/60 sm:p-4">
             <div className="supervisor-action-command-mobile"><DecisionActionTracker priorityRows={sortedRows.slice(0, 10)} /></div>
           </div>
         </PremiumPanel>

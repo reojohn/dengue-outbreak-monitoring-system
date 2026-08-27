@@ -2800,12 +2800,12 @@ function StatCard({
       <div className="relative flex h-full flex-col justify-between gap-5 pl-1">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.19em] text-slate-500 dark:text-slate-400">
+            <p className="forecast-stat-label text-[10px] font-black uppercase tracking-[0.19em] text-slate-500 dark:text-slate-400">
               {label}
             </p>
             <div className="mt-2 flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${style.signal} shadow-[0_0_12px_currentColor]`} />
-              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+              <span className="forecast-stat-signal-label text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
                 Live forecast signal
               </span>
             </div>
@@ -2817,15 +2817,15 @@ function StatCard({
         </div>
 
         <div>
-          <h3 className="break-words text-[1.85rem] font-black leading-none tracking-[-0.045em] text-slate-950 dark:text-white">
+          <h3 className="forecast-stat-value break-words text-[1.85rem] font-black leading-none tracking-[-0.045em] text-slate-950 dark:text-white">
             {value}
           </h3>
-          <p className="mt-2 max-w-[92%] text-sm leading-5 text-slate-500 dark:text-slate-400">
+          <p className="forecast-stat-helper mt-2 max-w-[92%] text-sm leading-5 text-slate-500 dark:text-slate-400">
             {helper}
           </p>
 
           {isInteractive && (
-            <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">
+            <div className="forecast-stat-action mt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700 dark:text-slate-200">
               <span>{actionLabel}</span>
               <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </div>
@@ -3090,10 +3090,10 @@ function HeroMetric({ label, value, helper, icon: Icon = Activity }) {
       <div className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-gradient-to-b from-cyan-300 via-sky-400 to-blue-500" />
       <div className="relative flex items-start justify-between gap-3 pl-1">
         <div className="min-w-0">
-          <p className="text-[9px] font-black uppercase tracking-[0.19em] text-white/60">
+          <p className="forecast-hero-metric-label text-[9px] font-black uppercase tracking-[0.19em] text-white/60">
             {label}
           </p>
-          <p className="mt-2 text-2xl font-black tracking-[-0.045em] text-white">
+          <p className="forecast-hero-metric-value mt-2 text-2xl font-black tracking-[-0.045em] text-white">
             {value}
           </p>
         </div>
@@ -3101,7 +3101,7 @@ function HeroMetric({ label, value, helper, icon: Icon = Activity }) {
           <Icon className="h-4 w-4" strokeWidth={2.35} />
         </div>
       </div>
-      <p className="relative mt-2 pl-1 text-[11px] leading-4 text-white/70">
+      <p className="forecast-hero-metric-helper relative mt-2 pl-1 text-[11px] leading-4 text-white/70">
         {helper}
       </p>
     </div>
@@ -4965,7 +4965,7 @@ const activeModelComparison = (() => {
             />
           </div>
 
-          <span className="absolute bottom-1 rounded-full border border-emerald-300/25 bg-slate-950/90 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-emerald-200 shadow-lg backdrop-blur">
+          <span className="forecast-selected-ai-badge absolute bottom-1 rounded-full border border-emerald-300/25 bg-slate-950/90 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-emerald-200 shadow-lg backdrop-blur">
             Selected AI
           </span>
         </div>
@@ -6004,7 +6004,7 @@ const activeModelComparison = (() => {
             })}
           </div>
 
-          <div className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+          <div className="forecast-priority-overview-card mt-5 rounded-[26px] border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-900/70">
             <p className="text-sm font-black text-brand-text dark:text-slate-100">
               Priority overview
             </p>
@@ -6014,20 +6014,20 @@ const activeModelComparison = (() => {
                 priorityDistribution.map((item, index) => (
                   <div
                     key={item.priority}
-                    className="group relative flex items-center justify-between gap-3 overflow-hidden rounded-[20px] border border-slate-200/80 bg-gradient-to-r from-white to-slate-50 px-3 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md dark:border-white/10 dark:from-slate-950 dark:to-slate-900"
+                    className="forecast-priority-overview-row group relative flex items-center justify-between gap-3 overflow-hidden rounded-[20px] border border-slate-200/80 bg-gradient-to-r from-white to-slate-50 px-3 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md dark:border-white/10 dark:from-slate-950 dark:to-slate-900"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-950 text-[10px] font-black text-white dark:border-white/10 dark:bg-white dark:text-slate-950">
                         {index + 1}
                       </span>
                       <span
-                        className={`truncate rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(item.priority)}`}
+                        className={`forecast-priority-overview-label truncate rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(item.priority)}`}
                       >
                         {item.priority}
                       </span>
                     </div>
 
-                    <span className="flex h-9 min-w-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 text-sm font-black text-brand-text shadow-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100">
+                    <span className="forecast-priority-overview-count flex h-9 min-w-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 text-sm font-black text-brand-text shadow-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100">
                       {formatNumber(item.count)}
                     </span>
                   </div>
@@ -6174,7 +6174,7 @@ const activeModelComparison = (() => {
                   return (
                     <div
                       key={row.barangay}
-                      className={`group relative overflow-hidden rounded-[28px] border p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_28px_58px_rgba(15,23,42,0.15)] ${cardStyle.surface}`}
+                      className={`forecast-priority-card group relative overflow-hidden rounded-[28px] border p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_28px_58px_rgba(15,23,42,0.15)] ${cardStyle.surface}`}
                     >
                       <div className={`pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full ${cardStyle.glow} blur-3xl transition-transform duration-500 group-hover:scale-125`} />
                       <div className={`absolute inset-x-5 top-0 h-[3px] rounded-full bg-gradient-to-r ${cardStyle.accent}`} />
@@ -6721,7 +6721,7 @@ const activeModelComparison = (() => {
             margin-top: 0.3rem !important;
             font-size: 0.92rem !important;
             line-height: 1.02 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .forecast-premium-hero .mt-9.grid p:last-child {
@@ -7277,7 +7277,7 @@ const activeModelComparison = (() => {
           .forecast-mobile-compact .mobile-field-grid-6 p,
           .forecast-mobile-compact .mobile-field-grid-4 span,
           .forecast-mobile-compact .mobile-field-grid-6 span {
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .forecast-mobile-compact .mobile-field-grid-4 h3,
@@ -7530,7 +7530,7 @@ const activeModelComparison = (() => {
             margin-top: 0.4rem !important;
             font-size: 1.15rem !important;
             line-height: 1.08 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .forecast-mobile-compact .forecast-hero-metrics p:last-child {
@@ -7602,7 +7602,7 @@ const activeModelComparison = (() => {
             margin-top: 0.45rem !important;
             font-size: 1.18rem !important;
             line-height: 1.08 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .forecast-mobile-compact .forecast-stat-card h3 + p {
@@ -8082,7 +8082,7 @@ const activeModelComparison = (() => {
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
             font-size: 0.8125rem !important;
             line-height: 1.18 !important;
           }
@@ -8152,7 +8152,7 @@ const activeModelComparison = (() => {
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           /* RMSE / F1 / selection strength use a compact 3-column strip now
@@ -8326,7 +8326,7 @@ const activeModelComparison = (() => {
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
         }
 

@@ -6224,7 +6224,7 @@ export default function ReportsPage() {
 
           .reports-mobile-compact .break-words,
           .reports-mobile-compact .break-all {
-            overflow-wrap: anywhere;
+            overflow-wrap: break-word;
           }
         }
 
@@ -6298,7 +6298,7 @@ export default function ReportsPage() {
             margin-top: 0.4rem !important;
             font-size: 1.15rem !important;
             line-height: 1.05 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .reports-mobile-compact .reports-hero-metrics p:last-child {
@@ -6489,7 +6489,7 @@ export default function ReportsPage() {
           .reports-mobile-compact .reports-metadata-highlight-grid p:last-child {
             font-size: 0.8125rem !important;
             line-height: 1.25 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .reports-mobile-compact #official-report-details > .p-5 {
@@ -6649,7 +6649,7 @@ export default function ReportsPage() {
           .reports-mobile-compact .reports-top-factor-grid p:last-child {
             font-size: 0.8125rem !important;
             line-height: 1.25 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           /* SUPPORTING DETAILS */
@@ -6689,7 +6689,7 @@ export default function ReportsPage() {
           .reports-mobile-compact .reports-distribution-list span.text-sm {
             font-size: 0.8125rem !important;
             line-height: 1.25 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .reports-mobile-compact .reports-distribution-list > div > span:last-child {
@@ -6711,7 +6711,7 @@ export default function ReportsPage() {
 
           .reports-mobile-compact .reports-source-grid p.break-all {
             word-break: break-word !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
             font-size: 0.8125rem !important;
             line-height: 1.3 !important;
           }

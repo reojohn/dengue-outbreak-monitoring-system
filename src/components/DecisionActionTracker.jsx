@@ -220,13 +220,13 @@ function StatPill({ icon: Icon, label, value, helper, tone = 'slate' }) {
   const style = tones[tone] || tones.slate
 
   return (
-    <div className={`group relative overflow-hidden rounded-[26px] border p-4 shadow-[0_18px_42px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)] ${style.card}`}>
+    <div className={`decision-action-stat-pill group relative overflow-hidden rounded-[26px] border p-4 shadow-[0_18px_42px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)] ${style.card}`}>
       <div className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-3xl ${style.glow}`} />
       <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${style.line}`} />
 
       <div className="relative flex items-start justify-between gap-3">
         <div>
-          <span className="text-[11px] font-black uppercase tracking-[0.16em] opacity-70">
+          <span className="decision-action-stat-label text-[11px] font-black uppercase tracking-[0.16em] opacity-70">
             {label}
           </span>
 
@@ -277,10 +277,10 @@ function DropdownScrollArea({ children, maxHeight = 'max-h-[260px]' }) {
 
 function TaskBoardScrollArea({ children }) {
   return (
-    <div className="relative mt-5 overflow-hidden rounded-[32px] border border-slate-200/70 bg-slate-50/70 shadow-inner dark:border-slate-800/80 dark:bg-slate-950/60">
+    <div className="decision-action-taskboard relative mt-5 w-full min-w-0 overflow-hidden rounded-[32px] border border-slate-200/70 bg-slate-50/70 shadow-inner dark:border-slate-800/80 dark:bg-slate-950/60">
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-9 bg-gradient-to-b from-slate-50 via-slate-50/90 to-transparent dark:from-slate-950 dark:via-slate-950/90" />
 
-      <div className="max-h-[1120px] min-h-[720px] space-y-4 overflow-y-auto overscroll-contain scroll-smooth px-3 py-4 pb-10 pr-2 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgba(96,165,250,0.85)_rgba(226,232,240,0.86)] dark:[scrollbar-color:rgba(96,165,250,0.75)_rgba(15,23,42,0.96)] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:my-3 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-200/70 dark:[&::-webkit-scrollbar-track]:bg-slate-900/95 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-50 [&::-webkit-scrollbar-thumb]:bg-blue-400/85 hover:[&::-webkit-scrollbar-thumb]:bg-blue-500 dark:[&::-webkit-scrollbar-thumb]:border-slate-950 dark:[&::-webkit-scrollbar-thumb]:bg-blue-400/75 dark:hover:[&::-webkit-scrollbar-thumb]:bg-sky-300">
+      <div className="decision-action-taskboard-scroll max-h-[1120px] min-h-[720px] w-full min-w-0 space-y-4 overflow-y-auto overscroll-contain scroll-smooth px-0 py-4 pb-10 [scrollbar-gutter:auto] [scrollbar-width:thin] [scrollbar-color:rgba(96,165,250,0.85)_rgba(226,232,240,0.86)] sm:px-3 sm:pr-2 sm:[scrollbar-gutter:stable] dark:[scrollbar-color:rgba(96,165,250,0.75)_rgba(15,23,42,0.96)] [&::-webkit-scrollbar]:w-2 sm:[&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:my-3 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-200/70 dark:[&::-webkit-scrollbar-track]:bg-slate-900/95 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-slate-50 [&::-webkit-scrollbar-thumb]:bg-blue-400/85 hover:[&::-webkit-scrollbar-thumb]:bg-blue-500 dark:[&::-webkit-scrollbar-thumb]:border-slate-950 dark:[&::-webkit-scrollbar-thumb]:bg-blue-400/75 dark:hover:[&::-webkit-scrollbar-thumb]:bg-sky-300">
         {children}
       </div>
 
@@ -310,7 +310,7 @@ function ActionMiniField({ label, value }) {
       <p className="text-[10px] font-black uppercase tracking-[0.13em] text-brand-muted dark:text-slate-500">
         {label}
       </p>
-      <p className="mt-1 truncate text-xs font-black text-brand-text dark:text-slate-200">
+      <p className="action-mini-value mt-1 truncate text-xs font-black text-brand-text dark:text-slate-200">
         {value || 'Not set'}
       </p>
     </div>
@@ -664,11 +664,11 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
   return (
     <section
       id="decision-action-tracking"
-      className="relative overflow-visible rounded-[38px] border border-slate-200/80 bg-white/90 shadow-[0_28px_80px_rgba(15,23,42,0.10)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/85 dark:ring-white/5"
+      className="decision-action-tracker relative overflow-visible rounded-[38px] border border-slate-200/80 bg-white/90 shadow-[0_28px_80px_rgba(15,23,42,0.10)] ring-1 ring-white/70 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/85 dark:ring-white/5"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(circle_at_top_left,rgba(37,95,143,0.18),transparent_38%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_34%)]" />
 
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 px-5 py-7 text-white sm:px-6 lg:px-7">
+      <div className="decision-action-header relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 px-5 py-7 text-white sm:px-6 lg:px-7">
         <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 left-16 h-72 w-72 rounded-full bg-emerald-400/15 blur-3xl" />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),transparent_35%,rgba(255,255,255,0.04))]" />
@@ -779,8 +779,8 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
         </div>
       </div>
 
-      <div className="relative p-5 sm:p-6 lg:p-7">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="decision-action-body relative p-5 sm:p-6 lg:p-7">
+        <div className="decision-action-stats grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <StatPill icon={ClipboardList} label="Total" value={summary.total || 0} helper="All records" />
           <StatPill icon={AlertTriangle} label="Pending" value={summary.pending || 0} helper="Needs action" tone="amber" />
           <StatPill icon={ShieldAlert} label="Ongoing" value={summary.in_progress || 0} helper="Being handled" tone="blue" />
@@ -803,10 +803,10 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
           </div>
         )}
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(360px,0.84fr)_minmax(0,1.16fr)]">
+        <div className="decision-action-workspace mt-6 grid gap-6 xl:grid-cols-[minmax(360px,0.84fr)_minmax(0,1.16fr)]">
           <form
             onSubmit={handleCreateAction}
-            className="relative overflow-visible rounded-[34px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-blue-50/50 p-4 shadow-[0_22px_58px_rgba(15,23,42,0.08)] ring-1 ring-white/80 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:ring-white/5 sm:p-5"
+            className="decision-action-form relative overflow-visible rounded-[34px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-blue-50/50 p-4 shadow-[0_22px_58px_rgba(15,23,42,0.08)] ring-1 ring-white/80 dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-blue-950/20 dark:ring-white/5 sm:p-5"
           >
             <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-20 left-0 h-44 w-44 rounded-full bg-emerald-500/10 blur-3xl" />
@@ -828,7 +828,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
               </div>
 
               {availableRows.length > 0 && (
-                <div className="mt-5 rounded-[24px] border border-blue-100 bg-white/80 p-4 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10">
+                <div className="decision-action-suggestion mt-5 rounded-[24px] border border-blue-100 bg-white/80 p-4 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-blue dark:text-blue-300">
@@ -962,7 +962,14 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
                   <input
                     value={form.assigned_to}
                     onChange={(event) => updateForm('assigned_to', event.target.value)}
-                    className={inputClassName()}
+                    className={`${inputClassName()} hidden sm:block`}
+                    placeholder="BHW / CHO"
+                  />
+                  <textarea
+                    rows={2}
+                    value={form.assigned_to}
+                    onChange={(event) => updateForm('assigned_to', event.target.value)}
+                    className={`${inputClassName()} min-h-[56px] resize-none sm:hidden`}
                     placeholder="BHW / CHO"
                   />
                 </div>
@@ -1032,7 +1039,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
             </div>
           </form>
 
-          <div className="relative overflow-visible rounded-[34px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_22px_58px_rgba(15,23,42,0.08)] ring-1 ring-white/80 dark:border-slate-800/80 dark:bg-slate-950/90 dark:ring-white/5 sm:p-5">
+          <div className="decision-action-board relative w-full min-w-0 overflow-visible rounded-[34px] border border-slate-200/80 bg-white/95 px-1.5 py-4 shadow-[0_22px_58px_rgba(15,23,42,0.08)] ring-1 ring-white/80 dark:border-slate-800/80 dark:bg-slate-950/90 dark:ring-white/5 sm:p-5">
             <div className="pointer-events-none absolute -right-20 top-0 h-56 w-56 rounded-full bg-slate-200/60 blur-3xl dark:bg-blue-500/10" />
 
             <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1105,7 +1112,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
                   return (
                     <article
                       key={action.id}
-                      className="group overflow-visible rounded-[30px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/80 to-white p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-brand-blue/25 hover:shadow-[0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
+                      className="decision-action-record group w-full min-w-0 max-w-none overflow-visible rounded-[20px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/80 to-white p-3 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-brand-blue/25 hover:shadow-[0_18px_44px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 sm:rounded-[30px] sm:p-4"
                     >
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0">
@@ -1153,7 +1160,13 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
                           <input
                             value={currentAssignee || ''}
                             onChange={(event) => updateEditedAction(action.id, 'assigned_to', event.target.value)}
-                            className={inputClassName()}
+                            className={`${inputClassName()} hidden sm:block`}
+                          />
+                          <textarea
+                            rows={2}
+                            value={currentAssignee || ''}
+                            onChange={(event) => updateEditedAction(action.id, 'assigned_to', event.target.value)}
+                            className={`${inputClassName()} min-h-[56px] resize-none sm:hidden`}
                           />
                         </div>
 

@@ -721,7 +721,7 @@ html.dengue-wide-layout .dengue-layout-shell {
   }
 
   .dengue-scaled-content {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 }
 
@@ -1440,7 +1440,7 @@ html:not(.dark) .leaflet-popup-tip {
   letter-spacing: 0.09em !important;
   text-align: center;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 @media (min-width: 640px) {
@@ -1470,5 +1470,2365 @@ html:not(.dark) .leaflet-popup-tip {
 
   .dengue-hero-score-value {
     font-size: 1.35rem !important;
+  }
+}
+
+/* 2026-08-27 mobile density polish
+   Keeps desktop/tablet styling intact while making the phone experience
+   shorter, denser and easier to scan. Touch targets stay comfortably large. */
+@media (max-width: 640px) {
+  :root {
+    --dengue-mobile-page-gap: 0.62rem;
+    --dengue-mobile-card-radius: 0.95rem;
+    --dengue-mobile-panel-radius: 1.08rem;
+    --dengue-mobile-card-pad: 0.68rem;
+    --dengue-mobile-section-pad: 0.78rem;
+  }
+
+  /* Page rhythm */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) {
+    padding-bottom: 0.85rem !important;
+    border-radius: 1rem !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) > :not([hidden]) + :not([hidden]) {
+    margin-top: var(--dengue-mobile-page-gap) !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) {
+    gap: var(--dengue-mobile-page-gap) !important;
+  }
+
+  /* Reduce excessive internal padding without flattening the visual hierarchy. */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.p-8, .p-7, .p-6, .sm\:p-8, .sm\:p-7, .sm\:p-6) {
+    padding: 0.82rem !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.p-5, .sm\:p-5, .p-4, .sm\:p-4) {
+    padding: var(--dengue-mobile-card-pad) !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.px-6, .sm\:px-6, .px-5, .sm\:px-5, .px-4, .sm\:px-4) {
+    padding-left: 0.72rem !important;
+    padding-right: 0.72rem !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.py-6, .sm\:py-6, .py-5, .sm\:py-5, .py-4, .sm\:py-4) {
+    padding-top: 0.68rem !important;
+    padding-bottom: 0.68rem !important;
+  }
+
+  /* Tighter spacing utilities commonly used by the premium cards. */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.gap-8, .gap-7, .gap-6, .gap-5, .gap-4) {
+    gap: 0.68rem !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.mt-8, .mt-7, .mt-6, .mt-5, .mt-4) {
+    margin-top: 0.68rem !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.mb-8, .mb-7, .mb-6, .mb-5, .mb-4) {
+    margin-bottom: 0.68rem !important;
+  }
+
+  /* Mobile type scale: slightly smaller than the current health-worker desktop scale,
+     but still comfortably readable on phones. */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) h1 {
+    font-size: 1.42rem !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.03em !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) h2 {
+    font-size: 1.08rem !important;
+    line-height: 1.12 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) h3 {
+    font-size: 0.96rem !important;
+    line-height: 1.16 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.text-4xl, .text-3xl) {
+    font-size: 1.35rem !important;
+    line-height: 1.08 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) .text-2xl {
+    font-size: 1.14rem !important;
+    line-height: 1.08 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.text-xl, .text-lg) {
+    font-size: 0.96rem !important;
+    line-height: 1.18 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) .text-base {
+    font-size: 0.84rem !important;
+    line-height: 1.34 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) .text-sm {
+    font-size: 0.78rem !important;
+    line-height: 1.34 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) .text-xs {
+    font-size: 0.71rem !important;
+    line-height: 1.28 !important;
+  }
+
+  /* Premium panel geometry */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[38px]"],
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[36px]"],
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[34px]"],
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[30px]"] {
+    border-radius: var(--dengue-mobile-panel-radius) !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[28px]"],
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[24px]"],
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[22px]"],
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) [class*="rounded-[20px]"] {
+    border-radius: var(--dengue-mobile-card-radius) !important;
+  }
+
+  /* Hero sections are the biggest source of vertical length on mobile. */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact,
+    .upload-mobile-compact
+  ) > section:first-of-type,
+  #root .dengue-scaled-content :is(
+    .supervisor-hero-panel,
+    .reports-hero-panel,
+    .user-hero-panel
+  ) {
+    min-height: 0 !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact,
+    .upload-mobile-compact
+  ) > section:first-of-type .relative.grid,
+  #root .dengue-scaled-content :is(
+    .supervisor-hero-panel,
+    .reports-hero-panel,
+    .user-hero-panel
+  ) > .relative.grid {
+    min-height: 0 !important;
+    gap: 0.7rem !important;
+    padding: 0.82rem !important;
+  }
+
+  /* Metric cards */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact,
+    .upload-mobile-compact
+  ) :is(
+    .mobile-stat-card,
+    .supervisor-stat-grid > article,
+    .user-stat-grid article,
+    .premium-hero-metrics > div
+  ) {
+    min-height: 4.75rem !important;
+    padding: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .mobile-stat-card :is(h3, .mobile-stat-value) {
+    margin-top: 0.28rem !important;
+    font-size: 1.2rem !important;
+  }
+
+  /* Cards/lists: reduce row height while keeping 44px touch targets. */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(button, a[role="button"]) {
+    min-height: 42px;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-readiness-source-list > button {
+    min-height: 3.1rem !important;
+    padding: 0.52rem 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .group.flex.min-h-\[82px\] {
+    min-height: 3.6rem !important;
+    padding: 0.58rem 0.7rem !important;
+    gap: 0.6rem !important;
+  }
+
+  /* Charts */
+  #root .dengue-scaled-content .mobile-chart-compact {
+    height: 205px !important;
+    min-height: 205px !important;
+  }
+
+  #root .dengue-scaled-content :is(.dashboard-mobile-compact, .bhw-mobile-compact, .reports-mobile-compact) .min-h-\[300px\] {
+    min-height: 220px !important;
+  }
+
+  #root .dengue-scaled-content :is(.dashboard-mobile-compact, .bhw-mobile-compact, .reports-mobile-compact) .sm\:min-h-\[430px\] {
+    min-height: 220px !important;
+  }
+
+  /* Map workspace: compact default map, expanded map remains tall/useful. */
+  #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-compact {
+    height: 300px !important;
+    min-height: 300px !important;
+    padding: 0.35rem !important;
+    border-radius: 1rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-expanded {
+    height: min(72dvh, 620px) !important;
+    min-height: 460px !important;
+    max-height: 72dvh !important;
+    padding: 0.35rem !important;
+    border-radius: 1rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .leaflet-container {
+    border-radius: 0.78rem !important;
+  }
+
+  /* Map overlays need to be compact on phones. */
+  #root .dengue-scaled-content .map-mobile-compact .leaflet-container + div,
+  #root .dengue-scaled-content .map-mobile-compact [class*="z-[500]"] {
+    font-size: 0.7rem !important;
+  }
+
+  /* Hero score rings were intentionally enlarged on desktop; pull them back a little on phones. */
+  #root .dengue-scaled-content .dengue-hero-score-ring {
+    width: 4.55rem !important;
+    height: 4.55rem !important;
+    flex-basis: 4.55rem !important;
+    padding: 0.34rem !important;
+  }
+
+  #root .dengue-scaled-content .dengue-hero-score-value {
+    font-size: 1.2rem !important;
+  }
+
+  #root .dengue-scaled-content .dengue-hero-score-label {
+    max-width: 3.55rem !important;
+    font-size: 0.54rem !important;
+  }
+
+  /* Login: substantially shorter on phones without removing role information. */
+  #root .dengue-login-page {
+    align-items: flex-start !important;
+    min-height: 100dvh !important;
+    overflow-y: auto !important;
+    padding: max(0.45rem, env(safe-area-inset-top, 0px)) 0.45rem max(0.55rem, env(safe-area-inset-bottom, 0px)) !important;
+    background-attachment: scroll !important;
+  }
+
+  #root .dengue-login-page > button {
+    right: 0.75rem !important;
+    top: max(0.75rem, env(safe-area-inset-top, 0px)) !important;
+    width: 2.45rem !important;
+    height: 2.45rem !important;
+    min-width: 2.45rem !important;
+    min-height: 2.45rem !important;
+  }
+
+  #root .dengue-login-page > .relative.grid {
+    margin-top: 0 !important;
+    border-radius: 1.25rem !important;
+  }
+
+  #root .dengue-login-page section:last-of-type {
+    min-height: 0 !important;
+    align-items: flex-start !important;
+    padding: 0.55rem !important;
+  }
+
+  #root .dengue-login-page form {
+    max-width: 30rem !important;
+    border-radius: 1.12rem !important;
+    padding: 0.78rem !important;
+  }
+
+  #root .dengue-login-page form > .mb-7 {
+    margin-bottom: 0.68rem !important;
+  }
+
+  #root .dengue-login-page form > .mb-7 > div:first-child {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    margin-bottom: 0.55rem !important;
+    border-radius: 0.9rem !important;
+  }
+
+  #root .dengue-login-page form > .mb-7 > div:first-child svg {
+    width: 1.35rem !important;
+    height: 1.35rem !important;
+  }
+
+  #root .dengue-login-page form > .mb-7 h2 {
+    margin-top: 0.38rem !important;
+    font-size: 1.65rem !important;
+    line-height: 1.05 !important;
+  }
+
+  #root .dengue-login-page form > .mb-7 p:last-child {
+    margin-top: 0.35rem !important;
+    font-size: 0.78rem !important;
+    line-height: 1.35 !important;
+  }
+
+  #root .dengue-login-page form > .mb-5.rounded-\[22px\] {
+    margin-bottom: 0.58rem !important;
+    padding: 0.62rem !important;
+    border-radius: 0.92rem !important;
+  }
+
+  #root .dengue-login-page form > .mb-5.grid {
+    margin-bottom: 0.62rem !important;
+    gap: 0.42rem !important;
+  }
+
+  #root .dengue-login-page .login-role-card {
+    border-radius: 0.9rem !important;
+    padding: 0.55rem 0.62rem !important;
+  }
+
+  #root .dengue-login-page .login-role-card .h-9.w-9 {
+    width: 2rem !important;
+    height: 2rem !important;
+    border-radius: 0.72rem !important;
+  }
+
+  #root .dengue-login-page .login-role-card:not(.login-role-card-selected) .login-role-description {
+    display: none !important;
+  }
+
+  #root .dengue-login-page .login-role-card .login-role-description {
+    margin-top: 0.35rem !important;
+    font-size: 0.72rem !important;
+    line-height: 1.32 !important;
+  }
+
+  #root .dengue-login-page .login-role-card p.text-sm {
+    font-size: 0.82rem !important;
+    line-height: 1.2 !important;
+  }
+
+  #root .dengue-login-page .login-role-card span.rounded-full {
+    padding: 0.22rem 0.55rem !important;
+    font-size: 0.65rem !important;
+    line-height: 1rem !important;
+  }
+
+  #root .dengue-login-page input {
+    min-height: 42px !important;
+    padding-top: 0.62rem !important;
+    padding-bottom: 0.62rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  #root .dengue-login-page form > .relative.mb-4 {
+    margin-bottom: 0.52rem !important;
+  }
+
+  #root .dengue-login-page form > button[type="submit"] {
+    min-height: 44px !important;
+    margin-top: 0.62rem !important;
+    border-radius: 0.9rem !important;
+    padding-top: 0.68rem !important;
+    padding-bottom: 0.68rem !important;
+    font-size: 0.84rem !important;
+  }
+
+  #root .dengue-login-page .login-access-note {
+    display: none !important;
+  }
+
+  #root .dengue-login-page .login-mobile-access-details {
+    display: block !important;
+  }
+
+  #root .dengue-login-page .login-mobile-access-details summary {
+    min-height: 0 !important;
+  }
+
+  /* Override the earlier login readability minimums with the new compact mobile scale only. */
+  #root .dengue-login-page [class*="text-[8px]"],
+  #root .dengue-login-page [class*="text-[9px]"],
+  #root .dengue-login-page [class*="text-[10px]"],
+  #root .dengue-login-page [class*="text-[11px]"],
+  #root .dengue-login-page .text-xs {
+    font-size: 0.72rem !important;
+    line-height: 1.08rem !important;
+  }
+
+  #root .dengue-login-page .text-sm {
+    font-size: 0.82rem !important;
+    line-height: 1.25rem !important;
+  }
+}
+
+@media (max-width: 390px) {
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) h1 {
+    font-size: 1.3rem !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) .text-sm {
+    font-size: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-compact {
+    height: 280px !important;
+    min-height: 280px !important;
+  }
+}
+
+/* =====================================================================
+   FINAL TARGETED MOBILE POLISH — 2026-08-27
+   Page-specific density pass after the global compact-mobile treatment.
+   Goals: less vertical scrolling, no clipped trend text, readable tap sizes,
+   and no desktop/tablet regressions.
+   ===================================================================== */
+@media (max-width: 639px) {
+  /* Keep a readable floor. Density should come from spacing, not tiny type. */
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(.text-sm, .text-xs) {
+    overflow-wrap: break-word;
+  }
+
+  /* -------------------------------------------------------------------
+     Shared historical-trend controls/cards
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .trend-filter-dropdown > button {
+    min-height: 58px !important;
+    padding: 0.55rem 0.65rem !important;
+    gap: 0.55rem !important;
+    border-radius: 16px !important;
+  }
+
+  #root .dengue-scaled-content .trend-filter-dropdown > button .h-11.w-11 {
+    width: 2.15rem !important;
+    height: 2.15rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .trend-filter-selected-label,
+  #root .dengue-scaled-content .trend-filter-selected-note,
+  #root .dengue-scaled-content .trend-filter-option-label,
+  #root .dengue-scaled-content .trend-filter-option-note {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: break-word !important;
+  }
+
+  #root .dengue-scaled-content .trend-filter-selected-label {
+    font-size: 0.86rem !important;
+    line-height: 1.12 !important;
+  }
+
+  #root .dengue-scaled-content .trend-filter-selected-note {
+    margin-top: 0.15rem !important;
+    font-size: 0.72rem !important;
+    line-height: 1.2 !important;
+  }
+
+  #root .dengue-scaled-content .trend-filter-dropdown [role="option"] {
+    min-height: 44px !important;
+    padding: 0.45rem 0.55rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card {
+    min-height: 0 !important;
+    padding: 0.72rem !important;
+    border-radius: 18px !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .h-10.w-10 {
+    width: 2rem !important;
+    height: 2rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-value,
+  #root .dengue-scaled-content .trend-metric-helper {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: break-word !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-value {
+    margin-top: 0.38rem !important;
+    font-size: 1.18rem !important;
+    line-height: 1.05 !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-helper {
+    font-size: 0.72rem !important;
+    line-height: 1.25 !important;
+  }
+
+  /* -------------------------------------------------------------------
+     1) RESPONSE COORDINATION — strongest mobile redesign
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .supervisor-mobile-compact {
+    gap: 0 !important;
+    padding-bottom: 0.7rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact > * + * {
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-panel > .relative.z-10.grid,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-panel > .relative.grid {
+    gap: 0.6rem !important;
+    padding: 0.72rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-panel h1 {
+    margin-top: 0.55rem !important;
+    font-size: 1.28rem !important;
+    line-height: 1.06 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-panel h1 + p {
+    margin-top: 0.45rem !important;
+    font-size: 0.76rem !important;
+    line-height: 1.35 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-actions,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-metrics {
+    margin-top: 0.6rem !important;
+    gap: 0.4rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-hero-metrics > div {
+    min-height: 70px !important;
+    padding: 0.5rem !important;
+    border-radius: 13px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-top-priority-wrap > div,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-ai-panel,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-ranking-panel,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-priority-panel,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-reminder-panel,
+  #root .dengue-scaled-content .supervisor-mobile-compact #response-action-center section {
+    padding: 0.65rem !important;
+    border-radius: 16px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-top-priority-wrap .h-24.w-24 {
+    width: 3.9rem !important;
+    height: 3.9rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-ai-metrics > div,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-priority-suggestions > div {
+    min-height: 78px !important;
+    padding: 0.52rem !important;
+    border-radius: 13px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-stat-grid > article {
+    min-height: 104px !important;
+    padding: 0.58rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-grid > a {
+    min-height: 108px !important;
+    padding: 0.58rem !important;
+    border-radius: 14px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-grid > a p {
+    -webkit-line-clamp: 2 !important;
+    font-size: 0.74rem !important;
+    line-height: 1.28 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-field-review-wrap,
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-update-review-panel {
+    overflow: visible !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-update-review-panel {
+    padding: 0.65rem !important;
+    border-radius: 16px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-review-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem !important;
+    margin-top: 0.6rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-review-summary-grid > div {
+    min-height: 66px !important;
+    padding: 0.5rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-review-main-grid {
+    gap: 0.5rem !important;
+    margin-top: 0.6rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-review-empty-state {
+    min-height: 140px !important;
+    padding: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .field-update-review-panel .max-h-\[620px\] {
+    max-height: 340px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking > .relative.p-5 > .grid.gap-3 > div {
+    min-height: 62px !important;
+    padding: 0.42rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div {
+    padding: 0.48rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form textarea,
+  #root .dengue-scaled-content .supervisor-mobile-compact .supervisor-action-command-mobile #decision-action-tracking form + div article textarea {
+    min-height: 72px !important;
+  }
+
+  /* -------------------------------------------------------------------
+     2) FORECAST — shorter priority cards / filter workspace
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .forecast-mobile-compact > * + * {
+    margin-top: 0.65rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact #top-barangays {
+    padding: 0.65rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact #top-barangays > .relative.mt-5.grid {
+    margin-top: 0.6rem !important;
+    padding: 0.55rem !important;
+    gap: 0.42rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card {
+    padding: 0.58rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card > .pointer-events-none.absolute.right-5.top-5 {
+    display: none !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .h-12.w-12 {
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .flex.flex-wrap.items-center.gap-2 {
+    gap: 0.3rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .flex.flex-wrap.items-center.gap-2 > span {
+    padding: 0.24rem 0.42rem !important;
+    font-size: 0.7rem !important;
+    line-height: 1.05rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card > .relative.z-10 > .relative.mt-3,
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .relative.mt-3.overflow-hidden {
+    margin-top: 0.48rem !important;
+    padding: 0.5rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .relative.mt-3.overflow-hidden p:last-child {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 3 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    margin-top: 0.2rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1.3 !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .mt-3.flex.justify-end {
+    margin-top: 0.42rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .mt-3.flex.justify-end button {
+    min-height: 34px !important;
+    padding: 0.3rem 0.55rem !important;
+  }
+
+  /* -------------------------------------------------------------------
+     3) REPORTS — compact repeated cards, keep export touch targets
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .reports-mobile-compact {
+    gap: 0.58rem !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact section,
+  #root .dengue-scaled-content .reports-mobile-compact #decision-brief,
+  #root .dengue-scaled-content .reports-mobile-compact #export-center {
+    padding: 0.66rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-main-summary-list > div {
+    min-height: 104px !important;
+    padding: 0.5rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-priority-card {
+    min-height: 205px !important;
+    padding: 0.52rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-priority-card .relative.mt-3.rounded-\[20px\] {
+    margin-top: 0.4rem !important;
+    padding: 0.45rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-export-format-grid > button {
+    min-height: 112px !important;
+    padding: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-distribution-list > div {
+    min-height: 90px !important;
+    padding: 0.52rem !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-source-grid > div,
+  #root .dengue-scaled-content .reports-mobile-compact .reports-activity-grid > div {
+    padding: 0.55rem !important;
+  }
+
+  /* -------------------------------------------------------------------
+     4) BHW WORKSPACE — spacing reduction, not font reduction
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .bhw-mobile-compact {
+    gap: 0 !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact > * + * {
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact section,
+  #root .dengue-scaled-content .bhw-mobile-compact .rounded-\[34px\],
+  #root .dengue-scaled-content .bhw-mobile-compact .rounded-\[30px\] {
+    padding: 0.66rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .mt-6,
+  #root .dengue-scaled-content .bhw-mobile-compact .mt-5,
+  #root .dengue-scaled-content .bhw-mobile-compact .mt-4 {
+    margin-top: 0.58rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .space-y-5 > :not([hidden]) ~ :not([hidden]),
+  #root .dengue-scaled-content .bhw-mobile-compact .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact textarea {
+    min-height: 78px !important;
+  }
+
+  /* -------------------------------------------------------------------
+     5) DASHBOARD — shorten lower priority/activity/action sections
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .dashboard-mobile-compact {
+    padding-bottom: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact > * + * {
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-priority-card {
+    padding: 0.58rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-priority-card .h-11.w-11 {
+    width: 1.9rem !important;
+    height: 1.9rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-priority-card .relative.mt-4.grid.grid-cols-2 {
+    margin-top: 0.48rem !important;
+    gap: 0.35rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-priority-card .relative.mt-4.grid.grid-cols-2 > div {
+    padding: 0.42rem !important;
+    border-radius: 11px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-priority-card .relative.mt-3 {
+    margin-top: 0.42rem !important;
+    padding: 0.45rem !important;
+    border-radius: 11px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact button.min-h-\[132px\] {
+    min-height: 94px !important;
+    padding: 0.6rem !important;
+    gap: 0.5rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .group\/activity {
+    padding: 0.58rem !important;
+    border-radius: 14px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .group\/activity p:last-child {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    margin-top: 0.3rem !important;
+  }
+
+  /* -------------------------------------------------------------------
+     6) MAP — compact controls/search/detail overlays
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .map-mobile-compact {
+    padding-bottom: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact > * + * {
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map {
+    padding: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .flex.flex-wrap.items-center.gap-2 {
+    gap: 0.3rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map button {
+    min-height: 38px !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-compact {
+    height: 270px !important;
+    min-height: 270px !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-expanded {
+    min-height: 430px !important;
+  }
+
+  /* -------------------------------------------------------------------
+     7) UPLOAD — already good: only tighten repeated chrome
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .upload-mobile-compact {
+    padding-bottom: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact > * + * {
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact #data-upload .rounded-\[32px\],
+  #root .dengue-scaled-content .upload-mobile-compact #data-upload .rounded-\[30px\],
+  #root .dengue-scaled-content .upload-mobile-compact #data-upload .rounded-\[28px\] {
+    padding: 0.58rem !important;
+  }
+
+  /* -------------------------------------------------------------------
+     8) USER ACCOUNTS — finishing touches only
+     ------------------------------------------------------------------- */
+  #root .dengue-scaled-content .user-mobile-compact {
+    padding-bottom: 0.75rem !important;
+  }
+
+  #root .dengue-scaled-content .user-mobile-compact > * + * {
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .user-mobile-compact article,
+  #root .dengue-scaled-content .user-mobile-compact form {
+    border-radius: 15px !important;
+  }
+
+  /* -------------------------------------------------------------------
+     9) LOGIN — keep compact pass; make collapsed access note truly dense
+     ------------------------------------------------------------------- */
+  #root .dengue-login-page .login-mobile-access-details {
+    margin-top: 0.5rem !important;
+    border-radius: 0.85rem !important;
+  }
+
+  #root .dengue-login-page .login-mobile-access-details summary {
+    min-height: 40px !important;
+    padding: 0.5rem 0.6rem !important;
+  }
+}
+
+@media (max-width: 390px) {
+  /* Very narrow screens: avoid squeezing report priority cards into two columns. */
+  #root .dengue-scaled-content .reports-mobile-compact .reports-priority-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #root .dengue-scaled-content .reports-mobile-compact .reports-priority-card {
+    min-height: 0 !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-card .flex.flex-wrap.items-center.gap-2 > span {
+    white-space: normal !important;
+  }
+}
+
+/* =====================================================================
+   MOBILE CARD + TEXT STABILITY PASS — 2026-08-27
+   Fixes the phone-only issue where uppercase labels were allowed to break
+   between arbitrary letters inside narrow 2-column cards. Desktop/tablet
+   rules are intentionally untouched.
+   ===================================================================== */
+@media (max-width: 639px) {
+  /* Preserve words first. Long unbroken tokens may still wrap when needed,
+     but ordinary labels no longer collapse into syllables/individual letters. */
+  #root .dengue-scaled-content {
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content :is(
+    .dashboard-mobile-compact,
+    .upload-mobile-compact,
+    .forecast-mobile-compact,
+    .map-mobile-compact,
+    .bhw-mobile-compact,
+    .supervisor-mobile-compact,
+    .reports-mobile-compact,
+    .user-mobile-compact
+  ) :is(p, span, h1, h2, h3, h4, button, a) {
+    word-break: normal !important;
+  }
+
+  /* Information-type pills are useful, but on phone they should stay as
+     compact pills rather than becoming 2-4 line mini-cards. */
+  #root .dengue-scaled-content .information-type-badge,
+  #root .dengue-scaled-content [data-information-type] {
+    max-width: 100% !important;
+    padding: 0.24rem 0.45rem !important;
+    font-size: 0.56rem !important;
+    line-height: 1.05 !important;
+    letter-spacing: 0.035em !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  /* -------------------------- DASHBOARD --------------------------- */
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-hero-metric-card {
+    min-width: 0 !important;
+    min-height: 70px !important;
+    padding: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-hero-metric-card .flex.items-center.gap-2 {
+    gap: 0.38rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-hero-metric-label {
+    font-size: 0.62rem !important;
+    line-height: 1.16 !important;
+    letter-spacing: 0.035em !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-hero-metric-card svg {
+    width: 0.78rem !important;
+    height: 0.78rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact #dashboard-summary {
+    gap: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card {
+    min-width: 0 !important;
+    min-height: 146px !important;
+    padding: 0.64rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .flex.items-start.justify-between.gap-4 {
+    gap: 0.5rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .dashboard-summary-stat-label {
+    font-size: 0.64rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.04em !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* The repeated LIVE chip competes with the actual metric title on a
+     150px-wide card. Keep the important content and reclaim that space. */
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .dashboard-summary-stat-label + span {
+    display: none !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .h-11.w-11 {
+    width: 2rem !important;
+    height: 2rem !important;
+    border-radius: 11px !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card h3 {
+    margin-top: 0.45rem !important;
+    font-size: 1.12rem !important;
+    line-height: 1.05 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .mt-auto.pt-5 {
+    padding-top: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .dashboard-summary-stat-helper {
+    max-width: 100% !important;
+    font-size: 0.69rem !important;
+    line-height: 1.24 !important;
+    overflow-wrap: break-word !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-card .dashboard-summary-stat-action {
+    margin-top: 0.42rem !important;
+    font-size: 0.61rem !important;
+    line-height: 1.16 !important;
+    letter-spacing: 0.025em !important;
+    overflow-wrap: break-word !important;
+  }
+
+  #root .dengue-scaled-content .dashboard-mobile-compact .dengue-hero-score-label {
+    max-width: none !important;
+    font-size: 0.54rem !important;
+    letter-spacing: 0.04em !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+  }
+
+  /* -------------------- SHARED TREND METRICS --------------------- */
+  #root .dengue-scaled-content .trend-metric-card {
+    min-width: 0 !important;
+    min-height: 112px !important;
+    padding: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-head {
+    gap: 0.42rem !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-label {
+    font-size: 0.64rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.04em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-icon {
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-icon svg {
+    width: 0.9rem !important;
+    height: 0.9rem !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-value {
+    margin-top: 0.34rem !important;
+    font-size: 1.05rem !important;
+    line-height: 1.07 !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-helper {
+    font-size: 0.69rem !important;
+    line-height: 1.22 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* ---------------------------- UPLOAD ---------------------------- */
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-grid-4 > div {
+    min-width: 0 !important;
+    min-height: 98px !important;
+    padding: 0.58rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-grid-4 p[class*="uppercase"] {
+    display: block !important;
+    min-height: 2.35em !important;
+    overflow: visible !important;
+    -webkit-line-clamp: unset !important;
+    font-size: 0.65rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-grid-4 .text-3xl,
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-grid-4 .text-2xl {
+    margin-top: 0.3rem !important;
+    font-size: 1.08rem !important;
+    line-height: 1.04 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* --------------------------- FORECAST --------------------------- */
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-hero-metrics > div {
+    min-height: 94px !important;
+    padding: 0.6rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-hero-metric-label {
+    font-size: 0.64rem !important;
+    line-height: 1.16 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-hero-metric-value {
+    margin-top: 0.32rem !important;
+    font-size: 1.05rem !important;
+    line-height: 1.05 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-hero-metric-helper {
+    margin-top: 0.32rem !important;
+    font-size: 0.68rem !important;
+    line-height: 1.22 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-hero-metrics .h-10.w-10 {
+    width: 1.8rem !important;
+    height: 1.8rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-card {
+    min-width: 0 !important;
+    min-height: 150px !important;
+    padding: 0.62rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-card .relative.flex.h-full.flex-col.justify-between.gap-5 {
+    gap: 0.58rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-card .flex.items-start.justify-between.gap-4 {
+    gap: 0.48rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-label {
+    font-size: 0.65rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* Keep the signal dot but remove the repeated phrase that was consuming
+     several lines in every small summary card. */
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-signal-label {
+    display: none !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-card .mt-2.flex.items-center.gap-2 {
+    margin-top: 0.3rem !important;
+    gap: 0 !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-card .h-12.w-12 {
+    width: 2rem !important;
+    height: 2rem !important;
+    border-radius: 11px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-value {
+    font-size: 1.02rem !important;
+    line-height: 1.08 !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-helper {
+    max-width: 100% !important;
+    margin-top: 0.35rem !important;
+    font-size: 0.69rem !important;
+    line-height: 1.24 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-action {
+    margin-top: 0.38rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1.17 !important;
+    letter-spacing: 0.025em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-card .mt-4.h-1\.5 {
+    margin-top: 0.45rem !important;
+  }
+
+  /* Generic 2-column forecast field cards: preserve words and tone down
+     tracking so labels like Moderate/High forecast risk remain readable. */
+  #root .dengue-scaled-content .forecast-mobile-compact .mobile-field-grid-4 p[class*="uppercase"],
+  #root .dengue-scaled-content .forecast-mobile-compact .mobile-field-grid-4 span[class*="uppercase"],
+  #root .dengue-scaled-content .forecast-mobile-compact .mobile-field-grid-6 p[class*="uppercase"],
+  #root .dengue-scaled-content .forecast-mobile-compact .mobile-field-grid-6 span[class*="uppercase"] {
+    font-size: 0.64rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-selected-ai-badge {
+    max-width: none !important;
+    padding: 0.22rem 0.5rem !important;
+    font-size: 0.58rem !important;
+    line-height: 1 !important;
+    letter-spacing: 0.04em !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-selected-model-hero > div:nth-child(2) > .flex.flex-wrap > div {
+    font-size: 0.6rem !important;
+    line-height: 1.05 !important;
+    letter-spacing: 0.035em !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 p:first-child {
+    font-size: 0.61rem !important;
+    line-height: 1.12 !important;
+    letter-spacing: 0.035em !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-selected-model-hero .mt-5.grid.gap-2.sm\:grid-cols-3 p.mt-1.truncate {
+    font-size: 0.69rem !important;
+    line-height: 1.2 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* ------------------------- BHW WORKSPACE ------------------------ */
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metrics {
+    gap: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-card {
+    min-width: 0 !important;
+    min-height: 136px !important;
+    padding: 0.64rem !important;
+    border-radius: 15px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-card .flex.items-start.justify-between.gap-4 {
+    gap: 0.45rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-card .h-12.w-12 {
+    width: 2rem !important;
+    height: 2rem !important;
+    border-radius: 11px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-label {
+    margin-top: 0.55rem !important;
+    font-size: 0.64rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-value {
+    margin-top: 0.3rem !important;
+    font-size: 1.04rem !important;
+    line-height: 1.06 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-helper {
+    margin-top: 0.4rem !important;
+    font-size: 0.68rem !important;
+    line-height: 1.22 !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  /* ----------------------------- MAP ------------------------------ */
+  #root .dengue-scaled-content .map-mobile-compact .map-mobile-hero-grid span {
+    font-size: 0.65rem !important;
+    line-height: 1.18 !important;
+    letter-spacing: 0.035em !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack .map-layer-toggle button,
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack .map-style-toggle button {
+    padding-left: 0.45rem !important;
+    padding-right: 0.45rem !important;
+    font-size: 0.68rem !important;
+    line-height: 1.08 !important;
+    letter-spacing: 0.02em !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  /* ---------------------- REPORTS / SUPERVISOR ------------------- */
+  #root .dengue-scaled-content .reports-mobile-compact :is(p, span, h2, h3),
+  #root .dengue-scaled-content .supervisor-mobile-compact :is(p, span, h2, h3) {
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+}
+
+@media (max-width: 374px) {
+  /* On extra-narrow phones, preserve the 2x2 visual language but give the
+     hardest-to-fit text one more little reduction instead of letter splitting. */
+  #root .dengue-scaled-content .dashboard-mobile-compact .dashboard-summary-stat-label,
+  #root .dengue-scaled-content .trend-metric-card .trend-metric-label,
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-stat-label,
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-summary-metric-label,
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-grid-4 p[class*="uppercase"] {
+    font-size: 0.61rem !important;
+    letter-spacing: 0.025em !important;
+  }
+}
+
+/* =====================================================================
+   REMAINING MOBILE COMPACTNESS PASS — 2026-08-27
+   Final phone-only cleanup for the specific card/text issues still visible
+   after the broader responsive pass. Desktop/tablet layouts are unchanged.
+   ===================================================================== */
+@media (max-width: 639px) {
+  /* ----------------------------- UPLOAD ----------------------------- */
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-source-workspace {
+    padding: 0.7rem !important;
+    border-radius: 18px !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-source-workspace > .flex:first-child {
+    gap: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-source-workspace > .flex:first-child h3 {
+    font-size: 0.92rem !important;
+    line-height: 1.14 !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-source-workspace > .flex:first-child h3 + p {
+    margin-top: 0.28rem !important;
+    font-size: 0.69rem !important;
+    line-height: 1.3 !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-source-workspace > .flex:first-child > div:last-child,
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-source-workspace > .flex:first-child .rounded-full.border {
+    font-size: 0.64rem !important;
+    line-height: 1.05 !important;
+    letter-spacing: 0.035em !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-upload-source-grid {
+    gap: 0.45rem !important;
+    margin-top: 0.7rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .mobile-upload-source-grid > .premium-source-card {
+    min-height: 0 !important;
+    padding: 0.55rem !important;
+    border-radius: 16px !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card > .relative.z-20.flex {
+    gap: 0.35rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .h-14.w-14 {
+    width: 1.8rem !important;
+    height: 1.8rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .h-14.w-14 svg {
+    width: 0.88rem !important;
+    height: 0.88rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card > .relative.z-20.flex > span {
+    max-width: 78px !important;
+    padding: 0.2rem 0.35rem !important;
+    font-size: 0.61rem !important;
+    line-height: 1.05 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card > .relative.z-20.mt-4 {
+    margin-top: 0.5rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card h3 {
+    font-size: 0.75rem !important;
+    line-height: 1.16 !important;
+    letter-spacing: 0 !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card h3 + p {
+    margin-top: 0.22rem !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    font-size: 0.66rem !important;
+    line-height: 1.24 !important;
+  }
+
+  /* File type is redundant in the tiny 2-column phone card. Keep the
+     useful valid-record count and reclaim a full line of vertical space. */
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .mt-4.flex.flex-wrap {
+    margin-top: 0.42rem !important;
+    gap: 0.28rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .mt-4.flex.flex-wrap > span:first-child {
+    display: none !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .mt-4.flex.flex-wrap > span:last-child {
+    padding: 0.22rem 0.4rem !important;
+    font-size: 0.63rem !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+  }
+
+  /* Current file becomes a compact single-line metadata row. */
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card > .relative.z-20.mt-4 > .mt-4.rounded-2xl {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.34rem !important;
+    margin-top: 0.42rem !important;
+    padding: 0.36rem 0.45rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card > .relative.z-20.mt-4 > .mt-4.rounded-2xl > p:first-child {
+    flex: 0 0 auto !important;
+    font-size: 0.58rem !important;
+    line-height: 1 !important;
+    letter-spacing: 0.035em !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card > .relative.z-20.mt-4 > .mt-4.rounded-2xl > p:last-child {
+    min-width: 0 !important;
+    margin-top: 0 !important;
+    font-size: 0.61rem !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .mt-4.h-1\.5,
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card .mt-4.h-2 {
+    margin-top: 0.42rem !important;
+    height: 0.28rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card button.mt-4 {
+    min-height: 36px !important;
+    margin-top: 0.42rem !important;
+    gap: 0.3rem !important;
+    padding: 0.38rem 0.42rem !important;
+    border-radius: 11px !important;
+    font-size: 0.64rem !important;
+    line-height: 1.16 !important;
+    letter-spacing: 0.015em !important;
+    white-space: normal !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-source-card button.mt-4 svg {
+    width: 0.72rem !important;
+    height: 0.72rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* Hero 3-up metrics: keep the compact row but stop labels such as
+     "Selected quality" from breaking through the middle of a word. */
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-hero .premium-hero-metrics {
+    gap: 0.4rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-hero .premium-hero-metrics > div {
+    min-height: 68px !important;
+    padding: 0.48rem !important;
+    border-radius: 14px !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-hero .premium-hero-metrics p:first-child {
+    font-size: 0.57rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0.025em !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-hero .premium-hero-metrics > div > .mt-2 {
+    margin-top: 0.34rem !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-hero .premium-hero-metrics p.text-2xl {
+    font-size: 0.98rem !important;
+    line-height: 1 !important;
+  }
+
+  #root .dengue-scaled-content .upload-mobile-compact .premium-upload-hero .premium-hero-metrics span {
+    display: none !important;
+  }
+
+  /* ---------------------------- FORECAST ---------------------------- */
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-card {
+    margin-top: 0.7rem !important;
+    padding: 0.65rem !important;
+    border-radius: 17px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-card > p:first-child {
+    font-size: 0.72rem !important;
+    line-height: 1.15 !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-card > .mt-3 {
+    margin-top: 0.5rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-row {
+    min-height: 48px !important;
+    gap: 0.45rem !important;
+    padding: 0.48rem 0.52rem !important;
+    border-radius: 13px !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-row > div:first-child {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    gap: 0.42rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-row > div:first-child > span:first-child {
+    width: 1.8rem !important;
+    height: 1.8rem !important;
+    border-radius: 9px !important;
+    font-size: 0.65rem !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-label {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0.28rem 0.42rem !important;
+    font-size: 0.69rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+
+  #root .dengue-scaled-content .forecast-mobile-compact .forecast-priority-overview-count {
+    width: 2rem !important;
+    min-width: 2rem !important;
+    height: 2rem !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+    font-size: 0.72rem !important;
+  }
+
+  /* ------------------------------ MAP ------------------------------- */
+  /* Force the map layer controls into deliberate full-width rows. This
+     replaces the cramped side-by-side Forecast/Hotspot + style blocks. */
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    max-width: none !important;
+    gap: 0.45rem !important;
+    align-items: stretch !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack > .map-layer-toggle,
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack > .map-style-toggle {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0.24rem !important;
+    gap: 0.25rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack > .map-layer-toggle {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack > .map-style-toggle {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack .map-layer-toggle button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    justify-content: center !important;
+    gap: 0.28rem !important;
+    padding: 0.42rem 0.32rem !important;
+    border-radius: 9px !important;
+    font-size: 0.67rem !important;
+    line-height: 1.05 !important;
+    letter-spacing: 0.015em !important;
+    white-space: nowrap !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack .map-style-toggle button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 36px !important;
+    justify-content: center !important;
+    gap: 0.18rem !important;
+    padding: 0.38rem 0.18rem !important;
+    border-radius: 9px !important;
+    font-size: 0.56rem !important;
+    line-height: 1.02 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack .map-layer-toggle button svg,
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack .map-style-toggle button svg {
+    width: 0.72rem !important;
+    height: 0.72rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack > .map-hotspot-button {
+    width: 100% !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    justify-content: center !important;
+    gap: 0.35rem !important;
+    padding: 0.48rem 0.6rem !important;
+    border-radius: 11px !important;
+    font-size: 0.66rem !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+  }
+
+  /* Compact the risk color guide into a true 3-up legend on normal phones. */
+  #root .dengue-scaled-content .map-mobile-compact .map-mobile-legend-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.38rem !important;
+    padding: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card {
+    min-height: 92px !important;
+    padding: 0.5rem !important;
+    border-radius: 13px !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card > .flex {
+    gap: 0.25rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card > .flex > span:first-child {
+    width: 0.42rem !important;
+    height: 0.42rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card .inline-flex {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: 0.22rem !important;
+    padding: 0.26rem 0.34rem !important;
+    border-radius: 9px !important;
+    font-size: 0.61rem !important;
+    line-height: 1.08 !important;
+    letter-spacing: 0 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card .inline-flex svg {
+    width: 0.68rem !important;
+    height: 0.68rem !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card p.mt-2 {
+    margin-top: 0.38rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1.18 !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-legend-card p.mt-1 {
+    margin-top: 0.2rem !important;
+    font-size: 0.59rem !important;
+    line-height: 1.15 !important;
+  }
+
+  /* ------------------------- BHW WORKSPACE ------------------------- */
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel {
+    margin-top: 0.65rem !important;
+    border-radius: 17px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel > .flex:first-child {
+    gap: 0.5rem !important;
+    padding: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel > .flex:first-child .flex.items-center.gap-2 {
+    gap: 0.32rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel > .flex:first-child p.text-\[10px\] {
+    font-size: 0.64rem !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0.045em !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel > .flex:first-child p.mt-1 {
+    font-size: 0.67rem !important;
+    line-height: 1.22 !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel > .flex:first-child > span {
+    padding: 0.25rem 0.45rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1 !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-panel > .p-4 {
+    padding: 0.58rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-grid {
+    gap: 0.42rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-grid > div {
+    min-height: 106px !important;
+    padding: 0.55rem !important;
+    border-radius: 13px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-grid > div > p:first-child {
+    font-size: 0.64rem !important;
+    line-height: 1.12 !important;
+    letter-spacing: 0.035em !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-grid > div > p:nth-child(2) {
+    margin-top: 0.35rem !important;
+    font-size: 1.02rem !important;
+    line-height: 1 !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-classification-grid > div > p:nth-child(3) {
+    margin-top: 0.28rem !important;
+    font-size: 0.67rem !important;
+    line-height: 1.24 !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-mix-panel {
+    margin-top: 0.5rem !important;
+    padding: 0.55rem !important;
+    border-radius: 13px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-mix-panel p.text-\[10px\] {
+    font-size: 0.62rem !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0.035em !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-mix-panel p.text-xs,
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-mix-panel span.text-xs,
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-mix-panel .text-\[11px\] {
+    font-size: 0.66rem !important;
+    line-height: 1.22 !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-case-mix-panel .mt-3 {
+    margin-top: 0.45rem !important;
+  }
+
+  /* Four-period timeline: period/case value share one row again, while the
+     method label is a small supporting line instead of the dominant text. */
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline {
+    margin-top: 0.65rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline > div {
+    padding: 0.55rem !important;
+    border-radius: 14px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.gap-3 {
+    gap: 0.5rem !important;
+    align-items: center !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline .h-10.w-10 {
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+    border-radius: 10px !important;
+    font-size: 0.66rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.4rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm > span {
+    font-size: 0.68rem !important;
+    line-height: 1.12 !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline .flex.items-center.justify-between.gap-3.text-sm > span:first-child {
+    min-width: 0 !important;
+    white-space: normal !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline p.text-\[10px\] {
+    margin-top: 0.28rem !important;
+    font-size: 0.6rem !important;
+    line-height: 1.16 !important;
+    letter-spacing: 0.025em !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-forecast-timeline .mt-3.h-2\.5 {
+    margin-top: 0.4rem !important;
+    height: 0.35rem !important;
+  }
+
+  /* Field checklist header was visually oversized next to the actual task
+     controls. Keep the hierarchy but reduce the supporting labels. */
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-field-update-panel > .flex.items-start.gap-3 {
+    gap: 0.5rem !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-field-update-panel > .flex.items-start.gap-3 > .h-12.w-12 {
+    width: 1.9rem !important;
+    height: 1.9rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-field-update-panel > .flex.items-start.gap-3 p.text-\[10px\] {
+    font-size: 0.61rem !important;
+    line-height: 1.08 !important;
+    letter-spacing: 0.035em !important;
+  }
+
+  #root .dengue-scaled-content .bhw-mobile-compact .bhw-field-update-panel > .flex.items-start.gap-3 h2 {
+    font-size: 1.02rem !important;
+    line-height: 1.12 !important;
+  }
+
+  /* ---------------------- RESPONSE COORDINATION -------------------- */
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates.field-update-review-panel {
+    padding: 0.55rem !important;
+    border-radius: 17px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .flex:first-child {
+    gap: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .flex:first-child .flex.h-12.w-12 {
+    width: 1.9rem !important;
+    height: 1.9rem !important;
+    border-radius: 10px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .flex:first-child p.text-\[10px\] {
+    font-size: 0.62rem !important;
+    line-height: 1.08 !important;
+    letter-spacing: 0.035em !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .flex:first-child h2 {
+    margin-top: 0.28rem !important;
+    font-size: 1rem !important;
+    line-height: 1.12 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .flex:first-child h2 + p {
+    margin-top: 0.35rem !important;
+    font-size: 0.69rem !important;
+    line-height: 1.28 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .flex:first-child > button {
+    min-height: 38px !important;
+    padding: 0.42rem 0.6rem !important;
+    border-radius: 11px !important;
+    font-size: 0.66rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-summary-grid {
+    gap: 0.42rem !important;
+    margin-top: 0.62rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-summary-grid > div {
+    min-height: 72px !important;
+    padding: 0.52rem !important;
+    border-radius: 12px !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-summary-label {
+    font-size: 0.63rem !important;
+    line-height: 1.14 !important;
+    letter-spacing: 0.03em !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-summary-grid > div > p:last-child {
+    margin-top: 0.32rem !important;
+    font-size: 1.02rem !important;
+    line-height: 1 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .mt-5.flex.flex-wrap.gap-2 {
+    margin-top: 0.58rem !important;
+    gap: 0.32rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates > .mt-5.flex.flex-wrap.gap-2 > button {
+    padding: 0.42rem 0.58rem !important;
+    font-size: 0.62rem !important;
+    line-height: 1.05 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-main-grid {
+    margin-top: 0.62rem !important;
+    gap: 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-list-panel > .border-b {
+    padding: 0.5rem 0.55rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-list-panel button.w-full {
+    padding: 0.58rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-submission-title {
+    font-size: 0.74rem !important;
+    line-height: 1.15 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-submission-meta {
+    margin-top: 0.18rem !important;
+    font-size: 0.61rem !important;
+    line-height: 1.15 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-list-panel button.w-full > .mt-3 {
+    margin-top: 0.42rem !important;
+    gap: 0.3rem !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-list-panel button.w-full > .mt-3 span {
+    font-size: 0.61rem !important;
+    line-height: 1.05 !important;
+  }
+
+  #root .dengue-scaled-content .supervisor-mobile-compact #barangay-field-updates .field-review-list-panel button.w-full > .mt-3 span.rounded-full {
+    padding: 0.25rem 0.42rem !important;
+  }
+}
+
+@media (max-width: 359px) {
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-control-stack > .map-style-toggle {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact .map-mobile-legend-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }

@@ -40,25 +40,25 @@ export default function TrendMetricCard({ label, value, helper, icon: Icon, tone
   const styles = TONES[tone] || TONES.blue
 
   return (
-    <div className={`group relative min-h-[126px] overflow-hidden rounded-[26px] border bg-gradient-to-br p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.12)] dark:ring-white/5 ${styles.card}`}>
+    <div className={`trend-metric-card group relative min-h-[126px] overflow-hidden rounded-[26px] border bg-gradient-to-br p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)] ring-1 ring-white/80 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.12)] dark:ring-white/5 ${styles.card}`}>
       <span className={`pointer-events-none absolute inset-x-5 top-0 h-[3px] rounded-full bg-gradient-to-r ${styles.accent}`} />
       <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl ${styles.glow}`} />
       <span className="pointer-events-none absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-white/90 to-transparent opacity-90 dark:via-white/10" />
 
-      <div className="relative flex items-start justify-between gap-3">
+      <div className="trend-metric-head relative flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
-          <p className="mt-2 truncate text-[26px] font-black tracking-[-0.045em] text-slate-950 dark:text-white">{value}</p>
+          <p className="trend-metric-label text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="trend-metric-value mt-2 break-words text-[26px] font-black leading-[1.02] tracking-[-0.045em] text-slate-950 dark:text-white">{value}</p>
         </div>
         {Icon ? (
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border shadow-sm ${styles.icon}`}>
+          <span className={`trend-metric-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border shadow-sm ${styles.icon}`}>
             <Icon className="h-[18px] w-[18px]" />
           </span>
         ) : null}
       </div>
 
       <div className="relative mt-2 flex min-w-0 items-center justify-between gap-2">
-        <p className="min-w-0 truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">{helper}</p>
+        <p className="trend-metric-helper min-w-0 break-words text-[11px] font-semibold leading-4 text-slate-500 dark:text-slate-400">{helper}</p>
         <span className={`hidden shrink-0 rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] sm:inline-flex ${styles.badge}`}>{badge}</span>
       </div>
     </div>

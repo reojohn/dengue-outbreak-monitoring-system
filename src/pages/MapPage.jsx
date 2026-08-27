@@ -15,9 +15,6 @@ import {
   Layers3,
   Map as MapIcon,
   MapPinned,
-  ArrowUpRight,
-  Maximize2,
-  Minimize2,
   Moon,
   Navigation,
   Radar,
@@ -2859,33 +2856,8 @@ export default function MapPage() {
           })}
         </div>
 
-       <button
-  type="button"
-  onClick={() => setIsMapExpanded((current) => !current)}
-  style={{
-    backgroundColor: '#ffffff',
-    color: '#0f172a',
-    borderColor: 'rgba(255,255,255,0.45)',
-  }}
-  className="map-expand-button group inline-flex w-fit max-w-full items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-left shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
->
-  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-blue text-white shadow-[0_8px_18px_rgba(37,95,143,0.22)]">
-    {isMapExpanded ? (
-      <Minimize2 className="h-4 w-4" />
-    ) : (
-      <Maximize2 className="h-4 w-4" />
-    )}
-  </div>
 
-  <span
-    style={{ color: '#0f172a' }}
-    className="whitespace-nowrap text-xs font-black uppercase tracking-[0.12em]"
-  >
-    {isMapExpanded ? 'Compact map' : 'Expand map'}
-  </span>
 
-  <ArrowUpRight className="h-4 w-4 shrink-0 text-brand-blue transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-</button>
 
         <button
           type="button"
@@ -2923,6 +2895,8 @@ export default function MapPage() {
             layerMode={showingHotspotLayer ? 'hotspot' : 'forecast'}
             matchedLabel={showingHotspotLayer ? 'matched with hotspot data' : 'matched with forecast data'}
             layoutKey={isMapExpanded ? 'expanded' : 'normal'}
+            isExpanded={isMapExpanded}
+            onToggleExpanded={() => setIsMapExpanded((current) => !current)}
             showDetailsPanel={false}
             focusSelected={focusSelectedBarangay}
             restrictSelectionToRows={isBhwMap}
@@ -3427,14 +3401,6 @@ export default function MapPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsMapExpanded((current) => !current)}
-                className="relative mt-4 inline-flex w-full items-center justify-between rounded-[18px] border border-cyan-300/15 bg-cyan-300/10 px-4 py-3 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/15"
-              >
-                {isMapExpanded ? 'Return to compact map' : 'Expand map workspace'}
-                {isMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </button>
             </div>
           </div>
         </div>
@@ -4622,7 +4588,7 @@ export default function MapPage() {
             font-size: 0.8125rem !important;
             line-height: 1.15 !important;
             letter-spacing: 0.06em !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .map-mobile-compact .map-mobile-hero-grid p {
@@ -5055,7 +5021,7 @@ export default function MapPage() {
             -webkit-line-clamp: unset !important;
             font-size: 0.8125rem !important;
             line-height: 1.3 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           /* Hotspot detail 3-card rows become 2 + 1. */

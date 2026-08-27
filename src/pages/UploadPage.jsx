@@ -7419,7 +7419,7 @@ export default function UploadPage() {
           .upload-mobile-compact .mobile-grid-6 p,
           .upload-mobile-compact .mobile-grid-3 p {
             min-width: 0 !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .upload-mobile-compact .mobile-grid-4 p[class*="uppercase"],
@@ -7722,7 +7722,7 @@ export default function UploadPage() {
             font-size: 0.8125rem !important;
             line-height: 1.08 !important;
             letter-spacing: 0.04em !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: break-word !important;
           }
 
           .premium-upload-page .premium-hero-metrics p.text-2xl {

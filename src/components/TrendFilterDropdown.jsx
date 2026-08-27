@@ -38,9 +38,9 @@ function OptionButton({ option, value, onSelect, styles, compact = false }) {
       className={`group relative flex min-h-[52px] w-full items-center justify-between gap-2 overflow-hidden rounded-2xl border px-3 py-2.5 text-left transition duration-200 ${isSelected ? styles.active : `border-slate-200/70 bg-white/80 text-slate-700 ${styles.option} dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200`}`}
     >
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-black leading-5">{option.label}</p>
+        <p className="trend-filter-option-label break-words text-[13px] font-black leading-5">{option.label}</p>
         {!compact && option.note ? (
-          <p className="mt-0.5 truncate text-[10px] font-semibold leading-4 opacity-70">{option.note}</p>
+          <p className="trend-filter-option-note mt-0.5 break-words text-[10px] font-semibold leading-4 opacity-70">{option.note}</p>
         ) : null}
       </div>
       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${isSelected ? 'border-current bg-white/70 dark:bg-white/10' : 'border-slate-200/90 text-transparent group-hover:border-slate-300 dark:border-white/10'}`}>
@@ -103,7 +103,7 @@ export default function TrendFilterDropdown({
   }
 
   return (
-    <div ref={containerRef} className="relative min-w-0">
+    <div ref={containerRef} className="trend-filter-dropdown relative min-w-0">
       <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.20em] text-slate-500 dark:text-slate-400">{label}</span>
 
       <button
@@ -123,12 +123,12 @@ export default function TrendFilterDropdown({
           </span>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate text-[15px] font-black tracking-[-0.02em] text-white">{selectedOption?.label || emptyLabel}</p>
+              <p className="trend-filter-selected-label break-words text-[15px] font-black leading-5 tracking-[-0.02em] text-white">{selectedOption?.label || emptyLabel}</p>
               <span className={`hidden shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] sm:inline-flex ${styles.badge}`}>
                 Active
               </span>
             </div>
-            <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-300/85">{selectedOption?.note || `Choose ${label.toLowerCase()}`}</p>
+            <p className="trend-filter-selected-note mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-300/85">{selectedOption?.note || `Choose ${label.toLowerCase()}`}</p>
           </div>
         </div>
         <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-slate-300 shadow-sm transition group-hover:bg-white/[0.10]">
