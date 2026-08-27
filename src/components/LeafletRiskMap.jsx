@@ -14,26 +14,68 @@ import { useData } from '../context/DataContext'
 
 const BUTUAN_CENTER = [8.9475, 125.5406]
 
+const CARTO_BASEMAP_KEY = String(import.meta.env.VITE_CARTO_BASEMAP_KEY || '').trim()
+const HAS_CARTO_BASEMAP_KEY = Boolean(CARTO_BASEMAP_KEY)
+
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+const CARTO_ATTRIBUTION =
+  `${OSM_ATTRIBUTION}, &copy; <a href="https://carto.com/attributions">CARTO</a>`
+
+function buildCartoTileUrl(style) {
+  return `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_BASEMAP_KEY)}`
+}
+
+/*
+ * CARTO now requires an API key for its raster basemaps.
+ * When VITE_CARTO_BASEMAP_KEY is configured, Dark and Light use CARTO exactly as before.
+ * Without a key we deliberately fall back to OpenStreetMap so the deployed map never
+ * shows CARTO's "API KEY REQUIRED" watermark.
+ */
 const tileLayers = {
-  dark: {
-    name: 'Dark',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-  },
-  light: {
-    name: 'Light',
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-  },
+  dark: HAS_CARTO_BASEMAP_KEY
+    ? {
+        name: 'Dark',
+        url: buildCartoTileUrl('dark_all'),
+        attribution: CARTO_ATTRIBUTION,
+        subdomains: 'abcd',
+        maxZoom: 20,
+      }
+    : {
+        name: 'Dark',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: OSM_ATTRIBUTION,
+        subdomains: 'abc',
+        maxZoom: 19,
+        className: 'dengue-osm-dark-fallback',
+      },
+  light: HAS_CARTO_BASEMAP_KEY
+    ? {
+        name: 'Light',
+        url: buildCartoTileUrl('light_all'),
+        attribution: CARTO_ATTRIBUTION,
+        subdomains: 'abcd',
+        maxZoom: 20,
+      }
+    : {
+        name: 'Light',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: OSM_ATTRIBUTION,
+        subdomains: 'abc',
+        maxZoom: 19,
+      },
   street: {
     name: 'Street',
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors',
+    attribution: OSM_ATTRIBUTION,
+    subdomains: 'abc',
+    maxZoom: 19,
   },
   satellite: {
     name: 'Satellite',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri',
+    maxZoom: 18,
   },
 }
 
@@ -1238,9 +1280,12 @@ export default function LeafletRiskMap({
         zoomControl
       >
         <TileLayer
-          key={mapStyle}
+          key={`${mapStyle}-${HAS_CARTO_BASEMAP_KEY ? 'carto' : 'fallback'}`}
           attribution={activeTileLayer.attribution}
           url={activeTileLayer.url}
+          subdomains={activeTileLayer.subdomains}
+          maxZoom={activeTileLayer.maxZoom}
+          className={activeTileLayer.className || ''}
         />
 
         <InvalidateMapSize
@@ -1380,6 +1425,11 @@ export default function LeafletRiskMap({
       </div>
 
       <style>{`
+        .leaflet-tile.dengue-osm-dark-fallback,
+        .dengue-osm-dark-fallback .leaflet-tile {
+          filter: invert(1) hue-rotate(180deg) brightness(0.62) contrast(1.15) saturate(0.7);
+        }
+
         .leaflet-container {
           background: #020617;
           font-family: inherit;
