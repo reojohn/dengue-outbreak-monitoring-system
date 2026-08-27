@@ -25,7 +25,6 @@ import { loginUser } from '../services/api'
 import { getAuthSession, getRoleHome } from '../utils/auth'
 import dengueBackground from '../assets/dengue.png'
 import denguePageBackground from '../assets/denguebg.png'
-import loginButtonImage from '../assets/login1.png'
 
 const items = [
   {
@@ -954,34 +953,72 @@ export default function LoginPage() {
               </button>
             </div>
 
-            <button
-              type="submit"
-              disabled={isSigningIn}
-              className="group relative mt-4 flex h-[102px] w-full items-center justify-center overflow-visible bg-transparent px-5 text-sm font-black text-white transition-all duration-200 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-75 sm:h-[110px]"
-              aria-label={`Login as ${getLoginButtonRoleLabel(selectedRole)}`}
+            <div
+              className="relative mt-5 w-full rounded-[26px] border border-white/30 bg-white/[0.08] p-[8px] shadow-[0_16px_38px_rgba(2,6,23,0.28)] backdrop-blur-xl"
+              style={{
+                boxShadow:
+                  'inset 0 1px 0 rgba(255,255,255,0.24), inset 0 -1px 0 rgba(255,255,255,0.06), 0 16px 38px rgba(2,6,23,0.30)',
+              }}
             >
-              <img
-                src={loginButtonImage}
-                alt=""
-                aria-hidden="true"
-                draggable="false"
-                className="pointer-events-none absolute left-1/2 top-1/2 h-[132%] w-[103%] -translate-x-1/2 -translate-y-1/2 select-none object-fill drop-shadow-[0_16px_32px_rgba(34,211,238,0.28)] transition-transform duration-200 group-hover:scale-[1.02]"
+              <span
+                className="pointer-events-none absolute inset-0 rounded-[26px]"
+                style={{
+                  background:
+                    'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.03) 45%, rgba(56,189,248,0.08) 100%)',
+                }}
               />
 
-              <span className="relative z-10 flex items-center justify-center gap-2 pt-[1px] text-[16px] font-black tracking-[0.02em] text-white drop-shadow-[0_0_9px_rgba(34,211,238,0.98)] sm:text-[17px]">
-                {isSigningIn ? (
-                  <>
-                    <Loader2 className="animate-spin" size={17} />
-                    Scanning...
-                  </>
-                ) : (
-                  <>
-                    Login as {getLoginButtonRoleLabel(selectedRole)}
-                    <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" size={16} />
-                  </>
-                )}
-              </span>
-            </button>
+              <button
+                type="submit"
+                disabled={isSigningIn}
+                className="group relative flex h-[58px] w-full shrink-0 items-center justify-center overflow-hidden rounded-[20px] px-5 font-black text-white transition-all duration-200 hover:-translate-y-[1px] hover:brightness-105 active:translate-y-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-100/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:active:translate-y-0"
+                aria-label={`Login as ${getRoleLabel(selectedRole)}`}
+                style={{
+                  background:
+                    'linear-gradient(90deg, #2358ff 0%, #1f7cff 42%, #19c6ff 78%, #23e6df 100%)',
+                  border: '1px solid rgba(191, 245, 255, 0.82)',
+                  boxShadow:
+                    'inset 0 2px 2px rgba(255,255,255,0.62), inset 0 -5px 10px rgba(17,94,169,0.34), 0 6px 0 rgba(9,63,155,0.92), 0 11px 24px rgba(34,211,238,0.34)',
+                }}
+              >
+                <span
+                  className="pointer-events-none absolute left-[7%] right-[7%] top-[4px] h-[44%] rounded-full"
+                  style={{
+                    background:
+                      'linear-gradient(180deg, rgba(255,255,255,0.38), rgba(255,255,255,0.05))',
+                  }}
+                />
+
+                <span
+                  className="pointer-events-none absolute bottom-[4px] left-[9%] right-[9%] h-[4px] rounded-full"
+                  style={{
+                    background:
+                      'linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent)',
+                  }}
+                />
+
+                <span className="pointer-events-none absolute -right-4 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full bg-cyan-200/40 blur-xl" />
+
+                <span className="relative z-10 flex min-w-0 items-center justify-center gap-2.5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.28)]">
+                  {isSigningIn ? (
+                    <>
+                      <Loader2 className="h-[18px] w-[18px] shrink-0 animate-spin text-white" />
+                      <span className="text-[14px] font-black sm:text-[15px]">
+                        Signing in...
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="h-[18px] w-[18px] shrink-0 text-white transition-transform duration-200 group-hover:scale-105" />
+                      <span className="truncate text-[14px] font-black sm:text-[15px]">
+                        Login as {getRoleLabel(selectedRole)}
+                      </span>
+                      <ArrowRight className="h-[17px] w-[17px] shrink-0 text-white transition-transform duration-200 group-hover:translate-x-1" />
+                    </>
+                  )}
+                </span>
+              </button>
+            </div>
 
             <details className="login-mobile-access-details mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:hidden">
               <summary className="cursor-pointer list-none text-xs font-bold uppercase tracking-[0.14em] text-slate-300">
