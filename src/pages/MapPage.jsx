@@ -4279,12 +4279,21 @@ export default function MapPage() {
             height: 0.8rem !important;
           }
 
-          .map-mobile-compact #hotspot-map .h-[560px],
-          .map-mobile-compact #hotspot-map .sm\:h-[680px],
-          .map-mobile-compact #hotspot-map .h-[calc(100vh-190px)] {
-            height: 420px !important;
-            min-height: 420px !important;
-            max-height: 420px !important;
+          /* Mobile map canvas: keep the actual interactive map tall enough to use.
+             Target the semantic canvas classes directly so later compact rules cannot
+             accidentally collapse it back to a short 270-420px strip. */
+          .map-mobile-compact #hotspot-map .map-workspace-canvas-compact {
+            height: clamp(500px, 68dvh, 620px) !important;
+            min-height: 500px !important;
+            max-height: 620px !important;
+            border-radius: 18px !important;
+            padding: 0.35rem !important;
+          }
+
+          .map-mobile-compact #hotspot-map .map-workspace-canvas-expanded {
+            height: clamp(650px, 82dvh, 800px) !important;
+            min-height: 650px !important;
+            max-height: 800px !important;
             border-radius: 18px !important;
             padding: 0.35rem !important;
           }
@@ -4783,15 +4792,15 @@ export default function MapPage() {
           }
 
           .map-mobile-compact #hotspot-map .map-workspace-canvas-compact {
-            height: clamp(360px, 52dvh, 460px) !important;
-            min-height: 360px !important;
-            max-height: 460px !important;
+            height: clamp(480px, 64dvh, 580px) !important;
+            min-height: 480px !important;
+            max-height: 580px !important;
           }
 
           .map-mobile-compact #hotspot-map .map-workspace-canvas-expanded {
-            height: clamp(500px, 68dvh, 650px) !important;
-            min-height: 500px !important;
-            max-height: 650px !important;
+            height: clamp(650px, 82dvh, 780px) !important;
+            min-height: 650px !important;
+            max-height: 780px !important;
           }
 
           .map-mobile-compact #hotspot-map .map-workspace-canvas > .h-full {

@@ -1936,16 +1936,17 @@ html:not(.dark) .leaflet-popup-tip {
 
   /* Map workspace: compact default map, expanded map remains tall/useful. */
   #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-compact {
-    height: 300px !important;
-    min-height: 300px !important;
+    height: clamp(500px, 68dvh, 620px) !important;
+    min-height: 500px !important;
+    max-height: 620px !important;
     padding: 0.35rem !important;
     border-radius: 1rem !important;
   }
 
   #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-expanded {
-    height: min(72dvh, 620px) !important;
-    min-height: 460px !important;
-    max-height: 72dvh !important;
+    height: clamp(650px, 82dvh, 800px) !important;
+    min-height: 650px !important;
+    max-height: 800px !important;
     padding: 0.35rem !important;
     border-radius: 1rem !important;
   }
@@ -2159,8 +2160,9 @@ html:not(.dark) .leaflet-popup-tip {
   }
 
   #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-compact {
-    height: 280px !important;
-    min-height: 280px !important;
+    height: clamp(500px, 68dvh, 620px) !important;
+    min-height: 500px !important;
+    max-height: 620px !important;
   }
 }
 
@@ -2620,12 +2622,15 @@ html:not(.dark) .leaflet-popup-tip {
   }
 
   #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-compact {
-    height: 270px !important;
-    min-height: 270px !important;
+    height: clamp(500px, 68dvh, 620px) !important;
+    min-height: 500px !important;
+    max-height: 620px !important;
   }
 
   #root .dengue-scaled-content .map-mobile-compact .map-workspace-canvas-expanded {
-    min-height: 430px !important;
+    height: clamp(650px, 82dvh, 800px) !important;
+    min-height: 650px !important;
+    max-height: 800px !important;
   }
 
   /* -------------------------------------------------------------------
@@ -3895,5 +3900,33 @@ html:not(.dark) .leaflet-popup-tip {
   #root .trend-filter-dropdown .trend-filter-menu button[role="option"] > span:last-child {
     width: 1.35rem !important;
     height: 1.35rem !important;
+  }
+}
+
+/* ================================================================
+   FINAL MOBILE MAP HEIGHT OVERRIDE — 2026-08-27
+   The stylesheet contains older compact-map rules (270/280/300px).
+   This final, more-specific rule intentionally wins over all of them
+   so the Leaflet workspace remains useful on a phone.
+   ================================================================ */
+@media (max-width: 639px) {
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-workspace-canvas.map-workspace-canvas-compact {
+    height: clamp(500px, 68dvh, 620px) !important;
+    min-height: 500px !important;
+    max-height: 620px !important;
+    flex: none !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-workspace-canvas.map-workspace-canvas-expanded {
+    height: clamp(650px, 82dvh, 800px) !important;
+    min-height: 650px !important;
+    max-height: 800px !important;
+    flex: none !important;
+  }
+
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-workspace-canvas > .h-full,
+  #root .dengue-scaled-content .map-mobile-compact #hotspot-map .map-workspace-canvas .leaflet-container {
+    height: 100% !important;
+    min-height: 100% !important;
   }
 }

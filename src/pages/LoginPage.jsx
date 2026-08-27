@@ -25,6 +25,7 @@ import { loginUser } from '../services/api'
 import { getAuthSession, getRoleHome } from '../utils/auth'
 import dengueBackground from '../assets/dengue.png'
 import denguePageBackground from '../assets/denguebg.png'
+import loginButtonImage from '../assets/login1.png'
 
 const items = [
   {
@@ -187,6 +188,13 @@ function detectRoleFromUsername(value) {
 
 function getRoleLabel(role) {
   return roleVisuals[role]?.label || roleVisuals.viewer.label
+}
+
+function getLoginButtonRoleLabel(role) {
+  if (role === 'cho') return 'CHO'
+  if (role === 'bhw') return 'BHW'
+  if (role === 'supervisor') return 'Supervisor'
+  return roleVisuals[role]?.shortLabel || getRoleLabel(role)
 }
 
 function getRoleBadgeStyle(role) {
@@ -864,19 +872,30 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isSigningIn}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-3.5 text-sm font-black text-slate-950 shadow-[0_16px_34px_rgba(34,211,238,0.22)] transition-all duration-200 hover:scale-[1.02] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-80"
+              className="group relative mt-4 flex h-[108px] w-full items-center justify-center overflow-visible bg-transparent px-5 text-sm font-black text-white transition-all duration-200 hover:scale-[1.015] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-75 sm:h-[116px]"
+              aria-label={`Login as ${getLoginButtonRoleLabel(selectedRole)}`}
             >
-              {isSigningIn ? (
-                <>
-                  <Loader2 className="animate-spin" size={17} />
-                  Scanning...
-                </>
-              ) : (
-                <>
-                  Login as {getRoleLabel(selectedRole)}
-                  <ArrowRight size={16} />
-                </>
-              )}
+              <img
+                src={loginButtonImage}
+                alt=""
+                aria-hidden="true"
+                draggable="false"
+                className="pointer-events-none absolute left-1/2 top-1/2 h-[138%] w-[104%] -translate-x-1/2 -translate-y-1/2 select-none object-fill drop-shadow-[0_16px_32px_rgba(34,211,238,0.28)] transition-transform duration-200 group-hover:scale-[1.02]"
+              />
+
+              <span className="relative z-10 flex items-center justify-center gap-2 pt-[1px] text-[14px] font-black tracking-[0.02em] text-white drop-shadow-[0_0_9px_rgba(34,211,238,0.98)] sm:text-[15px]">
+                {isSigningIn ? (
+                  <>
+                    <Loader2 className="animate-spin" size={17} />
+                    Scanning...
+                  </>
+                ) : (
+                  <>
+                    Login as {getLoginButtonRoleLabel(selectedRole)}
+                    <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" size={16} />
+                  </>
+                )}
+              </span>
             </button>
 
             <details className="login-mobile-access-details mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:hidden">
