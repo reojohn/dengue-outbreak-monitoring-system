@@ -45,6 +45,7 @@ import {
 } from '../services/api'
 import { compareCanonicalBarangayPriority, getCanonicalCombinedRiskScore } from '../utils/analytics'
 import dengueLogo from '../assets/logodengue2.png'
+import LogoutTransition from './LogoutTransition'
 
 const navItems = [
   { to: '/dashboard', label: 'Situation Overview', icon: LayoutDashboard, roles: ['cho', 'supervisor', 'admin', 'viewer'] },
@@ -1140,6 +1141,9 @@ export default function AppShell({ children }) {
   const [backendNotificationError, setBackendNotificationError] = useState('')
   const [toastNotification, setToastNotification] = useState(null)
   const [toastVisible, setToastVisible] = useState(false)
+  const logoutStartedRef = useRef(false)
+  const logoutFinalizedRef = useRef(false)
+  const logoutTimerRef = useRef(null)
   const settingsButtonRef = useRef(null)
   const mobileSettingsButtonRef = useRef(null)
   const settingsPanelRef = useRef(null)
@@ -1260,7 +1264,7 @@ export default function AppShell({ children }) {
   }, [session?.userId])
 
   useEffect(() => {
-    if (!notificationPreferenceLoaded || !notificationsEnabled) {
+    if (loggingOut || !notificationPreferenceLoaded || !notificationsEnabled) {
       setBackendNotifications([])
       setBackendNotificationError('')
       return undefined
@@ -1316,6 +1320,7 @@ export default function AppShell({ children }) {
     backendForecastResult?.updated_at,
     backendIntegrationStatus?.loaded_source_count,
     backendIntegrationResult?.integration_run_id,
+    loggingOut,
   ])
 
   const systemStatus = hasDengueData
@@ -2113,7 +2118,7 @@ export default function AppShell({ children }) {
     if (typeof window === 'undefined') return undefined
 
     const shouldLockPageScroll =
-      mobileNavOpen || (isCompactViewport && (settingsOpen || notificationsOpen))
+      loggingOut || mobileNavOpen || (isCompactViewport && (settingsOpen || notificationsOpen))
 
     if (!shouldLockPageScroll) return undefined
 
@@ -2127,7 +2132,7 @@ export default function AppShell({ children }) {
       document.body.style.overflow = previousOverflow
       document.body.style.overscrollBehavior = previousOverscrollBehavior
     }
-  }, [mobileNavOpen, settingsOpen, notificationsOpen, isCompactViewport])
+  }, [loggingOut, mobileNavOpen, settingsOpen, notificationsOpen, isCompactViewport])
 
   function handleThemeToggle() {
     setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
@@ -2227,35 +2232,59 @@ export default function AppShell({ children }) {
     handleNotificationClick(toastNotification)
   }
 
-  function handleLogout() {
-    if (loggingOut) return
+  function finalizeLogout() {
+    if (logoutFinalizedRef.current) return
 
+    logoutFinalizedRef.current = true
+
+    if (logoutTimerRef.current) {
+      window.clearTimeout(logoutTimerRef.current)
+      logoutTimerRef.current = null
+    }
+
+    localStorage.removeItem('dengue-auth-session')
+
+    // Match the FortressAuth logout flow: terminate the authenticated session,
+    // then clear browser-only workspace state before returning to secure access.
+    // Persisted uploads, forecasts, and database records are not deleted.
+    resetLocalWorkspaceSession?.()
+
+    navigate('/login', { replace: true })
+  }
+
+  function handleLogout() {
+    if (logoutStartedRef.current || loggingOut) return
+
+    logoutStartedRef.current = true
     setLoggingOut(true)
+    setMobileNavOpen(false)
+    setNotificationsOpen(false)
+    setSettingsOpen(false)
+    setToastVisible(false)
 
     addActivityLog?.(
       'User signed out',
       'The current user signed out of the dengue monitoring prototype.'
     )
 
-    setTimeout(() => {
-      try {
-        const savedSession = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
-        if (savedSession?.session_id) {
-          logoutUser().catch(() => {})
-        }
-      } catch {
-        // Continue logout even if the saved session cannot be parsed.
+    // Start revoking the server-side session immediately, while the secure
+    // transition paints. As in FortressAuth, network/database latency never
+    // prevents the browser from completing logout. The Authorization header is
+    // captured by logoutUser before local session storage is cleared.
+    try {
+      const savedSession = JSON.parse(localStorage.getItem('dengue-auth-session') || '{}')
+      if (savedSession?.session_id) {
+        logoutUser().catch(() => {})
       }
+    } catch {
+      // Continue logout even if the saved session cannot be parsed.
+    }
 
-      localStorage.removeItem('dengue-auth-session')
-
-      // Do not carry stale derived UI state into the next login. This only
-      // resets the browser/in-memory workspace; uploaded data and saved
-      // forecasts remain untouched in Supabase.
-      resetLocalWorkspaceSession?.()
-
-      navigate('/login', { replace: true })
-    }, 800)
+    // FortressAuth shows a short session-termination transition before
+    // returning to its login gateway. Keep the same tactile beat here.
+    logoutTimerRef.current = window.setTimeout(() => {
+      finalizeLogout()
+    }, 1150)
   }
   function handleOpenActionCommandCenter() {
   setMobileNavOpen(false)
@@ -2291,23 +2320,7 @@ export default function AppShell({ children }) {
       <div className="pointer-events-none absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-sky-100/[0.28] blur-3xl dark:bg-sky-500/5" />
 
       {loggingOut && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md">
-          <div className="relative overflow-hidden rounded-[32px] border border-white/70 bg-white px-8 py-7 text-center shadow-[0_28px_80px_rgba(15,23,42,0.30)] dark:border-slate-700 dark:bg-slate-900">
-            <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-blue-100 blur-2xl dark:bg-blue-500/10" />
-
-            <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-[24px] bg-blue-50 text-brand-blue shadow-sm ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-              <Loader2 className="animate-spin" size={30} />
-            </div>
-
-            <h3 className="relative mt-4 text-lg font-black text-brand-text dark:text-slate-100">
-              Logging out
-            </h3>
-
-            <p className="relative mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              Please wait while your session is being closed.
-            </p>
-          </div>
-        </div>
+        <LogoutTransition onReturnNow={finalizeLogout} />
       )}
 
       <NotificationToast

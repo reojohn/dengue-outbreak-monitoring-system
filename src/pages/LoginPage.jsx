@@ -205,6 +205,61 @@ function getRoleVisual(role) {
   return roleVisuals[role] || roleVisuals.viewer
 }
 
+
+function getFriendlyLoginError(loginError) {
+  const rawMessage = String(
+    loginError?.message ||
+    loginError?.detail ||
+    loginError ||
+    ''
+  ).trim()
+
+  const lower = rawMessage.toLowerCase()
+
+  // Empty-password / client-validation errors only.
+  if (
+    lower.includes('string_too_short') ||
+    lower.includes('at least 1 character') ||
+    lower.includes('password is required') ||
+    lower.includes('password required') ||
+    lower.includes('empty password')
+  ) {
+    return 'Please enter your password.'
+  }
+
+  // Explicit wrong-password responses.
+  if (
+    lower.includes('wrong password') ||
+    lower.includes('incorrect password') ||
+    lower.includes('invalid password')
+  ) {
+    return 'Incorrect password. Please try again.'
+  }
+
+  // Generic authentication failures where the server does not reveal
+  // whether the email or password was the incorrect value.
+  if (
+    lower.includes('401') ||
+    lower.includes('unauthorized') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('invalid login') ||
+    lower.includes('authentication failed') ||
+    lower.includes('incorrect credentials')
+  ) {
+    return 'Incorrect email or password. Please check your credentials and try again.'
+  }
+
+  if (
+    lower.includes('network') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('connection')
+  ) {
+    return 'Unable to reach the server right now. Please check your connection and try again.'
+  }
+
+  return 'Login failed. Please check your details and try again.'
+}
+
 export default function LoginPage() {
   const existingSession = getAuthSession()
   const navigate = useNavigate()
@@ -277,6 +332,20 @@ export default function LoginPage() {
 
   if (isSigningIn) return
 
+  const cleanEmail = email.trim()
+
+  if (!cleanEmail) {
+    setError('Please enter your email or username.')
+    setScanStage(0)
+    return
+  }
+
+  if (!password.trim()) {
+    setError('Please enter your password.')
+    setScanStage(0)
+    return
+  }
+
   setError('')
   setIsSigningIn(true)
   setScanStage(1)
@@ -290,7 +359,7 @@ export default function LoginPage() {
     setScanStage(2)
 
     const loginResult = await loginUser({
-      email: email.trim(),
+      email: cleanEmail,
       password,
     })
 
@@ -360,7 +429,7 @@ export default function LoginPage() {
       }, 0)
     })
   } catch (loginError) {
-    setError(loginError.message || 'Login failed. Please try again.')
+    setError(getFriendlyLoginError(loginError))
     setScanStage(0)
     setIsSigningIn(false)
   }
@@ -476,7 +545,7 @@ export default function LoginPage() {
                   {scanStepLabels.map((step) => (
                     <div
                       key={`mobile-${step.stage}`}
-                      className={`min-w-0 rounded-xl border px-1 py-2 text-center transition-all duration-300 ${
+                      className={`min-w-0 overflow-hidden rounded-xl border px-1 py-2 text-center transition-all duration-300 ${
                         scanStage >= step.stage
                           ? scanStage === 4
                             ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-200'
@@ -493,7 +562,7 @@ export default function LoginPage() {
                             : 'bg-slate-600'
                         }`}
                       />
-                      <p className="truncate text-[8px] font-black uppercase tracking-[0.035em]">
+                      <p className="mx-auto max-w-full break-words text-[7.5px] font-black uppercase leading-[1.15] tracking-0">
                         {step.label}
                       </p>
                     </div>
@@ -645,8 +714,8 @@ export default function LoginPage() {
             )}
 
             {isSigningIn && (
-              <div className="mx-auto mt-7 w-full max-w-md animate-fade">
-                <div className="relative overflow-hidden rounded-[30px] border border-cyan-400/20 bg-slate-950/45 p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+              <div className="mx-auto mt-7 w-full max-w-[500px] animate-fade">
+                <div className="relative overflow-hidden rounded-[30px] border border-cyan-400/20 bg-slate-950/45 p-5 text-center shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl xl:p-6">
                   <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-cyan-400/20 blur-3xl" />
                   <div className="pointer-events-none absolute -bottom-16 left-0 h-36 w-36 rounded-full bg-blue-500/20 blur-3xl" />
 
@@ -684,7 +753,7 @@ export default function LoginPage() {
                     {scanStepLabels.map((step) => (
                       <div
                         key={step.stage}
-                        className={`rounded-2xl border px-2 py-2 text-center transition-all duration-300 ${
+                        className={`min-w-0 overflow-hidden rounded-2xl border px-1.5 py-2 text-center transition-all duration-300 ${
                           scanStage >= step.stage
                             ? scanStage === 4
                               ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-200'
@@ -702,7 +771,7 @@ export default function LoginPage() {
                           }`}
                         />
 
-                        <p className="text-[10px] font-bold uppercase tracking-[0.08em]">
+                        <p className="mx-auto max-w-full break-words text-[8px] font-black uppercase leading-[1.15] tracking-0 xl:text-[9px]">
                           {step.label}
                         </p>
                       </div>
@@ -825,9 +894,25 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-red-400/20 bg-red-500/20 px-4 py-3 text-sm leading-6 text-red-100 animate-shake">
-                <AlertCircle size={18} className="mt-0.5 shrink-0" />
-                <p>{error}</p>
+              <div
+                className="mb-4 rounded-[18px] border border-red-400/30 bg-red-500/10 px-4 py-3.5 shadow-[0_10px_28px_rgba(127,29,29,0.16)] animate-shake"
+                role="alert"
+                aria-live="assertive"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/25 bg-red-400/10 text-red-200">
+                    <AlertCircle size={17} />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-black uppercase tracking-[0.12em] text-red-200">
+                      Sign-in problem
+                    </p>
+                    <p className="mt-1 text-sm font-medium leading-5 text-red-50">
+                      {error}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
