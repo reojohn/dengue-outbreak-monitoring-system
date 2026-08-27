@@ -2874,6 +2874,99 @@ function SupervisorPageStyles() {
         }
       }
 
+
+      /* =========================================================
+         FINAL MOBILE EDGE-SAFETY PASS
+         The earlier viewport-width breakout solved the thin task board,
+         but it could push Response Coordination outside the phone canvas.
+         Keep the board wide by removing nested padding, not by exceeding
+         the page width. This also prevents other Supervisor sections from
+         being clipped at the left/right edges.
+         ========================================================= */
+      @media (max-width: 639px) {
+        #root .supervisor-mobile-compact {
+          box-sizing: border-box !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          overflow-x: hidden !important;
+        }
+
+        #root .supervisor-mobile-compact > *,
+        #root .supervisor-mobile-compact section,
+        #root .supervisor-mobile-compact article {
+          box-sizing: border-box !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center {
+          position: relative !important;
+          left: auto !important;
+          right: auto !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          transform: none !important;
+          overflow-x: hidden !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center > .supervisor-response-panel,
+        #root .supervisor-mobile-compact #response-action-center .supervisor-action-shell,
+        #root .supervisor-mobile-compact #response-action-center .supervisor-action-command-mobile,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking > div,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-workspace,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-form,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard-scroll,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record,
+        #root .supervisor-mobile-compact .supervisor-field-review-wrap,
+        #root .supervisor-mobile-compact #barangay-field-updates {
+          box-sizing: border-box !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+
+        /* Preserve the previously requested wide Live Task Board by keeping
+           decorative wrapper padding very small rather than breaking out to 100vw. */
+        #root .supervisor-mobile-compact #response-action-center > .supervisor-response-panel {
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-form,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-board {
+          padding-left: 0.28rem !important;
+          padding-right: 0.28rem !important;
+        }
+
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-taskboard-scroll {
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+
+        /* Neutralize older small negative-margin widening rules that can
+           still clip the form or board on real phones. */
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking form,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking form + div,
+        #root .supervisor-mobile-compact #response-action-center #decision-action-tracking .decision-action-record {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+      }
+
       /* Three columns are intentionally used for ordinary phone widths.
          Only genuinely narrow devices fall back to two equal columns. */
       @media (max-width: 359px) {

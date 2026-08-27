@@ -138,7 +138,7 @@ export default function TrendFilterDropdown({
 
       {open && !disabled && (
         <div
-          className={`absolute right-0 z-50 mt-2 w-[min(720px,calc(100vw-2rem))] overflow-hidden rounded-[28px] border bg-white/95 backdrop-blur-2xl ${styles.menu} dark:bg-slate-950/96`}
+          className={`trend-filter-menu absolute right-0 z-50 mt-2 w-[min(720px,calc(100vw-2rem))] overflow-hidden rounded-[28px] border bg-white/95 backdrop-blur-2xl ${styles.menu} dark:bg-slate-950/96`}
         >
           <div className="relative overflow-hidden border-b border-slate-200/80 px-4 py-3.5 dark:border-white/10 sm:px-5">
             <span className={`pointer-events-none absolute inset-x-8 top-0 h-[2px] rounded-full bg-gradient-to-r ${styles.accent}`} />

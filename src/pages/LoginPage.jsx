@@ -385,6 +385,137 @@ export default function LoginPage() {
         className={`pointer-events-none absolute inset-0 animate-gradient bg-gradient-to-br ${roleTheme} opacity-[0.07]`}
       />
 
+      {isSigningIn && (
+        <section
+          className="absolute inset-0 z-[70] flex min-h-screen overflow-y-auto text-white lg:hidden"
+          style={{
+            backgroundImage: `url(${dengueBackground})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center center',
+            backgroundRepeat: 'no-repeat',
+          }}
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(1,13,33,0.34)_0%,rgba(2,19,46,0.48)_32%,rgba(2,18,45,0.74)_72%,rgba(1,8,23,0.92)_100%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(34,211,238,0.13),transparent_31%),radial-gradient(circle_at_50%_78%,rgba(37,99,235,0.14),transparent_40%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.09)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.09)_1px,transparent_1px)] bg-[size:18px_18px] opacity-45" />
+
+          <div className="relative z-10 flex min-h-screen w-full flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.35rem,env(safe-area-inset-top))]">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-300/35 bg-slate-950/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.17em] text-cyan-100 shadow-[0_12px_32px_rgba(2,6,23,0.38)] backdrop-blur-md">
+              <Radar className="h-3.5 w-3.5" />
+              Secure Access
+            </div>
+
+            <div className="flex flex-1 flex-col items-center justify-center py-6">
+              <div
+                className={`relative flex h-40 w-40 items-center justify-center rounded-full border ${currentRoleVisual.ring} ${currentRoleVisual.bg} bg-slate-950/35 shadow-[0_0_68px_rgba(34,211,238,0.22),0_20px_46px_rgba(2,6,23,0.40)] backdrop-blur-sm`}
+              >
+                <div className={`absolute inset-4 rounded-full border ${currentRoleVisual.ring}`} />
+                <div className={`absolute inset-8 rounded-full border ${currentRoleVisual.ring}`} />
+                <div className={`absolute inset-0 rounded-full border-2 ${currentRoleVisual.ring} animate-ping`} />
+                <div className="absolute h-[88%] w-1 bg-gradient-to-b from-transparent via-cyan-300/80 to-transparent animate-scanLine" />
+
+                <DisplayIcon
+                  className={`relative z-10 h-[78px] w-[78px] transition-all duration-300 ${
+                    scanStage === 4
+                      ? 'text-emerald-300 animate-pop'
+                      : 'text-cyan-300 animate-pulse'
+                  }`}
+                  strokeWidth={1.65}
+                />
+              </div>
+
+              <div
+                className={`mt-6 max-w-[92vw] rounded-full border px-4 py-2 text-center text-[11px] font-medium shadow-[0_12px_30px_rgba(2,6,23,0.35)] backdrop-blur-md ${getRoleBadgeStyle(roleHint)}`}
+              >
+                SELECTED ROLE:{' '}
+                <b>{getRoleLabel(roleHint).toUpperCase()}</b>
+              </div>
+
+              <div className="mt-5 w-full max-w-sm overflow-hidden rounded-[26px] border border-cyan-400/25 bg-slate-950/68 p-4 text-center shadow-[0_28px_80px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl">
+                <div className="mx-auto mb-4 flex w-fit items-center gap-2 rounded-full border border-cyan-400/25 bg-cyan-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.15em] text-cyan-100">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      scanStage === 4
+                        ? 'bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.9)]'
+                        : 'bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.9)] animate-pulse'
+                    }`}
+                  />
+                  Access Verification
+                </div>
+
+                <h2 className="text-lg font-black leading-tight text-white">
+                  {currentScan.title}
+                </h2>
+
+                <p className="mx-auto mt-2 max-w-[280px] text-[12px] leading-5 text-slate-300">
+                  {currentScan.message}
+                </p>
+
+                <div className="mt-4 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                      scanStage === 4
+                        ? 'bg-gradient-to-r from-emerald-300 to-cyan-300'
+                        : 'bg-gradient-to-r from-cyan-400 to-blue-500'
+                    }`}
+                    style={{ width: progressWidth }}
+                  />
+                </div>
+
+                <div className="mt-4 grid grid-cols-4 gap-1.5">
+                  {scanStepLabels.map((step) => (
+                    <div
+                      key={`mobile-${step.stage}`}
+                      className={`min-w-0 rounded-xl border px-1 py-2 text-center transition-all duration-300 ${
+                        scanStage >= step.stage
+                          ? scanStage === 4
+                            ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-200'
+                            : 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200'
+                          : 'border-white/10 bg-white/[0.03] text-slate-500'
+                      }`}
+                    >
+                      <div
+                        className={`mx-auto mb-1 h-1.5 w-1.5 rounded-full ${
+                          scanStage >= step.stage
+                            ? scanStage === 4
+                              ? 'bg-emerald-300'
+                              : 'bg-cyan-300'
+                            : 'bg-slate-600'
+                        }`}
+                      />
+                      <p className="truncate text-[8px] font-black uppercase tracking-[0.035em]">
+                        {step.label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-[18px] border border-cyan-400/20 bg-slate-950/45 p-3 text-left">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-300">
+                        Verified Access Level
+                      </p>
+                      <p className="mt-1 truncate text-[12px] font-bold text-white">
+                        {getRoleLabel(roleHint)}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${getRoleBadgeStyle(roleHint)}`}
+                    >
+                      {currentRoleVisual.shortLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       <button
         type="button"
         onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
