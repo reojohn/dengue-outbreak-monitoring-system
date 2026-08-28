@@ -1117,7 +1117,7 @@ export default function UserManagementPage() {
           <div className="relative mb-3 flex flex-col gap-3 sm:mb-5 sm:gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
-                Local PostgreSQL Accounts
+                
               </p>
               <h2 className="mt-2 text-xl font-black sm:text-2xl text-slate-950 dark:text-white">
                 Registered users

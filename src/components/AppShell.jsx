@@ -2475,7 +2475,7 @@ export default function AppShell({ children }) {
       )}
 
       <aside
-        className={`dengue-mobile-drawer fixed left-0 top-0 z-[10020] flex h-full w-[88%] max-w-[340px] transform flex-col overflow-y-auto border-r border-white/10 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_30%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_30px_100px_rgba(2,6,23,0.62)] transition-transform duration-300 dengue-premium-scrollbar xl:hidden ${
+        className={`dengue-mobile-drawer fixed left-0 top-0 z-[10020] flex h-full w-[88%] max-w-[340px] transform flex-col overflow-hidden border-r border-white/10 bg-[radial-gradient(circle_at_20%_0%,rgba(56,189,248,0.22),transparent_30%),linear-gradient(180deg,#061426_0%,#0a2744_52%,#0b3556_100%)] px-5 py-6 text-white shadow-[0_30px_100px_rgba(2,6,23,0.62)] transition-transform duration-300 xl:hidden ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -2483,17 +2483,17 @@ export default function AppShell({ children }) {
         <div className="pointer-events-none absolute -bottom-24 left-0 h-60 w-60 rounded-full bg-emerald-400/[0.15] blur-3xl" />
 
         <div className="dengue-mobile-drawer-header relative mb-8 flex shrink-0 items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="dengue-mobile-drawer-brand flex min-w-0 items-center gap-3">
             <img
               src={dengueLogo}
               alt="Dengue Intelligence"
               className="dengue-mobile-drawer-logo h-[72px] w-[72px] shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(2,6,23,0.30)]"
             />
 
-            <div>
-              <p className="text-lg font-black">Butuan City</p>
+            <div className="dengue-mobile-drawer-brand-copy min-w-0">
+              <p className="dengue-mobile-drawer-title truncate text-lg font-black">Butuan City</p>
 
-              <p className="text-sm font-medium text-white/60">
+              <p className="dengue-mobile-drawer-role truncate text-sm font-medium text-white/60">
                 {roleLabel}
               </p>
             </div>
@@ -2502,14 +2502,14 @@ export default function AppShell({ children }) {
           <button
             type="button"
             onClick={() => setMobileNavOpen(false)}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white transition hover:bg-white/20"
+            className="dengue-mobile-drawer-close flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white transition hover:bg-white/20"
             aria-label="Close navigation menu"
           >
             <X size={20} />
           </button>
         </div>
 
-        <nav className="dengue-mobile-drawer-nav relative shrink-0 space-y-0.5 pr-1">
+        <nav className="dengue-mobile-drawer-nav relative min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain pr-1">
           {filteredNavItems.map(({ to, label, icon: Icon }) => (
             <SidebarNavItem
               key={to}
@@ -2528,7 +2528,7 @@ export default function AppShell({ children }) {
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-white/20 bg-white/10 px-4 py-3 text-sm font-black text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
+            className="dengue-mobile-logout flex w-full items-center justify-center gap-2 rounded-[20px] border border-white/20 bg-white/10 px-4 py-3 text-sm font-black text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loggingOut ? (
               <>
@@ -2544,32 +2544,31 @@ export default function AppShell({ children }) {
           </button>
 
           <button
-  type="button"
-  onClick={handleOpenActionCommandCenter}
-  className="dengue-mobile-quick-action group relative w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/10 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
->
-  <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-sky-300/20 blur-2xl" />
+            type="button"
+            onClick={handleOpenActionCommandCenter}
+            className="dengue-mobile-quick-action group relative w-full overflow-hidden rounded-[22px] border border-white/20 bg-white/10 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
+          >
+            <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-sky-300/20 blur-2xl" />
 
-  <div className="relative grid grid-cols-[auto_1fr] gap-3">
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-white/20 bg-white/10 text-white">
-      <ClipboardCheck className="h-5 w-5" />
-    </div>
+            <div className="relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5">
+              <div className="dengue-mobile-quick-action-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-white/20 bg-white/10 text-white">
+                <ClipboardCheck className="h-5 w-5" />
+              </div>
 
-    <div className="min-w-0">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
-        Quick action
-      </p>
+              <div className="min-w-0">
+                <p className="dengue-mobile-quick-action-label text-[9px] font-black uppercase tracking-[0.16em] text-white/50">
+                  Quick action
+                </p>
+                <p className="dengue-mobile-quick-action-title mt-0.5 truncate text-sm font-black leading-5 text-white">
+                  Response action
+                </p>
+              </div>
 
-      <p className="mt-1 text-sm font-black leading-5 text-white">
-        Response action
-      </p>
-
-      <span className="mt-2 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
-        Open
-      </span>
-    </div>
-  </div>
-</button>
+              <span className="dengue-mobile-quick-action-open shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/70">
+                Open
+              </span>
+            </div>
+          </button>
         </div>
       </aside>
 
