@@ -67,7 +67,8 @@ def _get_barangay_id(connection, barangay_name):
                     f"""
                     select {id_column} as barangay_id
                     from public.barangays
-                    where lower(trim({name_column}::text)) = lower(trim(:barangay_name))
+                    where lower(regexp_replace(trim({name_column}::text), '[^a-zA-Z0-9]+', '', 'g'))
+                          = lower(regexp_replace(trim(:barangay_name), '[^a-zA-Z0-9]+', '', 'g'))
                     limit 1
                     """
                 ),
@@ -184,6 +185,58 @@ def _insert_payload_for_columns(connection, columns, payload):
     return values
 
 
+def _update_payload_for_columns(connection, columns, payload):
+    """Build a PATCH payload without overwriting fields that were not supplied.
+
+    The old update path reused the insert builder, which filled missing values with
+    defaults such as ``Unassigned barangay`` and ``decision_support``. As a result,
+    changing only a task status could accidentally detach the action from its
+    barangay and forecast cycle. This builder only touches explicitly supplied
+    fields.
+    """
+    values = {}
+
+    def set_if_present(payload_key, column_names, transform=lambda value: value):
+        if payload_key not in payload:
+            return
+        value = transform(payload.get(payload_key))
+        for column in column_names:
+            if column in columns:
+                values[column] = value
+
+    if "barangay" in payload:
+        barangay = _safe_text(payload.get("barangay"), "")
+        if barangay:
+            set_if_present("barangay", ["barangay"], lambda _: barangay)
+            if "barangay_id" in columns:
+                barangay_id = payload.get("barangay_id") or _get_barangay_id(connection, barangay)
+                if barangay_id:
+                    values["barangay_id"] = barangay_id
+
+    set_if_present("risk_level", ["risk_level", "risk"], lambda value: _safe_text(value, "Pending"))
+    set_if_present(
+        "action",
+        ["action", "recommended_action", "action_text"],
+        lambda value: _safe_text(value, "Review dengue response recommendation."),
+    )
+    set_if_present("assigned_to", ["assigned_to", "assignee"], lambda value: _safe_text(value, "Unassigned"))
+    set_if_present("status", ["status"], _normalize_status)
+    set_if_present("due_date", ["due_date"], lambda value: _safe_text(value, ""))
+    set_if_present("follow_up_date", ["follow_up_date"], lambda value: _safe_text(value, ""))
+    set_if_present(
+        "intervention_type",
+        ["intervention_type", "action_type"],
+        lambda value: _safe_text(value, "Barangay coordination"),
+    )
+    set_if_present("remarks", ["remarks", "notes"], lambda value: _safe_text(value, ""))
+    set_if_present("source", ["source"], lambda value: _safe_text(value, "decision_support"))
+
+    if "updated_at" in columns:
+        values["updated_at"] = _now_iso()
+
+    return values
+
+
 def create_decision_action(payload: dict):
     with engine.begin() as connection:
         columns = _columns(connection)
@@ -219,13 +272,19 @@ def list_decision_actions(status: str | None = None, barangay: str | None = None
         if barangay:
             wanted_barangay = barangay.strip()
             if "barangay" in columns:
-                where.append("lower(trim(da.barangay::text)) = lower(trim(:barangay))")
+                where.append(
+                    "lower(regexp_replace(trim(da.barangay::text), '[^a-zA-Z0-9]+', '', 'g')) "
+                    "= lower(regexp_replace(trim(:barangay), '[^a-zA-Z0-9]+', '', 'g'))"
+                )
                 params["barangay"] = wanted_barangay
             else:
                 barangay_columns = _table_columns(connection, "barangays")
                 name_column = next((c for c in ["barangay_name", "name", "barangay", "display_name"] if c in barangay_columns), None)
                 if name_column and "barangay_id" in columns:
-                    where.append(f"lower(trim(b.{name_column}::text)) = lower(trim(:barangay))")
+                    where.append(
+                        f"lower(regexp_replace(trim(b.{name_column}::text), '[^a-zA-Z0-9]+', '', 'g')) "
+                        "= lower(regexp_replace(trim(:barangay), '[^a-zA-Z0-9]+', '', 'g'))"
+                    )
                     params["barangay"] = wanted_barangay
 
         join_barangays = "barangay_id" in columns
@@ -274,18 +333,12 @@ def update_decision_action(action_id: str, payload: dict):
     with engine.begin() as connection:
         columns = _columns(connection)
         pk = _pk_column(columns)
-        update_values = _insert_payload_for_columns(connection, columns, payload)
-        update_values.pop("action_id", None)
-        update_values.pop("id", None)
-        update_values.pop("created_at", None)
-        update_values["lookup_action_id"] = action_id
-
-        if "updated_at" in columns:
-            update_values["updated_at"] = _now_iso()
+        update_values = _update_payload_for_columns(connection, columns, payload)
 
         if not update_values:
             return get_decision_action(action_id)
 
+        update_values["lookup_action_id"] = action_id
         set_sql = ", ".join([f"{column} = :{column}" for column in update_values if column != "lookup_action_id"])
         row = connection.execute(
             text(

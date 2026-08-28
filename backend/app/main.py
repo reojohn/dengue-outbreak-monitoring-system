@@ -20,6 +20,7 @@ from app.routers import (
     sessions,
     uploads,
     workspace,
+    workflow_realtime,
 )
 from app.routers.auth import ensure_auth_tables
 
@@ -63,7 +64,7 @@ app.add_middleware(
     allow_origin_regex=r"http://192\.168\.\d+\.\d+:5173",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Workflow-Client-ID"],
 )
 
 
@@ -76,7 +77,7 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
     # API/auth responses should not be cached by shared proxies or the browser.
-    if request.url.path.startswith(("/auth", "/workspace", "/notifications")):
+    if request.url.path.startswith(("/auth", "/workspace", "/notifications", "/workflow-realtime")):
         response.headers["Cache-Control"] = "no-store"
 
     forwarded_proto = request.headers.get("x-forwarded-proto", "")
@@ -95,6 +96,7 @@ app.include_router(geospatial.router, dependencies=[Depends(require_roles("cho",
 app.include_router(notifications.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(decision_actions.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin"))])
 app.include_router(field_updates.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin"))])
+app.include_router(workflow_realtime.router)
 app.include_router(reports.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(workspace.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 

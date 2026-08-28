@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -49,6 +50,13 @@ function getEnvironmentalObservationLabels(update) {
 let fieldUpdateReviewCache = null
 const FIELD_UPDATE_CACHE_TTL_MS = 30_000
 
+function publishFieldUpdateData(updates) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('dengue-field-updates-data', {
+    detail: { updates: updates || [] },
+  }))
+}
+
 function formatDate(value) {
   if (!value) return 'Not recorded'
   const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`)
@@ -73,7 +81,7 @@ function riskTone(risk) {
   return 'text-emerald-600 dark:text-emerald-300'
 }
 
-export default function FieldUpdateReviewPanel() {
+export default function FieldUpdateReviewPanel({ forecastCycleId = '' }) {
   const session = getAuthSession()
   const sessionCacheKey = String(session?.userId || session?.email || '').toLowerCase()
   const usableReviewCache = fieldUpdateReviewCache?.sessionCacheKey === sessionCacheKey
@@ -99,6 +107,7 @@ export default function FieldUpdateReviewPanel() {
     if (!force && matchingCache && cacheAge < FIELD_UPDATE_CACHE_TTL_MS) {
       const rows = matchingCache.rows || []
       setUpdates(rows)
+      publishFieldUpdateData(rows)
       setSelectedId((current) => {
         if (preserveSelection && rows.some((item) => item.field_update_id === current)) return current
         return rows[0]?.field_update_id || ''
@@ -110,10 +119,11 @@ export default function FieldUpdateReviewPanel() {
     if (!matchingCache) setIsLoading(true)
     setError('')
     try {
-      const result = await getFieldUpdates({ limit: 200 })
+      const result = await getFieldUpdates({ limit: 200, force })
       const rows = Array.isArray(result?.field_updates) ? result.field_updates : []
       fieldUpdateReviewCache = { sessionCacheKey, rows, savedAt: Date.now() }
       setUpdates(rows)
+      publishFieldUpdateData(rows)
       setSelectedId((current) => {
         if (preserveSelection && rows.some((item) => item.field_update_id === current)) return current
         return rows[0]?.field_update_id || ''
@@ -127,6 +137,15 @@ export default function FieldUpdateReviewPanel() {
 
   useEffect(() => {
     loadUpdates({ preserveSelection: false })
+  }, [])
+
+  useEffect(() => {
+    function handleRealtimeFieldUpdate() {
+      loadUpdates({ force: true })
+    }
+
+    window.addEventListener('dengue-field-updates-changed', handleRealtimeFieldUpdate)
+    return () => window.removeEventListener('dengue-field-updates-changed', handleRealtimeFieldUpdate)
   }, [])
 
   const selected = useMemo(
@@ -173,6 +192,16 @@ export default function FieldUpdateReviewPanel() {
     }
   }
 
+  function openActionTracker() {
+    if (!selected?.barangay) return
+    window.dispatchEvent(new CustomEvent('dengue-focus-decision-barangay', {
+      detail: { barangay: selected.barangay },
+    }))
+    window.setTimeout(() => {
+      document.getElementById('decision-action-tracking')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }
+
   async function createResponseAction() {
     if (!selected) return
     setBusyAction('action')
@@ -195,9 +224,10 @@ export default function FieldUpdateReviewPanel() {
         status: 'Pending',
         intervention_type: urgent ? 'Urgent field response' : 'Barangay field follow-up',
         remarks: `Created from field update ${selected.field_update_id}. Progress: ${selected.completed_count}/${selected.total_tasks}. Environmental factors are field observations, not confirmed causes.`,
-        source: 'bhw_field_update',
+        source: forecastCycleId ? `forecast_cycle:${forecastCycleId}:bhw` : 'bhw_field_update',
       })
       setMessage(result?.message || 'A response action was created from this field update.')
+      window.dispatchEvent(new CustomEvent('dengue-decision-actions-changed'))
     } catch (actionError) {
       setError(actionError?.message || 'The response action could not be created.')
     } finally {
@@ -370,6 +400,16 @@ export default function FieldUpdateReviewPanel() {
                 <button type="button" onClick={createResponseAction} disabled={Boolean(busyAction)} className="flex min-h-[48px] items-center justify-center gap-2 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">{busyAction === 'action' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />} Create Response Action</button>
                 <Link to={`/reports?field_update_id=${encodeURIComponent(selected.field_update_id)}`} className="flex min-h-[48px] items-center justify-center gap-2 rounded-[18px] border border-blue-200 bg-blue-50 px-4 py-3 text-center text-sm font-black text-blue-700 transition hover:-translate-y-0.5 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-200"><FileText className="h-4 w-4" /> Prepare Official Report</Link>
               </div>
+
+              {selected.status === 'Reviewed' && (
+                <div className="mt-4 flex flex-col gap-3 rounded-[20px] border border-emerald-200 bg-emerald-50/75 p-4 dark:border-emerald-500/25 dark:bg-emerald-500/10 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-emerald-800 dark:text-emerald-200">Field report verified</p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-emerald-700/80 dark:text-emerald-200/75">If the assigned response work is also complete, verify its action record as Completed. The barangay coverage tracker will then show Action Taken.</p>
+                  </div>
+                  <button type="button" onClick={openActionTracker} className="inline-flex min-h-[42px] shrink-0 items-center justify-center gap-2 rounded-[15px] bg-emerald-600 px-4 py-2.5 text-xs font-black text-white shadow-sm transition hover:-translate-y-0.5">Verify Response Action<ArrowRight className="h-4 w-4" /></button>
+                </div>
+              )}
             </>
           ) : (
             <div className="field-review-empty-state flex min-h-[360px] flex-col items-center justify-center text-center">

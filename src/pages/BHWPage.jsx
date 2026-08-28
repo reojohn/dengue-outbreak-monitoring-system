@@ -26,6 +26,7 @@ import {
 import { useData } from '../context/DataContext'
 import SparkChart from '../components/SparkChart'
 import InformationTypeBadge from '../components/InformationTypeBadge'
+import AssignedResponseActions from '../components/AssignedResponseActions'
 import { TrendPanelSkeleton } from '../components/SystemSkeleton'
 import TrendFilterDropdown from '../components/TrendFilterDropdown'
 import TrendMetricCard from '../components/TrendMetricCard'
@@ -35,6 +36,7 @@ import {
   getTrendAnalyticsBarangays,
   saveFieldUpdateDraft,
   submitFieldUpdate,
+  subscribeWorkflowRealtime,
 } from '../services/api'
 import { getAuthSession } from '../utils/auth'
 import { computeDecisionSupport, getCanonicalCombinedRiskScore } from '../utils/analytics'
@@ -2202,6 +2204,23 @@ export default function BHWPage() {
   const [trendBarangays, setTrendBarangays] = useState([])
 
   useEffect(() => {
+    if (!['bhw', 'cho', 'admin'].includes(currentRole)) return undefined
+
+    const unsubscribe = subscribeWorkflowRealtime({
+      onEvent: (event) => {
+        if (event?.topic === 'decision_actions') {
+          window.dispatchEvent(new CustomEvent('dengue-decision-actions-changed', { detail: event }))
+        }
+        if (event?.topic === 'field_updates') {
+          window.dispatchEvent(new CustomEvent('dengue-field-updates-changed', { detail: event }))
+        }
+      },
+    })
+
+    return unsubscribe
+  }, [currentRole])
+
+  useEffect(() => {
     if (!canSelectBarangay) {
       setTrendBarangays([])
       return undefined
@@ -2238,6 +2257,29 @@ export default function BHWPage() {
     backendForecastResult?.forecastRows ||
     []
   ), [backendForecastResult])
+
+  const forecastCycle = useMemo(() => {
+    const forecastRun = backendForecastResult?.forecast_run || {}
+    const firstForecastRow = Array.isArray(backendForecastResult?.forecast_results)
+      ? backendForecastResult.forecast_results[0]
+      : null
+
+    return {
+      id: String(
+        backendForecastResult?.database_forecast_run_id ||
+          forecastRun?.forecast_run_id ||
+          backendForecastResult?.forecast_run_id ||
+          ''
+      ),
+      startedAt:
+        forecastRun?.completed_at ||
+        forecastRun?.started_at ||
+        backendForecastResult?.generated_at ||
+        backendForecastResult?.updated_at ||
+        firstForecastRow?.created_at ||
+        '',
+    }
+  }, [backendForecastResult])
 
   const availableBarangays = useMemo(() => {
     const namesByKey = new Map()
@@ -2749,6 +2791,45 @@ export default function BHWPage() {
       assistanceNeeded: Boolean(saved?.assistance_needed),
     }))
   }
+
+  useEffect(() => {
+    let active = true
+
+    async function handleRealtimeFieldUpdate(event) {
+      const detail = event?.detail || {}
+      if (detail?.reporting_date && String(detail.reporting_date) !== String(todayKey)) return
+      if (detail?.barangay && normalizeName(detail.barangay) !== normalizeName(barangayName)) return
+      if (!barangayName || barangayName === 'Select a barangay') return
+
+      try {
+        const result = await getCurrentFieldUpdate({
+          barangay: barangayName,
+          reportingDate: todayKey,
+        })
+        if (!active) return
+        if (result?.field_update) {
+          applySavedFieldUpdate(result.field_update)
+          if (['Reviewed', 'Follow-up Required'].includes(result.field_update.status)) {
+            setFieldSaveTone(result.field_update.status === 'Reviewed' ? 'success' : 'info')
+            setFieldSaveMessage(
+              result.field_update.status === 'Reviewed'
+                ? 'Supervisor review received in real time.'
+                : 'Supervisor requested follow-up. Review the comment and update the field report.'
+            )
+          }
+        }
+      } catch {
+        // Keep the current form visible. The normal page load/manual actions can
+        // recover if a transient realtime refresh fails.
+      }
+    }
+
+    window.addEventListener('dengue-field-updates-changed', handleRealtimeFieldUpdate)
+    return () => {
+      active = false
+      window.removeEventListener('dengue-field-updates-changed', handleRealtimeFieldUpdate)
+    }
+  }, [barangayName, todayKey])
 
   async function saveFieldUpdate() {
     if (!canEditFieldUpdate) return
@@ -3438,6 +3519,14 @@ export default function BHWPage() {
           </div>
         </PremiumPanel>
       </section>
+
+      <AssignedResponseActions
+        barangay={barangayName}
+        forecastCycleId={forecastCycle.id}
+        forecastCycleStart={forecastCycle.startedAt}
+        currentRole={currentRole}
+        fieldUpdateStatus={fieldUpdate.status}
+      />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.12fr)_minmax(300px,0.88fr)]">
         <PremiumPanel tone="amber" className="bhw-field-update-panel p-6">

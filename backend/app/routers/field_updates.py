@@ -4,7 +4,7 @@ from datetime import date
 from typing import Dict, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth_security import get_current_user
 from app.database import engine, get_db
 from app.services.notification_state import add_notification_event
+from app.services.workflow_realtime import publish_workflow_event
 
 router = APIRouter(prefix="/field-updates", tags=["barangay field updates"])
 
@@ -395,11 +396,24 @@ def save_field_update_draft(
 @router.post("/submit")
 def submit_field_update(
     payload: FieldUpdatePayload,
+    request: Request,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     update = _upsert_update(db, payload, current_user, "Submitted")
     _send_submission_notifications(update)
+    publish_workflow_event(
+        topic="field_updates",
+        event="submitted",
+        barangay=update.get("barangay", ""),
+        target_user_id=update.get("submitted_by", ""),
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={
+            "field_update_id": update.get("field_update_id"),
+            "status": update.get("status"),
+            "reporting_date": update.get("reporting_date"),
+        },
+    )
     return {"message": "Field update submitted to the supervisor.", "field_update": update}
 
 
@@ -509,6 +523,7 @@ def get_field_update(
 def review_field_update(
     field_update_id: UUID,
     payload: FieldUpdateReviewPayload,
+    request: Request,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -567,6 +582,19 @@ def review_field_update(
                 "status": payload.status,
             },
         }
+    )
+
+    publish_workflow_event(
+        topic="field_updates",
+        event="reviewed" if payload.status == "Reviewed" else "follow_up_required",
+        barangay=update.get("barangay", ""),
+        target_user_id=update.get("submitted_by", ""),
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={
+            "field_update_id": update.get("field_update_id"),
+            "status": update.get("status"),
+            "reporting_date": update.get("reporting_date"),
+        },
     )
 
     return {"message": f"Field update marked as {payload.status}.", "field_update": update}

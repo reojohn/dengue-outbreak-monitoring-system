@@ -14,12 +14,32 @@ function getAuthToken() {
   }
 }
 
+
+function getWorkflowClientId() {
+  try {
+    const storageKey = 'dengue-workflow-client-id'
+    const existing = sessionStorage.getItem(storageKey)
+    if (existing) return existing
+
+    const created = globalThis.crypto?.randomUUID?.() || `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    sessionStorage.setItem(storageKey, created)
+    return created
+  } catch {
+    return ''
+  }
+}
+
 function withAuthHeaders(options = {}) {
   const token = getAuthToken()
   const headers = { ...(options.headers || {}) }
 
   if (token && !headers.Authorization) {
     headers.Authorization = `Bearer ${token}`
+  }
+
+  const workflowClientId = getWorkflowClientId()
+  if (workflowClientId && !headers['X-Workflow-Client-ID']) {
+    headers['X-Workflow-Client-ID'] = workflowClientId
   }
 
   return {
@@ -51,7 +71,10 @@ async function cachedJsonGet(cacheKey, url, { ttlMs = 90_000, force = false } = 
     return cached.value
   }
 
-  if (!force && cached?.promise) {
+  // Always reuse an in-flight request, even when a caller asks for a forced
+  // refresh. This prevents sibling supervisor widgets from issuing the same
+  // Supabase-backed GET at the same time.
+  if (cached?.promise) {
     return cached.promise
   }
 
@@ -129,6 +152,133 @@ function buildFileFormData(file) {
   const formData = new FormData()
   formData.append('file', file)
   return formData
+}
+
+export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
+  const controller = new AbortController()
+  let stopped = false
+  let retryMs = 1000
+  let hasConnectedOnce = false
+
+  function emitStatus(status, detail = '') {
+    try {
+      onStatus?.({ status, detail })
+    } catch {
+      // UI status callbacks must never interrupt the realtime connection.
+    }
+  }
+
+  function invalidateTopic(topic) {
+    if (topic === 'decision_actions') clearReadResponseCache('decision-actions:')
+    if (topic === 'field_updates') clearReadResponseCache('field-updates:')
+  }
+
+  function parseEventBlock(block) {
+    if (!block || block.startsWith(':')) return null
+    const lines = block.split(/\r?\n/)
+    const dataLines = lines
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+    if (!dataLines.length) return null
+
+    try {
+      return JSON.parse(dataLines.join('\n'))
+    } catch {
+      return null
+    }
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms))
+  }
+
+  async function connectLoop() {
+    while (!stopped) {
+      try {
+        emitStatus('connecting')
+        const response = await apiFetch(`${API_BASE_URL}/workflow-realtime/stream`, {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream' },
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            emitStatus('auth-error', 'Session expired')
+            return
+          }
+          throw new Error(`Realtime stream failed with status ${response.status}`)
+        }
+
+        if (!response.body) {
+          throw new Error('Realtime streaming is not supported by this browser.')
+        }
+
+        retryMs = 1000
+        emitStatus('connected')
+
+        if (hasConnectedOnce) {
+          // A reconnect may have missed changes while the stream was down.
+          // Trigger one authoritative refresh per workflow topic, once.
+          for (const topic of ['decision_actions', 'field_updates']) {
+            invalidateTopic(topic)
+            try {
+              onEvent?.({ topic, event: 'resync', timestamp: new Date().toISOString() })
+            } catch {
+              // Reconnect recovery must not terminate the stream.
+            }
+          }
+        }
+        hasConnectedOnce = true
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (!stopped) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          const blocks = buffer.split(/\r?\n\r?\n/)
+          buffer = blocks.pop() || ''
+
+          for (const block of blocks) {
+            const payload = parseEventBlock(block.trim())
+            if (!payload || payload.topic === 'connection') continue
+            invalidateTopic(payload.topic)
+            try {
+              onEvent?.(payload)
+            } catch {
+              // A component refresh failure should not terminate the stream.
+            }
+          }
+        }
+
+        try {
+          reader.releaseLock()
+        } catch {
+          // Reader may already be released by the browser after disconnect.
+        }
+
+        if (!stopped) throw new Error('Realtime stream disconnected.')
+      } catch (error) {
+        if (stopped || error?.name === 'AbortError') return
+        emitStatus('reconnecting', error?.message || 'Realtime connection interrupted')
+        await wait(retryMs)
+        retryMs = Math.min(retryMs * 2, 10_000)
+      }
+    }
+  }
+
+  connectLoop()
+
+  return () => {
+    stopped = true
+    controller.abort()
+    emitStatus('disconnected')
+  }
 }
 
 export async function checkBackendHealth() {
@@ -461,13 +611,17 @@ export async function getCurrentFieldUpdate({ barangay, reportingDate }) {
   return handleApiResponse(response)
 }
 
-export async function getFieldUpdates({ status = '', barangay = '', reportingDate = '', limit = 100 } = {}) {
+export async function getFieldUpdates({ status = '', barangay = '', reportingDate = '', limit = 100, force = false } = {}) {
   const params = new URLSearchParams({ limit: String(limit) })
   if (status) params.set('status', status)
   if (barangay) params.set('barangay', barangay)
   if (reportingDate) params.set('reporting_date', reportingDate)
-  const response = await apiFetch(`${API_BASE_URL}/field-updates?${params.toString()}`)
-  return handleApiResponse(response)
+  const cacheKey = `field-updates:${status || 'all'}:${String(barangay || '').trim().toLowerCase() || 'all'}:${reportingDate || 'all'}:${limit}`
+  return cachedJsonGet(
+    cacheKey,
+    `${API_BASE_URL}/field-updates?${params.toString()}`,
+    { ttlMs: 30_000, force }
+  )
 }
 
 export async function getFieldUpdate(fieldUpdateId) {
@@ -481,7 +635,9 @@ export async function saveFieldUpdateDraft(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  return handleApiResponse(response)
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('field-updates:')
+  return result
 }
 
 export async function submitFieldUpdate(payload) {
@@ -490,7 +646,9 @@ export async function submitFieldUpdate(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  return handleApiResponse(response)
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('field-updates:')
+  return result
 }
 
 export async function reviewFieldUpdate(fieldUpdateId, { status, supervisorComment = '' }) {
@@ -502,18 +660,24 @@ export async function reviewFieldUpdate(fieldUpdateId, { status, supervisorComme
       supervisor_comment: supervisorComment,
     }),
   })
-  return handleApiResponse(response)
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('field-updates:')
+  return result
 }
 
-export async function getDecisionActions({ status = '', barangay = '' } = {}) {
+export async function getDecisionActions({ status = '', barangay = '', force = false } = {}) {
   const params = new URLSearchParams()
 
   if (status) params.set('status', status)
   if (barangay) params.set('barangay', barangay)
 
   const query = params.toString()
-  const response = await apiFetch(`${API_BASE_URL}/decision-actions${query ? `?${query}` : ''}`)
-  return handleApiResponse(response)
+  const cacheKey = `decision-actions:${status || 'all'}:${String(barangay || '').trim().toLowerCase() || 'all'}`
+  return cachedJsonGet(
+    cacheKey,
+    `${API_BASE_URL}/decision-actions${query ? `?${query}` : ''}`,
+    { ttlMs: 30_000, force }
+  )
 }
 
 export async function createDecisionAction(payload) {
@@ -525,7 +689,19 @@ export async function createDecisionAction(payload) {
     body: JSON.stringify(payload),
   })
 
-  return handleApiResponse(response)
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('decision-actions:')
+  return result
+}
+
+export async function startDecisionActionProgress(actionId) {
+  const response = await apiFetch(`${API_BASE_URL}/decision-actions/${actionId}/bhw-start`, {
+    method: 'PATCH',
+  })
+
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('decision-actions:')
+  return result
 }
 
 export async function updateDecisionAction(actionId, payload) {
@@ -537,7 +713,9 @@ export async function updateDecisionAction(actionId, payload) {
     body: JSON.stringify(payload),
   })
 
-  return handleApiResponse(response)
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('decision-actions:')
+  return result
 }
 
 export async function deleteDecisionAction(actionId) {
@@ -545,7 +723,9 @@ export async function deleteDecisionAction(actionId) {
     method: 'DELETE',
   })
 
-  return handleApiResponse(response)
+  const result = await handleApiResponse(response)
+  clearReadResponseCache('decision-actions:')
+  return result
 }
 
 export async function getLatestSavedForecast() {

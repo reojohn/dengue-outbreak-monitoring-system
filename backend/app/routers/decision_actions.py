@@ -1,6 +1,7 @@
+import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.auth_security import get_current_user, require_roles
@@ -14,6 +15,7 @@ from app.services.decision_action_state import (
     update_decision_action,
 )
 from app.services.notification_state import add_notification_event
+from app.services.workflow_realtime import publish_workflow_event
 
 router = APIRouter(
     prefix="/decision-actions",
@@ -51,7 +53,10 @@ class DecisionActionUpdateRequest(BaseModel):
 
 
 def _normalize_barangay(value: str) -> str:
-    return " ".join(str(value or "").strip().lower().split())
+    # Barangay labels come from several sources and may differ only by
+    # punctuation/casing (for example, "Baan Km. 3" vs "Baan KM 3").
+    # Normalize those presentation differences without weakening BHW scope.
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
 
 
 def _assert_bhw_can_view(current_user, action) -> None:
@@ -101,6 +106,7 @@ def read_decision_action(action_id: str, current_user=Depends(get_current_user))
 @router.post("")
 def create_action(
     payload: DecisionActionCreateRequest,
+    request: Request,
     current_user=Depends(require_roles(*WRITE_ROLES)),
 ):
     action = create_decision_action(payload.model_dump())
@@ -122,9 +128,96 @@ def create_action(
         },
     })
 
+    publish_workflow_event(
+        topic="decision_actions",
+        event="created",
+        barangay=action.get("barangay", ""),
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={
+            "action_id": action.get("id"),
+            "status": action.get("status"),
+            "intervention_type": action.get("intervention_type"),
+        },
+    )
+
     return {
         "message": "Decision support action created.",
         "action": action,
+        "summary": summarize_decision_actions(),
+    }
+
+
+@router.patch("/{action_id}/bhw-start")
+def start_action_as_bhw(
+    action_id: str,
+    request: Request,
+    current_user=Depends(require_roles("bhw")),
+):
+    action = get_decision_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Decision action not found.")
+
+    _assert_bhw_can_view(current_user, action)
+
+    if action.get("status") == "Completed":
+        raise HTTPException(status_code=409, detail="This response action is already completed and cannot be restarted by a BHW.")
+
+    if action.get("status") == "In Progress":
+        return {
+            "message": "Response action is already In Progress.",
+            "action": action,
+            "summary": summarize_decision_actions(),
+        }
+
+    # Preserve the complete action record because the shared state helper also
+    # supports older Supabase schemas whose update columns vary by deployment.
+    updated = update_decision_action(action_id, {
+        "barangay": action.get("barangay"),
+        "risk_level": action.get("risk_level"),
+        "action": action.get("action"),
+        "assigned_to": action.get("assigned_to"),
+        "status": "In Progress",
+        "due_date": action.get("due_date"),
+        "follow_up_date": action.get("follow_up_date"),
+        "intervention_type": action.get("intervention_type"),
+        "remarks": action.get("remarks"),
+        "source": action.get("source"),
+    })
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Decision action not found.")
+
+    add_notification_event({
+        "title": "BHW started response action",
+        "message": f"The BHW for {updated['barangay']} marked {updated['intervention_type']} as In Progress.",
+        "severity": "activity",
+        "category": "decision_action_bhw_started",
+        "to": "/supervisor",
+        "hash": "decision-action-tracking",
+        "meta": {
+            "action_id": updated["id"],
+            "barangay": updated["barangay"],
+            "status": updated["status"],
+            "updated_by_user_id": str(current_user["id"]),
+            "updated_by_role": current_user.get("role"),
+        },
+    })
+
+    publish_workflow_event(
+        topic="decision_actions",
+        event="updated",
+        barangay=updated.get("barangay", ""),
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={
+            "action_id": updated.get("id"),
+            "status": updated.get("status"),
+            "intervention_type": updated.get("intervention_type"),
+        },
+    )
+
+    return {
+        "message": "Response action started. The Supervisor can now see it as In Progress.",
+        "action": updated,
         "summary": summarize_decision_actions(),
     }
 
@@ -133,6 +226,7 @@ def create_action(
 def update_action(
     action_id: str,
     payload: DecisionActionUpdateRequest,
+    request: Request,
     current_user=Depends(require_roles(*WRITE_ROLES)),
 ):
     before = get_decision_action(action_id)
@@ -160,6 +254,18 @@ def update_action(
             },
         })
 
+    publish_workflow_event(
+        topic="decision_actions",
+        event="updated",
+        barangay=action.get("barangay", ""),
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={
+            "action_id": action.get("id"),
+            "status": action.get("status"),
+            "intervention_type": action.get("intervention_type"),
+        },
+    )
+
     return {
         "message": "Decision support action updated.",
         "action": action,
@@ -170,11 +276,24 @@ def update_action(
 @router.delete("/{action_id}")
 def remove_action(
     action_id: str,
+    request: Request,
     current_user=Depends(require_roles(*WRITE_ROLES)),
 ):
     removed = delete_decision_action(action_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Decision action not found.")
+    publish_workflow_event(
+        topic="decision_actions",
+        event="deleted",
+        barangay=removed.get("barangay", ""),
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={
+            "action_id": removed.get("id"),
+            "status": removed.get("status"),
+            "intervention_type": removed.get("intervention_type"),
+        },
+    )
+
     return {
         "message": "Decision support action removed.",
         "action": removed,
@@ -183,8 +302,17 @@ def remove_action(
 
 
 @router.delete("")
-def reset_actions(current_user=Depends(require_roles(*CLEAR_ROLES))):
+def reset_actions(
+    request: Request,
+    current_user=Depends(require_roles(*CLEAR_ROLES)),
+):
     clear_decision_actions()
+    publish_workflow_event(
+        topic="decision_actions",
+        event="cleared",
+        origin_client_id=request.headers.get("x-workflow-client-id", ""),
+        data={"status": "cleared"},
+    )
     return {
         "message": "Decision support action records cleared.",
         "summary": summarize_decision_actions(),

@@ -51,20 +51,10 @@ import ai8 from '../assets/ai8.png'
 import forecastHeroBackground from '../assets/forecast.png'
 
 const modeMeta = {
-  caution: {
-    label: 'Reduced transmission',
-    multiplier: 0.9,
-    chip: 'bg-emerald-50 text-brand-green border-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
-  },
   baseline: {
-    label: 'Expected scenario',
+    label: 'Expected forecast',
     multiplier: 1,
     chip: 'bg-blue-50 text-brand-blue border-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
-  },
-  elevated: {
-    label: 'Worsening transmission',
-    multiplier: 1.15,
-    chip: 'bg-amber-50 text-brand-orange border-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
   },
 }
 
@@ -3693,7 +3683,6 @@ function getModelMetricSparklinePath(modelIndex = 0, metricIndex = 0) {
 
 export default function ForecastPage() {
   const navigate = useNavigate()
-  const [mode, setMode] = useState('baseline')
   const [showAllTopBarangays, setShowAllTopBarangays] = useState(false)
   const [expandedBarangay, setExpandedBarangay] = useState(null)
   const [expandedModelKey, setExpandedModelKey] = useState(null)
@@ -3701,7 +3690,6 @@ export default function ForecastPage() {
   const [showRiskDetails, setShowRiskDetails] = useState(false)
   const [showDataDetails, setShowDataDetails] = useState(false)
   const [showForecastCalculationDetails, setShowForecastCalculationDetails] = useState(false)
-  const [showScenarioDetails, setShowScenarioDetails] = useState(false)
   const [barangaySearch, setBarangaySearch] = useState('')
   const [riskFilter, setRiskFilter] = useState('All')
   const [trendFilter, setTrendFilter] = useState('All')
@@ -3722,7 +3710,7 @@ export default function ForecastPage() {
     loadLatestModelMetricsCached,
   } = useData()
 
-  const selectedMode = modeMeta[mode]
+  const selectedMode = modeMeta.baseline
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
   const forecastPeriodDisplay = getForecastPeriodDisplay(backendForecastResult)
   const forecastHorizonPeriods = Number(
@@ -4382,7 +4370,7 @@ const forecastFindingMessages = forecastRows.length
       findingRecordCount > 0
         ? `I reviewed ${formatNumber(findingRecordCount)} validated ${findingRecordCount === 1 ? 'record' : 'records'} and prepared the ${forecastHorizonLabel} outlook for ${formatNumber(forecastRows.length)} ${forecastRows.length === 1 ? 'barangay' : 'barangays'}.`
         : `I prepared the ${forecastHorizonLabel} outlook for ${formatNumber(forecastRows.length)} ${forecastRows.length === 1 ? 'barangay' : 'barangays'}.`,
-      `Across Butuan City, I project ${formatNumber(projectedTotal)} dengue ${projectedTotal === 1 ? 'case' : 'cases'} for ${forecastHorizonLabel} under the ${selectedMode.label.toLowerCase()} planning scenario.`,
+      `Across Butuan City, I project ${formatNumber(projectedTotal)} dengue ${projectedTotal === 1 ? 'case' : 'cases'} for ${forecastHorizonLabel} using the model's expected forecast.`,
       projectedWeeklyValues.length > 1
         ? `The citywide period totals are ${citywideProjectionValues}. From the first to the final forecast period, the projected total is expected to ${citywideProjectionDirection}${projectedPeriodDifference !== 0 ? ` by ${formatNumber(Math.abs(projectedPeriodDifference))} cases${firstProjectedPeriodTotal > 0 ? `, or about ${formatNumber(Math.abs(projectedPeriodPercentChange))}%` : ''}` : ''}.`
         : '',
@@ -4435,7 +4423,7 @@ const forecastFindingMessages = forecastRows.length
       modelReliabilityParts.length
         ? `${selectedModelDisplayName} was selected with ${modelReliabilityParts.join(', ')}. These values describe model performance and selection reliability, but they do not guarantee that every barangay forecast will be exact.`
         : `${selectedModelDisplayName} was selected from the evaluated models, but complete reliability metrics are not available for this run.`,
-      `The current display uses the ${selectedMode.label.toLowerCase()} scenario at ${formatDecimal(selectedMode.multiplier, 2)}x. Changing the scenario adjusts the planning estimates, but it does not retrain or replace ${selectedModelDisplayName}.`,
+      `The current display shows the expected forecast directly from ${selectedModelDisplayName}, with no hypothetical transmission adjustment applied.`,
       `My final operational advice is to review the top-ranked barangays first, confirm the forecast with current field observations, carry out the listed response actions, and update the analysis whenever newer dengue or environmental records become available.`,
     ].filter(Boolean)
   : [
@@ -4654,112 +4642,84 @@ const activeModelComparison = (() => {
             </div>
           </div>
 
-          <div className="forecast-scenario-card relative flex min-w-0 flex-col rounded-[28px] border border-white/15 bg-slate-950/60 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
-            <div className="flex min-w-0 items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.19em] text-cyan-100/70">
-                  Planning scenario
-                </p>
-                <h2 className="mt-2 text-xl font-bold tracking-[-0.025em] text-white">
-                  {selectedMode.label}
-                </h2>
-                <p className="mt-1 text-xs leading-5 text-white/60">
-                  Current planning view for the forecast.
-                </p>
+          <div className="forecast-scenario-card relative flex min-w-0 flex-col overflow-hidden rounded-[28px] border border-white/15 bg-slate-950/64 p-4 shadow-[0_24px_64px_rgba(0,0,0,0.42)] ring-1 ring-white/5 backdrop-blur-xl sm:p-5">
+            <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-16 -left-12 h-36 w-36 rounded-full bg-blue-500/10 blur-3xl" />
+
+            <div className="relative rounded-[22px] border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.10),rgba(15,23,42,0.30)_48%,rgba(59,130,246,0.08))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.19em] text-cyan-100/70">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-[11px] border border-cyan-300/20 bg-cyan-300/10 text-cyan-200 shadow-[0_8px_24px_rgba(34,211,238,0.08)]">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </span>
+                  Forecast output
+                </div>
+                <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                  Model output
+                </span>
               </div>
-              <div className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
-                Current
+
+              <h2 className="mt-4 text-[1.7rem] font-black leading-none tracking-[-0.035em] text-white sm:text-[1.85rem]">
+                Expected forecast
+              </h2>
+              <p className="mt-2 max-w-[30rem] text-[11px] leading-[1.65] text-slate-300/80">
+                The original prediction produced by the selected forecasting model, shown without hypothetical adjustments.
+              </p>
+
+              <div className="mt-4 flex items-center gap-2.5 rounded-[14px] border border-emerald-300/15 bg-emerald-300/[0.07] px-3 py-2.5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-emerald-300/10 text-emerald-200 ring-1 ring-emerald-300/15">
+                  <Activity className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black text-white/90">Direct model prediction</p>
+                  <p className="mt-0.5 text-[9px] leading-4 text-white/45">No scenario multiplier or manual adjustment applied.</p>
+                </div>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowScenarioDetails((current) => !current)}
-              className="mt-4 inline-flex min-h-[46px] items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-white/5 px-3.5 py-2.5 text-left text-xs font-black text-white/80 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
-              aria-expanded={showScenarioDetails}
-            >
-              <span>{showScenarioDetails ? 'Hide scenario options' : 'Change scenario (optional)'}</span>
-              {showScenarioDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-
-            {showScenarioDetails && (
-              <div className="mt-3 rounded-[20px] border border-white/10 bg-slate-950/35 p-3">
-                <div className="grid gap-2">
-                  {[
-                    ['caution', 'Reduced transmission', '0.90x', TrendingDown],
-                    ['baseline', 'Expected scenario', '1.00x', Activity],
-                    ['elevated', 'Worsening transmission', '1.15x', TrendingUp],
-                  ].map(([key, label, helper, ScenarioIcon]) => {
-                    const isActive = mode === key
-
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setMode(key)}
-                        style={isActive ? { backgroundColor: '#ffffff', backgroundImage: 'none', color: '#0f172a' } : { backgroundImage: 'none' }}
-                        className={`group/scenario grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-[18px] border px-3 py-3 text-left transition ${
-                          isActive
-                            ? 'border-white shadow-[0_12px_28px_rgba(255,255,255,0.13)]'
-                            : 'border-white/10 bg-white/5 text-white hover:border-white/25 hover:bg-white/10'
-                        }`}
-                      >
-                        <span className="flex min-w-0 items-center gap-2.5">
-                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border ${isActive ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-white/10 bg-white/5 text-cyan-200'}`}>
-                            <ScenarioIcon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-sm font-bold leading-tight">{label}</span>
-                            <span className={`mt-0.5 block text-[10px] font-bold ${isActive ? 'text-slate-500' : 'text-white/45'}`}>
-                              {key === 'caution' ? 'Improvement planning' : key === 'baseline' ? 'Most likely outlook' : 'Escalation planning'}
-                            </span>
-                          </span>
-                        </span>
-                        <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-black ${isActive ? 'bg-slate-900 text-white' : 'bg-white/10 text-white/70'}`}>
-                          {helper}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <p className="mt-3 rounded-[15px] border border-white/10 bg-white/5 px-3 py-2.5 text-[10px] leading-4 text-white/55">
-                  These options adjust the planning view only. They do not change the AI model or the saved forecast.
-                </p>
-              </div>
-            )}
-
-            <div className="mt-4 rounded-[20px] border border-white/10 bg-white/5 p-3.5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.17em] text-white/45">
-                    Current top priority
-                  </p>
-                  <p className="mt-1 text-lg font-black text-white">
+            <div className="relative mt-4 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+              <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full bg-cyan-300/5 blur-2xl" />
+              <div className="relative flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-3.5 w-3.5 text-cyan-300" />
+                    <p className="text-[9px] font-black uppercase tracking-[0.17em] text-white/45">
+                      Current top priority
+                    </p>
+                  </div>
+                  <p className="mt-2 truncate text-xl font-black tracking-[-0.025em] text-white">
                     {highestRiskBarangay?.barangay || 'No forecast data'}
                   </p>
+                  <p className="mt-1 text-[9px] leading-4 text-white/40">Highest combined priority in the current forecast.</p>
                 </div>
+
                 <div
-                  className="dengue-hero-score-ring flex h-14 w-14 shrink-0 items-center justify-center rounded-full p-[5px] shadow-[0_0_36px_rgba(56,189,248,0.18)]"
+                  className="dengue-hero-score-ring flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-full p-[5px] shadow-[0_0_34px_rgba(34,211,238,0.20)]"
                   style={{
                     background: `conic-gradient(#22d3ee ${Math.min(100, Math.max(0, topRiskScore)) * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
                   }}
                 >
-                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 text-white">
-                    <span className="dengue-hero-score-value text-sm font-black leading-none">{formatNumber(topRiskScore)}</span>
-                    <span className="dengue-hero-score-label mt-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-cyan-100/70">Risk</span>
+                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/5 bg-slate-950/95 text-white shadow-inner">
+                    <span className="dengue-hero-score-value text-base font-black leading-none">{formatNumber(topRiskScore)}</span>
+                    <span className="dengue-hero-score-label mt-1 text-[7px] font-black uppercase tracking-[0.14em] text-cyan-100/65">Risk</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <div className="rounded-[15px] border border-white/10 bg-slate-950/35 px-3 py-2.5">
-                  <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Risk level</p>
-                  <p className="mt-1 text-xs font-black text-white">{highestRiskBarangay?.risk || 'Pending'}</p>
+              <div className="relative mt-4 grid grid-cols-2 gap-2.5">
+                <div className="rounded-[16px] border border-white/10 bg-slate-950/40 px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.55)]" />
+                    <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Risk level</p>
+                  </div>
+                  <p className="mt-1.5 text-sm font-black text-white">{highestRiskBarangay?.risk || 'Pending'}</p>
                 </div>
-                <div className="rounded-[15px] border border-white/10 bg-slate-950/35 px-3 py-2.5">
-                  <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Forecast cases</p>
-                  <p className="mt-1 text-xs font-black text-white">{formatNumber(highestRiskBarangay?.forecast || 0)} cases</p>
+                <div className="rounded-[16px] border border-white/10 bg-slate-950/40 px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <LineChart className="h-3 w-3 text-cyan-300/80" />
+                    <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Forecast cases</p>
+                  </div>
+                  <p className="mt-1.5 text-sm font-black text-white">{formatNumber(highestRiskBarangay?.forecast || 0)} cases</p>
                 </div>
               </div>
             </div>
@@ -5029,7 +4989,7 @@ const activeModelComparison = (() => {
           <div className="mt-5 grid gap-2 sm:grid-cols-3">
             {[
               ['Model version', selectedModelVersion],
-              ['Forecast scenario', selectedMode.label],
+              ['Forecast output', selectedMode.label],
               ['Forecast period range', forecastHorizonLabel],
             ].map(([label, value]) => (
               <div
@@ -5757,10 +5717,13 @@ const activeModelComparison = (() => {
 
             <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-[11px] font-black uppercase tracking-[0.15em] text-brand-muted dark:text-slate-500">
-                Forecast adjustment
+                Forecast output
               </p>
-              <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
-                {formatDecimal(selectedMode.multiplier, 2)}x
+              <p className="mt-2 text-xl font-black text-brand-text dark:text-slate-100">
+                Expected
+              </p>
+              <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-400">
+                Original model estimate
               </p>
             </div>
 
@@ -5784,7 +5747,7 @@ const activeModelComparison = (() => {
             {usingBackendForecast && selectedResponseUsesDirectMultiStep
               ? `${selectedModelName} predicts each future period separately using the direct multi-step method. The four period predictions in ${forecastHorizonLabel} are added to produce the cumulative barangay forecast used for risk classification.`
               : usingBackendForecast
-                ? `${selectedModelName} is used for this forecast. Recent case changes, weather, population, crowding level, and the selected forecast setting are used to show priority recommendations.`
+                ? `${selectedModelName} is used for this forecast. Recent case changes, weather, population, and crowding level are used together with the expected model output to show priority recommendations.`
                 : 'Recent case averages, case changes, rainfall, temperature, humidity, population, crowding level, and barangay map details are used to estimate risk and rank barangays by priority.'}
           </div>
 
@@ -5908,7 +5871,7 @@ const activeModelComparison = (() => {
                   Citywide forecast outlook
                 </p>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">
-                  Each point is the combined predicted dengue case total across all barangays for one future {forecastPeriodDisplay.singular} under the {selectedMode.label.toLowerCase()} scenario.
+                  Each point is the combined predicted dengue case total across all barangays for one future {forecastPeriodDisplay.singular} in the expected model forecast.
                 </p>
               </div>
 
@@ -5942,7 +5905,7 @@ const activeModelComparison = (() => {
                   values={projectedWeeklyValues}
                   labels={forecastChartLabels}
                   title="Citywide dengue forecast outlook"
-                  subtitle={`Combined ${forecastPeriodDisplay.adjective.toLowerCase()} predictions across all barangays under the ${selectedMode.label.toLowerCase()} scenario`}
+                  subtitle={`Combined ${forecastPeriodDisplay.adjective.toLowerCase()} predictions across all barangays in the expected model forecast`}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center rounded-[24px] border border-dashed border-slate-700 bg-slate-950 px-5 text-center text-sm leading-6 text-slate-400">
@@ -5957,11 +5920,11 @@ const activeModelComparison = (() => {
   <div className="grid gap-3 sm:grid-cols-2">
     <div className="rounded-[22px] border border-blue-100 bg-blue-50/80 px-4 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
       <p className="text-sm font-black text-brand-blue dark:text-blue-300">
-        Forecast setting
+        Forecast output
       </p>
 
       <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-        {selectedMode.label} uses a {selectedMode.multiplier}x adjustment on the case estimate.
+        Expected forecast shows the original model estimate with no reduced or worsening transmission adjustment.
       </p>
     </div>
 

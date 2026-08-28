@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -27,8 +27,10 @@ import {
   riskStyles,
 } from '../utils/analytics'
 import DecisionActionTracker from '../components/DecisionActionTracker'
+import BarangayResponseCoverageTracker from '../components/BarangayResponseCoverageTracker'
 import FieldUpdateReviewPanel from '../components/FieldUpdateReviewPanel'
 import InformationTypeBadge from '../components/InformationTypeBadge'
+import { subscribeWorkflowRealtime } from '../services/api'
 import aiGif from '../assets/ai.gif'
 
 function formatNumber(value) {
@@ -169,6 +171,27 @@ function sortSupervisorRows(rows = []) {
 
 function getTopPriority(rows) {
   return rows[0] || null
+}
+
+function getForecastCycleInfo(result) {
+  const forecastRun = result?.forecast_run || {}
+  const firstForecastRow = Array.isArray(result?.forecast_results) ? result.forecast_results[0] : null
+
+  return {
+    id: String(
+      result?.database_forecast_run_id ||
+        forecastRun?.forecast_run_id ||
+        result?.forecast_run_id ||
+        ''
+    ),
+    startedAt:
+      forecastRun?.completed_at ||
+      forecastRun?.started_at ||
+      result?.generated_at ||
+      result?.updated_at ||
+      firstForecastRow?.created_at ||
+      '',
+  }
 }
 
 function getRiskTone(risk) {
@@ -3058,6 +3081,21 @@ export default function SupervisorPage() {
     backendForecastResult,
   } = useData()
 
+  useEffect(() => {
+    const unsubscribe = subscribeWorkflowRealtime({
+      onEvent: (event) => {
+        if (event?.topic === 'decision_actions') {
+          window.dispatchEvent(new CustomEvent('dengue-decision-actions-changed', { detail: event }))
+        }
+        if (event?.topic === 'field_updates') {
+          window.dispatchEvent(new CustomEvent('dengue-field-updates-changed', { detail: event }))
+        }
+      },
+    })
+
+    return unsubscribe
+  }, [])
+
   const savedForecastRows = useMemo(() => {
     return buildSavedForecastRows(backendForecastResult)
   }, [backendForecastResult])
@@ -3090,6 +3128,7 @@ export default function SupervisorPage() {
   const totalProjectedCases = sortedRows.reduce((sum, row) => sum + Number(getRowCases(row) || 0), 0)
   const analysisReady = modelName !== 'No forecast method selected yet'
   const topThree = sortedRows.slice(0, 3)
+  const forecastCycle = getForecastCycleInfo(backendForecastResult)
 
   return (
     <div className="supervisor-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(99,102,241,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-7 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(99,102,241,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
@@ -3305,13 +3344,19 @@ export default function SupervisorPage() {
             )}
           </div>
 
+          <BarangayResponseCoverageTracker
+            priorityRows={sortedRows}
+            forecastCycleStart={forecastCycle.startedAt}
+            forecastCycleId={forecastCycle.id}
+          />
+
           <div className="supervisor-action-shell mt-5 rounded-[28px] border border-white/80 bg-white/75 p-3 shadow-inner dark:border-white/10 dark:bg-slate-950/60 sm:p-4">
-            <div className="supervisor-action-command-mobile"><DecisionActionTracker priorityRows={sortedRows.slice(0, 10)} /></div>
+            <div className="supervisor-action-command-mobile"><DecisionActionTracker priorityRows={sortedRows} forecastCycleId={forecastCycle.id} /></div>
           </div>
         </PremiumPanel>
       </section>
 
-      <div className="supervisor-field-review-wrap"><FieldUpdateReviewPanel /></div>
+      <div className="supervisor-field-review-wrap"><FieldUpdateReviewPanel forecastCycleId={forecastCycle.id} /></div>
 
       <section className="supervisor-ranking-layout grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <PremiumPanel tone="blue" className="supervisor-ranking-panel p-5 sm:p-6">
@@ -3338,7 +3383,7 @@ export default function SupervisorPage() {
                     <th className="px-4 py-3.5">Risk</th>
                     <th className="px-4 py-3.5">Combined priority score</th>
                     <th className="px-4 py-3.5">Cases</th>
-                    <th className="px-4 py-3.5">Response</th>
+                    <th className="px-4 py-3.5">Response guidance</th>
                   </tr>
                 </thead>
 

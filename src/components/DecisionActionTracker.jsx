@@ -28,6 +28,13 @@ const DECISION_ACTION_CACHE_TTL_MS = 30_000
 
 const ACTION_STATUSES = ['Pending', 'In Progress', 'Completed']
 
+function publishDecisionActionData(actions, summary) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('dengue-decision-actions-data', {
+    detail: { actions: actions || [], summary: summary || {} },
+  }))
+}
+
 const INTERVENTION_TYPES = [
   'Source reduction',
   'Larvicide application',
@@ -78,6 +85,13 @@ function formatShortDate(value) {
 function normalizeText(value, fallback = '') {
   const text = String(value || '').trim()
   return text || fallback
+}
+
+function normalizeBarangayKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
 }
 
 function getRiskBadgeStyle(risk) {
@@ -471,7 +485,7 @@ function getInterventionOptions() {
   }))
 }
 
-export default function DecisionActionTracker({ priorityRows = [] }) {
+export default function DecisionActionTracker({ priorityRows = [], forecastCycleId = '' }) {
   const session = getAuthSession()
   const sessionCacheKey = String(session?.userId || session?.email || '').toLowerCase()
   const usableActionCache = decisionActionSessionCache?.sessionCacheKey === sessionCacheKey
@@ -484,24 +498,36 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
   const [editedActions, setEditedActions] = useState({})
   const [isLoading, setIsLoading] = useState(() => !usableActionCache)
   const [isSaving, setIsSaving] = useState(false)
+  const [recentlyUpdatedActionId, setRecentlyUpdatedActionId] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [isRecommendationOpen, setIsRecommendationOpen] = useState(false)
+
+  useEffect(() => {
+    if (!recentlyUpdatedActionId) return undefined
+
+    const timer = window.setTimeout(() => {
+      setRecentlyUpdatedActionId(null)
+    }, 5000)
+
+    return () => window.clearTimeout(timer)
+  }, [recentlyUpdatedActionId])
 
   const availableRows = useMemo(() => {
     const seen = new Set()
 
     return priorityRows.filter((row) => {
       const barangay = normalizeText(row?.barangay)
-      if (!barangay || seen.has(barangay)) return false
-      seen.add(barangay)
+      const barangayKey = normalizeBarangayKey(barangay)
+      if (!barangayKey || seen.has(barangayKey)) return false
+      seen.add(barangayKey)
       return true
     })
   }, [priorityRows])
 
   const selectedRow = useMemo(
-    () => availableRows.find((row) => row.barangay === selectedBarangay) || availableRows[0] || null,
+    () => availableRows.find((row) => normalizeBarangayKey(row?.barangay) === normalizeBarangayKey(selectedBarangay)) || availableRows[0] || null,
     [availableRows, selectedBarangay]
   )
 
@@ -510,7 +536,8 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
 
     availableRows.forEach((row) => {
       const barangay = normalizeText(row?.barangay)
-      if (barangay) lookup.set(barangay.toLowerCase(), row)
+      const barangayKey = normalizeBarangayKey(barangay)
+      if (barangayKey) lookup.set(barangayKey, row)
     })
 
     return lookup
@@ -525,8 +552,11 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
       : Number.POSITIVE_INFINITY
 
     if (!force && matchingCache && cacheAge < DECISION_ACTION_CACHE_TTL_MS) {
-      setActions(matchingCache.actions || [])
-      setSummary(matchingCache.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 })
+      const cachedActions = matchingCache.actions || []
+      const cachedSummary = matchingCache.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 }
+      setActions(cachedActions)
+      setSummary(cachedSummary)
+      publishDecisionActionData(cachedActions, cachedSummary)
       setIsLoading(false)
       return
     }
@@ -535,12 +565,13 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
     setErrorMessage('')
 
     try {
-      const result = await getDecisionActions()
+      const result = await getDecisionActions({ force })
       const nextActions = Array.isArray(result?.actions) ? result.actions : []
       const nextSummary = result?.summary || { total: 0, pending: 0, in_progress: 0, completed: 0, overdue: 0 }
       decisionActionSessionCache = { sessionCacheKey, actions: nextActions, summary: nextSummary, savedAt: Date.now() }
       setActions(nextActions)
       setSummary(nextSummary)
+      publishDecisionActionData(nextActions, nextSummary)
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to load action records.')
     } finally {
@@ -551,6 +582,30 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
   useEffect(() => {
     loadActions()
   }, [])
+
+  useEffect(() => {
+    function handleActionsChanged() {
+      loadActions({ force: true })
+    }
+
+    function handleFocusBarangay(event) {
+      const wanted = normalizeBarangayKey(event?.detail?.barangay)
+      if (!wanted) return
+      const matchedRow = availableRows.find((row) => normalizeBarangayKey(row?.barangay) === wanted)
+      if (!matchedRow) return
+      setSelectedBarangay(matchedRow.barangay)
+      setForm(buildFormFromRow(matchedRow))
+      setStatusFilter('All')
+    }
+
+    window.addEventListener('dengue-decision-actions-changed', handleActionsChanged)
+    window.addEventListener('dengue-focus-decision-barangay', handleFocusBarangay)
+
+    return () => {
+      window.removeEventListener('dengue-decision-actions-changed', handleActionsChanged)
+      window.removeEventListener('dengue-focus-decision-barangay', handleFocusBarangay)
+    }
+  }, [availableRows])
 
   useEffect(() => {
     if (!selectedRow) return
@@ -578,15 +633,23 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
 
   async function handleCreateAction(event) {
     event.preventDefault()
-    setIsSaving(true)
     setErrorMessage('')
     setStatusMessage('')
+
+    const intendedBarangay = normalizeText(form.barangay || selectedRow?.barangay, '')
+    if (!intendedBarangay || normalizeBarangayKey(intendedBarangay) === 'unassignedbarangay') {
+      setErrorMessage('Select a valid barangay before creating the response action.')
+      return
+    }
+
+    setIsSaving(true)
 
     try {
       const result = await createDecisionAction({
         ...form,
-        barangay: normalizeText(form.barangay, selectedRow?.barangay || 'Unassigned barangay'),
+        barangay: intendedBarangay,
         action: normalizeText(form.action, getDefaultAction(selectedRow)),
+        source: forecastCycleId ? `forecast_cycle:${forecastCycleId}` : form.source,
       })
       setStatusMessage(`Action created for ${result?.action?.barangay || form.barangay}.`)
       await loadActions({ force: true })
@@ -621,6 +684,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
         return next
       })
       await loadActions({ force: true })
+      setRecentlyUpdatedActionId(action.id)
     } catch (error) {
       setErrorMessage(error?.message || 'Unable to update action record.')
     } finally {
@@ -884,6 +948,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
                                 type="button"
                                 onClick={() => {
                                   setSelectedBarangay(row.barangay)
+                                  setForm(buildFormFromRow(row))
                                   setIsRecommendationOpen(false)
                                 }}
                                 className={`group flex w-full items-center justify-between gap-3 rounded-[18px] px-3.5 py-3 text-left text-sm transition ${
@@ -1027,7 +1092,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
 
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || !normalizeBarangayKey(form.barangay || selectedRow?.barangay)}
                 className="group relative mt-5 inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[22px] bg-gradient-to-r from-slate-950 via-blue-950 to-brand-blue px-5 py-3.5 text-sm font-black text-white shadow-[0_18px_40px_rgba(37,95,143,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_52px_rgba(37,95,143,0.38)] disabled:cursor-not-allowed disabled:opacity-60 dark:from-white dark:via-slate-100 dark:to-blue-100 dark:text-slate-950"
               >
                 <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/20 blur-2xl transition group-hover:bg-white/30" />
@@ -1101,7 +1166,7 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
                   const currentAssignee = edits.assigned_to ?? action.assigned_to
                   const currentInterventionType = edits.intervention_type ?? action.intervention_type
                   const currentRemarks = edits.remarks ?? action.remarks
-                  const currentForecastRow = currentForecastByBarangay.get(normalizeText(action.barangay).toLowerCase()) || null
+                  const currentForecastRow = currentForecastByBarangay.get(normalizeBarangayKey(action.barangay)) || null
                   const currentForecastRisk = currentForecastRow?.risk || currentForecastRow?.riskLevel || ''
                   const riskHasChanged = Boolean(
                     currentForecastRisk &&
@@ -1222,10 +1287,20 @@ export default function DecisionActionTracker({ priorityRows = [] }) {
                           type="button"
                           onClick={() => handleUpdateAction(action)}
                           disabled={isSaving}
-                          className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-blue px-4 py-2.5 text-xs font-black text-white shadow-[0_12px_28px_rgba(37,95,143,0.25)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(37,95,143,0.35)] disabled:cursor-not-allowed disabled:opacity-60"
+                          className={`inline-flex min-w-[128px] items-center justify-center gap-2 rounded-full px-4 py-2.5 text-xs font-black text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 ${
+                            recentlyUpdatedActionId === action.id
+                              ? 'bg-emerald-600 shadow-[0_12px_28px_rgba(5,150,105,0.25)] hover:shadow-[0_16px_34px_rgba(5,150,105,0.35)]'
+                              : 'bg-brand-blue shadow-[0_12px_28px_rgba(37,95,143,0.25)] hover:shadow-[0_16px_34px_rgba(37,95,143,0.35)]'
+                          }`}
                         >
-                          {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PencilLine className="h-3.5 w-3.5" />}
-                          Update record
+                          {isSaving ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : recentlyUpdatedActionId === action.id ? (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          ) : (
+                            <PencilLine className="h-3.5 w-3.5" />
+                          )}
+                          {recentlyUpdatedActionId === action.id ? 'Updated' : 'Update record'}
                         </button>
                       </div>
                     </article>
