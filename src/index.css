@@ -3936,8 +3936,8 @@ html:not(.dark) .leaflet-popup-tip {
    without changing the desktop sidebar. */
 @media (max-width: 640px) {
   .dengue-mobile-drawer {
-    width: min(22rem, calc(100vw - 0.65rem)) !important;
-    max-width: 22rem !important;
+    width: clamp(15.75rem, 66vw, 17rem) !important;
+    max-width: 17rem !important;
     height: 100dvh !important;
     max-height: 100dvh !important;
     padding: max(0.7rem, env(safe-area-inset-top, 0px)) 0.7rem max(0.7rem, env(safe-area-inset-bottom, 0px)) !important;
