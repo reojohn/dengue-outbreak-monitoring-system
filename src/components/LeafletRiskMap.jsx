@@ -763,6 +763,32 @@ function buildTooltipHtml({ feature, row, layerMode = 'forecast' }) {
   `
 }
 
+function buildNeighborContextTooltipHtml({
+  feature,
+  row,
+  contextLabel = 'Neighboring barangay',
+  layerMode = 'forecast',
+}) {
+  const barangay = row?.barangay || getFeatureName(feature)
+  const value = getLayerValue(row, layerMode)
+  const valueLabel = layerMode === 'hotspot' ? 'Hotspot level' : 'Forecast risk'
+  const fallback = layerMode === 'hotspot' ? 'Not checked' : 'No risk data'
+
+  return `
+    <div class="risk-tooltip-card">
+      <div class="risk-tooltip-title">${escapeHtml(barangay)}</div>
+      <div class="risk-tooltip-row">
+        <span>${escapeHtml(contextLabel)}</span>
+        <strong>Read-only context</strong>
+      </div>
+      <div class="risk-tooltip-row">
+        <span>${escapeHtml(valueLabel)}</span>
+        <strong>${escapeHtml(value || fallback)}</strong>
+      </div>
+    </div>
+  `
+}
+
 function buildActionListHtml(actions = []) {
   if (!actions.length) {
     return `
@@ -1095,8 +1121,11 @@ export default function LeafletRiskMap({
   focusSelected = true,
   restrictSelectionToRows = false,
   contextBoundaryLabel = '',
+  neighborContextLabel = '',
   isExpanded = false,
   onToggleExpanded = null,
+  boundaryData = null,
+  assignedContextMode = false,
 }) {
   const {
     boundaryRecords = [],
@@ -1107,8 +1136,8 @@ export default function LeafletRiskMap({
   const isSatellite = mapStyle === 'satellite'
 
   const boundaryGeoJson = useMemo(() => {
-    return getBoundaryGeoJson(boundaryRecords)
-  }, [boundaryRecords])
+    return getBoundaryGeoJson(boundaryData ?? boundaryRecords)
+  }, [boundaryData, boundaryRecords])
 
   const populationItems = useMemo(() => {
     return Array.isArray(populationRecords) ? populationRecords : []
@@ -1136,8 +1165,8 @@ export default function LeafletRiskMap({
       .map((row) => `${row.barangay}-${row.risk}-${row.forecast}-${row.responsePriority}-${getCombinedRiskScore(row)}-${row.environmentalSuitability || ''}-${row.hotspot_level || row.hotspotLevel || ''}-${row.hotspot_score || row.hotspotScore || 0}-${row.neighbor_influence_score || row.neighborInfluenceScore || 0}`)
       .join('|')
 
-    return `${selected}-${boundaryCount}-${riskHash}-${mapStyle}-${layoutKey}-${layerMode}-${showDetailsPanel ? 'popup' : 'external'}-${restrictSelectionToRows ? 'scoped' : 'open'}`
-  }, [selected, rows, boundaryGeoJson, mapStyle, layoutKey, layerMode, showDetailsPanel, restrictSelectionToRows])
+    return `${selected}-${boundaryCount}-${riskHash}-${mapStyle}-${layoutKey}-${layerMode}-${showDetailsPanel ? 'popup' : 'external'}-${restrictSelectionToRows ? 'scoped' : 'open'}-${assignedContextMode ? 'assigned-context' : 'standard'}`
+  }, [selected, rows, boundaryGeoJson, mapStyle, layoutKey, layerMode, showDetailsPanel, restrictSelectionToRows, assignedContextMode])
 
   function getFeatureStyle(feature) {
     const row = getRiskRowForFeature(feature, riskItems)
@@ -1149,6 +1178,7 @@ export default function LeafletRiskMap({
       namesMatch(selected, featureName)
 
     const isContextOnly = restrictSelectionToRows && !row
+    const isNeighborContext = assignedContextMode && Boolean(row) && !isSelected
 
     return {
       color: isSelected
@@ -1181,7 +1211,9 @@ export default function LeafletRiskMap({
         ? 'barangay-polygon barangay-polygon-selected'
         : isContextOnly
           ? 'barangay-polygon barangay-polygon-context'
-          : 'barangay-polygon',
+          : isNeighborContext
+            ? 'barangay-polygon barangay-polygon-neighbor-context'
+            : 'barangay-polygon',
     }
   }
 
@@ -1190,10 +1222,27 @@ export default function LeafletRiskMap({
     const populationRow = getPopulationRowForFeature(feature, row, populationItems)
     const barangay = row?.barangay || getFeatureName(feature)
     const isContextOnly = restrictSelectionToRows && !row
+    const isAssigned = namesMatch(selected, barangay) || namesMatch(selected, getFeatureName(feature))
+    const isNeighborContext = assignedContextMode && Boolean(row) && !isAssigned
 
     if (isContextOnly) {
       layer.bindTooltip(
         `<div class="risk-tooltip-card"><div class="risk-tooltip-title">${escapeHtml(barangay)}</div><div class="risk-tooltip-row"><span>${escapeHtml(contextBoundaryLabel || 'Map context')}</span><strong>Assigned-area details only</strong></div></div>`,
+        {
+          sticky: true,
+          direction: 'top',
+          opacity: 1,
+          className: 'risk-tooltip',
+        }
+      )
+    } else if (isNeighborContext) {
+      layer.bindTooltip(
+        buildNeighborContextTooltipHtml({
+          feature,
+          row,
+          contextLabel: neighborContextLabel || 'Neighboring barangay',
+          layerMode,
+        }),
         {
           sticky: true,
           direction: 'top',
@@ -1210,7 +1259,7 @@ export default function LeafletRiskMap({
       })
     }
 
-    if (showDetailsPanel && !isContextOnly) {
+    if (showDetailsPanel && !isContextOnly && !isNeighborContext) {
       layer.bindPopup(
         buildDetailedPopupHtml({
           feature,
@@ -1229,7 +1278,7 @@ export default function LeafletRiskMap({
     layer.on({
       click: (event) => {
         L.DomEvent.stopPropagation(event)
-        if (isContextOnly) return
+        if (isContextOnly || isNeighborContext) return
 
         onSelect?.(barangay)
 
@@ -1244,6 +1293,16 @@ export default function LeafletRiskMap({
             weight: 2,
             fillColor: '#64748b',
             fillOpacity: isSatellite ? 0.16 : 0.32,
+            dashArray: '',
+          })
+        } else if (isNeighborContext) {
+          const colors = getLayerTheme(row, layerMode)
+
+          layer.setStyle({
+            color: '#bae6fd',
+            weight: 3,
+            fillColor: colors.fill,
+            fillOpacity: isSatellite ? 0.40 : 0.62,
             dashArray: '',
           })
         } else {
@@ -1342,7 +1401,10 @@ export default function LeafletRiskMap({
                   fillOpacity: 0.9,
                 }}
                 eventHandlers={{
-                  click: () => onSelect?.(row.barangay),
+                  click: () => {
+                    if (assignedContextMode && !isSelected) return
+                    onSelect?.(row.barangay)
+                  },
                   mouseover: (event) => {
                     event.target.setRadius(16)
                     event.target.setStyle({
@@ -1498,6 +1560,11 @@ export default function LeafletRiskMap({
 
         .barangay-polygon-selected {
           filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.58));
+        }
+
+        .barangay-polygon-neighbor-context {
+          cursor: default;
+          filter: drop-shadow(0 0 7px rgba(14, 165, 233, 0.10));
         }
 
         .risk-tooltip {

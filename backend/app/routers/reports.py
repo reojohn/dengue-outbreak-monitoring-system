@@ -51,7 +51,7 @@ def _validate_report_payload_size(payload: dict[str, Any]) -> None:
 @router.post("/generated")
 async def create_generated_report(
     payload: GeneratedReportPayload,
-    current_user=Depends(require_roles("admin", "cho", "supervisor")),
+    current_user=Depends(require_roles("admin", "cho", "supervisor", "bhw")),
 ):
     report_payload = _payload_to_dict(payload)
     _validate_report_payload_size(report_payload)
@@ -61,6 +61,23 @@ async def create_generated_report(
     report_payload["generated_role"] = current_user.get("role") or "user"
     metadata = dict(report_payload.get("metadata") or {})
     metadata["generated_by_user_id"] = str(current_user["id"])
+
+    if str(current_user.get("role") or "").strip().lower() == "bhw":
+        assigned_barangay = str(current_user.get("assigned_barangay") or "").strip()
+        if not assigned_barangay:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="BHW account does not have an assigned barangay.",
+            )
+
+        report_payload["report_title"] = f"{assigned_barangay} Barangay Dengue Monitoring and Response Report"
+        metadata["reportScope"] = "assigned_barangay"
+        metadata["assignedBarangay"] = assigned_barangay
+        summary = dict(report_payload.get("summary") or {})
+        summary["reportScope"] = "assigned_barangay"
+        summary["assignedBarangay"] = assigned_barangay
+        report_payload["summary"] = summary
+
     report_payload["metadata"] = metadata
 
     report = save_generated_report(report_payload)
@@ -75,4 +92,11 @@ async def list_generated_reports(
     limit: int = Query(default=20, ge=1, le=100),
     current_user=Depends(get_current_user),
 ):
-    return get_generated_reports(limit=limit)
+    generated_by_user_id = None
+    if str(current_user.get("role") or "").strip().lower() == "bhw":
+        generated_by_user_id = str(current_user["id"])
+
+    return get_generated_reports(
+        limit=limit,
+        generated_by_user_id=generated_by_user_id,
+    )

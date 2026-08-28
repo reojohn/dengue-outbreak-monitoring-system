@@ -217,15 +217,24 @@ def save_generated_report(payload: dict[str, Any]) -> dict[str, Any]:
     return _format_report_row(row)
 
 
-def get_generated_reports(limit: int = 20) -> dict[str, Any]:
+def get_generated_reports(
+    limit: int = 20,
+    generated_by_user_id: str | None = None,
+) -> dict[str, Any]:
     ensure_reports_table()
 
     safe_limit = max(1, min(int(limit or 20), 100))
+    where_sql = ""
+    params: dict[str, Any] = {"limit": safe_limit}
+
+    if generated_by_user_id:
+        where_sql = " where metadata ->> 'generated_by_user_id' = :generated_by_user_id"
+        params["generated_by_user_id"] = str(generated_by_user_id)
 
     with engine.connect() as connection:
         result = connection.execute(
             text(
-                """
+                f"""
                 select
                     report_id,
                     title,
@@ -243,11 +252,12 @@ def get_generated_reports(limit: int = 20) -> dict[str, Any]:
                     summary,
                     created_at
                 from public.reports
+                {where_sql}
                 order by generated_at desc, created_at desc
                 limit :limit
                 """
             ),
-            {"limit": safe_limit},
+            params,
         )
 
         rows = result.mappings().all()

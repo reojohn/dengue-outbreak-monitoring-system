@@ -32,6 +32,7 @@ import InformationTypeBadge from '../components/InformationTypeBadge'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
 import { getAuthSession } from '../utils/auth'
+import { getLatestSavedBoundaryGeoJson } from '../services/api'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 import mapHeroBackground from '../assets/map.png'
 
@@ -79,6 +80,11 @@ const mapLayerOptions = [
     description: 'Color barangays using the completed GIS hotspot classification.',
   },
 ]
+
+// Small session-only cache for the BHW local spatial context. It contains
+// only the assigned barangay plus its immediate neighbors, so route changes
+// do not repeatedly download the same small GeoJSON/risk snapshot.
+const bhwLocalMapContextCache = new Map()
 
 const BARANGAY_NAME_ALIASES = {
   'agusan pequenio': 'agusan pequeno',
@@ -1825,6 +1831,69 @@ export default function MapPage() {
     loadGeospatialHotspotsCached,
   } = data
 
+  const [bhwLocalMapContext, setBhwLocalMapContext] = useState(null)
+  const [bhwLocalMapLoading, setBhwLocalMapLoading] = useState(false)
+  const [bhwLocalMapError, setBhwLocalMapError] = useState('')
+
+  const bhwLocalMapCacheKey = `${normalizeBarangayName(assignedBarangay)}::${String(
+    backendForecastResult?.forecast_run?.forecast_run_id ||
+      backendForecastResult?.database_forecast_run_id ||
+      'latest'
+  )}`
+
+  useEffect(() => {
+    if (!isBhwMap || !assignedBarangay || !hasBackendForecastData(backendForecastResult)) {
+      setBhwLocalMapContext(null)
+      setBhwLocalMapLoading(false)
+      setBhwLocalMapError('')
+      return undefined
+    }
+
+    const cached = bhwLocalMapContextCache.get(bhwLocalMapCacheKey)
+
+    if (cached) {
+      setBhwLocalMapContext(cached)
+      setBhwLocalMapLoading(false)
+      setBhwLocalMapError('')
+      return undefined
+    }
+
+    let active = true
+    setBhwLocalMapLoading(true)
+    setBhwLocalMapError('')
+
+    getLatestSavedBoundaryGeoJson({ scope: 'local' })
+      .then((result) => {
+        if (!active) return
+
+        if (result?.has_saved_boundary && result?.boundary_geojson?.features?.length) {
+          bhwLocalMapContextCache.set(bhwLocalMapCacheKey, result)
+          setBhwLocalMapContext(result)
+          return
+        }
+
+        setBhwLocalMapContext(null)
+        setBhwLocalMapError('Nearby barangay risk context is not available yet.')
+      })
+      .catch(() => {
+        if (!active) return
+        setBhwLocalMapContext(null)
+        setBhwLocalMapError('Nearby barangay risk context could not be loaded.')
+      })
+      .finally(() => {
+        if (active) setBhwLocalMapLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [
+    assignedBarangay,
+    backendForecastResult,
+    bhwLocalMapCacheKey,
+    isBhwMap,
+  ])
+
   const boundaryLoadRequestedRef = useRef(false)
 
   useEffect(() => {
@@ -1836,8 +1905,9 @@ export default function MapPage() {
     // CHO/Admin/Supervisor/Viewer keep the normal city map behavior. BHW may
     // already have only its assigned polygon from sign-in, so the Map page
     // upgrades that lightweight boundary to the full 86-barangay city layer.
-    // Only the assigned barangay has a role-scoped risk row; the remaining
-    // polygons are rendered as neutral geographic context.
+    // The full boundary layer remains neutral geographic context, while a
+    // separate compact BHW-local response supplies risk colors only for the
+    // assigned barangay and its immediate neighbors.
     const needsBoundary = isBhwMap
       ? existingFeatureCount <= 1
       : existingFeatureCount === 0
@@ -1912,6 +1982,50 @@ export default function MapPage() {
     return boundaryGeoJson?.features || []
   }, [boundaryGeoJson])
 
+  const bhwLocalContextRows = useMemo(() => {
+    const features = Array.isArray(bhwLocalMapContext?.boundary_geojson?.features)
+      ? bhwLocalMapContext.boundary_geojson.features
+      : []
+
+    return features
+      .map((feature) => {
+        const properties = feature?.properties || {}
+        const barangay = String(
+          properties.barangay ||
+            properties.adm4_name ||
+            properties.adm4_ref_name ||
+            properties.name ||
+            ''
+        ).trim()
+
+        if (!barangay) return null
+
+        const forecastRisk = String(properties.risk_level || '').trim()
+        const risk = ['High', 'Moderate', 'Low'].includes(forecastRisk)
+          ? forecastRisk
+          : ''
+
+        return {
+          barangay,
+          risk,
+          risk_level: risk,
+          hotspot_level: String(properties.hotspot_level || 'Not checked'),
+          hotspotLevel: String(properties.hotspot_level || 'Not checked'),
+          contextRole: String(properties.context_role || 'neighbor'),
+          isBhwNeighborContext: String(properties.context_role || '') === 'neighbor',
+        }
+      })
+      .filter(Boolean)
+  }, [bhwLocalMapContext])
+
+  const bhwNeighborCount = useMemo(() => {
+    const fromApi = Number(bhwLocalMapContext?.neighbor_count)
+
+    if (Number.isFinite(fromApi)) return fromApi
+
+    return bhwLocalContextRows.filter((row) => row.contextRole === 'neighbor').length
+  }, [bhwLocalContextRows, bhwLocalMapContext])
+
   const backendRiskRows = useMemo(() => {
     return buildBackendRiskRows(backendForecastResult, {
       populationRecords,
@@ -1938,6 +2052,33 @@ export default function MapPage() {
   const displayRiskRows = usingBackendForecast
   ? backendRiskRows
   : riskRows
+
+  const forecastMapRows = useMemo(() => {
+    if (!isBhwMap || !bhwLocalContextRows.length) return displayRiskRows
+
+    const merged = new Map()
+
+    bhwLocalContextRows.forEach((row) => {
+      const key = normalizeBarangayName(row.barangay)
+      if (key) merged.set(key, row)
+    })
+
+    // The assigned row from /forecast/latest contains the full BHW-authorized
+    // details. Overlay it on the compact neighbor context so only neighbors
+    // remain limited/read-only records.
+    displayRiskRows.forEach((row) => {
+      const key = normalizeBarangayName(row?.barangay)
+      if (!key) return
+
+      merged.set(key, {
+        ...(merged.get(key) || {}),
+        ...row,
+        contextRole: namesMatch(row?.barangay, assignedBarangay) ? 'assigned' : (merged.get(key)?.contextRole || ''),
+      })
+    })
+
+    return [...merged.values()]
+  }, [assignedBarangay, bhwLocalContextRows, displayRiskRows, isBhwMap])
 
  const usingMultiSourceRisk = !usingBackendForecast && hasMultiSourceRiskRows
 
@@ -2036,9 +2177,7 @@ export default function MapPage() {
   const showingHotspotLayer = mapLayerMode === 'hotspot' && realHotspotReady
 
   const hotspotMapRows = useMemo(() => {
-    if (!hotspotRows.length) return []
-
-    return hotspotRows.map((hotspot) => {
+    const detailedRows = hotspotRows.map((hotspot) => {
       const forecastRow = displayRiskRows.find((row) => {
         return namesMatch(row.barangay, hotspot.barangay)
       })
@@ -2052,24 +2191,50 @@ export default function MapPage() {
         neighborInfluenceScore: Number(hotspot.neighbor_influence_score || 0),
       }
     })
-  }, [hotspotRows, displayRiskRows])
 
-  const activeMapRows = showingHotspotLayer ? hotspotMapRows : displayRiskRows
+    if (!isBhwMap || !bhwLocalContextRows.length) return detailedRows
+
+    const merged = new Map()
+
+    bhwLocalContextRows.forEach((row) => {
+      const key = normalizeBarangayName(row.barangay)
+      if (key) merged.set(key, row)
+    })
+
+    detailedRows.forEach((row) => {
+      const key = normalizeBarangayName(row?.barangay)
+      if (!key) return
+
+      merged.set(key, {
+        ...(merged.get(key) || {}),
+        ...row,
+        contextRole: namesMatch(row?.barangay, assignedBarangay) ? 'assigned' : (merged.get(key)?.contextRole || ''),
+      })
+    })
+
+    return [...merged.values()]
+  }, [assignedBarangay, bhwLocalContextRows, displayRiskRows, hotspotRows, isBhwMap])
+
+  const activeMapRows = showingHotspotLayer ? hotspotMapRows : forecastMapRows
 
   const searchableBarangays = useMemo(() => {
     const names = []
 
-    activeMapRows.forEach((row) => {
-      const name = String(row?.barangay || '').trim()
-      if (name) names.push(name)
-    })
+    if (isBhwMap) {
+      if (assignedBarangay) names.push(assignedBarangay)
+    } else {
+      activeMapRows.forEach((row) => {
+        const name = String(row?.barangay || '').trim()
+        if (name) names.push(name)
+      })
 
-    boundaryFeatures.forEach((feature) => {
-      const name = String(getFeatureName(feature) || '').trim()
-      const referenceName = String(getFeatureReferenceName(feature) || '').trim()
-      if (name) names.push(name)
-      if (referenceName) names.push(referenceName)
-    })
+      boundaryFeatures.forEach((feature) => {
+        const name = String(getFeatureName(feature) || '').trim()
+        const referenceName = String(getFeatureReferenceName(feature) || '').trim()
+        if (name) names.push(name)
+        if (referenceName) names.push(referenceName)
+      })
+    }
 
     const unique = new Map()
 
@@ -2080,7 +2245,7 @@ export default function MapPage() {
     })
 
     return [...unique.values()].sort((a, b) => a.localeCompare(b))
-  }, [activeMapRows, boundaryFeatures])
+  }, [activeMapRows, assignedBarangay, boundaryFeatures, isBhwMap])
 
   const filteredBarangaySearch = useMemo(() => {
     const query = normalizeBarangayName(barangaySearch)
@@ -2194,7 +2359,7 @@ export default function MapPage() {
 
     if (!selected || !namesMatch(selected, assignedBarangay)) {
       setSelected(assignedBarangay)
-      setFocusSelectedBarangay(false)
+      setFocusSelectedBarangay(true)
       setSelectedPanelOpen(false)
     }
   }, [assignedBarangay, isBhwMap, selected])
@@ -2773,6 +2938,20 @@ export default function MapPage() {
 
       setHotspotResult(result)
 
+      if (isBhwMap) {
+        try {
+          const localContext = await getLatestSavedBoundaryGeoJson({ scope: 'local' })
+
+          if (localContext?.has_saved_boundary && localContext?.boundary_geojson?.features?.length) {
+            bhwLocalMapContextCache.set(bhwLocalMapCacheKey, localContext)
+            setBhwLocalMapContext(localContext)
+            setBhwLocalMapError('')
+          }
+        } catch {
+          // Keep the existing local context if the small refresh is unavailable.
+        }
+      }
+
       if (Array.isArray(result?.hotspots) && result.hotspots.length > 0) {
         setMapLayerMode('hotspot')
       }
@@ -2901,6 +3080,8 @@ export default function MapPage() {
             focusSelected={focusSelectedBarangay}
             restrictSelectionToRows={isBhwMap}
             contextBoundaryLabel={isBhwMap ? 'Other Butuan barangay · context only' : ''}
+            neighborContextLabel={isBhwMap ? 'Neighboring barangay · read-only' : ''}
+            assignedContextMode={isBhwMap}
           />
         ) : (
           <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-white/[0.80] p-8 text-center dark:border-slate-700 dark:bg-slate-950">
@@ -3626,7 +3807,7 @@ export default function MapPage() {
                       <Crosshair className="h-3.5 w-3.5" />
                       Map focused on {selected}
                     </span>
-                    <span>Click another result or map polygon to change the selected barangay.</span>
+                    <span>{isBhwMap ? 'Neighboring colored polygons are read-only spatial context.' : 'Click another result or map polygon to change the selected barangay.'}</span>
                   </div>
                 )}
               </div>
@@ -3639,11 +3820,14 @@ export default function MapPage() {
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">Assigned barangay map view</p>
                   <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
-                    {assignedBarangay || 'Your assigned barangay'} keeps its current forecast or hotspot color. Other Butuan barangay boundaries are shown in gray for geographic context only.
+                    {assignedBarangay || 'Your assigned barangay'} stays emphasized with a bright outline. Immediate neighboring barangays show their forecast or saved hotspot colors as read-only spatial context, while the rest of Butuan stays gray.
                   </p>
+                  {bhwLocalMapError ? (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">{bhwLocalMapError} The assigned-area view is still available.</p>
+                  ) : null}
                 </div>
                 <span className="w-fit shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">
-                  Assigned area only
+                  {bhwLocalMapLoading ? 'Loading nearby' : `${bhwNeighborCount} nearby · read-only`}
                 </span>
               </div>
             )}

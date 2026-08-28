@@ -37,7 +37,7 @@ import {
   submitFieldUpdate,
 } from '../services/api'
 import { getAuthSession } from '../utils/auth'
-import { getCanonicalCombinedRiskScore, riskStyles } from '../utils/analytics'
+import { computeDecisionSupport, getCanonicalCombinedRiskScore } from '../utils/analytics'
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
@@ -118,6 +118,112 @@ function getTrendDirectionStyle(direction = '') {
   }
 
   return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+}
+
+function getForecastTrendDirection(rows = []) {
+  const values = rows
+    .map((row) => Number(row?.predicted_cases))
+    .filter((value) => Number.isFinite(value))
+
+  if (values.length < 2) {
+    return {
+      label: 'Not enough data',
+      change: 0,
+      className: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
+      Icon: Activity,
+    }
+  }
+
+  const meanX = (values.length - 1) / 2
+  const meanY = values.reduce((sum, value) => sum + value, 0) / values.length
+  const denominator = values.reduce((sum, _, index) => sum + ((index - meanX) ** 2), 0)
+  const slope = denominator > 0
+    ? values.reduce((sum, value, index) => sum + ((index - meanX) * (value - meanY)), 0) / denominator
+    : 0
+  const change = values[values.length - 1] - values[0]
+
+  if (slope > 0.15) {
+    return {
+      label: 'Increasing',
+      change,
+      className: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200',
+      Icon: TrendingUp,
+    }
+  }
+
+  if (slope < -0.15) {
+    return {
+      label: 'Decreasing',
+      change,
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200',
+      Icon: TrendingDown,
+    }
+  }
+
+  return {
+    label: 'Stable',
+    change,
+    className: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200',
+    Icon: Activity,
+  }
+}
+
+function ForecastTrendMiniChart({ rows = [], barangayName = 'Barangay' }) {
+  const pointsData = rows
+    .map((row, index) => ({
+      value: Number(row?.predicted_cases),
+      label: String(row?.period || `Period ${index + 1}`),
+    }))
+    .filter((item) => Number.isFinite(item.value))
+
+  if (pointsData.length < 2) return null
+
+  const direction = getForecastTrendDirection(rows)
+  const DirectionIcon = direction.Icon
+  const values = pointsData.map((item) => item.value)
+  const labels = pointsData.map((item) => item.label)
+  const firstValue = values[0] ?? 0
+  const lastValue = values[values.length - 1] ?? 0
+  const changeText = direction.change === 0
+    ? 'No net change from first to last period'
+    : `${direction.change > 0 ? '+' : ''}${formatNumber(direction.change)} case${Math.abs(direction.change) === 1 ? '' : 's'} from first to last period`
+
+  return (
+    <div className="mt-4">
+      <div className="relative -mx-2 min-w-0 overflow-hidden rounded-[24px] border border-cyan-400/[0.15] bg-gradient-to-b from-[#061321] via-[#06111d] to-[#020817] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_24px_70px_rgba(2,8,23,0.42)] sm:mx-0 sm:rounded-[30px] sm:p-5">
+        <div className="mb-3 flex flex-col gap-2 px-1 sm:mb-4 sm:flex-row sm:items-center sm:justify-between sm:px-0">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">
+              Barangay predicted dengue trend
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Forecast cases only. Recorded dengue cases are shown separately in the historical trend above.
+            </p>
+          </div>
+          <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black ${direction.className}`}>
+            <DirectionIcon className="h-3.5 w-3.5" />
+            {direction.label}
+          </span>
+        </div>
+
+        <div className="w-full min-h-[300px] sm:min-h-[360px] lg:min-h-[420px]">
+          <SparkChart
+            values={values}
+            labels={labels}
+            title={`${barangayName} predicted dengue cases`}
+            subtitle="Four future-period dengue case predictions · direct multi-step forecast"
+            emptyLabel="No future-period forecast values are available"
+            legendLabel="Predicted dengue cases"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-blue-200/70 bg-blue-50/70 px-4 py-3 text-[11px] font-bold text-brand-muted dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-slate-300">
+        <span>{formatNumber(firstValue)} → {formatNumber(lastValue)} predicted cases</span>
+        <span>{changeText}</span>
+      </div>
+    </div>
+  )
 }
 
 function getBoundaryGeoJson(boundaryRecords = []) {
@@ -2296,7 +2402,6 @@ export default function BHWPage() {
     barangayRisk?.risk_level ?? barangayRisk?.risk,
     barangayRisk ? 'Low' : 'Pending'
   )
-  const style = riskStyles[risk] || riskStyles.Low
   const tone = getRiskTone(risk)
   const score = getScore(barangayRisk)
   const predictedCases = getCases(barangayRisk)
@@ -2422,6 +2527,88 @@ export default function BHWPage() {
     1,
     ...localForecasts.map((row) => Number(row?.predicted_cases || 0))
   )
+
+  const barangayDecisionSupport = useMemo(() => {
+    const source = barangayRisk || {}
+    const inheritedSupport = source?.decisionSupport || {}
+
+    const computedSupport = computeDecisionSupport({
+      ...source,
+      risk,
+      forecast: Number(predictedCases || 0),
+      forecastedCases: Number(predictedCases || 0),
+      predictedCases: Number(predictedCases || 0),
+      currentCases:
+        source?.currentCases ??
+        source?.current_cases ??
+        source?.forecast_next_period ??
+        0,
+      previousCases:
+        source?.previousCases ??
+        source?.previous_cases ??
+        source?.previous_average_cases ??
+        source?.previousAverage ??
+        0,
+      totalCases:
+        source?.totalCases ??
+        source?.total_cases ??
+        source?.historical_total_cases ??
+        source?.cases ??
+        0,
+      recentAverage:
+        source?.recentAverage ??
+        source?.recent_average_cases ??
+        0,
+      previousAverage:
+        source?.previousAverage ??
+        source?.previous_average_cases ??
+        0,
+      trend:
+        source?.trend_direction ??
+        source?.trendDirection ??
+        source?.trend ??
+        'Stable',
+    })
+
+    const sourceActions = Array.isArray(source?.recommendedActions)
+      ? source.recommendedActions
+      : Array.isArray(inheritedSupport?.actions)
+        ? inheritedSupport.actions
+        : []
+
+    const sourceRationale = Array.isArray(source?.recommendationRationale)
+      ? source.recommendationRationale
+      : Array.isArray(inheritedSupport?.rationale)
+        ? inheritedSupport.rationale
+        : []
+
+    const actions = Array.from(new Set([
+      ...(Array.isArray(computedSupport?.actions) ? computedSupport.actions : []),
+      ...sourceActions,
+    ].filter(Boolean))).slice(0, 4)
+
+    const rationale = Array.from(new Set([
+      ...(Array.isArray(computedSupport?.rationale) ? computedSupport.rationale : []),
+      ...sourceRationale,
+    ].filter(Boolean))).slice(0, 4)
+
+    return {
+      ...computedSupport,
+      summary:
+        source?.recommendation ||
+        computedSupport?.summary ||
+        source?.recommendedAction ||
+        getAction(risk),
+      priority:
+        computedSupport?.priority ||
+        source?.response_priority ||
+        source?.responsePriority ||
+        inheritedSupport?.priority ||
+        'Routine Monitoring',
+      actions,
+      rationale,
+    }
+  }, [barangayRisk, predictedCases, risk])
 
   const checklist = [
     { id: 'inspect-water', label: 'Inspect stagnant water areas', icon: Droplets },
@@ -3101,42 +3288,76 @@ export default function BHWPage() {
 
       <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <PremiumPanel tone="emerald" className="p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200">
-              <ClipboardCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Recommended today</p>
-                <InformationTypeBadge type="decision" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200">
+                <ClipboardCheck className="h-5 w-5" />
               </div>
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Barangay response action</h2>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-500 dark:text-slate-400">Recommended response</p>
+                  <InformationTypeBadge type="decision" />
+                </div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-brand-text dark:text-white">Barangay decision support</h2>
+                <p className="mt-1 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
+                  Based on forecast, trend, risk level, weather, population, and density for {barangayName}.
+                </p>
+              </div>
+            </div>
+
+            <span className={`w-fit rounded-full border px-3 py-1.5 text-[11px] font-black ${tone.chip}`}>
+              {barangayDecisionSupport.priority}
+            </span>
+          </div>
+
+          <div className={`relative mt-5 overflow-hidden rounded-[28px] border p-5 shadow-sm ${tone.border} bg-gradient-to-br ${tone.soft}`}>
+            <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.gradient}`} />
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border ${tone.chip}`}>
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">Recommended field focus</p>
+                <p className="mt-2 text-sm font-bold leading-7 text-brand-text dark:text-slate-100">
+                  {barangayDecisionSupport.summary}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className={`relative mt-5 overflow-hidden rounded-[28px] border p-5 shadow-sm ${style.card}`}>
-            <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.gradient}`} />
-            <p className="text-sm font-semibold leading-7">{getAction(risk)}</p>
-          </div>
+          {barangayDecisionSupport.actions.length > 0 && (
+            <div className="mt-4 rounded-[24px] border border-emerald-100 bg-white/80 p-4 shadow-sm dark:border-emerald-400/15 dark:bg-slate-950/60">
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-700 dark:text-emerald-300">Field response plan</p>
+              <div className="mt-3 space-y-2.5">
+                {barangayDecisionSupport.actions.map((action, index) => (
+                  <div key={`${action}-${index}`} className="flex gap-3 rounded-[18px] border border-slate-100 bg-slate-50/80 px-3 py-3 text-sm leading-6 text-brand-text dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-black text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                      {index + 1}
+                    </span>
+                    <span>{action}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-          <div className="bhw-recommended-actions bhw-mobile-grid-3 mt-5 grid gap-3 sm:grid-cols-3">
-            {[
-              { label: 'Inspect water storage and canals', icon: Droplets, theme: 'sky' },
-              { label: 'Coordinate cleanup drive', icon: Home, theme: 'emerald' },
-              { label: 'Issue household reminders', icon: Megaphone, theme: 'amber' },
-            ].map((item, index) => {
-              const Icon = item.icon
-              const actionTheme = getMetricTheme(item.theme)
+          {barangayDecisionSupport.rationale.length > 0 && (
+            <div className="mt-4 rounded-[24px] border border-blue-100 bg-blue-50/55 p-4 dark:border-blue-400/15 dark:bg-blue-500/[0.06]">
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-700 dark:text-blue-300">Why this is recommended</p>
+              <div className="mt-3 space-y-2">
+                {barangayDecisionSupport.rationale.map((reason, index) => (
+                  <div key={`${reason}-${index}`} className="flex gap-2.5 text-xs font-semibold leading-5 text-brand-muted dark:text-slate-400">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-300" />
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-              return (
-                <div key={item.label} className={`group/action relative min-h-[140px] overflow-hidden rounded-[24px] border p-4 shadow-[0_14px_36px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_52px_rgba(15,23,42,0.13)] ${actionTheme.surface}`}>
-                  <div className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${actionTheme.line}`} />
-                  <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border ${actionTheme.icon}`}><Icon className="h-5 w-5" /></div>
-                  <p className="mt-4 text-sm font-black leading-5 text-brand-text dark:text-slate-100">{item.label}</p>
-                  <span className="absolute bottom-4 right-4 flex h-7 w-7 items-center justify-center rounded-full border border-white/80 bg-white/70 text-[10px] font-black text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">{index + 1}</span>
-                </div>
-              )
-            })}
+          <div className="mt-4 flex items-start gap-2 rounded-[20px] border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-xs font-semibold leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/[0.08] dark:text-amber-200">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Decision support only. Use these recommendations as field guidance and follow CHO or supervisor coordination for final response activities.</span>
           </div>
         </PremiumPanel>
 
@@ -3169,6 +3390,10 @@ export default function BHWPage() {
               </>
             )}
           </div>
+
+          {localForecasts.length >= 2 && (
+            <ForecastTrendMiniChart rows={localForecasts} barangayName={barangayName} />
+          )}
 
           <div className="bhw-forecast-timeline mt-5 space-y-3">
             {localForecasts.length ? (

@@ -1004,3 +1004,46 @@ def get_latest_forecast_result_from_database() -> dict:
         "forecast_results": forecast_results,
         "barangay_count": len(forecast_results),
     }
+
+def get_latest_forecast_risk_levels() -> list[dict]:
+    """Return only barangay names/keys and forecast risk labels for the latest run.
+
+    This lightweight reader is used by local map context endpoints that only
+    need colors. It deliberately avoids loading full forecast records or
+    recomputing integrated decision-support profiles.
+    """
+    with engine.connect() as connection:
+        run_id = connection.execute(
+            text("""
+                select forecast_run_id
+                from public.forecast_runs
+                where status = 'completed'
+                order by
+                    completed_at desc nulls last,
+                    started_at desc nulls last,
+                    forecast_run_id desc
+                limit 1
+            """)
+        ).scalar_one_or_none()
+
+        if not run_id:
+            return []
+
+        rows = connection.execute(
+            text("""
+                select barangay, barangay_key, risk_level
+                from public.forecast_results
+                where forecast_run_id = :forecast_run_id
+                order by barangay
+            """),
+            {"forecast_run_id": run_id},
+        ).mappings().all()
+
+    return [
+        {
+            "barangay": row["barangay"],
+            "barangay_key": row["barangay_key"],
+            "risk_level": row["risk_level"],
+        }
+        for row in rows
+    ]

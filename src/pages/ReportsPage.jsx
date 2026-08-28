@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import {
   Activity,
@@ -31,15 +32,45 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getCityTrendAnalytics, getFieldUpdate, getFieldUpdates, saveGeneratedReport } from '../services/api'
+import { createBackendNotificationEvent, getBarangayTrendAnalytics, getCityTrendAnalytics, getFieldUpdate, getFieldUpdates, saveGeneratedReport } from '../services/api'
 import reportsHeroBackground from '../assets/reports.png'
 import FieldUpdateReportCard from '../components/FieldUpdateReportCard'
 import CityTrendAnalyticsPanel from '../components/CityTrendAnalyticsPanel'
 import InformationTypeBadge from '../components/InformationTypeBadge'
+import { getAuthSession } from '../utils/auth'
 
 const REPORT_TITLE = 'Dengue Situation and Four-Month Response Planning Report'
 const REPORT_SYSTEM_NAME = 'Barangay-Level Dengue Outbreak Response System'
 const REPORT_EXPORT_BASENAME = 'dengue-four-month-response-planning-report'
+
+
+function sanitizeReportFileSegment(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'barangay'
+}
+
+function getReportScopeConfig(metadata = {}) {
+  const isBarangayScoped = metadata?.reportScope === 'assigned_barangay'
+  const barangay = String(metadata?.assignedBarangay || '').trim()
+  const safeBarangay = sanitizeReportFileSegment(barangay)
+
+  return {
+    isBarangayScoped,
+    barangay,
+    title: isBarangayScoped && barangay
+      ? `${barangay} Barangay Dengue Monitoring and Response Report`
+      : REPORT_TITLE,
+    basename: isBarangayScoped && barangay
+      ? `${safeBarangay}-barangay-dengue-monitoring-response-report`
+      : REPORT_EXPORT_BASENAME,
+    scopeLabel: isBarangayScoped && barangay
+      ? `${barangay} only`
+      : 'Butuan City citywide',
+  }
+}
 
 const exportFormats = [
   {
@@ -1574,7 +1605,7 @@ function getCitySurveillanceSummary(cityTrendAnalytics = null) {
     changeLabel: summary.change_label || 'No previous month available',
     usualPeakMonth: historicalPeak?.month_label || 'Not available',
     usualPeakAverage: Number(historicalPeak?.average_cases || 0),
-    interpretation: cityTrendAnalytics?.interpretation || 'No citywide trend interpretation is available yet.',
+    interpretation: cityTrendAnalytics?.interpretation || 'No recorded dengue trend interpretation is available yet.',
     monthly: Array.isArray(cityTrendAnalytics?.monthly) ? cityTrendAnalytics.monthly : [],
     classification,
   }
@@ -1868,6 +1899,8 @@ function getOfficialReportMetadata({
   usingBackendForecast = false,
   generatedBy = 'CHO user',
   role = 'City Health Office / Barangay Dengue Response Team',
+  reportScope = 'citywide',
+  assignedBarangay = '',
 } = {}) {
   const sourceRows = getReportSourceRows(sourceStatus)
   const totalRecords = sourceRows.reduce((sum, row) => sum + Number(row.totalRecords || 0), 0)
@@ -1892,10 +1925,18 @@ function getOfficialReportMetadata({
     hasMachineLearningMetadata,
   } = getActiveModelPayload(backendForecastResult, latestModelMetrics)
 
+  const scopedForecastPeriodLabels =
+    reportScope === 'assigned_barangay' && sortedRiskRows[0]
+      ? getForecastPeriodDetails(sortedRiskRows[0])
+          .map((item) => item?.label)
+          .filter(Boolean)
+      : []
   const forecastPeriodLabels =
-    backendForecastResult?.forecast_results?.[0]?.forecast_period_predictions
-      ?.map((item) => item?.period_label || item?.period || item?.label)
-      .filter(Boolean) || []
+    scopedForecastPeriodLabels.length > 0
+      ? scopedForecastPeriodLabels
+      : backendForecastResult?.forecast_results?.[0]?.forecast_period_predictions
+          ?.map((item) => item?.period_label || item?.period || item?.label)
+          .filter(Boolean) || []
   const exactForecastWindow =
     forecastPeriodLabels.length > 1
       ? `${forecastPeriodLabels[0]} to ${forecastPeriodLabels[forecastPeriodLabels.length - 1]}`
@@ -1916,6 +1957,8 @@ function getOfficialReportMetadata({
     generatedAt,
     generatedBy,
     role,
+    reportScope,
+    assignedBarangay,
     dataSourceFilename: filenames.length ? filenames.join('; ') : 'No uploaded file recorded',
     uploadDateTime: uploadedDates.length ? uploadedDates.join('; ') : 'Not recorded in current upload status',
     totalRecords,
@@ -1944,6 +1987,9 @@ function getOfficialReportMetadata({
     ),
     forecastWindow,
     topHighRiskBarangays: getTopHighRiskBarangays(sortedRiskRows),
+    assignedBarangayRiskStatus: reportScope === 'assigned_barangay' && sortedRiskRows[0]
+      ? `${sortedRiskRows[0].barangay}: ${sortedRiskRows[0].risk || 'Unknown'} risk`
+      : '',
     sourceRows,
     limitations: [
       'Forecast and risk levels depend on the uploaded records available at report generation time.',
@@ -1955,8 +2001,11 @@ function getOfficialReportMetadata({
 }
 
 function getOfficialMetadataRows(metadata = {}) {
+  const scope = getReportScopeConfig(metadata)
+
   return [
     ['Report ID', metadata.reportId || 'Not assigned'],
+    ['Report scope', scope.scopeLabel],
     ['Data source filename', metadata.dataSourceFilename || 'No uploaded file recorded'],
     ['Upload date/time', metadata.uploadDateTime || 'Not recorded'],
     ['Generated date/time', metadata.generatedAt || 'Not recorded'],
@@ -1978,7 +2027,42 @@ function getOfficialMetadataRows(metadata = {}) {
     ['Model selection explanation', metadata.selectionExplanation || 'Not recorded'],
     ['Forecast case-risk thresholds', metadata.riskThresholds || 'Not recorded'],
     ['Forecast period/window', metadata.forecastWindow || 'Not recorded'],
-    ['Top high-risk barangays', metadata.topHighRiskBarangays || 'No high-risk barangay in the current report.'],
+    [scope.isBarangayScoped ? 'Assigned barangay risk status' : 'Top high-risk barangays', scope.isBarangayScoped ? (metadata.assignedBarangayRiskStatus || 'Not available') : (metadata.topHighRiskBarangays || 'No high-risk barangay in the current report.')],
+  ]
+}
+
+
+function getOperationalMetadataRows(metadata = {}) {
+  const scope = getReportScopeConfig(metadata)
+  const totalRecords = Number(metadata.totalRecords || 0)
+  const validRecords = Number(metadata.validRecords || 0)
+
+  return [
+    ['Report ID', metadata.reportId || 'Not assigned'],
+    ['Report scope', scope.scopeLabel],
+    ['Generated date/time', metadata.generatedAt || 'Not recorded'],
+    ['Generated by', metadata.generatedBy || 'CHO user'],
+    ['Role', metadata.role || 'City Health Office / Barangay Dengue Response Team'],
+    ['Forecast method', metadata.forecastMethod || 'Not recorded'],
+    ['Forecast period/window', metadata.forecastWindow || 'Not recorded'],
+    ['Forecast case-risk thresholds', metadata.riskThresholds || 'Not recorded'],
+    ['Source records', `${formatNumber(validRecords)} valid of ${formatNumber(totalRecords)} total records`],
+    [scope.isBarangayScoped ? 'Assigned barangay risk status' : 'Top high-risk barangays', scope.isBarangayScoped ? (metadata.assignedBarangayRiskStatus || 'Not available') : (metadata.topHighRiskBarangays || 'No high-risk barangay in the current report.')],
+  ]
+}
+
+function getTechnicalModelMetadataRows(metadata = {}) {
+  return [
+    ['Model version', metadata.modelVersion || 'Not recorded'],
+    ['Selected model', metadata.selectedModel || 'Not recorded'],
+    ['Train/test split', metadata.trainTestSplit || 'Chronological 80/20 origin split + 4-period leakage guard'],
+    ['Random state', metadata.randomState || '42'],
+    ['Models evaluated', metadata.modelsEvaluated || 'Not recorded'],
+    ['Model selection strength', metadata.aiConfidence || 'Not available yet'],
+    ['Top feature importance', metadata.featureImportanceSummary || 'Not available yet'],
+    ['Selected model metrics', metadata.selectedModelMetrics || 'Not recorded'],
+    ['Model ranking summary', metadata.modelComparisonSummary || 'Not recorded'],
+    ['Model selection explanation', metadata.selectionExplanation || 'Not recorded'],
   ]
 }
 
@@ -2514,7 +2598,7 @@ function buildBackendDashboardStats(backendForecastResult = null, backendDengueS
   }
 }
 
-function getTopDecisionText(topBarangay) {
+function getTopDecisionText(topBarangay, isBarangayScoped = false) {
   if (!topBarangay) {
     return 'No barangay response planning output is available yet.'
   }
@@ -2522,23 +2606,41 @@ function getTopDecisionText(topBarangay) {
   const decision = getDecisionSupport(topBarangay)
   const profile = getMultiSourceProfile(topBarangay)
 
+  if (isBarangayScoped) {
+    return `${topBarangay.barangay} currently has a ${decision.priority} response priority, ${formatNumber(topBarangay.forecast)} forecast cases, a Response score of ${formatNumber(decision.score)}, and a combined priority score of ${formatNumber(profile.score)}/100.`
+  }
+
   return `${topBarangay.barangay} is the top response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} forecast cases, a Response score of ${formatNumber(decision.score)}, and a combined priority score of ${formatNumber(profile.score)}/100.`
 }
 
-function getReportSummary({ sortedRiskRows, dashboardStats }) {
+function getReportSummary({ sortedRiskRows, dashboardStats, isBarangayScoped = false }) {
   if (!sortedRiskRows.length) {
-    return [
-      'No barangay risk ranking is available yet.',
-      'Upload or load dengue case records before generating a complete response planning report.',
-      'Upload the official dengue records when they are available, then generate the report again.',
-    ]
+    return isBarangayScoped
+      ? [
+          'No assigned-barangay risk result is available yet.',
+          'Load the validated dengue records before generating a complete barangay response report.',
+          'Generate the report again after the assigned barangay data are available.',
+        ]
+      : [
+          'No barangay risk ranking is available yet.',
+          'Upload or load dengue case records before generating a complete response planning report.',
+          'Upload the official dengue records when they are available, then generate the report again.',
+        ]
   }
 
   const decisionCounts = getDecisionCounts(sortedRiskRows)
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
-
   const topProfile = getMultiSourceProfile(topBarangay)
+
+  if (isBarangayScoped) {
+    return [
+      `${topBarangay.barangay} currently has ${topBarangay.risk || 'Unknown'} forecast risk with a ${topDecision.priority} response priority.`,
+      `The four-period forecast totals ${formatNumber(topBarangay.forecast)} cases, with a combined prioritization score of ${formatNumber(topProfile.score)}/100.`,
+      `Supporting context includes ${topProfile.rainfallPressure}, ${topProfile.temperatureSuitability}, and ${topProfile.humiditySuitability}.`,
+      `The report source data have a valid-row rate of ${dashboardStats?.dataQuality || 0}%.`,
+    ]
+  }
 
   return [
     decisionCounts.urgent > 0
@@ -2552,13 +2654,104 @@ function getReportSummary({ sortedRiskRows, dashboardStats }) {
   ]
 }
 
-function buildPrintableActionList(actions = []) {
-  if (!actions.length) {
-    return '<li>No action plan available yet.</li>'
+
+function getActionCategory(action = '') {
+  const value = String(action || '').toLowerCase()
+
+  if (value.includes('surveillance') && (value.includes('sanitation') || value.includes('environmental'))) {
+    return 'surveillance-sanitation'
   }
 
-  return actions
-    .slice(0, 8)
+  if (value.includes('household') && (value.includes('stagnant water') || value.includes('remove') || value.includes('eliminat'))) {
+    return 'household-source-reduction'
+  }
+
+  if (value.includes('monitoring') && value.includes('prevention reminder')) {
+    return 'routine-monitoring'
+  }
+
+  if (value.includes('bhw coverage') || value.includes('communication channel')) {
+    return 'coverage-communication'
+  }
+
+  if (value.includes('previously affected') || value.includes('historical case')) {
+    return 'historical-comparison'
+  }
+
+  if (value.includes('next reporting period') || value.includes('reassess')) {
+    return 'next-period-review'
+  }
+
+  if (value.includes('cluster') || value.includes('purok')) {
+    return 'cluster-check'
+  }
+
+  if (value.includes('rainy') && value.includes('advis')) {
+    return 'rainy-period-advisory'
+  }
+
+  return ''
+}
+
+function normalizeActionText(action = '') {
+  return String(action || '')
+    .toLowerCase()
+    .replace(/\b(eliminating|eliminate|removing|removed)\b/g, 'remove')
+    .replace(/\b(regularly|regular|routine)\b/g, 'routine')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function getPolishedActionList(actions = [], summary = '', limit = 6) {
+  const source = Array.isArray(actions) ? actions : []
+  const summaryKey = normalizeActionText(summary)
+  const seenText = new Set()
+  const seenCategories = new Set()
+  const polished = []
+
+  source.forEach((action) => {
+    const value = String(action || '').trim()
+    if (!value) return
+
+    const normalized = normalizeActionText(value)
+    if (!normalized || normalized === summaryKey || seenText.has(normalized)) return
+
+    const category = getActionCategory(value)
+    if (category && seenCategories.has(category)) return
+
+    seenText.add(normalized)
+    if (category) seenCategories.add(category)
+    polished.push(value)
+  })
+
+  return polished.slice(0, limit)
+}
+
+function getBarangayOperationalRationale({ row = null, decision = {}, actualSurveillance = {}, dashboardStats = {} } = {}) {
+  const periods = getForecastPeriodDetails(row || {})
+  const nextPeriodCases = Number(periods?.[0]?.predictedCases || 0)
+  const movement = String(actualSurveillance?.trendDirection || 'No comparison')
+  const changeLabel = String(actualSurveillance?.changeLabel || '').trim()
+  const modelTrend = String(decision?.trendDirection || 'Trend unavailable')
+
+  return [
+    `Forecast risk: ${row?.risk || 'Unknown'}.`,
+    `Projected four-period cases: ${formatNumber(row?.forecast || 0)}.`,
+    `Forecast for the next period: ${formatNumber(nextPeriodCases)} cases.`,
+    `Latest monthly movement: ${movement}${changeLabel ? ` · ${changeLabel}` : ''}.`,
+    `Model recent trend signal: ${modelTrend}.`,
+    `Historical cases used for model analysis: ${formatNumber(dashboardStats?.totalCases || 0)}.`,
+  ]
+}
+
+function buildPrintableActionList(actions = [], summary = '') {
+  const polishedActions = getPolishedActionList(actions, summary, 6)
+
+  if (!polishedActions.length) {
+    return '<li>No additional action steps are available yet.</li>'
+  }
+
+  return polishedActions
     .map((action) => `<li>${escapeHtml(action)}</li>`)
     .join('')
 }
@@ -2589,8 +2782,24 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
     sortedRiskRows,
   })
   const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
+  const reportScopeConfig = getReportScopeConfig(officialMetadata)
+  const scopedTitle = reportScopeConfig.title
+  const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
 
-  const metadataHtml = getOfficialMetadataRows(officialMetadata)
+  const metadataRows = reportScopeConfig.isBarangayScoped
+    ? getOperationalMetadataRows(officialMetadata)
+    : getOfficialMetadataRows(officialMetadata)
+
+  const metadataHtml = metadataRows
+    .map(([label, value]) => `
+      <tr>
+        <td>${escapeHtml(label)}</td>
+        <td>${escapeHtml(value)}</td>
+      </tr>
+    `)
+    .join('')
+
+  const technicalModelHtml = getTechnicalModelMetadataRows(officialMetadata)
     .map(([label, value]) => `
       <tr>
         <td>${escapeHtml(label)}</td>
@@ -2621,10 +2830,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
     .map((row, index) => {
       const decision = getDecisionSupport(row)
       const profile = getMultiSourceProfile(row)
-
-      return `
-        <tr>
-          <td>${index + 1}</td>
+      const commonCells = `
           <td>${escapeHtml(row.barangay)}</td>
           <td>${escapeHtml(row.risk || 'Unknown')}</td>
           <td>${escapeHtml(decision.priority)}</td>
@@ -2638,17 +2844,18 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           <td>${escapeHtml(profile.temperatureSuitability)}</td>
           <td>${escapeHtml(profile.humiditySuitability)}</td>
           <td>${escapeHtml(decision.primaryAction)}</td>
-        </tr>
       `
+
+      return reportScopeConfig.isBarangayScoped
+        ? `<tr>${commonCells}</tr>`
+        : `<tr><td>${index + 1}</td>${commonCells}</tr>`
     })
     .join('')
 
   const forecastRowsHtml = sortedRiskRows
     .map((row, index) => {
       const periods = getForecastPeriodDetails(row)
-      return `
-        <tr>
-          <td>${index + 1}</td>
+      const commonCells = `
           <td>${escapeHtml(row.barangay)}</td>
           <td>${formatNumber(periods[0]?.predictedCases || 0)}</td>
           <td>${formatNumber(periods[1]?.predictedCases || 0)}</td>
@@ -2656,8 +2863,11 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           <td>${formatNumber(periods[3]?.predictedCases || 0)}</td>
           <td>${formatNumber(row.forecast || 0)}</td>
           <td>${escapeHtml(row.risk || 'Unknown')}</td>
-        </tr>
       `
+
+      return reportScopeConfig.isBarangayScoped
+        ? `<tr>${commonCells}</tr>`
+        : `<tr><td>${index + 1}</td>${commonCells}</tr>`
     })
     .join('')
 
@@ -2710,7 +2920,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
     <!doctype html>
     <html>
       <head>
-        <title>${escapeHtml(title)}</title>
+        <title>${escapeHtml(reportScopeConfig.isBarangayScoped ? scopedTitle : title)}</title>
 
         <style>
           body {
@@ -2865,7 +3075,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           Print Report
         </button>
 
-        <h1>${escapeHtml(title)}</h1>
+        <h1>${escapeHtml(reportScopeConfig.isBarangayScoped ? scopedTitle : title)}</h1>
         <p class="muted">${escapeHtml(REPORT_SYSTEM_NAME)}</p>
         <p class="muted">Generated: ${escapeHtml(generatedAt)}</p>
         <p class="muted">Report data: ${escapeHtml(dataSourceLabel)}</p>
@@ -2885,7 +3095,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
 
         <div class="cards">
           <div class="card">
-            <small>Historical Cases Used in Analysis</small>
+            <small>${reportScopeConfig.isBarangayScoped ? 'Historical Cases Used for Model Analysis' : 'Historical Cases Used in Analysis'}</small>
             <strong>${formatNumber(dashboardStats.totalCases)}</strong>
           </div>
 
@@ -2906,12 +3116,12 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
         </div>
 
         <h2>Actual Dengue Surveillance</h2>
-        <p class="muted">Recorded citywide dengue situation for ${escapeHtml(actualSurveillance.scopeLabel)}. Forecast values are shown separately.</p>
+        <p class="muted">${escapeHtml(reportScopeConfig.isBarangayScoped ? `Recorded dengue situation for ${barangayLabel}` : `Recorded citywide dengue situation`)} · ${escapeHtml(actualSurveillance.scopeLabel)}. Forecast values are shown separately.</p>
         <div class="cards">
           <div class="card"><small>Actual cases</small><strong>${formatNumber(actualSurveillance.totalCases)}</strong></div>
           <div class="card"><small>Highest month</small><strong>${escapeHtml(actualSurveillance.highestMonth?.month_label || 'No data')}</strong></div>
           <div class="card"><small>Lowest month</small><strong>${escapeHtml(actualSurveillance.lowestMonth?.month_label || 'No data')}</strong></div>
-          <div class="card"><small>Current movement</small><strong>${escapeHtml(actualSurveillance.trendDirection)}</strong></div>
+          <div class="card"><small>${reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement'}</small><strong>${escapeHtml(actualSurveillance.trendDirection)}</strong></div>
         </div>
         <p><strong>Usual peak month:</strong> ${escapeHtml(actualSurveillance.usualPeakMonth)}</p>
         ${actualTrendHtml}
@@ -2945,10 +3155,10 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
         <p><strong>Common observations:</strong> ${escapeHtml((fieldMonitoringSummary?.commonObservations || []).map((item) => `${item.label} (${item.count})`).join(', ') || 'No submitted environmental observations available.')}</p>
         <p><strong>Supplies needed:</strong> ${formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)} &nbsp; <strong>Assistance needed:</strong> ${formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)}</p>
 
-        <h2>Risk Distribution</h2>
-        <p>High risk barangays: ${formatNumber(highRiskCount)}</p>
-        <p>Moderate risk barangays: ${formatNumber(moderateRiskCount)}</p>
-        <p>Low risk barangays: ${formatNumber(lowRiskCount)}</p>
+        <h2>${reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Risk' : 'Risk Distribution'}</h2>
+        ${reportScopeConfig.isBarangayScoped
+          ? `<p><strong>${escapeHtml(barangayLabel)}:</strong> ${escapeHtml(topBarangay?.risk || 'Unknown')} risk</p>`
+          : `<p>High risk barangays: ${formatNumber(highRiskCount)}</p><p>Moderate risk barangays: ${formatNumber(moderateRiskCount)}</p><p>Low risk barangays: ${formatNumber(lowRiskCount)}</p>`}
 
         <h2>Hotspot Summary</h2>
         <p>Confirmed hotspots: ${formatNumber(hotspotCounts.confirmed)}</p>
@@ -2957,22 +3167,32 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
         <p>Low spatial concern: ${formatNumber(hotspotCounts.low)}</p>
         <p>Barangays needing map name review: ${formatNumber(hotspotCounts.needsReview)}</p>
         <p>Not checked: ${formatNumber(hotspotCounts.notChecked)}</p>
-        <p>Official barangays accounted for: ${formatNumber(getHotspotCountTotal(hotspotCounts))}</p>
-        <p>Top hotspot: ${escapeHtml(topHotspot?.barangay || 'Not checked')}</p>
+        <p>${reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for'}: ${formatNumber(getHotspotCountTotal(hotspotCounts))}</p>
+        <p>${reportScopeConfig.isBarangayScoped ? 'Barangay hotspot status' : 'Top hotspot'}: ${escapeHtml(reportScopeConfig.isBarangayScoped ? getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level) : (topHotspot?.barangay || 'Not checked'))}</p>
 
+        ${reportScopeConfig.isBarangayScoped ? '' : `
         <h2>Response Priority Distribution</h2>
         <table>
-          <thead>
-            <tr>
-              <th>Priority Level</th>
-              <th>Barangay Count</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Priority Level</th><th>Barangay Count</th></tr></thead>
+          <tbody>${priorityHtml || '<tr><td colspan="2">No Response priority data available.</td></tr>'}</tbody>
+        </table>`}
+
+        ${reportScopeConfig.isBarangayScoped ? `
+        <h2>Assigned Barangay Response Profile</h2>
+        <table>
+          <thead><tr><th>Indicator</th><th>Current value</th></tr></thead>
           <tbody>
-            ${priorityHtml || '<tr><td colspan="2">No Response priority data available.</td></tr>'}
+            <tr><td>Assigned barangay</td><td>${escapeHtml(barangayLabel)}</td></tr>
+            <tr><td>Forecast risk</td><td>${escapeHtml(topBarangay?.risk || 'Unknown')}</td></tr>
+            <tr><td>Response priority</td><td>${escapeHtml(topDecision.priority || 'Not available')}</td></tr>
+            <tr><td>Combined priority score</td><td>${formatNumber(getMultiSourceProfile(topBarangay).score)}/100</td></tr>
+            <tr><td>Four-period forecast</td><td>${formatNumber(topBarangay?.forecast || 0)} cases</td></tr>
+            <tr><td>Hotspot status</td><td>${escapeHtml(getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level))}</td></tr>
+            <tr><td>Environmental context</td><td>${escapeHtml(`${getMultiSourceProfile(topBarangay).environmentalSuitability}; ${getMultiSourceProfile(topBarangay).rainfallPressure}; ${getMultiSourceProfile(topBarangay).temperatureSuitability}; ${getMultiSourceProfile(topBarangay).humiditySuitability}`)}</td></tr>
+            <tr><td>Primary action</td><td>${escapeHtml(topDecision.primaryAction || topDecision.summary || 'No recommendation available')}</td></tr>
           </tbody>
         </table>
-
+        ` : `
         <h2>Barangay Response Planning Ranking</h2>
         <table>
           <thead>
@@ -2993,40 +3213,54 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
               <th>Primary Action</th>
             </tr>
           </thead>
-
-          <tbody>
-            ${rowsHtml || '<tr><td colspan="14">No barangay response planning data available.</td></tr>'}
-          </tbody>
+          <tbody>${rowsHtml || '<tr><td colspan="14">No barangay response planning data available.</td></tr>'}</tbody>
         </table>
+        `}
 
         <h2>Four-Period Forecast Detail</h2>
         <p class="muted">Each future period is forecast separately. The four values are summed for cumulative forecast case-risk classification.</p>
         <table>
           <thead>
             <tr>
-              <th>Rank</th><th>Barangay</th><th>Period 1</th><th>Period 2</th><th>Period 3</th><th>Period 4</th><th>4-Period Total</th><th>Risk</th>
+              ${reportScopeConfig.isBarangayScoped ? '' : '<th>Rank</th>'}<th>Barangay</th><th>Period 1</th><th>Period 2</th><th>Period 3</th><th>Period 4</th><th>4-Period Total</th><th>Risk</th>
             </tr>
           </thead>
-          <tbody>${forecastRowsHtml || '<tr><td colspan="8">No forecast detail available.</td></tr>'}</tbody>
+          <tbody>${forecastRowsHtml || `<tr><td colspan="${reportScopeConfig.isBarangayScoped ? 7 : 8}">No forecast detail available.</td></tr>`}</tbody>
         </table>
 
         <div class="decision">
-          <h3>Top Response Plan</h3>
+          <h3>${reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Top Response Plan'}</h3>
           <p><strong>${escapeHtml(topBarangay?.barangay || 'No barangay selected')}</strong></p>
-          <p>${escapeHtml(topDecision.summary || 'No top response recommendation available yet.')}</p>
+          <p>${escapeHtml(topDecision.summary || (reportScopeConfig.isBarangayScoped ? 'No response recommendation available yet.' : 'No top response recommendation available yet.'))}</p>
 
           <h4>Action Plan</h4>
           <ol>
-            ${buildPrintableActionList(topDecision.actions)}
+            ${buildPrintableActionList(topDecision.actions, topDecision.summary)}
           </ol>
 
           <h4>Why this recommendation</h4>
           <ul>
-            ${buildPrintableRationaleList(topDecision.rationale)}
+            ${buildPrintableRationaleList(reportScopeConfig.isBarangayScoped ? getBarangayOperationalRationale({ row: topBarangay, decision: topDecision, actualSurveillance, dashboardStats }) : topDecision.rationale)}
           </ul>
         </div>
 
-        <h2>Uploaded Data Readiness</h2>
+        ${reportScopeConfig.isBarangayScoped ? `
+        <h2>Technical Appendix: Model Review</h2>
+        <p class="muted">Model selection and evaluation details are separated from the BHW operational summary.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Technical field</th>
+              <th>Current model information</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${technicalModelHtml}
+          </tbody>
+        </table>
+        ` : ''}
+
+        <h2>${reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Uploaded Data Readiness'}</h2>
         <table>
           <thead>
             <tr>
@@ -3042,7 +3276,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
           </tbody>
         </table>
 
-        <h2>Official Source Details</h2>
+        <h2>${reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Official Source Details' : 'Official Source Details'}</h2>
         <table>
           <thead>
             <tr>
@@ -3096,6 +3330,10 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     sortedRiskRows,
   })
   const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
+  const reportScopeConfig = getReportScopeConfig(officialMetadata)
+  const scopedTitle = reportScopeConfig.title
+  const scopedBasename = reportScopeConfig.basename
+  const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -3108,7 +3346,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
-  doc.text(title, margin, 42)
+  doc.text(reportScopeConfig.isBarangayScoped ? scopedTitle : title, margin, 42)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
@@ -3121,23 +3359,31 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     startY: 106,
     head: [['Metric', 'Value']],
     body: [
-      ['Historical cases used in analysis', formatNumber(dashboardStats.totalCases)],
+      [reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis', formatNumber(dashboardStats.totalCases)],
       ['Urgent alerts', formatNumber(decisionCounts.urgent)],
-      ['High-risk barangays', formatNumber(highRiskCount)],
-      ['Moderate-risk barangays', formatNumber(moderateRiskCount)],
-      ['Low-risk barangays', formatNumber(lowRiskCount)],
+      ...(reportScopeConfig.isBarangayScoped
+        ? [['Assigned barangay', barangayLabel], ['Current risk level', topBarangay?.risk || 'Unknown']]
+        : [
+            ['High-risk barangays', formatNumber(highRiskCount)],
+            ['Moderate-risk barangays', formatNumber(moderateRiskCount)],
+            ['Low-risk barangays', formatNumber(lowRiskCount)],
+          ]),
       ['Confirmed hotspots', formatNumber(hotspotCounts.confirmed)],
       ['Emerging hotspots', formatNumber(hotspotCounts.emerging)],
       ['Watch areas', formatNumber(hotspotCounts.watch)],
       ['Low spatial concern', formatNumber(hotspotCounts.low)],
       ['Map names needing review', formatNumber(hotspotCounts.needsReview)],
       ['Hotspot results not checked', formatNumber(hotspotCounts.notChecked)],
-      ['Official barangays accounted for', formatNumber(getHotspotCountTotal(hotspotCounts))],
+      [reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for', formatNumber(getHotspotCountTotal(hotspotCounts))],
       ['Report data source', dataSourceLabel],
       ['Forecast-horizon total', formatNumber(dashboardStats.fourWeekForecast)],
       ['Source valid-row rate', `${dashboardStats.dataQuality}%`],
-      ['Top priority barangay', topBarangay?.barangay || 'No data'],
-      ['Top response priority', topDecision.priority || 'No data'],
+      ...(reportScopeConfig.isBarangayScoped
+        ? [['Current response priority', topDecision.priority || 'No data']]
+        : [
+            ['Top priority barangay', topBarangay?.barangay || 'No data'],
+            ['Top response priority', topDecision.priority || 'No data'],
+          ]),
     ],
     theme: 'grid',
     styles: {
@@ -3157,7 +3403,9 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 16,
     head: [['Official Report Detail', 'Value']],
-    body: getOfficialMetadataRows(officialMetadata),
+    body: reportScopeConfig.isBarangayScoped
+      ? getOperationalMetadataRows(officialMetadata)
+      : getOfficialMetadataRows(officialMetadata),
     theme: 'grid',
     styles: {
       fontSize: 8,
@@ -3187,7 +3435,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.text(
-    `Recorded citywide dengue situation for ${actualSurveillance.scopeLabel}. Forecast values are shown separately.`,
+    `${reportScopeConfig.isBarangayScoped ? `Recorded dengue situation for ${barangayLabel}` : 'Recorded citywide dengue situation'} · ${actualSurveillance.scopeLabel}. Forecast values are shown separately.`,
     margin,
     60
   )
@@ -3199,7 +3447,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       ['Actual recorded cases', formatNumber(actualSurveillance.totalCases)],
       ['Highest month', actualSurveillance.highestMonth ? `${actualSurveillance.highestMonth.month_label} · ${formatNumber(actualSurveillance.highestMonth.cases)} cases` : 'No data'],
       ['Lowest month', actualSurveillance.lowestMonth ? `${actualSurveillance.lowestMonth.month_label} · ${formatNumber(actualSurveillance.lowestMonth.cases)} cases` : 'No data'],
-      ['Current movement', `${actualSurveillance.trendDirection} · ${actualSurveillance.changeLabel}`],
+      [reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement', `${actualSurveillance.trendDirection} · ${actualSurveillance.changeLabel}`],
       ['Usual peak month', actualSurveillance.usualPeakMonth === 'Not available' ? 'Not available' : `${actualSurveillance.usualPeakMonth}${actualSurveillance.usualPeakAverage > 0 ? ` · historical average ${actualSurveillance.usualPeakAverage.toFixed(1)} cases` : ''}`],
     ],
     theme: 'grid',
@@ -3347,84 +3595,110 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Barangay Response Planning Ranking', margin, rankingStartY)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Profile' : 'Barangay Response Planning Ranking', margin, rankingStartY)
 
-  autoTable(doc, {
-    startY: rankingStartY + 12,
-    head: [[
-      'Rank',
-      'Barangay',
-      'Risk',
-      'Response Priority',
-      'Combined Score',
-      'Forecast',
-      'Hotspot',
-      'Environment',
-      'Primary Action',
-    ]],
-    body:
-      sortedRiskRows.length > 0
-        ? sortedRiskRows.map((row, index) => {
-            const decision = getDecisionSupport(row)
-            const profile = getMultiSourceProfile(row)
+  if (reportScopeConfig.isBarangayScoped) {
+    const profile = getMultiSourceProfile(topBarangay)
+    autoTable(doc, {
+      startY: rankingStartY + 12,
+      head: [['Indicator', 'Current value']],
+      body: [
+        ['Assigned barangay', barangayLabel],
+        ['Forecast risk', topBarangay?.risk || 'Unknown'],
+        ['Response priority', topDecision.priority || 'Not available'],
+        ['Combined priority score', `${formatNumber(profile.score)}/100`],
+        ['Four-period forecast', `${formatNumber(topBarangay?.forecast || 0)} cases`],
+        ['Hotspot status', getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level)],
+        ['Environmental context', `${profile.environmentalSuitability}; ${profile.rainfallPressure}; ${profile.temperatureSuitability}; ${profile.humiditySuitability}`],
+        ['Primary action', topDecision.primaryAction || topDecision.summary || 'No recommendation available'],
+      ],
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 5,
+        overflow: 'linebreak',
+      },
+      columnStyles: {
+        0: { cellWidth: 175, fontStyle: 'bold' },
+        1: { cellWidth: 595 },
+      },
+      headStyles: {
+        fillColor: [37, 95, 143],
+        textColor: [255, 255, 255],
+      },
+      margin: { left: margin, right: margin },
+    })
+  } else {
+    autoTable(doc, {
+      startY: rankingStartY + 12,
+      head: [['Rank', 'Barangay', 'Risk', 'Response Priority', 'Combined Score', 'Forecast', 'Hotspot', 'Environment', 'Primary Action']],
+      body:
+        sortedRiskRows.length > 0
+          ? sortedRiskRows.map((row, index) => {
+              const decision = getDecisionSupport(row)
+              const profile = getMultiSourceProfile(row)
+              return [
+                index + 1,
+                row.barangay,
+                row.risk || 'Unknown',
+                decision.priority,
+                `${formatNumber(profile.score)}/100`,
+                formatNumber(row.forecast),
+                getHotspotLevelLabel(getHotspotForBarangay(row, hotspotRows)?.hotspot_level),
+                `${profile.environmentalSuitability}; ${profile.rainfallPressure}; ${profile.temperatureSuitability}; ${profile.humiditySuitability}`,
+                decision.primaryAction,
+              ]
+            })
+          : [['-', 'No barangay response planning data available', '-', '-', '-', '-', '-', '-', '-']],
+      theme: 'grid',
+      styles: {
+        fontSize: 7,
+        cellPadding: 4,
+        overflow: 'linebreak',
+      },
+      columnStyles: {
+        0: { cellWidth: 34 },
+        1: { cellWidth: 86 },
+        2: { cellWidth: 48 },
+        3: { cellWidth: 92 },
+        4: { cellWidth: 54 },
+        5: { cellWidth: 54 },
+        6: { cellWidth: 82 },
+        7: { cellWidth: 128 },
+        8: { cellWidth: 250 },
+      },
+      headStyles: {
+        fillColor: [37, 95, 143],
+        textColor: [255, 255, 255],
+      },
+      margin: { left: margin, right: margin },
+    })
+  }
 
-            return [
-              index + 1,
-              row.barangay,
-              row.risk || 'Unknown',
-              decision.priority,
-              `${formatNumber(profile.score)}/100`,
-              formatNumber(row.forecast),
-              getHotspotLevelLabel(getHotspotForBarangay(row, hotspotRows)?.hotspot_level),
-              `${profile.environmentalSuitability}; ${profile.rainfallPressure}; ${profile.temperatureSuitability}; ${profile.humiditySuitability}`,
-              decision.primaryAction,
-            ]
-          })
-        : [['-', 'No barangay response planning data available', '-', '-', '-', '-', '-', '-', '-']],
-    theme: 'grid',
-    styles: {
-      fontSize: 7,
-      cellPadding: 4,
-      overflow: 'linebreak',
-    },
-    columnStyles: {
-      0: { cellWidth: 34 },
-      1: { cellWidth: 86 },
-      2: { cellWidth: 48 },
-      3: { cellWidth: 92 },
-      4: { cellWidth: 54 },
-      5: { cellWidth: 54 },
-      6: { cellWidth: 82 },
-      7: { cellWidth: 128 },
-      8: { cellWidth: 250 },
-    },
-    headStyles: {
-      fillColor: [37, 95, 143],
-      textColor: [255, 255, 255],
-    },
-    margin: {
-      left: margin,
-      right: margin,
-    },
-  })
+  if (!reportScopeConfig.isBarangayScoped) {
+    doc.addPage()
+  }
 
-  doc.addPage()
+  const forecastSectionY = reportScopeConfig.isBarangayScoped
+    ? (doc.lastAutoTable?.finalY || rankingStartY + 80) + 28
+    : 42
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Four-Period Forecast Detail', margin, 42)
+  doc.text('Four-Period Forecast Detail', margin, forecastSectionY)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
-  doc.text('Each period is forecast separately. The four values are summed for the cumulative case-risk classification.', margin, 60)
+  doc.text('Each period is forecast separately. The four values are summed for the cumulative case-risk classification.', margin, forecastSectionY + 18)
 
   autoTable(doc, {
-    startY: 74,
-    head: [['Rank', 'Barangay', 'Period 1', 'Period 2', 'Period 3', 'Period 4', '4-Period Total', 'Risk']],
+    startY: forecastSectionY + 32,
+    head: [reportScopeConfig.isBarangayScoped
+      ? ['Barangay', 'Period 1', 'Period 2', 'Period 3', 'Period 4', '4-Period Total', 'Risk']
+      : ['Rank', 'Barangay', 'Period 1', 'Period 2', 'Period 3', 'Period 4', '4-Period Total', 'Risk']],
     body: sortedRiskRows.length
       ? sortedRiskRows.map((row, index) => {
           const periods = getForecastPeriodDetails(row)
-          return [
-            index + 1,
+          const values = [
             row.barangay,
             formatNumber(periods[0]?.predictedCases || 0),
             formatNumber(periods[1]?.predictedCases || 0),
@@ -3433,21 +3707,34 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
             formatNumber(row.forecast || 0),
             row.risk || 'Unknown',
           ]
+          return reportScopeConfig.isBarangayScoped ? values : [index + 1, ...values]
         })
-      : [['-', 'No forecast data available', '-', '-', '-', '-', '-', '-']],
+      : [reportScopeConfig.isBarangayScoped
+          ? ['No forecast data available', '-', '-', '-', '-', '-', '-']
+          : ['-', 'No forecast data available', '-', '-', '-', '-', '-', '-']],
     theme: 'grid',
     styles: { fontSize: 7.5, cellPadding: 4 },
     headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255] },
-    columnStyles: {
-      0: { cellWidth: 38 },
-      1: { cellWidth: 170 },
-      2: { cellWidth: 82 },
-      3: { cellWidth: 82 },
-      4: { cellWidth: 82 },
-      5: { cellWidth: 82 },
-      6: { cellWidth: 100 },
-      7: { cellWidth: 85 },
-    },
+    columnStyles: reportScopeConfig.isBarangayScoped
+      ? {
+          0: { cellWidth: 180 },
+          1: { cellWidth: 88 },
+          2: { cellWidth: 88 },
+          3: { cellWidth: 88 },
+          4: { cellWidth: 88 },
+          5: { cellWidth: 110 },
+          6: { cellWidth: 90 },
+        }
+      : {
+          0: { cellWidth: 38 },
+          1: { cellWidth: 170 },
+          2: { cellWidth: 82 },
+          3: { cellWidth: 82 },
+          4: { cellWidth: 82 },
+          5: { cellWidth: 82 },
+          6: { cellWidth: 100 },
+          7: { cellWidth: 85 },
+        },
     margin: { left: margin, right: margin },
   })
 
@@ -3455,14 +3742,14 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Top Response Plan', margin, 42)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Top Response Plan', margin, 42)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
 
   const topText = topBarangay
     ? `${topBarangay.barangay}: ${topDecision.summary}`
-    : 'No top response recommendation is available yet.'
+    : (reportScopeConfig.isBarangayScoped ? 'No response recommendation is available yet.' : 'No top response recommendation is available yet.')
 
   const wrappedTopText = doc.splitTextToSize(topText, pageWidth - margin * 2)
   doc.text(wrappedTopText, margin, 62)
@@ -3504,12 +3791,12 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     startY: doc.lastAutoTable.finalY + 34,
     head: [['No.', 'Recommended Action']],
     body:
-      topDecision.actions?.length > 0
-        ? topDecision.actions.slice(0, 8).map((action, index) => [
+      getPolishedActionList(topDecision.actions, topDecision.summary, 6).length > 0
+        ? getPolishedActionList(topDecision.actions, topDecision.summary, 6).map((action, index) => [
             index + 1,
             action,
           ])
-        : [['-', 'No action plan available.']],
+        : [['-', 'No additional action steps are available.']],
     theme: 'grid',
     styles: {
       fontSize: 8,
@@ -3529,72 +3816,122 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     },
   })
 
-  const rationaleStartY = doc.lastAutoTable.finalY + 22
+  let rationaleStartY = doc.lastAutoTable.finalY + 20
+
+  if (!reportScopeConfig.isBarangayScoped && rationaleStartY > 450) {
+    doc.addPage()
+    rationaleStartY = 42
+  }
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
   doc.text('Why this recommendation', margin, rationaleStartY)
 
+  const rationaleReasons = reportScopeConfig.isBarangayScoped
+    ? getBarangayOperationalRationale({
+        row: topBarangay,
+        decision: topDecision,
+        actualSurveillance,
+        dashboardStats,
+      })
+    : (topDecision.rationale || []).slice(0, 9)
+
   autoTable(doc, {
     startY: rationaleStartY + 12,
     head: [['Reason']],
-    body:
-      topDecision.rationale?.length > 0
-        ? topDecision.rationale.slice(0, 9).map((reason) => [reason])
-        : [['No rationale available.']],
+    body: rationaleReasons.length > 0
+      ? rationaleReasons.map((reason) => [reason])
+      : [['No rationale available.']],
     theme: 'grid',
     styles: {
-      fontSize: 8,
-      cellPadding: 5,
+      fontSize: reportScopeConfig.isBarangayScoped ? 7.6 : 8,
+      cellPadding: reportScopeConfig.isBarangayScoped ? 4 : 5,
     },
     headStyles: {
       fillColor: [4, 120, 87],
       textColor: [255, 255, 255],
     },
+    pageBreak: reportScopeConfig.isBarangayScoped ? 'avoid' : 'auto',
     margin: {
       left: margin,
       right: margin,
     },
   })
 
-  const priorityStartY = doc.lastAutoTable.finalY + 22
+  if (!reportScopeConfig.isBarangayScoped) {
+    const priorityStartY = doc.lastAutoTable.finalY + 22
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
-  doc.text('Response Priority Distribution', margin, priorityStartY)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.text('Response Priority Distribution', margin, priorityStartY)
 
-  autoTable(doc, {
-    startY: priorityStartY + 12,
-    head: [['Priority Level', 'Barangay Count']],
-    body:
-      priorityDistribution.length > 0
-        ? priorityDistribution.map((item) => [
-            item.priority,
-            formatNumber(item.count),
-          ])
-        : [['No data', '-']],
-    theme: 'grid',
-    styles: {
-      fontSize: 8,
-      cellPadding: 5,
-    },
-    headStyles: {
-      fillColor: [37, 95, 143],
-      textColor: [255, 255, 255],
-    },
-    margin: {
-      left: margin,
-      right: margin,
-    },
-  })
+    autoTable(doc, {
+      startY: priorityStartY + 12,
+      head: [['Priority Level', 'Barangay Count']],
+      body:
+        priorityDistribution.length > 0
+          ? priorityDistribution.map((item) => [
+              item.priority,
+              formatNumber(item.count),
+            ])
+          : [['No data', '-']],
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 5,
+      },
+      headStyles: {
+        fillColor: [37, 95, 143],
+        textColor: [255, 255, 255],
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    })
+  }
 
   const sources = Object.entries(sourceStatus || {})
+
+  if (reportScopeConfig.isBarangayScoped) {
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(14)
+    doc.text('Technical Appendix: Model Review', margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text('Model selection and evaluation details are separated from the BHW operational summary.', margin, 60)
+
+    autoTable(doc, {
+      startY: 74,
+      head: [['Technical field', 'Current model information']],
+      body: getTechnicalModelMetadataRows(officialMetadata),
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 5,
+        overflow: 'linebreak',
+      },
+      headStyles: {
+        fillColor: [37, 95, 143],
+        textColor: [255, 255, 255],
+      },
+      columnStyles: {
+        0: { cellWidth: 170 },
+        1: { cellWidth: 600 },
+      },
+      margin: {
+        left: margin,
+        right: margin,
+      },
+    })
+  }
 
   doc.addPage()
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Uploaded Data Readiness', margin, 42)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Uploaded Data Readiness', margin, 42)
 
   autoTable(doc, {
     startY: 58,
@@ -3690,7 +4027,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     },
   })
 
-  doc.save(`${REPORT_EXPORT_BASENAME}.pdf`)
+  doc.save(`${scopedBasename}.pdf`)
 }
 
 function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
@@ -3708,57 +4045,77 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     sortedRiskRows,
   })
   const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
+  const reportScopeConfig = getReportScopeConfig(officialMetadata)
+  const scopedTitle = reportScopeConfig.title
+  const scopedBasename = reportScopeConfig.basename
+  const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
 
   const workbook = XLSX.utils.book_new()
 
   const summarySheet = XLSX.utils.aoa_to_sheet([
-    [REPORT_TITLE],
+    [scopedTitle],
     ['System', REPORT_SYSTEM_NAME],
     ['Generated', generatedAt],
     ['Report ID', officialMetadata.reportId],
     ['Generated by', officialMetadata.generatedBy],
     ['Role', officialMetadata.role],
     ['Forecast method', officialMetadata.forecastMethod],
-    ['Model version', officialMetadata.modelVersion],
-    ['Selected model', officialMetadata.selectedModel],
-    ['Train/test split', officialMetadata.trainTestSplit],
-    ['Random state', officialMetadata.randomState],
-    ['Models evaluated', officialMetadata.modelsEvaluated],
-    ['Model selection strength', officialMetadata.aiConfidence],
-    ['Top feature importance', officialMetadata.featureImportanceSummary],
-    ['Selected model metrics', officialMetadata.selectedModelMetrics],
-    ['Model ranking summary', officialMetadata.modelComparisonSummary],
-    ['Model selection explanation', officialMetadata.selectionExplanation],
     ['Forecast period/window', officialMetadata.forecastWindow],
+    ...(reportScopeConfig.isBarangayScoped
+      ? []
+      : [
+          ['Model version', officialMetadata.modelVersion],
+          ['Selected model', officialMetadata.selectedModel],
+          ['Train/test split', officialMetadata.trainTestSplit],
+          ['Random state', officialMetadata.randomState],
+          ['Models evaluated', officialMetadata.modelsEvaluated],
+          ['Model selection strength', officialMetadata.aiConfidence],
+          ['Top feature importance', officialMetadata.featureImportanceSummary],
+          ['Selected model metrics', officialMetadata.selectedModelMetrics],
+          ['Model ranking summary', officialMetadata.modelComparisonSummary],
+          ['Model selection explanation', officialMetadata.selectionExplanation],
+        ]),
     [],
     ['Metric', 'Value'],
-    ['Historical cases used in analysis', Number(dashboardStats.totalCases || 0)],
+    [reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis', Number(dashboardStats.totalCases || 0)],
     ['Urgent alerts', decisionCounts.urgent],
-    ['Preventive priority barangays', decisionCounts.preventive],
-    ['Early warning / watch barangays', decisionCounts.watch],
-    ['Routine monitoring barangays', decisionCounts.routine],
-    ['High-risk barangays', highRiskCount],
-    ['Moderate-risk barangays', moderateRiskCount],
-    ['Low-risk barangays', lowRiskCount],
+    [reportScopeConfig.isBarangayScoped ? 'Preventive response status' : 'Preventive priority barangays', decisionCounts.preventive],
+    [reportScopeConfig.isBarangayScoped ? 'Early warning / watch status' : 'Early warning / watch barangays', decisionCounts.watch],
+    [reportScopeConfig.isBarangayScoped ? 'Routine monitoring status' : 'Routine monitoring barangays', decisionCounts.routine],
+    ...(reportScopeConfig.isBarangayScoped
+      ? [['Assigned barangay', barangayLabel], ['Current risk level', topBarangay?.risk || 'Unknown']]
+      : [['High-risk barangays', highRiskCount], ['Moderate-risk barangays', moderateRiskCount], ['Low-risk barangays', lowRiskCount]]),
     ['Confirmed hotspots', hotspotCounts.confirmed],
     ['Emerging hotspots', hotspotCounts.emerging],
     ['Watch areas', hotspotCounts.watch],
     ['Low spatial concern', hotspotCounts.low],
     ['Map names needing review', hotspotCounts.needsReview],
     ['Hotspot results not checked', hotspotCounts.notChecked],
-    ['Official barangays accounted for', getHotspotCountTotal(hotspotCounts)],
-    ['Top hotspot barangay', topHotspot?.barangay || 'Not checked'],
+    [reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for', getHotspotCountTotal(hotspotCounts)],
+    [reportScopeConfig.isBarangayScoped ? 'Barangay hotspot status' : 'Top hotspot barangay', reportScopeConfig.isBarangayScoped ? getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level) : (topHotspot?.barangay || 'Not checked')],
     ['Report data source', dataSourceLabel],
     ['Forecast-horizon total', Number(dashboardStats.fourWeekForecast || 0)],
     ['Source valid-row rate', `${dashboardStats.dataQuality}%`],
-    ['Top priority barangay', topBarangay?.barangay || 'No data'],
-    ['top response priority', topDecision.priority || 'No data'],
-    ['Top combined priority score', `${getMultiSourceProfile(topBarangay).score}/100`],
-    ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
-    ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
-    ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
-    ['Top humidity suitability', getMultiSourceProfile(topBarangay).humiditySuitability],
-    ['Top response summary', topDecision.summary || 'No recommendation available'],
+    ...(reportScopeConfig.isBarangayScoped
+      ? [
+          ['Current response priority', topDecision.priority || 'No data'],
+          ['Current combined priority score', `${getMultiSourceProfile(topBarangay).score}/100`],
+          ['Current environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
+          ['Current rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
+          ['Current temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
+          ['Current humidity suitability', getMultiSourceProfile(topBarangay).humiditySuitability],
+          ['Recommended response', topDecision.summary || 'No recommendation available'],
+        ]
+      : [
+          ['Top priority barangay', topBarangay?.barangay || 'No data'],
+          ['Top response priority', topDecision.priority || 'No data'],
+          ['Top combined priority score', `${getMultiSourceProfile(topBarangay).score}/100`],
+          ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
+          ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
+          ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
+          ['Top humidity suitability', getMultiSourceProfile(topBarangay).humiditySuitability],
+          ['Top response summary', topDecision.summary || 'No recommendation available'],
+        ]),
 
   ])
 
@@ -3774,7 +4131,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Highest month cases', actualSurveillance.highestMonth?.cases ?? 'N/A'],
     ['Lowest month', actualSurveillance.lowestMonth?.month_label || 'No data'],
     ['Lowest month cases', actualSurveillance.lowestMonth?.cases ?? 'N/A'],
-    ['Current movement', actualSurveillance.trendDirection],
+    [reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement', actualSurveillance.trendDirection],
     ['Month-to-month change', actualSurveillance.changeLabel],
     ['Usual peak month', actualSurveillance.usualPeakMonth],
     ['Usual peak historical average', actualSurveillance.usualPeakAverage || 'N/A'],
@@ -3823,11 +4180,22 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   const metadataSheet = XLSX.utils.aoa_to_sheet([
     ['Official Report Metadata', 'Details'],
-    ...getOfficialMetadataRows(officialMetadata),
+    ...(reportScopeConfig.isBarangayScoped
+      ? getOperationalMetadataRows(officialMetadata)
+      : getOfficialMetadataRows(officialMetadata)),
   ])
 
   metadataSheet['!cols'] = [{ wch: 34 }, { wch: 120 }]
   XLSX.utils.book_append_sheet(workbook, metadataSheet, 'Official Metadata')
+
+  if (reportScopeConfig.isBarangayScoped) {
+    const technicalModelSheet = XLSX.utils.aoa_to_sheet([
+      ['Technical Appendix: Model Review', 'Current model information'],
+      ...getTechnicalModelMetadataRows(officialMetadata),
+    ])
+    technicalModelSheet['!cols'] = [{ wch: 34 }, { wch: 120 }]
+    XLSX.utils.book_append_sheet(workbook, technicalModelSheet, 'Technical Model')
+  }
 
   const officialSourcesSheet = XLSX.utils.aoa_to_sheet([
     ['Dataset', 'Filename', 'Upload Date/Time', 'Status', 'Total Records', 'Valid Records', 'Invalid Records'],
@@ -3861,42 +4229,41 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   assumptionsSheet['!cols'] = [{ wch: 8 }, { wch: 120 }]
   XLSX.utils.book_append_sheet(workbook, assumptionsSheet, 'Limitations')
 
+  const rankingHeaders = [
+    'Barangay',
+    'Risk Level',
+    'Response Priority',
+    'Combined Risk Score',
+    'Decision Score',
+    'Forecast Cases',
+    'Period 1 Forecast',
+    'Period 2 Forecast',
+    'Period 3 Forecast',
+    'Period 4 Forecast',
+    'Historical Total Cases',
+    'Next-Period Forecast',
+    'Previous Cases',
+    'Trend',
+    'Trend Direction',
+    'Environmental Suitability',
+    'Rainfall Pressure',
+    'Temperature Suitability',
+    'Humidity Suitability',
+    'Forecast Pressure',
+    'Population Exposure',
+    'Density Level',
+    'Hotspot Level',
+    'Hotspot Score',
+    'Primary Action',
+    'Recommendation Summary',
+  ]
+
   const rankingSheet = XLSX.utils.aoa_to_sheet([
-    [
-      'Rank',
-      'Barangay',
-      'Risk Level',
-      'Response Priority',
-      'Combined Risk Score',
-      'Decision Score',
-      'Forecast Cases',
-      'Period 1 Forecast',
-      'Period 2 Forecast',
-      'Period 3 Forecast',
-      'Period 4 Forecast',
-      'Historical Total Cases',
-      'Next-Period Forecast',
-      'Previous Cases',
-      'Trend',
-      'Trend Direction',
-      'Environmental Suitability',
-      'Rainfall Pressure',
-      'Temperature Suitability',
-      'Humidity Suitability',
-      'Forecast Pressure',
-      'Population Exposure',
-      'Density Level',
-      'Hotspot Level',
-      'Hotspot Score',
-      'Primary Action',
-      'Recommendation Summary',
-    ],
+    reportScopeConfig.isBarangayScoped ? rankingHeaders : ['Rank', ...rankingHeaders],
     ...sortedRiskRows.map((row, index) => {
       const decision = getDecisionSupport(row)
       const profile = getMultiSourceProfile(row)
-
-      return [
-        index + 1,
+      const values = [
         row.barangay,
         row.risk,
         decision.priority,
@@ -3921,11 +4288,12 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
         decision.primaryAction,
         decision.summary,
       ]
+      return reportScopeConfig.isBarangayScoped ? values : [index + 1, ...values]
     }),
   ])
 
   rankingSheet['!cols'] = [
-    { wch: 8 },
+    ...(reportScopeConfig.isBarangayScoped ? [] : [{ wch: 8 }]),
     { wch: 30 },
     { wch: 16 },
     { wch: 26 },
@@ -3954,7 +4322,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     { wch: 90 },
   ]
 
-  XLSX.utils.book_append_sheet(workbook, rankingSheet, 'Response Ranking')
+  XLSX.utils.book_append_sheet(workbook, rankingSheet, reportScopeConfig.isBarangayScoped ? 'Barangay Profile' : 'Response Ranking')
 
   const factorSheet = XLSX.utils.aoa_to_sheet([
     [
@@ -4017,18 +4385,22 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   sortedRiskRows.forEach((row) => {
     const decision = getDecisionSupport(row)
 
-    if (!decision.actions.length) {
+    const polishedActions = reportScopeConfig.isBarangayScoped
+      ? getPolishedActionList(decision.actions, decision.summary, 6)
+      : decision.actions
+
+    if (!polishedActions.length) {
       actionRows.push([
         row.barangay,
         decision.priority,
         '',
-        'No action plan available.',
+        reportScopeConfig.isBarangayScoped ? 'No additional action steps are available.' : 'No action plan available.',
       ])
 
       return
     }
 
-    decision.actions.forEach((action, index) => {
+    polishedActions.forEach((action, index) => {
       actionRows.push([
         row.barangay,
         decision.priority,
@@ -4056,8 +4428,11 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   sortedRiskRows.forEach((row) => {
     const decision = getDecisionSupport(row)
+    const reasons = reportScopeConfig.isBarangayScoped
+      ? getBarangayOperationalRationale({ row, decision, actualSurveillance, dashboardStats })
+      : decision.rationale
 
-    if (!decision.rationale.length) {
+    if (!reasons.length) {
       rationaleRows.push([
         row.barangay,
         decision.priority,
@@ -4067,7 +4442,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
       return
     }
 
-    decision.rationale.forEach((reason) => {
+    reasons.forEach((reason) => {
       rationaleRows.push([
         row.barangay,
         decision.priority,
@@ -4089,47 +4464,44 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   XLSX.utils.book_append_sheet(workbook, rationaleSheet, 'Rationale')
 
-  const prioritySheet = XLSX.utils.aoa_to_sheet([
-    ['Response Priority', 'Barangay Count'],
-    ...priorityDistribution.map((item) => [
-      item.priority,
-      item.count,
-    ]),
-  ])
+  if (!reportScopeConfig.isBarangayScoped) {
+    const prioritySheet = XLSX.utils.aoa_to_sheet([
+      ['Response Priority', 'Barangay Count'],
+      ...priorityDistribution.map((item) => [item.priority, item.count]),
+    ])
 
-  prioritySheet['!cols'] = [
-    { wch: 34 },
-    { wch: 18 },
-  ]
+    prioritySheet['!cols'] = [
+      { wch: 34 },
+      { wch: 18 },
+    ]
 
-  XLSX.utils.book_append_sheet(workbook, prioritySheet, 'Priority Distribution')
+    XLSX.utils.book_append_sheet(workbook, prioritySheet, 'Priority Distribution')
+  }
 
 
   const hotspotSheet = XLSX.utils.aoa_to_sheet([
-    [
-      'Rank',
-      'Barangay',
-      'Hotspot Level',
-      'Hotspot Score',
-      'Nearby Barangay Effect',
-      'Map Status',
-      'Recommended Map Action',
-    ],
+    reportScopeConfig.isBarangayScoped
+      ? ['Barangay', 'Hotspot Level', 'Hotspot Score', 'Nearby Barangay Effect', 'Map Status', 'Recommended Map Action']
+      : ['Rank', 'Barangay', 'Hotspot Level', 'Hotspot Score', 'Nearby Barangay Effect', 'Map Status', 'Recommended Map Action'],
     ...(hotspotRows.length > 0
-      ? hotspotRows.map((row, index) => [
-          index + 1,
-          row.barangay || 'Unknown barangay',
-          getHotspotLevelLabel(row.hotspot_level),
-          Number(row.hotspot_score || 0),
-          Number(row.neighbor_influence_score || 0),
-          row.has_map_boundary === false ? 'Map name needs review' : 'Map area matched',
-          row.recommended_map_action || 'Continue routine monitoring.',
-        ])
-      : [['-', 'No hotspot analysis available', '-', '-', '-', '-', '-']]),
+      ? hotspotRows.map((row, index) => {
+          const values = [
+            row.barangay || 'Unknown barangay',
+            getHotspotLevelLabel(row.hotspot_level),
+            Number(row.hotspot_score || 0),
+            Number(row.neighbor_influence_score || 0),
+            row.has_map_boundary === false ? 'Map name needs review' : 'Map area matched',
+            row.recommended_map_action || 'Continue routine monitoring.',
+          ]
+          return reportScopeConfig.isBarangayScoped ? values : [index + 1, ...values]
+        })
+      : [reportScopeConfig.isBarangayScoped
+          ? ['No hotspot analysis available', '-', '-', '-', '-', '-']
+          : ['-', 'No hotspot analysis available', '-', '-', '-', '-', '-']]),
   ])
 
   hotspotSheet['!cols'] = [
-    { wch: 8 },
+    ...(reportScopeConfig.isBarangayScoped ? [] : [{ wch: 8 }]),
     { wch: 30 },
     { wch: 24 },
     { wch: 18 },
@@ -4163,7 +4535,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
 
   XLSX.utils.book_append_sheet(workbook, sourceSheet, 'Uploaded Data')
 
-  XLSX.writeFile(workbook, `${REPORT_EXPORT_BASENAME}.xlsx`)
+  XLSX.writeFile(workbook, `${scopedBasename}.xlsx`)
 }
 
 async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
@@ -4183,20 +4555,26 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     sortedRiskRows,
   })
   const actualSurveillance = getCitySurveillanceSummary(cityTrendAnalytics)
-  const pptMetadataRows = getOfficialMetadataRows(officialMetadata).filter(([label]) => ![
-    'Model selection strength',
-    'Top feature importance',
-    'Selected model metrics',
-    'Model ranking summary',
-    'Model selection explanation',
-  ].includes(label))
+  const reportScopeConfig = getReportScopeConfig(officialMetadata)
+  const scopedTitle = reportScopeConfig.title
+  const scopedBasename = reportScopeConfig.basename
+  const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
+  const pptMetadataRows = reportScopeConfig.isBarangayScoped
+    ? getOperationalMetadataRows(officialMetadata)
+    : getOfficialMetadataRows(officialMetadata).filter(([label]) => ![
+        'Model selection strength',
+        'Top feature importance',
+        'Selected model metrics',
+        'Model ranking summary',
+        'Model selection explanation',
+      ].includes(label))
 
   const pptx = new pptxgen()
 
   pptx.layout = 'LAYOUT_WIDE'
   pptx.author = REPORT_SYSTEM_NAME
-  pptx.subject = REPORT_TITLE
-  pptx.title = REPORT_TITLE
+  pptx.subject = scopedTitle
+  pptx.title = scopedTitle
   pptx.company = 'Caraga State University'
   pptx.theme = {
     headFontFace: 'Aptos Display',
@@ -4375,7 +4753,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     charSpace: 1.5,
   })
 
-  titleSlide.addText('Dengue Situation and Four-Month Response Briefing', {
+  titleSlide.addText(reportScopeConfig.isBarangayScoped ? `${barangayLabel} Dengue Monitoring and Response Briefing` : 'Dengue Situation and Four-Month Response Briefing', {
     x: 0.8,
     y: 1.7,
     w: 11.2,
@@ -4407,7 +4785,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     margin: 0,
   })
 
-  titleSlide.addText('CHO Review  •  Barangay Coordination  •  Response Planning', {
+  titleSlide.addText(reportScopeConfig.isBarangayScoped ? 'BHW Monitoring  •  Assigned Barangay  •  Field Response' : 'CHO Review  •  Barangay Coordination  •  Response Planning', {
     x: 0.82,
     y: 5.82,
     w: 8.8,
@@ -4470,13 +4848,13 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   addSlideTitle(
     actualSlide,
     'Actual Dengue Situation',
-    `Recorded citywide dengue cases for ${actualSurveillance.scopeLabel}. Forecast values are presented separately.`
+    `${reportScopeConfig.isBarangayScoped ? `Recorded dengue cases for ${barangayLabel}` : 'Recorded citywide dengue cases'} · ${actualSurveillance.scopeLabel}. Forecast values are presented separately.`
   )
 
   addMetricCard(actualSlide, 'Actual cases', formatNumber(actualSurveillance.totalCases), 0.72, 1.42, COLORS.lightBlue, COLORS.blue)
   addMetricCard(actualSlide, 'Highest month', actualSurveillance.highestMonth?.month_label || 'No data', 3.55, 1.42, COLORS.yellow, COLORS.amber)
   addMetricCard(actualSlide, 'Lowest month', actualSurveillance.lowestMonth?.month_label || 'No data', 6.38, 1.42, COLORS.emerald, COLORS.green)
-  addMetricCard(actualSlide, 'Current movement', actualSurveillance.trendDirection, 9.21, 1.42, COLORS.lightBlue, COLORS.blueDark)
+  addMetricCard(actualSlide, reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement', actualSurveillance.trendDirection, 9.21, 1.42, COLORS.lightBlue, COLORS.blueDark)
 
   const chartRows = actualSurveillance.monthly.slice(0, 12)
   actualSlide.addText('Jan-Dec actual dengue trend', {
@@ -4542,7 +4920,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   addMetricCard(
     summarySlide,
-    'Historical cases used in analysis',
+    reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis',
     formatNumber(dashboardStats.totalCases),
     0.7,
     1.45,
@@ -4580,7 +4958,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     COLORS.green
   )
 
-  summarySlide.addText('Risk Distribution', {
+  summarySlide.addText(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Risk' : 'Risk Distribution', {
     x: 0.72,
     y: 3.18,
     w: 4.5,
@@ -4593,10 +4971,10 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
 
   summarySlide.addTable(
     [
-      ['Risk Level', 'Barangay Count'],
-      ['High', highRiskCount],
-      ['Moderate', moderateRiskCount],
-      ['Low', lowRiskCount],
+      ['Risk Level', reportScopeConfig.isBarangayScoped ? 'Assigned Barangay' : 'Barangay Count'],
+      ...(reportScopeConfig.isBarangayScoped
+        ? [[topBarangay?.risk || 'Unknown', barangayLabel]]
+        : [['High', highRiskCount], ['Moderate', moderateRiskCount], ['Low', lowRiskCount]]),
     ],
     {
       x: 0.72,
@@ -4638,7 +5016,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     }
   )
 
-  summarySlide.addText('Response Guidance', {
+  summarySlide.addText(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Guidance' : 'Response Guidance', {
     x: 6.72,
     y: 3.18,
     w: 4.5,
@@ -4650,7 +5028,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   })
 
   summarySlide.addText(
-    getTopDecisionText(topBarangay),
+    getTopDecisionText(topBarangay, reportScopeConfig.isBarangayScoped),
     {
       x: 6.72,
       y: 3.66,
@@ -4669,100 +5047,278 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const prioritySlide = pptx.addSlide()
   addSlideTitle(
     prioritySlide,
-    'Response Priority Barangays',
-    'Top barangays ranked by risk level, combined priority score, response priority, and projected dengue cases.'
+    reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Profile' : 'Response Priority Barangays',
+    reportScopeConfig.isBarangayScoped
+      ? `Current risk, response priority, combined score, and projected dengue cases for ${barangayLabel}.`
+      : 'Top barangays ranked by risk level, combined priority score, response priority, and projected dengue cases.'
   )
 
-  prioritySlide.addTable(
-    [
-      ['Rank', 'Barangay', 'Risk', 'Response Priority', 'Combined Risk', 'Projected'],
-      ...(topBarangays.length > 0
-        ? topBarangays.map((row, index) => {
-            const decision = getDecisionSupport(row)
+  if (reportScopeConfig.isBarangayScoped) {
+    const scopedRow = topBarangay
+    const scopedDecision = getDecisionSupport(scopedRow)
+    const scopedProfile = getMultiSourceProfile(scopedRow)
 
-            return [
-              index + 1,
-              row.barangay,
-              row.risk,
-              decision.priority,
-              `${formatNumber(getCanonicalCombinedRiskScore(row))}/100`,
-              formatNumber(row.forecast),
-            ]
-          })
-        : [['-', 'No barangay Response data available', '-', '-', '-', '-']]),
-    ],
-    {
-      x: 0.65,
+    prioritySlide.addTable(
+      [
+        ['Indicator', 'Current value'],
+        ['Assigned barangay', scopedRow?.barangay || barangayLabel],
+        ['Forecast risk', scopedRow?.risk || 'Unknown'],
+        ['Response priority', scopedDecision.priority || 'Decision pending'],
+        ['Combined priority score', `${formatNumber(getCanonicalCombinedRiskScore(scopedRow))}/100`],
+        ['Four-period forecast', `${formatNumber(scopedRow?.forecast || 0)} cases`],
+        ['Hotspot status', getHotspotLevelLabel(getHotspotForBarangay(scopedRow, hotspotRows)?.hotspot_level)],
+        ['Primary field action', scopedDecision.primaryAction || scopedDecision.summary || 'No recommended response available yet.'],
+      ],
+      {
+        x: 0.65,
+        y: 1.35,
+        w: 7.25,
+        h: 5.3,
+        colW: [2.15, 5.1],
+        fontSize: 11.2,
+        color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 },
+        fill: { color: COLORS.white },
+        margin: 0.09,
+      }
+    )
+
+    prioritySlide.addText('', {
+      x: 8.25,
       y: 1.35,
-      w: 12,
-      h: 2.85,
-      fontSize: 10,
-      color: COLORS.navy,
-      border: { color: COLORS.line, pt: 1 },
+      w: 4.35,
+      h: 5.3,
+      margin: 0,
       fill: { color: COLORS.white },
-      margin: 0.08,
-    }
-  )
-
-  prioritySlide.addText('Priority Snapshot', {
-    x: 0.65,
-    y: 4.65,
-    w: 4,
-    h: 0.3,
-    fontSize: 17,
-    bold: true,
-    color: COLORS.navy,
-    margin: 0,
-  })
-
-  topBarangays.forEach((row, index) => {
-    const decision = getDecisionSupport(row)
-
-    prioritySlide.addText(row.risk || 'Unknown', {
-      x: 0.65 + index * 2.42,
-      y: 5.1,
-      w: 2.05,
-      h: 0.34,
-      fontSize: 9.5,
-      bold: true,
-      align: 'center',
-      color: getRiskPptColor(row.risk),
-      margin: 0.05,
-      fill: { color: getRiskPptFill(row.risk) },
-      line: { color: getRiskPptColor(row.risk) },
-      fit: 'shrink',
+      line: { color: COLORS.line, pt: 1 },
     })
 
-    prioritySlide.addText(decision.priority || 'Decision pending', {
-      x: 0.65 + index * 2.42,
-      y: 5.48,
-      w: 2.05,
-      h: 0.44,
-      fontSize: 8.5,
-      bold: true,
-      align: 'center',
-      color: getPriorityPptColor(decision.priority),
-      margin: 0.04,
-      fill: { color: getPriorityPptFill(decision.priority) },
-      line: { color: getPriorityPptColor(decision.priority) },
-      fit: 'shrink',
-    })
-
-    prioritySlide.addText(row.barangay || 'Unknown', {
-      x: 0.65 + index * 2.42,
-      y: 5.98,
-      w: 2.05,
-      h: 0.52,
+    prioritySlide.addText('AT A GLANCE', {
+      x: 8.58,
+      y: 1.64,
+      w: 3.7,
+      h: 0.28,
       fontSize: 10,
       bold: true,
+      color: COLORS.blue,
+      charSpace: 1.1,
+      margin: 0,
+    })
+
+    prioritySlide.addText(scopedRow?.risk || 'Unknown', {
+      x: 8.58,
+      y: 2.08,
+      w: 1.7,
+      h: 0.72,
+      fontSize: 18,
+      bold: true,
       align: 'center',
-      color: COLORS.navy,
+      valign: 'mid',
+      color: getRiskPptColor(scopedRow?.risk),
       margin: 0.08,
-      fill: { color: COLORS.white },
-      line: { color: COLORS.line },
+      fill: { color: getRiskPptFill(scopedRow?.risk) },
+      line: { color: getRiskPptColor(scopedRow?.risk), pt: 1 },
       fit: 'shrink',
     })
-  })
+
+    prioritySlide.addText('FORECAST RISK', {
+      x: 8.58,
+      y: 2.82,
+      w: 1.7,
+      h: 0.22,
+      fontSize: 7.8,
+      bold: true,
+      align: 'center',
+      color: COLORS.slate,
+      margin: 0,
+    })
+
+    prioritySlide.addText(`${formatNumber(scopedRow?.forecast || 0)} cases`, {
+      x: 10.48,
+      y: 2.08,
+      w: 1.78,
+      h: 0.72,
+      fontSize: 18,
+      bold: true,
+      align: 'center',
+      valign: 'mid',
+      color: COLORS.blueDark,
+      margin: 0.08,
+      fill: { color: COLORS.lightBlue },
+      line: { color: COLORS.paleBlue, pt: 1 },
+      fit: 'shrink',
+    })
+
+    prioritySlide.addText('4-PERIOD FORECAST', {
+      x: 10.48,
+      y: 2.82,
+      w: 1.78,
+      h: 0.22,
+      fontSize: 7.8,
+      bold: true,
+      align: 'center',
+      color: COLORS.slate,
+      margin: 0,
+    })
+
+    prioritySlide.addText(scopedDecision.priority || 'Decision pending', {
+      x: 8.58,
+      y: 3.36,
+      w: 3.68,
+      h: 0.62,
+      fontSize: 14,
+      bold: true,
+      align: 'center',
+      valign: 'mid',
+      color: getPriorityPptColor(scopedDecision.priority),
+      margin: 0.08,
+      fill: { color: getPriorityPptFill(scopedDecision.priority) },
+      line: { color: getPriorityPptColor(scopedDecision.priority), pt: 1 },
+      fit: 'shrink',
+    })
+
+    prioritySlide.addText('CURRENT RESPONSE PRIORITY', {
+      x: 8.58,
+      y: 4.02,
+      w: 3.68,
+      h: 0.22,
+      fontSize: 7.8,
+      bold: true,
+      align: 'center',
+      color: COLORS.slate,
+      margin: 0,
+    })
+
+    prioritySlide.addText(`${formatNumber(scopedProfile.score)}/100`, {
+      x: 8.58,
+      y: 4.62,
+      w: 3.68,
+      h: 0.7,
+      fontSize: 23,
+      bold: true,
+      align: 'center',
+      valign: 'mid',
+      color: COLORS.navy,
+      margin: 0.06,
+      fill: { color: COLORS.bg },
+      line: { color: COLORS.line, pt: 1 },
+    })
+
+    prioritySlide.addText('COMBINED PRIORITY SCORE', {
+      x: 8.58,
+      y: 5.36,
+      w: 3.68,
+      h: 0.22,
+      fontSize: 7.8,
+      bold: true,
+      align: 'center',
+      color: COLORS.slate,
+      margin: 0,
+    })
+
+    prioritySlide.addText('Use this profile with actual case trends and field observations before carrying out response activities.', {
+      x: 8.58,
+      y: 5.78,
+      w: 3.68,
+      h: 0.56,
+      fontSize: 9.2,
+      color: COLORS.slate,
+      align: 'center',
+      valign: 'mid',
+      margin: 0.06,
+      fit: 'shrink',
+    })
+  } else {
+    prioritySlide.addTable(
+      [
+        ['Rank', 'Barangay', 'Risk', 'Response Priority', 'Combined Risk', 'Projected'],
+        ...(topBarangays.length > 0
+          ? topBarangays.map((row, index) => {
+              const decision = getDecisionSupport(row)
+              return [
+                index + 1,
+                row.barangay,
+                row.risk,
+                decision.priority,
+                `${formatNumber(getCanonicalCombinedRiskScore(row))}/100`,
+                formatNumber(row.forecast),
+              ]
+            })
+          : [['-', 'No barangay Response data available', '-', '-', '-', '-']]),
+      ],
+      {
+        x: 0.65,
+        y: 1.35,
+        w: 12,
+        h: 2.85,
+        fontSize: 10,
+        color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 },
+        fill: { color: COLORS.white },
+        margin: 0.08,
+      }
+    )
+
+    prioritySlide.addText('Priority Snapshot', {
+      x: 0.65,
+      y: 4.65,
+      w: 4,
+      h: 0.3,
+      fontSize: 17,
+      bold: true,
+      color: COLORS.navy,
+      margin: 0,
+    })
+
+    topBarangays.forEach((row, index) => {
+      const decision = getDecisionSupport(row)
+
+      prioritySlide.addText(row.risk || 'Unknown', {
+        x: 0.65 + index * 2.42,
+        y: 5.1,
+        w: 2.05,
+        h: 0.34,
+        fontSize: 9.5,
+        bold: true,
+        align: 'center',
+        color: getRiskPptColor(row.risk),
+        margin: 0.05,
+        fill: { color: getRiskPptFill(row.risk) },
+        line: { color: getRiskPptColor(row.risk) },
+        fit: 'shrink',
+      })
+
+      prioritySlide.addText(decision.priority || 'Decision pending', {
+        x: 0.65 + index * 2.42,
+        y: 5.48,
+        w: 2.05,
+        h: 0.44,
+        fontSize: 8.5,
+        bold: true,
+        align: 'center',
+        color: getPriorityPptColor(decision.priority),
+        margin: 0.04,
+        fill: { color: getPriorityPptFill(decision.priority) },
+        line: { color: getPriorityPptColor(decision.priority) },
+        fit: 'shrink',
+      })
+
+      prioritySlide.addText(row.barangay || 'Unknown', {
+        x: 0.65 + index * 2.42,
+        y: 5.98,
+        w: 2.05,
+        h: 0.52,
+        fontSize: 10,
+        bold: true,
+        align: 'center',
+        color: COLORS.navy,
+        margin: 0.08,
+        fill: { color: COLORS.white },
+        line: { color: COLORS.line },
+        fit: 'shrink',
+      })
+    })
+  }
 
   const forecastSlide = pptx.addSlide()
   addSlideTitle(
@@ -4809,66 +5365,195 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   addSlideTitle(
     factorSlide,
     'Combined Risk Factors',
-    'Environmental, population, density, and forecast factors used by the Response ranking.'
+    reportScopeConfig.isBarangayScoped
+      ? 'Environmental, population, density, and forecast factors supporting the assigned barangay response priority.'
+      : 'Environmental, population, density, and forecast factors used by the Response ranking.'
   )
 
-  factorSlide.addTable(
-    [
-      ['Barangay', 'Combined Score', 'Environment', 'Rainfall', 'Temperature', 'Humidity'],
-      ...(topBarangays.length > 0
-        ? topBarangays.map((row) => {
-            const profile = getMultiSourceProfile(row)
+  if (reportScopeConfig.isBarangayScoped) {
+    const scopedProfile = getMultiSourceProfile(topBarangay)
+    const scopedDecision = getDecisionSupport(topBarangay)
 
-            return [
-              row.barangay,
-              `${formatNumber(profile.score)}/100`,
-              profile.environmentalSuitability,
-              profile.rainfallPressure,
-              profile.temperatureSuitability,
-              profile.humiditySuitability,
-            ]
-          })
-        : [['No barangay Response data available', '-', '-', '-', '-', '-']]),
-    ],
-    {
-      x: 0.65,
+    factorSlide.addTable(
+      [
+        ['Risk factor', 'Current context'],
+        ['Combined priority score', `${formatNumber(scopedProfile.score)}/100`],
+        ['Environmental suitability', scopedProfile.environmentalSuitability || 'Not available'],
+        ['Rainfall pressure', scopedProfile.rainfallPressure || 'Not available'],
+        ['Temperature suitability', scopedProfile.temperatureSuitability || 'Not available'],
+        ['Humidity suitability', scopedProfile.humiditySuitability || 'Not available'],
+        ['Population exposure', scopedProfile.populationExposure || 'Not available'],
+        ['Density level', scopedProfile.densityLevel || 'Not available'],
+      ],
+      {
+        x: 0.65,
+        y: 1.35,
+        w: 7.45,
+        h: 5.25,
+        colW: [2.35, 5.1],
+        fontSize: 11,
+        color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 },
+        fill: { color: COLORS.white },
+        margin: 0.085,
+      }
+    )
+
+    factorSlide.addText('', {
+      x: 8.45,
       y: 1.35,
-      w: 12,
-      h: 3.1,
-      fontSize: 8.8,
-      color: COLORS.navy,
-      border: { color: COLORS.line, pt: 1 },
+      w: 4.15,
+      h: 5.25,
+      margin: 0,
       fill: { color: COLORS.white },
-      margin: 0.06,
-    }
-  )
+      line: { color: COLORS.line, pt: 1 },
+    })
 
-  factorSlide.addText(
-    topBarangay
-      ? `${topBarangay.barangay} currently has a combined prioritization score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
-      : 'Combined risk factors will appear after dengue, weather, population, and boundary records are available.',
-    {
-      x: 0.75,
-      y: 4.95,
-      w: 11.7,
-      h: 0.82,
-      fontSize: 12.5,
+    factorSlide.addText('COMBINED PRIORITY', {
+      x: 8.78,
+      y: 1.7,
+      w: 3.5,
+      h: 0.28,
+      fontSize: 10,
+      bold: true,
+      color: COLORS.blue,
+      charSpace: 1.1,
+      align: 'center',
+      margin: 0,
+    })
+
+    factorSlide.addText(`${formatNumber(scopedProfile.score)}/100`, {
+      x: 8.78,
+      y: 2.12,
+      w: 3.5,
+      h: 1.02,
+      fontSize: 32,
       bold: true,
       color: COLORS.navy,
-      margin: 0.14,
+      align: 'center',
+      valign: 'mid',
+      margin: 0.05,
       fill: { color: COLORS.lightBlue },
-      line: { color: COLORS.paleBlue },
+      line: { color: COLORS.paleBlue, pt: 1 },
+    })
+
+    factorSlide.addText(scopedDecision.priority || 'Decision pending', {
+      x: 8.78,
+      y: 3.38,
+      w: 3.5,
+      h: 0.58,
+      fontSize: 13.5,
+      bold: true,
+      color: getPriorityPptColor(scopedDecision.priority),
+      align: 'center',
+      valign: 'mid',
+      margin: 0.06,
+      fill: { color: getPriorityPptFill(scopedDecision.priority) },
+      line: { color: getPriorityPptColor(scopedDecision.priority), pt: 1 },
       fit: 'shrink',
-    }
-  )
+    })
+
+    factorSlide.addText('WHAT THIS SCORE MEANS', {
+      x: 8.78,
+      y: 4.28,
+      w: 3.5,
+      h: 0.25,
+      fontSize: 9,
+      bold: true,
+      color: COLORS.blueDark,
+      margin: 0,
+    })
+
+    factorSlide.addText(
+      `This combines the dengue forecast, recent case movement, rainfall, temperature, humidity, population exposure, and density for ${barangayLabel}.`,
+      {
+        x: 8.78,
+        y: 4.62,
+        w: 3.5,
+        h: 0.9,
+        fontSize: 10.5,
+        color: COLORS.navy,
+        margin: 0.05,
+        fit: 'shrink',
+      }
+    )
+
+    factorSlide.addText('Decision-support score only — it is not a forecast probability.', {
+      x: 8.78,
+      y: 5.65,
+      w: 3.5,
+      h: 0.5,
+      fontSize: 9.5,
+      bold: true,
+      color: COLORS.amber,
+      align: 'center',
+      valign: 'mid',
+      margin: 0.05,
+      fill: { color: COLORS.yellow },
+      line: { color: 'FDE68A', pt: 1 },
+      fit: 'shrink',
+    })
+  } else {
+    factorSlide.addTable(
+      [
+        ['Barangay', 'Combined Score', 'Environment', 'Rainfall', 'Temperature', 'Humidity'],
+        ...(topBarangays.length > 0
+          ? topBarangays.map((row) => {
+              const profile = getMultiSourceProfile(row)
+
+              return [
+                row.barangay,
+                `${formatNumber(profile.score)}/100`,
+                profile.environmentalSuitability,
+                profile.rainfallPressure,
+                profile.temperatureSuitability,
+                profile.humiditySuitability,
+              ]
+            })
+          : [['No barangay Response data available', '-', '-', '-', '-', '-']]),
+      ],
+      {
+        x: 0.65,
+        y: 1.35,
+        w: 12,
+        h: 3.1,
+        fontSize: 8.8,
+        color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 },
+        fill: { color: COLORS.white },
+        margin: 0.06,
+      }
+    )
+
+    factorSlide.addText(
+      topBarangay
+        ? `${topBarangay.barangay} currently has a combined prioritization score of ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. This combines dengue forecast, case movement, rainfall, temperature, humidity, population exposure, and density context.`
+        : 'Combined risk factors will appear after dengue, weather, population, and boundary records are available.',
+      {
+        x: 0.75,
+        y: 4.95,
+        w: 11.7,
+        h: 0.82,
+        fontSize: 12.5,
+        bold: true,
+        color: COLORS.navy,
+        margin: 0.14,
+        fill: { color: COLORS.lightBlue },
+        line: { color: COLORS.paleBlue },
+        fit: 'shrink',
+      }
+    )
+  }
 
   const actionSlide = pptx.addSlide()
   addSlideTitle(
     actionSlide,
-    'Top Response Plan',
+    reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Top Response Plan',
     topBarangay
-      ? `${topBarangay.barangay} is currently the top response priority.`
-      : 'No top response plan is available yet.'
+      ? (reportScopeConfig.isBarangayScoped
+          ? `Recommended response guidance for ${topBarangay.barangay}.`
+          : `${topBarangay.barangay} is currently the top response priority.`)
+      : (reportScopeConfig.isBarangayScoped ? 'No response plan is available yet.' : 'No top response plan is available yet.')
   )
 
   actionSlide.addText(topDecision.summary || 'No Recommended response available yet.', {
@@ -4885,10 +5570,14 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     fit: 'shrink',
   })
 
+  const polishedPptActions = reportScopeConfig.isBarangayScoped
+    ? getPolishedActionList(topDecision.actions, topDecision.summary, 5)
+    : (topDecision.actions || []).slice(0, 5)
+
   const actions =
-    topDecision.actions?.length > 0
-      ? topDecision.actions.slice(0, 5)
-      : ['No action plan available yet.']
+    polishedPptActions.length > 0
+      ? polishedPptActions
+      : [reportScopeConfig.isBarangayScoped ? 'No additional action steps are available yet.' : 'No action plan available yet.']
 
   actions.forEach((action, index) => {
     actionSlide.addText(String(index + 1), {
@@ -4954,7 +5643,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const technicalSlide = pptx.addSlide()
   addSlideTitle(
     technicalSlide,
-    'Technical Model Review',
+    reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Model Review' : 'Technical Model Review',
     'Model evaluation details are kept separate from the health-worker response summary.'
   )
 
@@ -4988,8 +5677,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const sourceSlide = pptx.addSlide()
   addSlideTitle(
     sourceSlide,
-    'Uploaded Data Readiness',
-    'Check status of uploaded or available files.'
+    reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Uploaded Data Readiness',
+    reportScopeConfig.isBarangayScoped ? 'Technical source-status information supporting the barangay report.' : 'Check status of uploaded or available files.'
   )
 
   sourceSlide.addTable(
@@ -5019,36 +5708,38 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     }
   )
 
-  sourceSlide.addText('Response Priority Distribution', {
-    x: 0.65,
-    y: 6.04,
-    w: 3.5,
-    h: 0.3,
-    fontSize: 15,
-    bold: true,
-    color: COLORS.navy,
-    margin: 0,
-  })
+  if (!reportScopeConfig.isBarangayScoped) {
+    sourceSlide.addText('Response Priority Distribution', {
+      x: 0.65,
+      y: 6.04,
+      w: 3.5,
+      h: 0.3,
+      fontSize: 15,
+      bold: true,
+      color: COLORS.navy,
+      margin: 0,
+    })
 
-  sourceSlide.addText(
-    priorityDistribution.length > 0
-      ? priorityDistribution
-          .map((item) => `${item.priority}: ${item.count}`)
-          .join('  •  ')
-      : 'No Response priority data available yet.',
-    {
-      x: 4.05,
-      y: 5.96,
-      w: 8.15,
-      h: 0.6,
-      fontSize: 10.5,
-      color: COLORS.slate,
-      margin: 0.08,
-      fill: { color: COLORS.white },
-      line: { color: COLORS.line },
-      fit: 'shrink',
-    }
-  )
+    sourceSlide.addText(
+      priorityDistribution.length > 0
+        ? priorityDistribution
+            .map((item) => `${item.priority}: ${item.count}`)
+            .join('  •  ')
+        : 'No Response priority data available yet.',
+      {
+        x: 4.05,
+        y: 5.96,
+        w: 8.15,
+        h: 0.6,
+        fontSize: 10.5,
+        color: COLORS.slate,
+        margin: 0.08,
+        fill: { color: COLORS.white },
+        line: { color: COLORS.line },
+        fit: 'shrink',
+      }
+    )
+  }
 
   const limitationsSlide = pptx.addSlide()
   addSlideTitle(
@@ -5076,7 +5767,9 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   )
 
   limitationsSlide.addText(
-    `Top high-risk barangays: ${officialMetadata.topHighRiskBarangays}`,
+    reportScopeConfig.isBarangayScoped
+      ? `Assigned barangay risk status: ${officialMetadata.assignedBarangayRiskStatus || `${barangayLabel}: ${topBarangay?.risk || 'Unknown'} risk`}`
+      : `Top high-risk barangays: ${officialMetadata.topHighRiskBarangays}`,
     {
       x: 0.75,
       y: 5.12,
@@ -5093,7 +5786,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   )
 
   await pptx.writeFile({
-    fileName: `${REPORT_EXPORT_BASENAME}.pptx`,
+    fileName: `${scopedBasename}.pptx`,
   })
 }
 
@@ -5444,6 +6137,11 @@ export default function ReportsPage() {
   const [searchParams] = useSearchParams()
   const selectedFieldUpdateId = searchParams.get('field_update_id') || ''
   const data = useData()
+  const authSession = useMemo(() => getAuthSession(), [])
+  const isBhwReport = authSession?.role === 'bhw'
+  const assignedBarangay = String(authSession?.assignedBarangay || '').trim()
+  const reportGeneratedBy = authSession?.label || authSession?.email || (isBhwReport ? 'BHW user' : 'CHO user')
+  const reportRoleLabel = isBhwReport ? 'Barangay Health Worker (BHW)' : 'City Health Office / Barangay Dengue Response Team'
 
   const {
     dashboardStats = {},
@@ -5465,6 +6163,8 @@ export default function ReportsPage() {
   const [isLoadingSelectedFieldUpdate, setIsLoadingSelectedFieldUpdate] = useState(false)
   const [selectedFieldUpdateError, setSelectedFieldUpdateError] = useState('')
   const [format, setFormat] = useState('pdf')
+  const [isHeroExportMenuOpen, setIsHeroExportMenuOpen] = useState(false)
+  const [heroExportMenuPosition, setHeroExportMenuPosition] = useState({ top: 0, left: 0, width: 0 })
   const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
   const [expandedPriorityBarangay, setExpandedPriorityBarangay] = useState(null)
   const [hotspotResult, setHotspotResult] = useState(() => geospatialHotspotResult || null)
@@ -5482,6 +6182,8 @@ export default function ReportsPage() {
   const [reportCityTrendAnalytics, setReportCityTrendAnalytics] = useState(null)
 
   const boundaryLoadRequestedRef = useRef(false)
+  const heroExportMenuRef = useRef(null)
+  const heroExportMenuPortalRef = useRef(null)
 
   useEffect(() => {
     if (boundaryRecords.length > 0 || boundaryLoadRequestedRef.current) return
@@ -5490,6 +6192,75 @@ export default function ReportsPage() {
       if (!boundaryRecords.length) boundaryLoadRequestedRef.current = false
     })
   }, [boundaryRecords.length])
+
+  useEffect(() => {
+    if (!isHeroExportMenuOpen) return undefined
+
+    function handleClickOutside(event) {
+      const clickedTrigger = heroExportMenuRef.current?.contains(event.target)
+      const clickedMenu = heroExportMenuPortalRef.current?.contains(event.target)
+      if (!clickedTrigger && !clickedMenu) {
+        setIsHeroExportMenuOpen(false)
+      }
+    }
+
+    function handleEscapeKey(event) {
+      if (event.key === 'Escape') {
+        setIsHeroExportMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    document.addEventListener('keydown', handleEscapeKey)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+      document.removeEventListener('keydown', handleEscapeKey)
+    }
+  }, [isHeroExportMenuOpen])
+
+  useEffect(() => {
+    if (!isHeroExportMenuOpen) return undefined
+
+    function updateHeroExportMenuPosition() {
+      const trigger = heroExportMenuRef.current
+      if (!trigger) return
+
+      const rect = trigger.getBoundingClientRect()
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+      const sideGap = 16
+      const menuWidth = Math.min(620, Math.max(280, viewportWidth - sideGap * 2))
+      const estimatedMenuHeight = viewportWidth >= 640 ? 315 : 470
+      const preferredLeft = rect.right - menuWidth
+      const left = Math.min(
+        Math.max(sideGap, preferredLeft),
+        Math.max(sideGap, viewportWidth - menuWidth - sideGap),
+      )
+      const belowTop = rect.bottom + 8
+      const aboveTop = rect.top - estimatedMenuHeight - 8
+      const top = belowTop + estimatedMenuHeight <= viewportHeight - sideGap
+        ? belowTop
+        : Math.max(sideGap, aboveTop)
+
+      setHeroExportMenuPosition({ top, left, width: menuWidth })
+    }
+
+    updateHeroExportMenuPosition()
+    window.addEventListener('resize', updateHeroExportMenuPosition)
+    window.addEventListener('scroll', updateHeroExportMenuPosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updateHeroExportMenuPosition)
+      window.removeEventListener('scroll', updateHeroExportMenuPosition, true)
+    }
+  }, [isHeroExportMenuOpen])
+
+  useEffect(() => {
+    setIsHeroExportMenuOpen(false)
+  }, [format])
 
   useEffect(() => {
     let active = true
@@ -5600,19 +6371,24 @@ export default function ReportsPage() {
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
 
   const displayRiskRows = useMemo(() => {
+    let rows = []
+
     if (usingBackendForecast) {
-      return buildBackendRiskRows(backendForecastResult, {
+      rows = buildBackendRiskRows(backendForecastResult, {
         populationRecords,
         boundaryFeatures,
         weatherRecords,
       })
+    } else if (Array.isArray(riskRows) && riskRows.length > 0) {
+      rows = riskRows
     }
 
-    if (Array.isArray(riskRows) && riskRows.length > 0) {
-      return riskRows
+    if (isBhwReport) {
+      if (!assignedBarangay) return []
+      return rows.filter((row) => namesMatch(row?.barangay, assignedBarangay))
     }
 
-    return []
+    return rows
   }, [
     usingBackendForecast,
     backendForecastResult,
@@ -5620,6 +6396,8 @@ export default function ReportsPage() {
     populationRecords,
     boundaryFeatures,
     weatherRecords,
+    isBhwReport,
+    assignedBarangay,
   ])
 
   const displayDashboardStats = useMemo(() => {
@@ -5642,6 +6420,18 @@ export default function ReportsPage() {
   const sortedRiskRows = useMemo(() => {
     return getSortedRiskRows(displayRiskRows)
   }, [displayRiskRows])
+
+  const reportDashboardStats = useMemo(() => {
+    if (!isBhwReport) return displayDashboardStats
+
+    const assignedRow = sortedRiskRows[0]
+    return {
+      ...displayDashboardStats,
+      totalCases: Number(assignedRow?.totalCases || assignedRow?.cases || 0),
+      fourWeekForecast: Number(assignedRow?.forecast || 0),
+      highRiskBarangays: assignedRow?.risk === 'High' ? 1 : 0,
+    }
+  }, [displayDashboardStats, isBhwReport, sortedRiskRows])
 
   useEffect(() => {
     let active = true
@@ -5732,8 +6522,12 @@ export default function ReportsPage() {
       generatedAt,
       sortedRiskRows,
       usingBackendForecast,
+      generatedBy: reportGeneratedBy,
+      role: reportRoleLabel,
+      reportScope: isBhwReport ? 'assigned_barangay' : 'citywide',
+      assignedBarangay: isBhwReport ? assignedBarangay : '',
     })
-  }, [sourceStatus, backendForecastResult, latestModelMetrics, generatedAt, sortedRiskRows, usingBackendForecast])
+  }, [sourceStatus, backendForecastResult, latestModelMetrics, generatedAt, sortedRiskRows, usingBackendForecast, reportGeneratedBy, reportRoleLabel, isBhwReport, assignedBarangay])
   const officialSourceRows = officialReportMetadata.sourceRows || []
   const hasUploadedDataIssues = useMemo(() => {
     const sourceEntries = Object.entries(sourceStatus || {})
@@ -5790,6 +6584,11 @@ export default function ReportsPage() {
   const selectedExport = exportFormats.find((item) => item.id === format) || exportFormats[0]
   const SelectedExportIcon = selectedExport.icon
   const selectedExportTheme = exportSelectionThemes[selectedExport.id] || exportSelectionThemes.pdf
+  const heroReportReadyLabel = isBhwReport
+    ? `${assignedBarangay || 'Barangay'} report ready`
+    : authSession?.role === 'supervisor'
+      ? 'Supervisor briefing ready'
+      : 'CHO briefing ready'
   const selectedOutputTone =
     format === 'pdf'
       ? 'rose'
@@ -5799,26 +6598,30 @@ export default function ReportsPage() {
           ? 'blue'
           : 'amber'
   const selectedOutputTheme = getReportVisualTheme(selectedOutputTone)
+  const reportScopeConfig = getReportScopeConfig(officialReportMetadata)
+  const activeReportTitle = reportScopeConfig.title
+  const activeReportBasename = reportScopeConfig.basename
 
   const reportSummary = useMemo(() => {
     return getReportSummary({
       sortedRiskRows,
-      dashboardStats: displayDashboardStats,
+      dashboardStats: reportDashboardStats,
+      isBarangayScoped: reportScopeConfig.isBarangayScoped,
     })
-  }, [sortedRiskRows, displayDashboardStats])
+  }, [sortedRiskRows, reportDashboardStats, reportScopeConfig.isBarangayScoped])
 
 
   function getReportFilePath(formatLabel) {
     if (formatLabel === 'PDF') {
-      return `local_download:${REPORT_EXPORT_BASENAME}.pdf`
+      return `local_download:${activeReportBasename}.pdf`
     }
 
     if (formatLabel === 'Excel') {
-      return `local_download:${REPORT_EXPORT_BASENAME}.xlsx`
+      return `local_download:${activeReportBasename}.xlsx`
     }
 
     if (formatLabel === 'PowerPoint') {
-      return `local_download:${REPORT_EXPORT_BASENAME}.pptx`
+      return `local_download:${activeReportBasename}.pptx`
     }
 
     return 'browser_print_view'
@@ -5837,9 +6640,9 @@ export default function ReportsPage() {
     const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
 
     return {
-      totalCases: Number(displayDashboardStats.totalCases || 0),
-      forecastTotal: Number(displayDashboardStats.fourWeekForecast || 0),
-      dataQuality: Number(displayDashboardStats.dataQuality || 0),
+      totalCases: Number(reportDashboardStats.totalCases || 0),
+      forecastTotal: Number(reportDashboardStats.fourWeekForecast || 0),
+      dataQuality: Number(reportDashboardStats.dataQuality || 0),
       priorityBarangayCount: sortedRiskRows.length,
       urgentAlertCount: decisionCounts.urgent,
       highRiskBarangayCount: highRiskCount,
@@ -5857,6 +6660,8 @@ export default function ReportsPage() {
       topPriority: topDecision?.priority || '',
       reportDataSource: reportDataSourceLabel,
       topHighRiskBarangays: reportMetadataForExport.topHighRiskBarangays || '',
+      reportScope: isBhwReport ? 'assigned_barangay' : 'citywide',
+      assignedBarangay: isBhwReport ? assignedBarangay : '',
     }
   }
 
@@ -5874,7 +6679,7 @@ export default function ReportsPage() {
       await saveGeneratedReport({
         report_code: reportMetadataForExport.reportId,
         report_type: formatLabel,
-        report_title: REPORT_TITLE,
+        report_title: activeReportTitle,
         generated_by: reportMetadataForExport.generatedBy,
         generated_role: reportMetadataForExport.role,
         generated_at: exportedAtIso,
@@ -5917,7 +6722,12 @@ export default function ReportsPage() {
 
 
   async function handleExport() {
-    const title = REPORT_TITLE
+    if (isBhwReport && !assignedBarangay) {
+      alert('Your BHW account does not have an assigned barangay. Please contact an administrator.')
+      return
+    }
+
+    const title = activeReportTitle
     const exportedAt = getCurrentDateTime()
     const exportedAtIso = new Date().toISOString()
 
@@ -5938,6 +6748,10 @@ export default function ReportsPage() {
       generatedAt: exportedAt,
       sortedRiskRows,
       usingBackendForecast,
+      generatedBy: reportGeneratedBy,
+      role: reportRoleLabel,
+      reportScope: isBhwReport ? 'assigned_barangay' : 'citywide',
+      assignedBarangay: isBhwReport ? assignedBarangay : '',
     })
 
     let exportHotspotRows = hotspotRows
@@ -5946,7 +6760,10 @@ export default function ReportsPage() {
     let exportFieldMonitoringSummary = getFieldMonitoringSummary(null)
 
     try {
-      const fieldUpdateResult = await getFieldUpdates({ limit: 200 })
+      const fieldUpdateResult = await getFieldUpdates({
+        limit: 200,
+        barangay: isBhwReport ? assignedBarangay : '',
+      })
       exportFieldMonitoringSummary = getFieldMonitoringSummary(fieldUpdateResult)
     } catch (error) {
       addActivityLog?.(
@@ -5957,16 +6774,23 @@ export default function ReportsPage() {
 
     try {
       const trendFilters = reportCityTrendAnalytics?.filters || {}
-      exportCityTrendAnalytics = await getCityTrendAnalytics({
-        year: trendFilters.year || undefined,
-        quarter: trendFilters.quarter || undefined,
-        month: trendFilters.month || undefined,
-        includeClassification: true,
-      })
+      exportCityTrendAnalytics = isBhwReport
+        ? await getBarangayTrendAnalytics({
+            barangay: assignedBarangay,
+            year: trendFilters.year || undefined,
+            quarter: trendFilters.quarter || undefined,
+            month: trendFilters.month || undefined,
+          })
+        : await getCityTrendAnalytics({
+            year: trendFilters.year || undefined,
+            quarter: trendFilters.quarter || undefined,
+            month: trendFilters.month || undefined,
+            includeClassification: true,
+          })
     } catch (error) {
       addActivityLog?.(
         'Actual surveillance export fallback',
-        error?.message || 'Citywide actual dengue surveillance could not be refreshed for this export.'
+        error?.message || (isBhwReport ? 'Assigned barangay dengue surveillance could not be refreshed for this export.' : 'Citywide actual dengue surveillance could not be refreshed for this export.')
       )
     }
 
@@ -5992,7 +6816,7 @@ export default function ReportsPage() {
     }
 
     const exportPayload = {
-  dashboardStats: displayDashboardStats,
+  dashboardStats: reportDashboardStats,
   riskRows: sortedRiskRows,
   sourceStatus,
   generatedAt: exportedAt,
@@ -7190,22 +8014,24 @@ export default function ReportsPage() {
         />
       )}
 
-      <section className="reports-hero-panel relative isolate overflow-hidden rounded-[38px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.34)] ring-1 ring-white/10 sm:rounded-[40px]">
-        <img
-          src={reportsHeroBackground}
-          alt=""
-          aria-hidden="true"
-          draggable="false"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover brightness-[0.9] saturate-[1.08]"
-          style={{ objectPosition: '62% center' }}
-        />
+      <section className={`reports-hero-panel relative isolate overflow-visible rounded-[38px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.34)] ring-1 ring-white/10 sm:rounded-[40px] ${isHeroExportMenuOpen ? 'z-[80]' : 'z-0'}`}>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[38px] sm:rounded-[40px]">
+          <img
+            src={reportsHeroBackground}
+            alt=""
+            aria-hidden="true"
+            draggable="false"
+            className="absolute inset-0 h-full w-full select-none object-cover brightness-[0.9] saturate-[1.08]"
+            style={{ objectPosition: '62% center' }}
+          />
 
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(100deg,rgba(2,6,23,0.97)_0%,rgba(3,13,28,0.91)_42%,rgba(4,22,40,0.60)_68%,rgba(2,6,23,0.74)_100%)]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_74%_24%,rgba(56,189,248,0.18),transparent_27%),radial-gradient(circle_at_92%_90%,rgba(99,102,241,0.14),transparent_28%)]" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
-        <div className="pointer-events-none absolute inset-x-20 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
-        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-indigo-400/10 blur-3xl" />
+          <div className="absolute inset-0 bg-[linear-gradient(100deg,rgba(2,6,23,0.97)_0%,rgba(3,13,28,0.91)_42%,rgba(4,22,40,0.60)_68%,rgba(2,6,23,0.74)_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_24%,rgba(56,189,248,0.18),transparent_27%),radial-gradient(circle_at_92%_90%,rgba(99,102,241,0.14),transparent_28%)]" />
+          <div className="absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:42px_42px]" />
+          <div className="absolute inset-x-20 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent" />
+          <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-indigo-400/10 blur-3xl" />
+        </div>
 
         <div className="reports-hero-layout relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.62fr)] xl:items-center xl:p-10">
           <div className="flex flex-col justify-between">
@@ -7232,7 +8058,7 @@ export default function ReportsPage() {
             <div className="reports-hero-metrics mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <HeroMetric
                 label="Barangay-matched cases"
-                value={formatNumber(displayDashboardStats.totalCases)}
+                value={formatNumber(reportDashboardStats.totalCases)}
                 helper="Official matched cases used for modeling"
                 tone="blue"
                 informationType="recorded"
@@ -7248,7 +8074,7 @@ export default function ReportsPage() {
 
               <HeroMetric
                 label="Forecast total"
-                value={formatNumber(displayDashboardStats.fourWeekForecast)}
+                value={formatNumber(reportDashboardStats.fourWeekForecast)}
                 helper="Model-generated cases across the forecast periods"
                 tone="amber"
                 informationType="forecast"
@@ -7256,14 +8082,14 @@ export default function ReportsPage() {
 
               <HeroMetric
                 label="Source valid-row rate"
-                value={`${displayDashboardStats.dataQuality || 0}%`}
+                value={`${reportDashboardStats.dataQuality || 0}%`}
                 helper="Valid rows across uploaded sources"
                 tone="emerald"
               />
             </div>
           </div>
 
-          <div className={`reports-selected-output group/output relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${selectedOutputTheme.darkCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.54)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
+          <div className={`reports-selected-output group/output relative overflow-visible rounded-[32px] border border-white/15 bg-gradient-to-br ${selectedOutputTheme.darkCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.54)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6 ${isHeroExportMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <div className={`pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${selectedOutputTheme.line}`} />
             <div className={`pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full ${selectedOutputTheme.glow} blur-3xl`} />
             <div className="flex items-start gap-4">
@@ -7285,7 +8111,162 @@ export default function ReportsPage() {
               </div>
             </div>
 
-            <div className="relative mt-5 rounded-[24px] border border-white/15 bg-black/20 p-4 shadow-inner">
+            <div className="relative mt-5">
+              <div className="flex items-center justify-between gap-3">
+                <label
+                  htmlFor="hero-report-export-format-button"
+                  className="text-[11px] font-black uppercase tracking-[0.16em] text-white/70"
+                >
+                  Choose export format
+                </label>
+
+                <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/55">
+                  Synced with export center
+                </span>
+              </div>
+
+              <div className="relative mt-2" ref={heroExportMenuRef}>
+                <button
+                  id="hero-report-export-format-button"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={isHeroExportMenuOpen}
+                  aria-label="Choose report export format"
+                  onClick={() => setIsHeroExportMenuOpen((current) => !current)}
+                  className="group flex min-h-[72px] w-full items-center justify-between gap-4 rounded-[24px] border border-cyan-200/35 bg-gradient-to-br from-white/16 via-white/12 to-white/8 px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_34px_rgba(0,0,0,0.22)] backdrop-blur-md transition hover:border-cyan-200/55 hover:from-white/20 hover:via-white/15 hover:to-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-200/35"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${selectedExportTheme.icon}`}>
+                      <SelectedExportIcon className="h-5 w-5" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-cyan-100/70">
+                        {selectedExport.label}
+                      </p>
+                      <p className="mt-1 truncate text-sm font-bold leading-6 text-white">
+                        {selectedExport.actionLabel || 'Generate selected output'}
+                      </p>
+                      <p className="mt-1 text-xs font-medium leading-5 text-white/65">
+                        {selectedExport.desc}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="hidden rounded-full border border-white/15 bg-white/8 px-3 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-white/65 sm:inline-flex">
+                      4 formats
+                    </span>
+
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border border-white/12 bg-white/10 text-white/80 shadow-inner transition duration-200 ${isHeroExportMenuOpen ? 'rotate-180 border-cyan-200/40 bg-cyan-400/15 text-cyan-100' : 'group-hover:border-white/25 group-hover:bg-white/14'}`}>
+                      <ChevronDown className="h-5 w-5" />
+                    </div>
+                  </div>
+                </button>
+
+                {isHeroExportMenuOpen && typeof document !== 'undefined' ? createPortal(
+                  <div
+                    ref={heroExportMenuPortalRef}
+                    style={{
+                      position: 'fixed',
+                      top: `${heroExportMenuPosition.top}px`,
+                      left: `${heroExportMenuPosition.left}px`,
+                      width: `${heroExportMenuPosition.width}px`,
+                      zIndex: 2147483647,
+                    }}
+                    className="overflow-hidden rounded-[28px] border border-cyan-200/90 bg-white/95 text-slate-800 shadow-[0_32px_90px_rgba(2,6,23,0.48)] backdrop-blur-2xl dark:border-cyan-400/20 dark:bg-slate-950/96 dark:text-slate-100"
+                  >
+                    <div className="relative overflow-hidden border-b border-slate-200/80 px-4 py-3.5 dark:border-white/10 sm:px-5">
+                      <span className="pointer-events-none absolute inset-x-8 top-0 h-[2px] rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500" />
+                      <span className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-cyan-300/20 blur-2xl dark:bg-cyan-400/10" />
+
+                      <div className="relative flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-800 dark:text-slate-100">
+                            Choose export format
+                          </p>
+                          <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 dark:text-slate-400">
+                            All export choices are visible here, so you can select without scrolling.
+                          </p>
+                        </div>
+
+                        <span className="shrink-0 rounded-full border border-cyan-300/40 bg-cyan-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">
+                          4 choices
+                        </span>
+                      </div>
+                    </div>
+
+                    <div role="listbox" aria-label="Report export formats" className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 sm:p-4">
+                      {exportFormats.map((item) => {
+                        const ItemIcon = item.icon
+                        const isActive = item.id === format
+                        const activeTone =
+                          item.id === 'pdf'
+                            ? 'border-rose-300 bg-gradient-to-br from-rose-50 via-white to-orange-50 text-rose-900 shadow-[0_10px_22px_rgba(244,63,94,0.10)] dark:border-rose-400/30 dark:from-rose-500/10 dark:via-slate-900 dark:to-orange-500/10 dark:text-rose-100'
+                            : item.id === 'excel'
+                              ? 'border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-teal-50 text-emerald-900 shadow-[0_10px_22px_rgba(16,185,129,0.10)] dark:border-emerald-400/30 dark:from-emerald-500/10 dark:via-slate-900 dark:to-teal-500/10 dark:text-emerald-100'
+                              : item.id === 'powerpoint'
+                                ? 'border-blue-300 bg-gradient-to-br from-blue-50 via-white to-cyan-50 text-blue-900 shadow-[0_10px_22px_rgba(59,130,246,0.10)] dark:border-blue-400/30 dark:from-blue-500/10 dark:via-slate-900 dark:to-cyan-500/10 dark:text-blue-100'
+                                : 'border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 text-amber-900 shadow-[0_10px_22px_rgba(245,158,11,0.10)] dark:border-amber-400/30 dark:from-amber-500/10 dark:via-slate-900 dark:to-orange-500/10 dark:text-amber-100'
+
+                        const iconTone =
+                          item.id === 'pdf'
+                            ? 'border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200'
+                            : item.id === 'excel'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200'
+                              : item.id === 'powerpoint'
+                                ? 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200'
+                                : 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200'
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isActive}
+                            onClick={() => {
+                              setFormat(item.id)
+                              setIsHeroExportMenuOpen(false)
+                            }}
+                            className={`group relative flex min-h-[86px] w-full items-center justify-between gap-3 overflow-hidden rounded-2xl border px-3 py-3 text-left transition duration-200 ${isActive ? activeTone : 'border-slate-200/80 bg-white/80 text-slate-700 hover:border-cyan-200 hover:bg-cyan-50/70 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-cyan-400/20 dark:hover:bg-cyan-400/10'}`}
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${iconTone}`}>
+                                <ItemIcon className="h-[18px] w-[18px]" />
+                              </span>
+
+                              <div className="min-w-0">
+                                <p className="break-words text-[13px] font-black leading-5">{item.label}</p>
+                                <p className="mt-0.5 break-words text-[10px] font-semibold leading-4 opacity-70">
+                                  {item.id === 'pdf'
+                                    ? 'Best for printing and formal review'
+                                    : item.id === 'excel'
+                                      ? 'Best for worksheets and detailed data'
+                                      : item.id === 'powerpoint'
+                                        ? 'Best for briefings and presentations'
+                                        : 'Best for browser-based print preview'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition ${isActive ? 'border-current bg-white/70 dark:bg-white/10' : 'border-slate-200/90 text-transparent group-hover:border-cyan-300 dark:border-white/10'}`}>
+                              <CheckCircle2 className="h-4 w-4" />
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>,
+                  document.body,
+                ) : null}
+              </div>
+
+              <p className="mt-2 text-xs font-semibold leading-5 text-white/65">
+                Select PDF, Excel, PowerPoint, or Print. Your choice is also synced with the Export Center below.
+              </p>
+            </div>
+
+            <div className="relative mt-4 rounded-[24px] border border-white/15 bg-black/20 p-4 shadow-inner">
               <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/70">
                 Generated timestamp
               </p>
@@ -7296,7 +8277,7 @@ export default function ReportsPage() {
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-black text-white/80">
-                  CHO briefing ready
+                  {heroReportReadyLabel}
                 </span>
 
                 <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-black text-brand-green dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -7325,14 +8306,14 @@ export default function ReportsPage() {
                     style={{ color: '#0f172a' }}
                     className="text-sm font-black leading-5"
                   >
-                    Generate selected output
+                    {selectedExport.actionLabel || 'Generate selected output'}
                   </p>
 
                   <p
                     style={{ color: '#64748b' }}
                     className="mt-1 text-xs font-semibold leading-5"
                   >
-                    Export the current dengue response report.
+                    {selectedExport.desc}
                   </p>
                 </div>
               </div>
@@ -7351,7 +8332,14 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      <CityTrendAnalyticsPanel context="reports" onAnalyticsChange={setReportCityTrendAnalytics} />
+      {isBhwReport ? (
+        <div className="relative z-0 rounded-[24px] border border-cyan-200/80 bg-cyan-50/80 px-4 py-3 text-sm font-semibold leading-6 text-slate-700 shadow-sm dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-slate-200">
+          <span className="font-black text-cyan-800 dark:text-cyan-200">Barangay-specific report:</span>{' '}
+          PDF, Excel, PowerPoint, and print exports are limited to <strong>{assignedBarangay || 'your assigned barangay'}</strong>, including its recorded trend, forecast, hotspot status, recommended response, and your field monitoring summary.
+        </div>
+      ) : (
+        <CityTrendAnalyticsPanel context="reports" onAnalyticsChange={setReportCityTrendAnalytics} />
+      )}
 
       <DisclosureCard
         id="additional-report-indicators"
@@ -7360,7 +8348,7 @@ export default function ReportsPage() {
         icon={Gauge}
         title="Additional report indicators"
         description="Open the supporting indicators only when a more detailed report review is needed."
-        summary={`Citywide average combined priority score: ${formatNumber(averageMultiSourceScore)}/100`}
+        summary={`${isBhwReport ? `${assignedBarangay || 'Assigned barangay'} combined priority score` : 'Citywide average combined priority score'}: ${formatNumber(averageMultiSourceScore)}/100`}
         tone="blue"
       />
 
@@ -7368,7 +8356,7 @@ export default function ReportsPage() {
       <div className="reports-additional-indicators grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-5">
         <StatCard
           label="Barangay-matched cases"
-          value={formatNumber(displayDashboardStats.totalCases)}
+          value={formatNumber(reportDashboardStats.totalCases)}
           helper="Official matched cases used for modeling"
           icon={Database}
           tone="blue"
@@ -7384,7 +8372,7 @@ export default function ReportsPage() {
 
         <StatCard
           label="Forecast total"
-          value={formatNumber(displayDashboardStats.fourWeekForecast)}
+          value={formatNumber(reportDashboardStats.fourWeekForecast)}
           helper="Model-generated cases across the forecast periods"
           icon={BarChart3}
           tone="amber"
@@ -7400,7 +8388,7 @@ export default function ReportsPage() {
 
         <StatCard
           label="Source valid-row rate"
-          value={`${displayDashboardStats.dataQuality || 0}%`}
+          value={`${reportDashboardStats.dataQuality || 0}%`}
           helper="Valid rows across uploaded sources"
           icon={CheckCircle2}
           tone="emerald"
@@ -7870,11 +8858,13 @@ export default function ReportsPage() {
 
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-red dark:text-rose-300">
-                    Top high-risk barangays
+                    {isBhwReport ? 'Assigned barangay risk status' : 'Top high-risk barangays'}
                   </p>
 
                   <MetadataDetailList
-                    value={officialReportMetadata.topHighRiskBarangays}
+                    value={isBhwReport
+                      ? officialReportMetadata.assignedBarangayRiskStatus
+                      : officialReportMetadata.topHighRiskBarangays}
                     separator=","
                     itemClassName="border-rose-100 bg-white/85 dark:border-rose-500/20 dark:bg-slate-950/60"
                     labelClassName="text-brand-red dark:text-rose-300"
@@ -8042,7 +9032,7 @@ export default function ReportsPage() {
               </SectionBadge>
 
               <h2 className="mt-3 text-2xl font-black tracking-tight text-brand-text dark:text-slate-100">
-                Four-month dengue response planning brief
+                {isBhwReport ? 'Assigned barangay dengue response brief' : 'Four-month dengue response planning brief'}
               </h2>
 
               <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
@@ -8090,15 +9080,17 @@ export default function ReportsPage() {
   <div className="min-w-0">
     <div className="inline-flex items-center gap-2 rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-brand-red dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
       <MapPin className="h-3.5 w-3.5" />
-      Response priority list
+      {isBhwReport ? 'Assigned barangay response' : 'Response priority list'}
     </div>
 
     <h3 className="mt-3 text-xl font-black tracking-tight text-brand-text dark:text-slate-100">
-      Priority barangays
+      {isBhwReport ? 'Assigned barangay' : 'Priority barangays'}
     </h3>
 
     <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-      Showing the highest-ranked barangays based on Response score, risk level, forecasted cases, and recommended response priority.
+      {isBhwReport
+        ? `Current risk, forecast, hotspot status, and recommended response for ${assignedBarangay || 'your assigned barangay'}.`
+        : 'Showing the highest-ranked barangays based on Response score, risk level, forecasted cases, and recommended response priority.'}
     </p>
   </div>
 
@@ -8113,7 +9105,7 @@ export default function ReportsPage() {
       </p>
 
       <p className="text-xs font-black text-brand-text dark:text-slate-100">
-        Top barangays
+        {isBhwReport ? (assignedBarangay || 'Assigned barangay') : 'Top barangays'}
       </p>
     </div>
   </div>
@@ -8562,7 +9554,7 @@ export default function ReportsPage() {
           <div className="mt-5 rounded-[26px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-5 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950">
             <h3 className="flex items-center gap-2 text-lg font-black text-brand-orange dark:text-amber-300">
               <ShieldAlert className="h-5 w-5" />
-              Top response plan
+              {isBhwReport ? 'Assigned barangay response plan' : 'Top response plan'}
             </h3>
 
             {topBarangay ? (

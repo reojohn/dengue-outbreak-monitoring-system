@@ -70,6 +70,7 @@ export default function SparkChart({
   subtitle = 'Recorded monthly dengue cases for the selected period',
   emptyLabel = 'No chart data available yet',
   loading = false,
+  legendLabel = 'Actual dengue cases',
 }) {
   const rawId = useId()
   const chartId = rawId.replace(/:/g, '')
@@ -499,7 +500,7 @@ export default function SparkChart({
               fontWeight="700"
               fontFamily="Inter, ui-sans-serif, system-ui"
             >
-              Actual dengue cases
+              {legendLabel}
             </text>
           </g>
         </svg>

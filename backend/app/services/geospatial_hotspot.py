@@ -590,6 +590,57 @@ def _ensure_hotspot_cache_table():
     _HOTSPOT_CACHE_READY = True
 
 
+def get_latest_cached_hotspot_levels(integration_run_id=None):
+    """Return compact hotspot labels from the newest saved GIS run.
+
+    The BHW local map only needs the barangay name/key and saved hotspot
+    classification for its assigned area and immediate neighbors. This helper
+    intentionally ignores the radius/fallback parameters used by a particular
+    GIS run and reads whichever saved hotspot result was updated most recently
+    for the active integration. That keeps the local map in sync with the
+    latest hotspot check without recalculating city-wide spatial analysis.
+    """
+    integration_run_id = integration_run_id or _get_latest_integration_run_id()
+
+    if not integration_run_id:
+        return []
+
+    try:
+        _ensure_hotspot_cache_table()
+
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    with latest_run as (
+                        select result
+                        from public.hotspot_runs
+                        where integration_run_id = :integration_run_id
+                        order by updated_at desc, created_at desc
+                        limit 1
+                    )
+                    select
+                        coalesce(item ->> 'barangay', '') as barangay,
+                        coalesce(item ->> 'barangay_key', '') as barangay_key,
+                        coalesce(item ->> 'hotspot_level', '') as hotspot_level
+                    from latest_run
+                    cross join lateral jsonb_array_elements(
+                        coalesce(latest_run.result -> 'hotspots', '[]'::jsonb)
+                    ) as item
+                    """
+                ),
+                {
+                    "integration_run_id": integration_run_id,
+                },
+            ).mappings().all()
+    except Exception:
+        # The local BHW map can still fall back to forecast-only context if the
+        # saved hotspot table is unavailable. Never trigger a heavy GIS run here.
+        return []
+
+    return [dict(row) for row in rows]
+
+
 def _load_cached_hotspot_result(integration_run_id, radius_km, fallback_nearest_count):
     if not integration_run_id:
         return None

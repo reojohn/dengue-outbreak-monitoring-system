@@ -2751,6 +2751,7 @@ function StatCard({
   helper,
   icon: Icon,
   tone = 'blue',
+  signalLabel = 'Live forecast signal',
   onClick = null,
   actionLabel = 'View barangay list',
   ariaLabel = '',
@@ -2806,7 +2807,7 @@ function StatCard({
             <div className="mt-2 flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${style.signal} shadow-[0_0_12px_currentColor]`} />
               <span className="forecast-stat-signal-label text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                Live forecast signal
+                {signalLabel}
               </span>
             </div>
           </div>
@@ -3676,6 +3677,19 @@ function getModelBoardOrder(index = 0, totalModels = 0) {
     : (index - splitPoint) * 2 + 1
 }
 
+function getModelMetricSparklinePath(modelIndex = 0, metricIndex = 0) {
+  const paths = [
+    'M4 22 L18 18 L32 20 L46 9 L60 15 L74 12 L88 21',
+    'M4 19 L18 14 L32 17 L46 11 L60 16 L74 20 L88 15',
+    'M4 21 L18 12 L32 14 L46 22 L60 18 L74 20 L88 13',
+    'M4 20 L18 21 L32 10 L46 15 L60 12 L74 18 L88 16',
+    'M4 18 L18 9 L32 16 L46 14 L60 20 L74 17 L88 19',
+    'M4 17 L18 19 L32 13 L46 8 L60 14 L74 11 L88 18',
+  ]
+
+  return paths[(modelIndex + metricIndex) % paths.length]
+}
+
 
 export default function ForecastPage() {
   const navigate = useNavigate()
@@ -3943,9 +3957,13 @@ export default function ForecastPage() {
   const riskExplanationHumiditySuitability =
     selectedRiskExplanationRow?.humiditySuitability ||
     'Humidity unavailable'
-  const riskExplanationWeatherCoverage =
-    selectedRiskExplanationRow?.weatherCoverageLabel ||
-    'Weather data unavailable'
+  const riskExplanationWeatherSourceCount = Number(
+    sourceStatus?.weather?.validCount || 0
+  )
+  const riskExplanationWeatherSourceCoverage =
+    sourceStatus?.weather?.coverageStart && sourceStatus?.weather?.coverageEnd
+      ? `${sourceStatus.weather.coverageStart} to ${sourceStatus.weather.coverageEnd}`
+      : ''
   const riskExplanationAverageRainfall = Number(
     selectedRiskExplanationRow?.averageRainfall ||
       selectedRiskExplanationRow?.avgRainfall ||
@@ -3960,9 +3978,6 @@ export default function ForecastPage() {
     selectedRiskExplanationRow?.averageHumidity ||
       selectedRiskExplanationRow?.avgHumidity ||
       0
-  )
-  const riskExplanationWeatherRecordCount = Number(
-    selectedRiskExplanationRow?.weatherRecordCount || 0
   )
   const riskExplanationComponentItems = getRiskComponentItems(
     selectedRiskExplanationRow
@@ -4059,6 +4074,7 @@ export default function ForecastPage() {
           ? `${formatNumber(riskExplanationScore)}/100`
           : 'No data',
       helper: 'Overall planning priority from forecast, weather, trend, population, and density',
+      signalLabel: 'Barangay-specific score',
       icon: Gauge,
       tone: 'blue',
     },
@@ -4068,7 +4084,10 @@ export default function ForecastPage() {
         riskExplanationAverageRainfall > 0
           ? `${formatDecimal(riskExplanationAverageRainfall)} mm average`
           : 'No data',
-      helper: riskExplanationRainfallPressure,
+      helper: riskExplanationRainfallPressure !== 'Rainfall unavailable'
+        ? `Shared context · ${riskExplanationRainfallPressure}`
+        : riskExplanationRainfallPressure,
+      signalLabel: 'Shared weather signal',
       icon: CloudRain,
       tone: 'blue',
     },
@@ -4078,7 +4097,10 @@ export default function ForecastPage() {
         riskExplanationAverageTemperature > 0
           ? `${formatDecimal(riskExplanationAverageTemperature)} °C`
           : 'No data',
-      helper: riskExplanationTemperatureSuitability,
+      helper: riskExplanationTemperatureSuitability !== 'Temperature unavailable'
+        ? `Shared context · ${riskExplanationTemperatureSuitability}`
+        : riskExplanationTemperatureSuitability,
+      signalLabel: 'Shared weather signal',
       icon: Thermometer,
       tone: 'amber',
     },
@@ -4088,7 +4110,10 @@ export default function ForecastPage() {
         riskExplanationAverageHumidity > 0
           ? `${formatDecimal(riskExplanationAverageHumidity)}%`
           : 'No data',
-      helper: riskExplanationHumiditySuitability,
+      helper: riskExplanationHumiditySuitability !== 'Humidity unavailable'
+        ? `Shared context · ${riskExplanationHumiditySuitability}`
+        : riskExplanationHumiditySuitability,
+      signalLabel: 'Shared weather signal',
       icon: Droplets,
       tone: 'emerald',
     },
@@ -5270,8 +5295,11 @@ const activeModelComparison = (() => {
       )}
 
       {activeModelComparison.length > 0 && (
-        <div className="forecast-ai-model-board rounded-[32px] border border-slate-200/80 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="forecast-ai-model-board model-board-shell relative overflow-hidden rounded-[32px] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/80 to-cyan-50/70 p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-cyan-950/20">
+          <div className="model-board-grid-glow pointer-events-none absolute inset-0" />
+          <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-cyan-300/10 blur-3xl dark:bg-cyan-400/10" />
+          <div className="pointer-events-none absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-blue-300/10 blur-3xl dark:bg-blue-400/10" />
+          <div className="model-board-header flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-base font-black text-brand-text dark:text-slate-100">
                 Model comparison board
@@ -5285,7 +5313,7 @@ const activeModelComparison = (() => {
             </span>
           </div>
 
-          <div className="mobile-model-comparison-grid mt-5 grid gap-4 xl:grid-cols-2">
+          <div className="mobile-model-comparison-grid model-board-polished-grid relative mt-4 grid gap-4">
             {activeModelComparison.map((model, index) => {
               const isAvailable = model.is_available !== false && hasMetricValue(model.rmse)
               const isSelected = index === 0 && isAvailable
@@ -5298,144 +5326,173 @@ const activeModelComparison = (() => {
                 <div
                   key={model.model_key || model.model_name}
                   style={{ '--model-board-order': getModelBoardOrder(index, activeModelComparison.length) }}
-                  className={`model-board-card relative overflow-hidden rounded-[30px] border shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${accent.card}`}
+                  className={`model-board-card model-board-card-polished ${isExpandedModel ? 'model-board-card-expanded' : ''} relative overflow-hidden rounded-[28px] border shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${accent.card}`}
                 >
+                  <div className="model-board-card-sheen pointer-events-none absolute inset-0" />
+                  <div className="model-board-card-topline pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/80 to-transparent dark:via-cyan-200/25" />
                   <button
                     type="button"
                     onClick={() => setExpandedModelKey(isExpandedModel ? null : model.model_key)}
-                    className="block w-full p-4 text-left"
+                    className="model-board-card-button block w-full p-5 text-left"
                   >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-base font-black shadow-sm ${accent.rankBadge}`}>
-                          #{index + 1}
+                    <div className="flex flex-col gap-5 xl:flex-row xl:items-stretch xl:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-4">
+                          <div className={`model-board-rank-badge flex h-14 w-14 shrink-0 items-center justify-center border text-[1.35rem] font-black shadow-sm ${accent.rankBadge}`}>
+                            {index + 1}
+                          </div>
+
+                          <div className="flex min-w-0 flex-1 items-start gap-4">
+                            <div className={`model-board-icon-stage ${isSelected ? 'is-selected' : ''}`}>
+                              <div className="model-board-icon-halo" />
+                              <img
+                                src={getModelIcon(model, index)}
+                                alt={`${model.model_name} AI icon`}
+                                className="model-board-icon relative z-10 h-24 w-24 shrink-0 object-contain drop-shadow-[0_14px_24px_rgba(15,23,42,0.28)]"
+                              />
+                              <div className="model-board-icon-platform">
+                                <span />
+                              </div>
+                            </div>
+
+                            <div className="min-w-0 flex-1 pt-1">
+                              <div className="flex flex-wrap items-center gap-2.5">
+                                <p className="text-[1.05rem] font-black text-brand-text dark:text-slate-100 sm:text-[1.15rem]">
+                                  {model.model_name}
+                                </p>
+                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${isSelected ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300' : isAvailable ? 'border-slate-200 bg-white text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'}`}>
+                                  {isSelected ? 'Selected' : isAvailable ? 'Compared' : 'Not evaluated'}
+                                </span>
+                              </div>
+
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.95rem] font-bold text-brand-muted dark:text-slate-400">
+                                <span>MAE {formatOptionalDecimal(model.mae)}</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        <img
-                          src={getModelIcon(model, index)}
-                          alt={`${model.model_name} AI icon`}
-                          className="h-32 w-32 shrink-0 object-contain drop-shadow-[0_16px_28px_rgba(15,23,42,0.30)]"
-                        />
-
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-lg font-black text-brand-text dark:text-slate-100">
-                              {model.model_name}
-                            </p>
-                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${isSelected ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300' : isAvailable ? 'border-slate-200 bg-white text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'}`}>
-                              {isSelected ? 'Selected' : isAvailable ? 'Compared' : 'Not evaluated'}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {getModelTypeBadges(model.model_key).map((badge) => (
+                            <span key={badge} className="rounded-full border border-slate-200 bg-white/72 px-2.5 py-1 text-[11px] font-bold leading-4 text-brand-muted shadow-sm dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
+                              {badge}
                             </span>
-                          </div>
-
-                          <p className="mt-1 text-xs font-semibold text-brand-muted dark:text-slate-500">
-                            {getModelScoreLabel(model)}
-                          </p>
-
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {getModelTypeBadges(model.model_key).map((badge) => (
-                              <span key={badge} className="rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 text-[11px] font-bold leading-4 text-brand-muted dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
-                                {badge}
-                              </span>
-                            ))}
-                          </div>
+                          ))}
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 sm:min-w-[300px]">
+                      <div className="model-board-metric-strip grid grid-cols-3 gap-3 xl:w-[360px] xl:min-w-[360px]">
                         {[
-                          ['RMSE', formatOptionalDecimal(model.rmse)],
-                          ['Risk-class accuracy', formatMetricPercent(model.accuracy)],
-                          ['Risk-class F1', formatMetricPercent(model.f1_score)],
-                        ].map(([label, value]) => (
-                          <div key={label} className="rounded-[18px] border border-white/70 bg-white px-3 py-2 text-center shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                            <p className="text-[10px] font-black uppercase tracking-[0.10em] text-brand-muted dark:text-slate-500">{label}</p>
-                            <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{value}</p>
+                          ['RMSE', 'RMSE', formatOptionalDecimal(model.rmse)],
+                          ['Risk accuracy', 'Risk-class accuracy', formatMetricPercent(model.accuracy)],
+                          ['Risk F1', 'Risk-class F1', formatMetricPercent(model.f1_score)],
+                        ].map(([label, fullLabel, value], metricIndex) => (
+                          <div key={fullLabel} className="model-board-mini-metric relative overflow-hidden rounded-[18px] border border-white/85 bg-white/95 px-3 py-3 text-center shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-950/80">
+                            <p title={fullLabel} className="model-board-mini-metric-label text-[10px] font-black uppercase leading-[1.15] tracking-[0.04em] text-brand-muted dark:text-slate-500">{label}</p>
+                            <p className="mt-1.5 text-[1.05rem] font-black text-brand-text dark:text-slate-100">{value}</p>
+                            <div className="model-board-mini-metric-wave mt-2">
+                              <svg viewBox="0 0 92 28" className="h-6 w-full" fill="none" preserveAspectRatio="none">
+                                <path
+                                  d={getModelMetricSparklinePath(index, metricIndex)}
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="model-board-mini-metric-line"
+                                />
+                              </svg>
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-end text-xs font-black text-brand-muted dark:text-slate-400">
+                    <div className="mt-4 flex items-center justify-end text-sm font-black text-brand-blue dark:text-blue-300">
                       <span className="inline-flex items-center gap-1.5">
                         {isExpandedModel ? 'Hide details' : 'View details'}
-                        {isExpandedModel ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        <ArrowUpRight className={`h-4 w-4 transition ${isExpandedModel ? 'rotate-45' : ''}`} />
                       </span>
                     </div>
                   </button>
 
                   {isExpandedModel && (
                     <div className="border-t border-white/70 bg-white/70 p-4 dark:border-slate-800 dark:bg-slate-950/65">
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-                        <div className="space-y-4">
-                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            {[
-                              ['Train/Test', model.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard'],
-                              ['Random State', model.random_state ?? 'N/A'],
-                              ['Training Samples', formatNumber(model.training_row_count)],
-                              ['Testing Samples', formatNumber(model.testing_row_count)],
-                              ['Training Time', formatSeconds(model.training_duration_seconds)],
-                              ['Evaluated', formatDateTime(model.evaluated_at || activeTrainingSummary?.evaluated_at)],
-                              ['RMSE', formatOptionalDecimal(model.rmse)],
-                              ['MAE', formatOptionalDecimal(model.mae)],
-                            ].map(([label, value]) => (
-                              <div key={label} className="rounded-[20px] border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                                <p className="text-[11px] font-black uppercase tracking-[0.10em] text-brand-muted dark:text-slate-500">{label}</p>
-                                <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{value || 'N/A'}</p>
-                              </div>
-                            ))}
+                      <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {[
+                            ['Train/Test', model.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard'],
+                            ['Random State', model.random_state ?? 'N/A'],
+                            ['Training Samples', formatNumber(model.training_row_count)],
+                            ['Testing Samples', formatNumber(model.testing_row_count)],
+                            ['Training Time', formatSeconds(model.training_duration_seconds)],
+                            ['Evaluated', formatDateTime(model.evaluated_at || activeTrainingSummary?.evaluated_at)],
+                            ['RMSE', formatOptionalDecimal(model.rmse)],
+                            ['MAE', formatOptionalDecimal(model.mae)],
+                          ].map(([label, value]) => (
+                            <div key={label} className="model-detail-stat-card rounded-[20px] border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                              <p className="text-[11px] font-black uppercase tracking-[0.10em] text-brand-muted dark:text-slate-500">{label}</p>
+                              <p className="mt-1.5 text-sm font-black leading-6 text-brand-text dark:text-slate-100">{value || 'N/A'}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="min-w-0 rounded-[24px] border border-blue-100 bg-blue-50/70 p-5 dark:border-blue-500/20 dark:bg-blue-500/10">
+                            <p className="text-base font-black text-brand-blue dark:text-blue-300">Performance profile</p>
+                            <div className="mt-3 space-y-3">
+                              {[
+                                ['RMSE', model.rmse, 'error'],
+                                ['MAE', model.mae, 'error'],
+                                ['Risk-class accuracy', model.accuracy, 'percent'],
+                                ['Risk-class precision', model.precision, 'percent'],
+                                ['Risk-class recall', model.recall, 'percent'],
+                                ['Risk-class F1', model.f1_score, 'percent'],
+                              ].map(([label, value, type]) => (
+                                <div key={label}>
+                                  <div className="flex items-center justify-between gap-3 text-xs font-bold text-brand-muted dark:text-slate-400">
+                                    <span>{label}</span>
+                                    <span>{type === 'percent' ? formatMetricPercent(value) : formatOptionalDecimal(value)}</span>
+                                  </div>
+                                  <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white dark:bg-slate-800">
+                                    <div
+                                      className={`h-full rounded-full bg-gradient-to-r ${accent.bar}`}
+                                      style={{ width: getMetricBarWidth(value, type) }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
 
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <div className="rounded-[24px] border border-blue-100 bg-blue-50/70 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
-                              <p className="text-sm font-black text-brand-blue dark:text-blue-300">Performance profile</p>
-                              <div className="mt-3 space-y-3">
-                                {[
-                                  ['RMSE', model.rmse, 'error'],
-                                  ['MAE', model.mae, 'error'],
-                                  ['Risk-class accuracy', model.accuracy, 'percent'],
-                                  ['Risk-class precision', model.precision, 'percent'],
-                                  ['Risk-class recall', model.recall, 'percent'],
-                                  ['Risk-class F1', model.f1_score, 'percent'],
-                                ].map(([label, value, type]) => (
-                                  <div key={label}>
-                                    <div className="flex items-center justify-between gap-3 text-xs font-bold text-brand-muted dark:text-slate-400">
-                                      <span>{label}</span>
-                                      <span>{type === 'percent' ? formatMetricPercent(value) : formatOptionalDecimal(value)}</span>
-                                    </div>
-                                    <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white dark:bg-slate-800">
-                                      <div
-                                        className={`h-full rounded-full bg-gradient-to-r ${accent.bar}`}
-                                        style={{ width: getMetricBarWidth(value, type) }}
-                                      />
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-                              <p className="text-sm font-black text-brand-green dark:text-emerald-300">Model characteristics</p>
-                              <div className="mt-3 space-y-2">
-                                {modelCharacteristics.map((item) => (
-                                  <div key={item} className="flex gap-2 text-xs leading-5 text-brand-muted dark:text-slate-400">
-                                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-green dark:text-emerald-300" />
-                                    <span>{item}</span>
-                                  </div>
-                                ))}
-                              </div>
+                          <div className="min-w-0 rounded-[24px] border border-emerald-100 bg-emerald-50/70 p-5 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                            <p className="text-base font-black text-brand-green dark:text-emerald-300">Model characteristics</p>
+                            <div className="mt-3 space-y-2">
+                              {modelCharacteristics.map((item) => (
+                                <div key={item} className="flex gap-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
+                                  <CheckCircle2 className="mt-1 h-3.5 w-3.5 shrink-0 text-brand-green dark:text-emerald-300" />
+                                  <span>{item}</span>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </div>
 
                         <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                          <p className="text-sm font-black text-brand-text dark:text-slate-100">
-                            Feature importance
-                          </p>
-                          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
-                            Inputs that influenced this model most during forecasting.
-                          </p>
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                              <p className="text-sm font-black text-brand-text dark:text-slate-100">
+                                Feature importance
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
+                                Inputs that influenced this model most during forecasting.
+                              </p>
+                            </div>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-brand-muted dark:text-slate-500">
+                              Ranked by contribution strength
+                            </p>
+                          </div>
 
-                          <div className="mt-4 space-y-3">
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
                             {importanceItems.length > 0 ? (
                               importanceItems.map((item) => (
                                 <div key={`${model.model_key}-${item.feature}`} className="rounded-[18px] border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70">
@@ -5461,7 +5518,7 @@ const activeModelComparison = (() => {
                                 </div>
                               ))
                             ) : (
-                              <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                              <div className="lg:col-span-2 rounded-[20px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-brand-muted dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                                 Feature importance is not available for this model yet. Retraining with the latest backend upgrade will populate this section.
                               </div>
                             )}
@@ -5473,6 +5530,8 @@ const activeModelComparison = (() => {
                 </div>
               )
             })}
+
+
           </div>
         </div>
       )}
@@ -5552,7 +5611,7 @@ const activeModelComparison = (() => {
             </h2>
 
             <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted dark:text-slate-400">
-              The current #1 ranked barangay is selected by default. Search for another barangay to review how forecast cases, recent changes, rainfall, temperature, humidity, population, crowding, and land area affected its score.
+              The current #1 ranked barangay is selected by default. Search for another barangay to compare its barangay-specific forecast, recent trend, population, crowding, and land-area factors. Rainfall, temperature, and humidity use the same forecast-period weather context across barangays, so those three values may stay unchanged when you switch barangays.
             </p>
           </div>
 
@@ -5568,7 +5627,7 @@ const activeModelComparison = (() => {
             />
 
             <div className="w-fit max-w-full rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-black text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-              {riskExplanationEnvironmentalSuitability}
+              Shared weather context · {riskExplanationEnvironmentalSuitability}
             </div>
           </div>
         </div>
@@ -5582,6 +5641,7 @@ const activeModelComparison = (() => {
               helper={item.helper}
               icon={item.icon}
               tone={item.tone}
+              signalLabel={item.signalLabel}
             />
           ))}
         </div>
@@ -5620,15 +5680,17 @@ const activeModelComparison = (() => {
 
           <div className="rounded-[26px] border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
             <p className="text-sm font-black text-brand-blue dark:text-blue-300">
-              Local weather context
+              Weather coverage
             </p>
 
             <p className="mt-2 text-sm leading-6 text-brand-muted dark:text-slate-400">
-              {riskExplanationWeatherCoverage}. This barangay explanation summarizes {formatNumber(riskExplanationWeatherRecordCount)} nearby weather context period{riskExplanationWeatherRecordCount === 1 ? '' : 's'}; the full uploaded weather source contains {formatNumber(Number(sourceStatus?.weather?.validCount || 0))} valid observations.
+              Rainfall, temperature, and humidity use a shared forecast-period weather context across barangays. These three values can therefore remain the same when a different barangay is selected.
             </p>
 
             <p className="mt-3 text-xs leading-5 text-brand-muted dark:text-slate-500">
-              These weather values help estimate risk. The warning levels can still be improved when more dengue records are available.
+              {riskExplanationWeatherSourceCount > 0
+                ? `The uploaded weather source contains ${formatNumber(riskExplanationWeatherSourceCount)} valid observations${riskExplanationWeatherSourceCoverage ? ` covering ${riskExplanationWeatherSourceCoverage}` : ''}. Barangay priority differences mainly come from forecast volume, recent trend, population, crowding or density, and other barangay-specific inputs.`
+                : 'The weather values shown come from the shared context available in the current forecast. Barangay priority differences mainly come from barangay-specific forecast, trend, population, and density inputs.'}
             </p>
           </div>
         </div>
@@ -6611,10 +6673,606 @@ const activeModelComparison = (() => {
           filter: saturate(1.2) contrast(1.08);
         }
 
+        .model-board-shell {
+          isolation: isolate;
+          display: block !important;
+          min-height: 0 !important;
+          height: auto !important;
+          max-height: none !important;
+          align-content: start !important;
+          justify-content: flex-start !important;
+        }
+
+        .forecast-ai-model-board {
+          display: block !important;
+          min-height: 0 !important;
+          height: auto !important;
+          max-height: none !important;
+          padding-top: 1.25rem !important;
+          align-content: start !important;
+          justify-content: flex-start !important;
+        }
+
+        .forecast-ai-model-board > .model-board-header {
+          position: relative !important;
+          inset: auto !important;
+          top: auto !important;
+          bottom: auto !important;
+          margin-top: 0 !important;
+          padding-top: 0 !important;
+          transform: none !important;
+        }
+
+        .forecast-ai-model-board > .mobile-model-comparison-grid {
+          position: relative !important;
+          inset: auto !important;
+          top: auto !important;
+          bottom: auto !important;
+          transform: none !important;
+        }
+
+        .model-board-grid-glow {
+          z-index: 0;
+          opacity: 0.45;
+          background-image:
+            linear-gradient(rgba(14, 165, 233, 0.045) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(14, 165, 233, 0.045) 1px, transparent 1px);
+          background-size: 28px 28px;
+          mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 82%);
+        }
+
+        /* Keep only real board content above the decorative background layers.
+           Do NOT apply position: relative to every child here: doing that
+           overrides Tailwind's absolute utility on the two glow blobs and
+           makes those large decorative elements take up layout space. */
+        .model-board-shell > .model-board-header,
+        .model-board-shell > .mobile-model-comparison-grid {
+          position: relative;
+          z-index: 1;
+        }
+
+        .model-board-card-polished {
+          min-width: 0;
+          backdrop-filter: blur(18px);
+          transform: translateZ(0);
+        }
+
+        .model-board-card-polished::before {
+          content: '';
+          pointer-events: none;
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          background:
+            radial-gradient(circle at 12% 8%, rgba(255,255,255,0.85), transparent 26%),
+            linear-gradient(135deg, rgba(255,255,255,0.24), transparent 42%);
+          opacity: 0.58;
+          z-index: 0;
+        }
+
+        .model-board-card-sheen {
+          z-index: 0;
+          background: linear-gradient(118deg, transparent 0%, transparent 38%, rgba(255,255,255,0.34) 50%, transparent 62%, transparent 100%);
+          transform: translateX(-120%);
+          transition: transform 700ms ease;
+        }
+
+        .model-board-card-polished:hover .model-board-card-sheen {
+          transform: translateX(120%);
+        }
+
+        .model-board-card-polished > * {
+          position: relative;
+          z-index: 1;
+        }
+
+        .model-board-card-button {
+          min-height: 204px;
+        }
+
+        .model-board-rank-badge {
+          border-radius: 16px;
+          clip-path: polygon(25% 5%, 75% 5%, 96% 25%, 96% 75%, 75% 95%, 25% 95%, 4% 75%, 4% 25%);
+        }
+
+        .model-board-icon-stage {
+          position: relative;
+          display: flex;
+          width: 106px;
+          height: 118px;
+          flex: 0 0 auto;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .model-board-icon-halo {
+          position: absolute;
+          width: 84px;
+          height: 84px;
+          border-radius: 999px;
+          background: radial-gradient(circle, rgba(56,189,248,0.20), rgba(56,189,248,0.06) 48%, transparent 70%);
+          filter: blur(2px);
+        }
+
+        .model-board-icon-stage.is-selected .model-board-icon-halo {
+          background: radial-gradient(circle, rgba(45,212,191,0.30), rgba(34,211,238,0.10) 52%, transparent 72%);
+          box-shadow: 0 0 38px rgba(45, 212, 191, 0.26);
+        }
+
+        .model-board-icon {
+          transform: translateY(-4px);
+          transition: transform 260ms ease, filter 260ms ease;
+        }
+
+        .model-board-card-polished:hover .model-board-icon {
+          transform: translateY(-8px) scale(1.04);
+          filter: saturate(1.08);
+        }
+
+        .model-board-icon-platform {
+          position: absolute;
+          bottom: 4px;
+          left: 50%;
+          width: 84px;
+          height: 26px;
+          transform: translateX(-50%);
+          border: 1px solid rgba(148,163,184,0.28);
+          border-radius: 999px;
+          background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(226,232,240,0.72));
+          box-shadow: inset 0 2px 8px rgba(255,255,255,0.75), 0 10px 20px rgba(15,23,42,0.12);
+        }
+
+        .model-board-icon-platform::before,
+        .model-board-icon-platform::after {
+          content: '';
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          border-radius: 999px;
+        }
+
+        .model-board-icon-platform::before {
+          top: 5px;
+          width: 58px;
+          height: 8px;
+          background: linear-gradient(90deg, rgba(14,165,233,0.18), rgba(34,211,238,0.78), rgba(14,165,233,0.18));
+          box-shadow: 0 0 14px rgba(34,211,238,0.44);
+        }
+
+        .model-board-icon-platform::after {
+          bottom: -6px;
+          width: 68px;
+          height: 8px;
+          background: radial-gradient(ellipse, rgba(14,165,233,0.22), transparent 72%);
+          filter: blur(2px);
+        }
+
+        .model-board-icon-platform span {
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          border-top: 1px solid rgba(255,255,255,0.9);
+        }
+
+        .model-board-mini-metric {
+          min-width: 0;
+          min-height: 112px;
+          color: #38bdf8;
+        }
+
+        .model-board-mini-metric-label {
+          min-height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          white-space: normal;
+          overflow-wrap: normal;
+          word-break: keep-all;
+          text-wrap: balance;
+        }
+
+        .model-board-mini-metric-wave {
+          position: relative;
+          z-index: 1;
+          color: inherit;
+        }
+
+        .model-board-mini-metric-line {
+          opacity: 0.9;
+          filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.25));
+        }
+
+        .model-board-mini-metric::after {
+          content: '';
+          position: absolute;
+          inset: auto 12px 10px;
+          height: 1px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, rgba(14,165,233,0.10), rgba(34,211,238,0.42), rgba(14,165,233,0.10));
+          box-shadow: 0 0 10px rgba(34,211,238,0.12);
+        }
+
+        .dark .model-board-icon-platform {
+          border-color: rgba(148,163,184,0.18);
+          background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.92));
+        }
+
         @media (min-width: 1280px) {
-          .model-board-card {
-            order: var(--model-board-order);
+          .model-board-polished-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+            align-content: start;
+            column-gap: 1rem;
+            row-gap: 1rem;
           }
+
+          .model-board-polished-grid > .model-board-card {
+            order: var(--model-board-order, 0) !important;
+            min-width: 0;
+          }
+
+          .model-board-polished-grid > .model-board-card-expanded {
+            grid-column: 1 / -1;
+          }
+        }
+
+        .model-core-cylinder {
+          position: sticky;
+          top: 92px;
+          display: flex;
+          width: 100%;
+          max-width: 286px;
+          min-height: 892px;
+          height: 100%;
+          align-self: stretch;
+          flex-direction: column;
+          padding: 22px 16px;
+          filter: drop-shadow(0 24px 36px rgba(8, 47, 73, 0.18));
+        }
+
+        .model-core-glass {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          flex: 1;
+          min-height: 816px;
+          flex-direction: column;
+          align-items: center;
+          overflow: hidden;
+          border-left: 1px solid rgba(103,232,249,0.42);
+          border-right: 1px solid rgba(103,232,249,0.42);
+          background:
+            linear-gradient(90deg, rgba(255,255,255,0.22), rgba(14,116,144,0.05) 18%, rgba(8,47,73,0.58) 50%, rgba(14,116,144,0.05) 82%, rgba(255,255,255,0.22)),
+            linear-gradient(180deg, rgba(236,254,255,0.70), rgba(8,47,73,0.88) 22%, rgba(2,6,23,0.94) 82%, rgba(8,47,73,0.88));
+          box-shadow:
+            inset 16px 0 28px rgba(255,255,255,0.08),
+            inset -16px 0 28px rgba(255,255,255,0.08),
+            0 0 30px rgba(34,211,238,0.16);
+        }
+
+        .model-core-cap {
+          position: relative;
+          z-index: 3;
+          height: 46px;
+          margin-inline: -8px;
+          border: 1px solid rgba(148,163,184,0.42);
+          border-radius: 50%;
+          background: linear-gradient(180deg, #f8fafc 0%, #cbd5e1 34%, #64748b 72%, #e2e8f0 100%);
+          box-shadow: inset 0 4px 8px rgba(255,255,255,0.9), 0 8px 20px rgba(15,23,42,0.16);
+        }
+
+        .model-core-cap-top { margin-bottom: -18px; }
+        .model-core-cap-bottom { margin-top: -18px; }
+
+        .model-core-cap-ring {
+          position: absolute;
+          inset: 8px 18px;
+          border: 2px solid rgba(103,232,249,0.92);
+          border-radius: 50%;
+          box-shadow: 0 0 12px rgba(34,211,238,0.78), inset 0 0 10px rgba(34,211,238,0.35);
+        }
+
+        .model-core-cap-light,
+        .model-core-floor-light {
+          position: absolute;
+          left: 50%;
+          width: 52%;
+          height: 6px;
+          transform: translateX(-50%);
+          border-radius: 999px;
+          background: #67e8f9;
+          box-shadow: 0 0 14px #22d3ee, 0 0 28px rgba(34,211,238,0.62);
+        }
+
+        .model-core-cap-light { bottom: 4px; }
+        .model-core-floor-light { top: 4px; }
+
+        .model-core-scanline {
+          position: absolute;
+          inset-inline: 10%;
+          top: 10%;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(103,232,249,0.92), transparent);
+          box-shadow: 0 0 12px rgba(34,211,238,0.8);
+          animation: model-core-scan 4.4s ease-in-out infinite;
+        }
+
+        .model-core-particles {
+          position: absolute;
+          inset: 0;
+          opacity: 0.32;
+          background-image:
+            radial-gradient(circle at 18% 20%, rgba(103,232,249,0.95) 0 1px, transparent 1.6px),
+            radial-gradient(circle at 78% 32%, rgba(45,212,191,0.95) 0 1px, transparent 1.6px),
+            radial-gradient(circle at 35% 72%, rgba(125,211,252,0.85) 0 1px, transparent 1.5px),
+            radial-gradient(circle at 72% 82%, rgba(103,232,249,0.85) 0 1px, transparent 1.5px);
+          background-size: 54px 68px, 72px 84px, 62px 76px, 82px 92px;
+        }
+
+        .model-core-header {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          margin-top: 48px;
+          align-items: center;
+          gap: 6px;
+          color: #ecfeff;
+        }
+
+        .model-core-header p {
+          font-size: 0.98rem;
+          font-weight: 950;
+          letter-spacing: 0.14em;
+        }
+
+        .model-core-live-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: #34d399;
+          box-shadow: 0 0 10px rgba(52,211,153,0.95);
+          animation: model-core-live 1.8s ease-in-out infinite;
+        }
+
+        .model-core-live-label {
+          font-size: 0.60rem;
+          font-weight: 900;
+          letter-spacing: 0.10em;
+          color: #5eead4;
+        }
+
+        .model-core-subtitle {
+          position: relative;
+          z-index: 2;
+          margin-top: 6px;
+          font-size: 0.78rem;
+          font-weight: 800;
+          color: rgba(207,250,254,0.82);
+        }
+
+        .model-core-orb {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          width: 138px;
+          height: 138px;
+          margin-top: 24px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: radial-gradient(circle, rgba(34,211,238,0.28), rgba(14,116,144,0.10) 50%, transparent 70%);
+          box-shadow: 0 0 32px rgba(34,211,238,0.26);
+        }
+
+        .model-core-orb-ring {
+          position: absolute;
+          border: 1px solid rgba(103,232,249,0.55);
+          border-radius: 50%;
+        }
+
+        .model-core-orb-ring.ring-one { inset: 13px 22px; transform: rotate(24deg); }
+        .model-core-orb-ring.ring-two { inset: 22px 13px; transform: rotate(-28deg); }
+        .model-core-orb-ring.ring-three { inset: 32px 9px; transform: rotate(78deg); }
+
+        .model-core-brain-mark {
+          display: flex;
+          width: 62px;
+          height: 62px;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(165,243,252,0.62);
+          border-radius: 50%;
+          color: #a5f3fc;
+          background: rgba(8,47,73,0.72);
+          box-shadow: inset 0 0 18px rgba(34,211,238,0.26), 0 0 26px rgba(34,211,238,0.34);
+        }
+
+        .model-core-node {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #67e8f9;
+          box-shadow: 0 0 10px rgba(103,232,249,0.9);
+        }
+
+        .model-core-node.node-a { left: 26px; top: 42px; }
+        .model-core-node.node-b { right: 25px; top: 38px; }
+        .model-core-node.node-c { left: 38px; bottom: 26px; }
+        .model-core-node.node-d { right: 35px; bottom: 30px; }
+
+        .model-core-copy {
+          position: relative;
+          z-index: 2;
+          margin-top: 22px;
+          text-align: center;
+          color: rgba(207,250,254,0.78);
+          font-size: 0.82rem;
+          line-height: 1.6;
+        }
+
+        .model-core-copy strong {
+          display: block;
+          margin-top: 2px;
+          color: #ecfeff;
+          font-size: 0.95rem;
+          font-weight: 900;
+        }
+
+        .model-core-bars {
+          position: relative;
+          z-index: 2;
+          width: 100%;
+          margin-top: 22px;
+          padding-inline: 18px;
+        }
+
+        .model-core-insight-card {
+          position: relative;
+          z-index: 2;
+          width: calc(100% - 28px);
+          margin-top: 22px;
+          padding: 16px 16px 14px;
+          border: 1px solid rgba(103,232,249,0.22);
+          border-radius: 16px;
+          background: linear-gradient(180deg, rgba(15,23,42,0.38), rgba(8,47,73,0.58));
+          box-shadow: inset 0 0 16px rgba(34,211,238,0.08), 0 0 18px rgba(8,145,178,0.08);
+          text-align: left;
+        }
+
+        .model-core-insight-card-alt {
+          margin-top: 14px;
+          background: linear-gradient(180deg, rgba(9,18,37,0.44), rgba(8,47,73,0.50));
+        }
+
+        .model-core-insight-label {
+          display: block;
+          font-size: 0.62rem;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(165,243,252,0.74);
+        }
+
+        .model-core-insight-value {
+          display: block;
+          margin-top: 8px;
+          font-size: 0.92rem;
+          line-height: 1.5;
+          font-weight: 900;
+          color: #ecfeff;
+        }
+
+        .model-core-insight-copy {
+          margin-top: 8px;
+          font-size: 0.72rem;
+          line-height: 1.65;
+          color: rgba(207,250,254,0.78);
+        }
+
+        .model-core-insight-list {
+          margin-top: 9px;
+          padding-left: 1rem;
+          list-style: disc;
+          color: rgba(224,242,254,0.84);
+          font-size: 0.72rem;
+          line-height: 1.65;
+        }
+
+        .model-core-insight-list li + li {
+          margin-top: 6px;
+        }
+
+        .model-core-bar-row + .model-core-bar-row { margin-top: 12px; }
+
+        .model-core-bar-label {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          color: rgba(236,254,255,0.88);
+          font-size: 0.72rem;
+          font-weight: 800;
+        }
+
+        .model-core-bar-label svg { color: #5eead4; }
+
+        .model-core-bar-track {
+          height: 6px;
+          margin-top: 7px;
+          overflow: hidden;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.10);
+        }
+
+        .model-core-bar-track span {
+          display: block;
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, #2dd4bf, #67e8f9);
+          box-shadow: 0 0 9px rgba(103,232,249,0.55);
+        }
+
+        .model-core-summary-grid {
+          position: relative;
+          z-index: 2;
+          display: grid;
+          width: calc(100% - 24px);
+          margin-top: 22px;
+          margin-bottom: 12px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .model-core-footer-note {
+          position: relative;
+          z-index: 2;
+          width: calc(100% - 28px);
+          margin-top: auto;
+          margin-bottom: 34px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(103,232,249,0.16);
+          font-size: 0.72rem;
+          line-height: 1.65;
+          text-align: center;
+          color: rgba(186,230,253,0.80);
+        }
+
+        .model-core-summary-grid > div {
+          min-width: 0;
+          border: 1px solid rgba(103,232,249,0.16);
+          border-radius: 12px;
+          background: rgba(15,23,42,0.48);
+          padding: 10px 8px;
+          text-align: center;
+          box-shadow: inset 0 0 14px rgba(34,211,238,0.05);
+        }
+
+        .model-core-summary-grid span {
+          display: block;
+          font-size: 0.56rem;
+          font-weight: 800;
+          color: rgba(186,230,253,0.72);
+        }
+
+        .model-core-summary-grid strong {
+          display: block;
+          margin-top: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 0.84rem;
+          font-weight: 950;
+          color: #ecfeff;
+        }
+
+        @keyframes model-core-scan {
+          0%, 100% { transform: translateY(0); opacity: 0.2; }
+          50% { transform: translateY(390px); opacity: 0.85; }
+        }
+
+        @keyframes model-core-live {
+          0%, 100% { transform: scale(0.8); opacity: 0.65; }
+          50% { transform: scale(1.18); opacity: 1; }
         }
 
         .legendary-model-card-rank-1 {
@@ -8318,7 +8976,49 @@ const activeModelComparison = (() => {
           }
 
           .forecast-mobile-compact .forecast-ai-model-board .model-board-card > button {
-            padding: 0.55rem !important;
+            padding: 0.95rem !important;
+          }
+
+          .forecast-mobile-compact .model-board-card-button {
+            min-height: 0 !important;
+          }
+
+          .forecast-mobile-compact .model-board-metric-strip {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.45rem !important;
+          }
+
+          .forecast-mobile-compact .model-board-mini-metric {
+            min-height: 96px !important;
+          }
+
+          .forecast-mobile-compact .model-board-mini-metric-label {
+            min-height: 22px !important;
+            font-size: 9px !important;
+            line-height: 1.15 !important;
+          }
+
+          .forecast-mobile-compact .model-board-icon-stage {
+            width: 72px !important;
+            height: 82px !important;
+          }
+
+          .forecast-mobile-compact .model-board-icon-stage .model-board-icon {
+            width: 4.25rem !important;
+            height: 4.25rem !important;
+          }
+
+          .forecast-mobile-compact .model-board-icon-platform {
+            width: 58px !important;
+            height: 18px !important;
+          }
+
+          .forecast-mobile-compact .model-board-icon-platform::before {
+            width: 42px !important;
+          }
+
+          .forecast-mobile-compact .model-board-mini-metric {
+            min-height: 72px !important;
           }
 
           /* Keep text readable rather than hiding useful AI details. */
