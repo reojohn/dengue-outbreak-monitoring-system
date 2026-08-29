@@ -4141,3 +4141,35 @@ html:not(.dark) .leaflet-popup-tip {
     display: none !important;
   }
 }
+
+
+/* Login credential fields: keep the inputs consistently light and readable.
+   Browser autofill can otherwise replace the intended background/color. */
+#root .dengue-login-page .login-auth-input {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  caret-color: #0f172a !important;
+  color-scheme: light;
+}
+
+#root .dengue-login-page .login-auth-input::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+#root .dengue-login-page .login-auth-input:disabled {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+
+#root .dengue-login-page .login-auth-input:-webkit-autofill,
+#root .dengue-login-page .login-auth-input:-webkit-autofill:hover,
+#root .dengue-login-page .login-auth-input:-webkit-autofill:focus,
+#root .dengue-login-page .login-auth-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  transition: background-color 9999s ease-out 0s;
+}

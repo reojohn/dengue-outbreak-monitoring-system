@@ -919,7 +919,7 @@ export default function LoginPage() {
               <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
 
               <input
-                className="w-full rounded-2xl border border-white/10 bg-black/40 p-3.5 pl-12 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                className="login-auth-input w-full rounded-2xl border border-slate-200 bg-white p-3.5 pl-12 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-900 disabled:opacity-100"
                 value={email}
                 onChange={handleEmailChange}
                 placeholder="Email or username"
@@ -931,7 +931,7 @@ export default function LoginPage() {
               <LockKeyhole className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
 
               <input
-                className="w-full rounded-2xl border border-white/10 bg-black/40 p-3.5 pl-12 pr-12 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:ring-2 focus:ring-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                className="login-auth-input w-full rounded-2xl border border-slate-200 bg-white p-3.5 pl-12 pr-12 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-500 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-900 disabled:opacity-100"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(event) => {
@@ -946,7 +946,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword((current) => !current)}
                 disabled={isSigningIn}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-white disabled:cursor-not-allowed"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-800 disabled:cursor-not-allowed"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
