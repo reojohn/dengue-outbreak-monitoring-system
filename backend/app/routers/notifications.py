@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_security import get_current_user, require_roles
 from app.database import engine, get_db
+from app.schema_utils import column_exists, index_exists, table_exists
 from app.services.notification_builder import build_backend_notifications
 from app.services.notification_state import add_notification_event, clear_notification_events
 
@@ -52,80 +53,82 @@ def _validate_event_target(payload: NotificationEventRequest) -> None:
 
 
 def ensure_notification_preferences_table() -> None:
-    """Create the account-level preference and notification tables."""
+    """Ensure notification tables exist while avoiding redundant startup ALTER statements."""
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                create table if not exists public.user_preferences (
-                    user_id uuid primary key references public.app_users(id) on delete cascade,
-                    notifications_enabled boolean not null default true,
-                    updated_at timestamptz not null default now()
+        if not table_exists(connection, "public", "user_preferences"):
+            connection.execute(
+                text(
+                    """
+                    create table public.user_preferences (
+                        user_id uuid primary key references public.app_users(id) on delete cascade,
+                        notifications_enabled boolean not null default true,
+                        updated_at timestamptz not null default now()
+                    )
+                    """
                 )
-                """
             )
-        )
-        connection.execute(
-            text(
-                """
-                alter table public.user_preferences
-                add column if not exists notifications_enabled boolean not null default true
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                alter table public.user_preferences
-                add column if not exists updated_at timestamptz not null default now()
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                create table if not exists public.notifications (
-                    notification_id uuid primary key,
-                    title text not null,
-                    message text not null,
-                    severity text not null default 'info',
-                    category text not null default 'system_event',
-                    target_page text,
-                    target_hash text,
-                    is_read boolean not null default false,
-                    meta jsonb not null default '{}'::jsonb,
-                    created_at timestamptz not null default now(),
-                    recipient_role text,
-                    recipient_user_id uuid references public.app_users(id) on delete cascade
+        else:
+            if not column_exists(connection, "public", "user_preferences", "notifications_enabled"):
+                connection.execute(
+                    text(
+                        "alter table public.user_preferences "
+                        "add column notifications_enabled boolean not null default true"
+                    )
                 )
-                """
+            if not column_exists(connection, "public", "user_preferences", "updated_at"):
+                connection.execute(
+                    text(
+                        "alter table public.user_preferences "
+                        "add column updated_at timestamptz not null default now()"
+                    )
+                )
+
+        if not table_exists(connection, "public", "notifications"):
+            connection.execute(
+                text(
+                    """
+                    create table public.notifications (
+                        notification_id uuid primary key,
+                        title text not null,
+                        message text not null,
+                        severity text not null default 'info',
+                        category text not null default 'system_event',
+                        target_page text,
+                        target_hash text,
+                        is_read boolean not null default false,
+                        meta jsonb not null default '{}'::jsonb,
+                        created_at timestamptz not null default now(),
+                        recipient_role text,
+                        recipient_user_id uuid references public.app_users(id) on delete cascade
+                    )
+                    """
+                )
             )
-        )
-        connection.execute(text("alter table public.notifications add column if not exists recipient_role text"))
-        connection.execute(
-            text(
-                """
-                alter table public.notifications
-                add column if not exists recipient_user_id uuid references public.app_users(id) on delete cascade
-                """
+        else:
+            if not column_exists(connection, "public", "notifications", "recipient_role"):
+                connection.execute(text("alter table public.notifications add column recipient_role text"))
+            if not column_exists(connection, "public", "notifications", "recipient_user_id"):
+                connection.execute(
+                    text(
+                        "alter table public.notifications add column recipient_user_id uuid "
+                        "references public.app_users(id) on delete cascade"
+                    )
+                )
+
+        if not index_exists(connection, "public", "notifications_recipient_role_idx"):
+            connection.execute(
+                text(
+                    "create index notifications_recipient_role_idx "
+                    "on public.notifications (recipient_role, created_at desc)"
+                )
             )
-        )
-        connection.execute(
-            text(
-                """
-                create index if not exists notifications_recipient_role_idx
-                on public.notifications (recipient_role, created_at desc)
-                """
+        if not index_exists(connection, "public", "notifications_recipient_user_idx"):
+            connection.execute(
+                text(
+                    "create index notifications_recipient_user_idx "
+                    "on public.notifications (recipient_user_id, created_at desc)"
+                )
             )
-        )
-        connection.execute(
-            text(
-                """
-                create index if not exists notifications_recipient_user_idx
-                on public.notifications (recipient_user_id, created_at desc)
-                """
-            )
-        )
 
 
 @router.get("")

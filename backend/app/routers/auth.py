@@ -20,6 +20,7 @@ from app.auth_security import (
     verify_password,
 )
 from app.database import engine, get_db
+from app.schema_utils import column_exists, extension_exists, table_exists
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 VALID_ROLES = {"cho", "bhw", "supervisor", "admin", "viewer"}
@@ -100,59 +101,76 @@ class PasswordResetRequest(BaseModel):
 
 
 def ensure_auth_tables() -> None:
-    """Create the real auth tables only. No demo accounts are inserted here."""
+    """Ensure the real auth schema exists without running redundant DDL on every restart."""
     with engine.begin() as connection:
-        connection.execute(text("create extension if not exists pgcrypto"))
-        connection.execute(
-            text(
-                """
-                create table if not exists public.app_users (
-                    id uuid primary key default gen_random_uuid(),
-                    email text not null unique,
-                    password_hash text not null,
-                    full_name text not null,
-                    role text not null check (role in ('cho', 'bhw', 'supervisor', 'admin', 'viewer')),
-                    assigned_barangay text,
-                    is_active boolean not null default true,
-                    created_at timestamptz not null default now(),
-                    updated_at timestamptz not null default now(),
-                    last_login_at timestamptz,
-                    created_by uuid references public.app_users(id) on delete set null
-                )
-                """
-            )
-        )
-        connection.execute(text("alter table public.app_users add column if not exists created_by uuid references public.app_users(id) on delete set null"))
-        connection.execute(text("alter table public.app_users add column if not exists updated_at timestamptz not null default now()"))
-        connection.execute(text("alter table public.app_users add column if not exists last_login_at timestamptz"))
+        if not extension_exists(connection, "pgcrypto"):
+            connection.execute(text("create extension if not exists pgcrypto"))
 
-        connection.execute(
-            text(
-                """
-                create table if not exists public.auth_sessions (
-                    session_id uuid primary key,
-                    user_id uuid references public.app_users(id) on delete cascade,
-                    token_expires_at timestamptz not null,
-                    created_at timestamptz not null default now(),
-                    revoked_at timestamptz
+        if not table_exists(connection, "public", "app_users"):
+            connection.execute(
+                text(
+                    """
+                    create table public.app_users (
+                        id uuid primary key default gen_random_uuid(),
+                        email text not null unique,
+                        password_hash text not null,
+                        full_name text not null,
+                        role text not null check (role in ('cho', 'bhw', 'supervisor', 'admin', 'viewer')),
+                        assigned_barangay text,
+                        is_active boolean not null default true,
+                        created_at timestamptz not null default now(),
+                        updated_at timestamptz not null default now(),
+                        last_login_at timestamptz,
+                        created_by uuid references public.app_users(id) on delete set null
+                    )
+                    """
                 )
-                """
             )
-        )
-        connection.execute(
-            text(
-                """
-                create table if not exists public.user_audit_logs (
-                    id uuid primary key default gen_random_uuid(),
-                    actor_user_id uuid references public.app_users(id) on delete set null,
-                    target_user_id uuid references public.app_users(id) on delete set null,
-                    action text not null,
-                    details text,
-                    created_at timestamptz not null default now()
+        else:
+            if not column_exists(connection, "public", "app_users", "created_by"):
+                connection.execute(
+                    text(
+                        "alter table public.app_users add column created_by uuid "
+                        "references public.app_users(id) on delete set null"
+                    )
                 )
-                """
+            if not column_exists(connection, "public", "app_users", "updated_at"):
+                connection.execute(
+                    text("alter table public.app_users add column updated_at timestamptz not null default now()")
+                )
+            if not column_exists(connection, "public", "app_users", "last_login_at"):
+                connection.execute(text("alter table public.app_users add column last_login_at timestamptz"))
+
+        if not table_exists(connection, "public", "auth_sessions"):
+            connection.execute(
+                text(
+                    """
+                    create table public.auth_sessions (
+                        session_id uuid primary key,
+                        user_id uuid references public.app_users(id) on delete cascade,
+                        token_expires_at timestamptz not null,
+                        created_at timestamptz not null default now(),
+                        revoked_at timestamptz
+                    )
+                    """
+                )
             )
-        )
+
+        if not table_exists(connection, "public", "user_audit_logs"):
+            connection.execute(
+                text(
+                    """
+                    create table public.user_audit_logs (
+                        id uuid primary key default gen_random_uuid(),
+                        actor_user_id uuid references public.app_users(id) on delete set null,
+                        target_user_id uuid references public.app_users(id) on delete set null,
+                        action text not null,
+                        details text,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
+            )
 
 
 def public_user(row):

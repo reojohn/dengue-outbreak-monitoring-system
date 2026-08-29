@@ -27,6 +27,7 @@ import { useData } from '../context/DataContext'
 import SparkChart from '../components/SparkChart'
 import InformationTypeBadge from '../components/InformationTypeBadge'
 import AssignedResponseActions from '../components/AssignedResponseActions'
+import BarangayRiskExplanation from '../components/BarangayRiskExplanation'
 import { TrendPanelSkeleton } from '../components/SystemSkeleton'
 import TrendFilterDropdown from '../components/TrendFilterDropdown'
 import TrendMetricCard from '../components/TrendMetricCard'
@@ -39,7 +40,11 @@ import {
   subscribeWorkflowRealtime,
 } from '../services/api'
 import { getAuthSession } from '../utils/auth'
-import { computeDecisionSupport, getCanonicalCombinedRiskScore } from '../utils/analytics'
+import {
+  compareCanonicalBarangayPriority,
+  computeDecisionSupport,
+  getCanonicalCombinedRiskScore,
+} from '../utils/analytics'
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
@@ -2439,6 +2444,34 @@ export default function BHWPage() {
     return savedRow || localRow
   }, [activeBarangay, riskRows, savedForecastRows])
 
+  const rankedBarangays = useMemo(() => {
+    const rowsByBarangay = new Map()
+
+    riskRows.forEach((row) => {
+      const name = String(row?.barangay || '').trim()
+      const key = normalizeName(name)
+      if (!key) return
+      rowsByBarangay.set(key, { ...row, barangay: name || row?.barangay })
+    })
+
+    savedForecastRows.forEach((row) => {
+      const name = String(row?.barangay || '').trim()
+      const key = normalizeName(name)
+      if (!key) return
+      rowsByBarangay.set(key, { ...(rowsByBarangay.get(key) || {}), ...row, barangay: name || row?.barangay })
+    })
+
+    return [...rowsByBarangay.values()].sort(compareCanonicalBarangayPriority)
+  }, [riskRows, savedForecastRows])
+
+  const activeBarangayPriorityIndex = rankedBarangays.findIndex(
+    (row) => normalizeName(row?.barangay) === normalizeName(activeBarangay)
+  )
+  const citywidePriorityRank = activeBarangayPriorityIndex >= 0
+    ? activeBarangayPriorityIndex + 1
+    : null
+  const citywidePriorityTotal = rankedBarangays.length
+
   const barangayName = barangayRisk?.barangay || activeBarangay || 'Select a barangay'
   const risk = normalizeRiskLevel(
     barangayRisk?.risk_level ?? barangayRisk?.risk,
@@ -2981,7 +3014,30 @@ export default function BHWPage() {
                   <div className="mt-4 min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/70">Current barangay risk</p>
                     <h2 className={`mt-2 text-3xl font-black tracking-[-0.04em] ${tone.text}`}>{risk}</h2>
-                    <p className="mt-1 max-w-[180px] text-xs font-semibold leading-5 text-slate-400">{tone.status}</p>
+                    {citywidePriorityRank && citywidePriorityTotal > 0 ? (
+                      <div
+                        className="mt-4 max-w-[230px] overflow-hidden rounded-[20px] border border-cyan-300/20 bg-gradient-to-br from-cyan-300/[0.11] via-white/[0.05] to-sky-400/[0.07] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_28px_rgba(2,8,23,0.16)]"
+                        title={`Citywide priority rank ${citywidePriorityRank} of ${citywidePriorityTotal}. Rank 1 is the highest priority.`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[8px] font-black uppercase tracking-[0.16em] text-cyan-100/60">Citywide priority</p>
+                            <div className="mt-1 flex items-end gap-1.5">
+                              <span className="text-[32px] font-black leading-none tracking-[-0.06em] text-white">#{citywidePriorityRank}</span>
+                              <span className="pb-0.5 text-[10px] font-extrabold uppercase tracking-[0.08em] text-cyan-100/55">rank</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1.5 text-center shadow-inner">
+                            <span className="block text-[8px] font-black uppercase tracking-[0.12em] text-cyan-100/50">of</span>
+                            <span className="block text-sm font-black leading-none text-cyan-50">{citywidePriorityTotal}</span>
+                          </div>
+                        </div>
+                        <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300" style={{ width: `${Math.max(4, Math.min(100, ((citywidePriorityTotal - citywidePriorityRank + 1) / citywidePriorityTotal) * 100))}%` }} />
+                        </div>
+                      </div>
+                    ) : null}
+                    <p className="mt-3 max-w-[230px] text-xs font-semibold leading-5 text-slate-400">{tone.status}</p>
                   </div>
                 </div>
 
@@ -3021,6 +3077,13 @@ export default function BHWPage() {
           </div>
         </div>
       </section>
+
+      <BarangayRiskExplanation
+        row={barangayRisk}
+        barangayName={barangayName}
+        priorityRank={citywidePriorityRank}
+        priorityTotal={citywidePriorityTotal}
+      />
 
       {trendLoading && !trendAnalytics ? (
         <TrendPanelSkeleton className="bhw-trend-panel" />

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_security import get_current_user
 from app.database import engine, get_db
+from app.schema_utils import column_exists, extension_exists, index_exists, table_exists
 from app.services.notification_state import add_notification_event
 from app.services.workflow_realtime import publish_workflow_event
 
@@ -67,52 +68,95 @@ def _json_value(value, fallback=None):
 
 
 def ensure_field_updates_table() -> None:
+    """Ensure the field-update schema exists without taking unnecessary DDL locks at startup."""
     with engine.begin() as connection:
-        connection.execute(text("create extension if not exists pgcrypto"))
-        connection.execute(
-            text(
-                """
-                create table if not exists public.field_updates (
-                    field_update_id uuid primary key default gen_random_uuid(),
-                    barangay text not null,
-                    barangay_key text not null,
-                    reporting_date date not null,
-                    submitted_by uuid not null references public.app_users(id) on delete cascade,
-                    tasks jsonb not null default '{}'::jsonb,
-                    completed_count integer not null default 0,
-                    total_tasks integer not null default 5,
-                    observation_note text not null default '',
-                    environmental_observations jsonb not null default '{}'::jsonb,
-                    risk_level text not null default 'Pending',
-                    predicted_cases numeric not null default 0,
-                    status text not null default 'Draft',
-                    is_urgent boolean not null default false,
-                    suspected_symptoms boolean not null default false,
-                    supplies_needed boolean not null default false,
-                    assistance_needed boolean not null default false,
-                    saved_at timestamptz not null default now(),
-                    submitted_at timestamptz,
-                    reviewed_by uuid references public.app_users(id) on delete set null,
-                    reviewed_at timestamptz,
-                    supervisor_comment text not null default '',
-                    updated_at timestamptz not null default now(),
-                    constraint field_updates_status_check check (
-                        status in ('Draft', 'Submitted', 'Reviewed', 'Follow-up Required')
-                    ),
-                    constraint field_updates_daily_unique unique (submitted_by, barangay_key, reporting_date)
+        if not extension_exists(connection, "pgcrypto"):
+            connection.execute(text("create extension if not exists pgcrypto"))
+
+        if not table_exists(connection, "public", "field_updates"):
+            connection.execute(
+                text(
+                    """
+                    create table public.field_updates (
+                        field_update_id uuid primary key default gen_random_uuid(),
+                        barangay text not null,
+                        barangay_key text not null,
+                        reporting_date date not null,
+                        submitted_by uuid not null references public.app_users(id) on delete cascade,
+                        tasks jsonb not null default '{}'::jsonb,
+                        completed_count integer not null default 0,
+                        total_tasks integer not null default 5,
+                        observation_note text not null default '',
+                        environmental_observations jsonb not null default '{}'::jsonb,
+                        risk_level text not null default 'Pending',
+                        predicted_cases numeric not null default 0,
+                        status text not null default 'Draft',
+                        is_urgent boolean not null default false,
+                        suspected_symptoms boolean not null default false,
+                        supplies_needed boolean not null default false,
+                        assistance_needed boolean not null default false,
+                        saved_at timestamptz not null default now(),
+                        submitted_at timestamptz,
+                        reviewed_by uuid references public.app_users(id) on delete set null,
+                        reviewed_at timestamptz,
+                        supervisor_comment text not null default '',
+                        updated_at timestamptz not null default now(),
+                        constraint field_updates_status_check check (
+                            status in ('Draft', 'Submitted', 'Reviewed', 'Follow-up Required')
+                        ),
+                        constraint field_updates_daily_unique unique (submitted_by, barangay_key, reporting_date)
+                    )
+                    """
                 )
-                """
             )
-        )
-        connection.execute(text("alter table public.field_updates add column if not exists environmental_observations jsonb not null default '{}'::jsonb"))
-        connection.execute(text("alter table public.field_updates add column if not exists suspected_symptoms boolean not null default false"))
-        connection.execute(text("alter table public.field_updates add column if not exists supplies_needed boolean not null default false"))
-        connection.execute(text("alter table public.field_updates add column if not exists assistance_needed boolean not null default false"))
-        connection.execute(text("alter table public.field_updates add column if not exists supervisor_comment text not null default ''"))
-        connection.execute(text("alter table public.field_updates add column if not exists updated_at timestamptz not null default now()"))
-        connection.execute(text("create index if not exists field_updates_reporting_date_idx on public.field_updates (reporting_date desc)"))
-        connection.execute(text("create index if not exists field_updates_status_idx on public.field_updates (status, submitted_at desc)"))
-        connection.execute(text("create index if not exists field_updates_barangay_idx on public.field_updates (barangay_key, reporting_date desc)"))
+        else:
+            missing_columns = [
+                (
+                    "environmental_observations",
+                    "alter table public.field_updates add column environmental_observations jsonb not null default '{}'::jsonb",
+                ),
+                (
+                    "suspected_symptoms",
+                    "alter table public.field_updates add column suspected_symptoms boolean not null default false",
+                ),
+                (
+                    "supplies_needed",
+                    "alter table public.field_updates add column supplies_needed boolean not null default false",
+                ),
+                (
+                    "assistance_needed",
+                    "alter table public.field_updates add column assistance_needed boolean not null default false",
+                ),
+                (
+                    "supervisor_comment",
+                    "alter table public.field_updates add column supervisor_comment text not null default ''",
+                ),
+                (
+                    "updated_at",
+                    "alter table public.field_updates add column updated_at timestamptz not null default now()",
+                ),
+            ]
+            for column_name, ddl in missing_columns:
+                if not column_exists(connection, "public", "field_updates", column_name):
+                    connection.execute(text(ddl))
+
+        indexes = [
+            (
+                "field_updates_reporting_date_idx",
+                "create index field_updates_reporting_date_idx on public.field_updates (reporting_date desc)",
+            ),
+            (
+                "field_updates_status_idx",
+                "create index field_updates_status_idx on public.field_updates (status, submitted_at desc)",
+            ),
+            (
+                "field_updates_barangay_idx",
+                "create index field_updates_barangay_idx on public.field_updates (barangay_key, reporting_date desc)",
+            ),
+        ]
+        for index_name, ddl in indexes:
+            if not index_exists(connection, "public", index_name):
+                connection.execute(text(ddl))
 
 
 def _serialize_row(row):
