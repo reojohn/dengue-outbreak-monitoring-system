@@ -30,20 +30,27 @@ function getWorkflowClientId() {
 }
 
 function withAuthHeaders(options = {}) {
+  // X-Workflow-Client-ID is opt-in. Sending it on every ordinary GET caused
+  // unnecessary CORS preflights and made local Supervisor reads fragile when
+  // the Vite dev server moved to another port. Only realtime/mutation requests
+  // that benefit from origin-tab suppression should carry the custom header.
+  const { workflowClient = false, ...fetchOptions } = options
   const token = getAuthToken()
-  const headers = { ...(options.headers || {}) }
+  const headers = { ...(fetchOptions.headers || {}) }
 
   if (token && !headers.Authorization) {
     headers.Authorization = `Bearer ${token}`
   }
 
-  const workflowClientId = getWorkflowClientId()
-  if (workflowClientId && !headers['X-Workflow-Client-ID']) {
-    headers['X-Workflow-Client-ID'] = workflowClientId
+  if (workflowClient) {
+    const workflowClientId = getWorkflowClientId()
+    if (workflowClientId && !headers['X-Workflow-Client-ID']) {
+      headers['X-Workflow-Client-ID'] = workflowClientId
+    }
   }
 
   return {
-    ...options,
+    ...fetchOptions,
     headers,
   }
 }
@@ -62,21 +69,56 @@ function getReadCacheNamespace() {
   return token ? token.slice(-24) : 'public'
 }
 
+const forcedReadRefreshes = new Map()
+
 async function cachedJsonGet(cacheKey, url, { ttlMs = 90_000, force = false } = {}) {
   const namespacedKey = `${getReadCacheNamespace()}:${cacheKey}`
   const now = Date.now()
-  const cached = readResponseCache.get(namespacedKey)
 
-  if (!force && cached?.value !== undefined && Number(cached.expiresAt || 0) > now) {
+  // A realtime event must never be satisfied by a request that started before
+  // the database mutation. Keep one authoritative forced refresh per cache key
+  // and let sibling widgets share that newer request instead.
+  if (force) {
+    const existingForcedRefresh = forcedReadRefreshes.get(namespacedKey)
+    if (existingForcedRefresh) return existingForcedRefresh
+
+    const forcedRefresh = (async () => {
+      const current = readResponseCache.get(namespacedKey)
+      if (current?.promise) {
+        try {
+          await current.promise
+        } catch {
+          // The authoritative request below is still allowed to recover.
+        }
+      }
+
+      const value = await apiFetch(url, {
+        cache: 'no-store',
+      }).then(handleApiResponse)
+
+      readResponseCache.set(namespacedKey, {
+        value,
+        expiresAt: Date.now() + ttlMs,
+        promise: null,
+      })
+      return value
+    })().finally(() => {
+      forcedReadRefreshes.delete(namespacedKey)
+    })
+
+    forcedReadRefreshes.set(namespacedKey, forcedRefresh)
+    return forcedRefresh
+  }
+
+  const forcedRefresh = forcedReadRefreshes.get(namespacedKey)
+  if (forcedRefresh) return forcedRefresh
+
+  const cached = readResponseCache.get(namespacedKey)
+  if (cached?.value !== undefined && Number(cached.expiresAt || 0) > now) {
     return cached.value
   }
 
-  // Always reuse an in-flight request, even when a caller asks for a forced
-  // refresh. This prevents sibling supervisor widgets from issuing the same
-  // Supabase-backed GET at the same time.
-  if (cached?.promise) {
-    return cached.promise
-  }
+  if (cached?.promise) return cached.promise
 
   const promise = apiFetch(url)
     .then(handleApiResponse)
@@ -159,6 +201,10 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
   let stopped = false
   let retryMs = 1000
   let hasConnectedOnce = false
+  let fieldRevision = null
+  let revisionCheckInFlight = false
+  let revisionFallbackUnavailable = false
+  const FIELD_REVISION_RECONCILE_MS = 4_000
 
   function emitStatus(status, detail = '') {
     try {
@@ -171,6 +217,16 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
   function invalidateTopic(topic) {
     if (topic === 'decision_actions') clearReadResponseCache('decision-actions:')
     if (topic === 'field_updates') clearReadResponseCache('field-updates:')
+  }
+
+  function emitWorkflowEvent(payload) {
+    if (!payload || payload.topic === 'connection') return
+    invalidateTopic(payload.topic)
+    try {
+      onEvent?.(payload)
+    } catch {
+      // A component refresh failure should not terminate the realtime stream.
+    }
   }
 
   function parseEventBlock(block) {
@@ -192,6 +248,89 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
     return new Promise((resolve) => window.setTimeout(resolve, ms))
   }
 
+  async function reconcileFieldUpdateRevision({ notify = true } = {}) {
+    if (stopped || revisionCheckInFlight || revisionFallbackUnavailable) return
+    revisionCheckInFlight = true
+
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/field-updates/revision`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+
+      // Keep compatibility during a rolling deployment where the frontend may
+      // briefly reach an older backend that does not have this endpoint yet.
+      if (response.status === 404 || response.status === 405) {
+        revisionFallbackUnavailable = true
+        return
+      }
+      if (response.status === 401) {
+        emitStatus('auth-error', 'Session expired')
+        return
+      }
+      if (!response.ok) return
+
+      const data = await response.json().catch(() => null)
+      const nextRevision = String(data?.revision || '')
+      if (!nextRevision) return
+
+      if (fieldRevision === null) {
+        fieldRevision = nextRevision
+        if (notify) {
+          // One authoritative reconciliation on mount closes the small race
+          // between a component's initial GET and this revision snapshot.
+          emitWorkflowEvent({
+            topic: 'field_updates',
+            event: 'reconcile-initial',
+            revision: nextRevision,
+            timestamp: new Date().toISOString(),
+          })
+        }
+        return
+      }
+
+      if (nextRevision !== fieldRevision) {
+        const previousRevision = fieldRevision
+        fieldRevision = nextRevision
+        if (notify) {
+          emitWorkflowEvent({
+            topic: 'field_updates',
+            event: 'reconcile',
+            revision: nextRevision,
+            previous_revision: previousRevision,
+            timestamp: new Date().toISOString(),
+          })
+        }
+      }
+    } catch (error) {
+      if (stopped || error?.name === 'AbortError') return
+      // The revision check is only a fallback. SSE remains the primary path,
+      // so a transient polling failure should not change the page state.
+    } finally {
+      revisionCheckInFlight = false
+    }
+  }
+
+  function handleWindowFocus() {
+    reconcileFieldUpdateRevision()
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') reconcileFieldUpdateRevision()
+  }
+
+  const revisionTimer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') reconcileFieldUpdateRevision()
+  }, FIELD_REVISION_RECONCILE_MS)
+
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  reconcileFieldUpdateRevision()
+
   async function connectLoop() {
     while (!stopped) {
       try {
@@ -201,6 +340,7 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
           headers: { Accept: 'text/event-stream' },
           cache: 'no-store',
           signal: controller.signal,
+          workflowClient: true,
         })
 
         if (!response.ok) {
@@ -222,12 +362,7 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
           // A reconnect may have missed changes while the stream was down.
           // Trigger one authoritative refresh per workflow topic, once.
           for (const topic of ['decision_actions', 'field_updates']) {
-            invalidateTopic(topic)
-            try {
-              onEvent?.({ topic, event: 'resync', timestamp: new Date().toISOString() })
-            } catch {
-              // Reconnect recovery must not terminate the stream.
-            }
+            emitWorkflowEvent({ topic, event: 'resync', timestamp: new Date().toISOString() })
           }
         }
         hasConnectedOnce = true
@@ -247,11 +382,13 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
           for (const block of blocks) {
             const payload = parseEventBlock(block.trim())
             if (!payload || payload.topic === 'connection') continue
-            invalidateTopic(payload.topic)
-            try {
-              onEvent?.(payload)
-            } catch {
-              // A component refresh failure should not terminate the stream.
+            emitWorkflowEvent(payload)
+
+            // Refresh the tiny revision snapshot after a successful SSE event.
+            // This normally prevents the fallback poll from repeating the same
+            // full-data refresh a few seconds later.
+            if (payload.topic === 'field_updates') {
+              reconcileFieldUpdateRevision({ notify: false })
             }
           }
         }
@@ -276,6 +413,9 @@ export function subscribeWorkflowRealtime({ onEvent, onStatus } = {}) {
 
   return () => {
     stopped = true
+    window.clearInterval(revisionTimer)
+    window.removeEventListener('focus', handleWindowFocus)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     controller.abort()
     emitStatus('disconnected')
   }
@@ -634,6 +774,7 @@ export async function saveFieldUpdateDraft(payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    workflowClient: true,
   })
   const result = await handleApiResponse(response)
   clearReadResponseCache('field-updates:')
@@ -645,6 +786,7 @@ export async function submitFieldUpdate(payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    workflowClient: true,
   })
   const result = await handleApiResponse(response)
   clearReadResponseCache('field-updates:')
@@ -659,6 +801,7 @@ export async function reviewFieldUpdate(fieldUpdateId, { status, supervisorComme
       status,
       supervisor_comment: supervisorComment,
     }),
+    workflowClient: true,
   })
   const result = await handleApiResponse(response)
   clearReadResponseCache('field-updates:')
@@ -687,6 +830,7 @@ export async function createDecisionAction(payload) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
+    workflowClient: true,
   })
 
   const result = await handleApiResponse(response)
@@ -697,6 +841,7 @@ export async function createDecisionAction(payload) {
 export async function startDecisionActionProgress(actionId) {
   const response = await apiFetch(`${API_BASE_URL}/decision-actions/${actionId}/bhw-start`, {
     method: 'PATCH',
+    workflowClient: true,
   })
 
   const result = await handleApiResponse(response)
@@ -711,6 +856,7 @@ export async function updateDecisionAction(actionId, payload) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
+    workflowClient: true,
   })
 
   const result = await handleApiResponse(response)
@@ -721,6 +867,7 @@ export async function updateDecisionAction(actionId, payload) {
 export async function deleteDecisionAction(actionId) {
   const response = await apiFetch(`${API_BASE_URL}/decision-actions/${actionId}`, {
     method: 'DELETE',
+    workflowClient: true,
   })
 
   const result = await handleApiResponse(response)

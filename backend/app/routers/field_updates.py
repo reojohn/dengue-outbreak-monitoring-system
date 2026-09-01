@@ -153,6 +153,14 @@ def ensure_field_updates_table() -> None:
                 "field_updates_barangay_idx",
                 "create index field_updates_barangay_idx on public.field_updates (barangay_key, reporting_date desc)",
             ),
+            (
+                "field_updates_updated_at_idx",
+                "create index field_updates_updated_at_idx on public.field_updates (updated_at desc)",
+            ),
+            (
+                "field_updates_submitter_updated_idx",
+                "create index field_updates_submitter_updated_idx on public.field_updates (submitted_by, updated_at desc)",
+            ),
         ]
         for index_name, ddl in indexes:
             if not index_exists(connection, "public", index_name):
@@ -538,6 +546,57 @@ def list_field_updates(
             "follow_up_required": sum(1 for item in updates if item["status"] == "Follow-up Required"),
             "urgent": sum(1 for item in updates if item["is_urgent"]),
         },
+    }
+
+
+@router.get("/revision")
+def get_field_updates_revision(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return a tiny role-scoped change token for cross-device reconciliation.
+
+    The browser polls this lightweight endpoint only as a fallback when an SSE
+    notification is missed (for example after a proxy reconnect or when two
+    requests land on different backend workers). Full field-update rows are
+    fetched only when this token changes.
+    """
+    role = current_user.get("role")
+    where = []
+    params = {}
+
+    if role == "bhw":
+        where.append("fu.submitted_by = :submitted_by")
+        params["submitted_by"] = str(current_user["id"])
+    elif role in {"supervisor", "cho", "admin"}:
+        # Drafts are private work-in-progress. Supervisors only need a revision
+        # bump once a report has actually entered the coordination workflow.
+        where.append("fu.status <> 'Draft'")
+    else:
+        raise HTTPException(status_code=403, detail="Your account cannot view barangay field updates.")
+
+    where_sql = f" where {' and '.join(where)}" if where else ""
+    row = db.execute(
+        text(
+            """
+            select
+                count(*)::int as row_count,
+                max(fu.updated_at) as latest_updated_at
+            from public.field_updates fu
+            """
+            + where_sql
+        ),
+        params,
+    ).mappings().first()
+
+    row_count = int((row or {}).get("row_count") or 0)
+    latest_updated_at = (row or {}).get("latest_updated_at")
+    latest_text = latest_updated_at.isoformat() if latest_updated_at else ""
+
+    return {
+        "revision": f"{row_count}:{latest_text}",
+        "count": row_count,
+        "latest_updated_at": latest_text or None,
     }
 
 

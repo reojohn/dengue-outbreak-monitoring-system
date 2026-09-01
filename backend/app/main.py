@@ -57,14 +57,24 @@ deployed_origins = [
 
 allowed_origins = list(dict.fromkeys(local_origins + deployed_origins))
 
+# Vite automatically increments its dev-server port when 5173 is already in
+# use. During local testing that could move the UI to 5175/5176 and make the
+# browser report only "Failed to fetch" even though the API was healthy.
+# Accept loopback/private-LAN HTTP origins on any local dev port, but never use
+# this broad development regex on the production deployment.
+local_dev_origin_regex = (
+    r"^http://(?:localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+):\d{2,5}$"
+    if not IS_PRODUCTION
+    else None
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    # Local network testing remains available for a Vite dev server on trusted LANs.
-    allow_origin_regex=r"http://192\.168\.\d+\.\d+:5173",
+    allow_origin_regex=local_dev_origin_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Workflow-Client-ID"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Cache-Control", "Pragma", "X-Workflow-Client-ID"],
 )
 
 
@@ -77,7 +87,13 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
     # API/auth responses should not be cached by shared proxies or the browser.
-    if request.url.path.startswith(("/auth", "/workspace", "/notifications", "/workflow-realtime")):
+    if request.url.path.startswith((
+        "/auth",
+        "/workspace",
+        "/notifications",
+        "/workflow-realtime",
+        "/field-updates",
+    )):
         response.headers["Cache-Control"] = "no-store"
 
     forwarded_proto = request.headers.get("x-forwarded-proto", "")
