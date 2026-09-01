@@ -2467,10 +2467,29 @@ export default function BHWPage() {
   const activeBarangayPriorityIndex = rankedBarangays.findIndex(
     (row) => normalizeName(row?.barangay) === normalizeName(activeBarangay)
   )
-  const citywidePriorityRank = activeBarangayPriorityIndex >= 0
-    ? activeBarangayPriorityIndex + 1
-    : null
-  const citywidePriorityTotal = rankedBarangays.length
+
+  // The backend calculates priority_rank before BHW results are scoped to the
+  // worker's assigned barangay. Prefer that persisted citywide rank so a BHW
+  // account shows the same value as CHO/Admin instead of re-ranking a one-row
+  // list as "1 of 1".
+  const persistedCitywidePriorityRank = Number(
+    barangayRisk?.priority_rank ?? barangayRisk?.priorityRank ?? 0
+  )
+  const citywidePriorityRank = persistedCitywidePriorityRank > 0
+    ? persistedCitywidePriorityRank
+    : activeBarangayPriorityIndex >= 0
+      ? activeBarangayPriorityIndex + 1
+      : null
+
+  const persistedCitywidePriorityTotal = Number(
+    backendForecastResult?.total_barangay_count ??
+      backendForecastResult?.city_summary?.barangay_count ??
+      backendForecastResult?.barangay_count ??
+      0
+  )
+  const citywidePriorityTotal = persistedCitywidePriorityTotal > 0
+    ? persistedCitywidePriorityTotal
+    : rankedBarangays.length
 
   const barangayName = barangayRisk?.barangay || activeBarangay || 'Select a barangay'
   const risk = normalizeRiskLevel(

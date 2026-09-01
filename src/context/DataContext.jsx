@@ -2218,6 +2218,18 @@ export function DataProvider({ children }) {
         valid_row_count: validRowCount,
         invalid_row_count: 0,
         barangay_count: Number(result.barangay_count || forecastResults.length),
+        // BHW forecast responses are intentionally scoped to one assigned barangay.
+        // Preserve the citywide count so the BHW workspace can still display the
+        // same citywide priority rank denominator as CHO/Admin (for example, 28 of 86).
+        total_barangay_count: Number(
+          result.total_barangay_count ||
+            result.city_summary?.barangay_count ||
+            result.barangay_count ||
+            forecastResults.length
+        ),
+        city_summary: result.city_summary || null,
+        scope: result.scope || '',
+        scope_barangay: result.scope_barangay || '',
         total_forecast_next_4_periods: Number(result.total_forecast_next_4_periods || 0),
         risk_counts: result.risk_counts || {},
         validation_summary: result.validation_summary || {},
