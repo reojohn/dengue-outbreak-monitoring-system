@@ -48,15 +48,17 @@ import dengueLogo from '../assets/logodengue2.png'
 import LogoutTransition from './LogoutTransition'
 
 const navItems = [
-  { to: '/dashboard', label: 'Situation Overview', icon: LayoutDashboard, roles: ['cho', 'supervisor', 'admin', 'viewer'] },
-  { to: '/upload', label: 'Data Upload', icon: Upload, roles: ['cho', 'admin'] },
-  { to: '/forecast', label: 'Risk Forecast', icon: BarChart3, roles: ['cho', 'supervisor', 'admin'] },
-  { to: '/map', label: 'Hotspot Map', icon: Map, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
-  { to: '/bhw', label: 'Barangay Workspace', icon: ClipboardCheck, roles: ['bhw', 'cho', 'admin'] },
-  { to: '/supervisor', label: 'Response Coordination', icon: ShieldAlert, roles: ['supervisor', 'cho', 'admin'] },
-  { to: '/users', label: 'User Accounts', icon: UsersRound, roles: ['cho', 'admin'] },
-  { to: '/reports', label: 'Reports', icon: FileText, roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
+  { to: '/dashboard', label: 'Situation Overview', icon: LayoutDashboard, group: 'Monitor', roles: ['cho', 'supervisor', 'admin', 'viewer'] },
+  { to: '/forecast', label: 'Risk Forecast', icon: BarChart3, group: 'Monitor', roles: ['cho', 'supervisor', 'admin'] },
+  { to: '/map', label: 'Hotspot Map', icon: Map, group: 'Monitor', roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
+  { to: '/bhw', label: 'Barangay Workspace', icon: ClipboardCheck, group: 'Respond', roles: ['bhw', 'cho', 'admin'] },
+  { to: '/supervisor', label: 'Response Coordination', icon: ShieldAlert, group: 'Respond', roles: ['supervisor', 'cho', 'admin'] },
+  { to: '/reports', label: 'Reports', icon: FileText, group: 'Manage', roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
+  { to: '/upload', label: 'Data Upload', icon: Upload, group: 'Manage', roles: ['cho', 'admin'] },
+  { to: '/users', label: 'User Accounts', icon: UsersRound, group: 'Manage', roles: ['cho', 'admin'] },
 ]
+
+const navGroups = ['Monitor', 'Respond', 'Manage']
 
 const TEXT_SCALE_MIN = 90
 const TEXT_SCALE_MAX = 160
@@ -1170,6 +1172,12 @@ export default function AppShell({ children }) {
   const filteredNavItems = navItems.filter((item) => {
     return !item.roles?.length || item.roles.includes(currentRole)
   })
+  const groupedNavItems = navGroups
+    .map((group) => ({
+      group,
+      items: filteredNavItems.filter((item) => item.group === group),
+    }))
+    .filter((section) => section.items.length > 0)
   const roleLabel = session?.label || 'Prototype User'
   const workspaceLabel = currentRole === 'bhw'
     ? `${session?.assignedBarangay || 'Assigned Barangay'} BHW workspace`
@@ -2509,15 +2517,25 @@ export default function AppShell({ children }) {
           </button>
         </div>
 
-        <nav className="dengue-mobile-drawer-nav relative min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain pr-1">
-          {filteredNavItems.map(({ to, label, icon: Icon }) => (
-            <SidebarNavItem
-              key={to}
-              to={to}
-              label={label}
-              Icon={Icon}
-              onClick={() => setMobileNavOpen(false)}
-            />
+        <nav className="dengue-mobile-drawer-nav relative min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+          {groupedNavItems.map((section, sectionIndex) => (
+            <div key={section.group} className={sectionIndex > 0 ? 'mt-5' : ''}>
+              <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                {section.group}
+              </p>
+
+              <div className="space-y-0.5">
+                {section.items.map(({ to, label, icon: Icon }) => (
+                  <SidebarNavItem
+                    key={to}
+                    to={to}
+                    label={label}
+                    Icon={Icon}
+                    onClick={() => setMobileNavOpen(false)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
@@ -2614,47 +2632,22 @@ export default function AppShell({ children }) {
             </div>
           </div>
 
-          <nav className="relative min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 dengue-premium-scrollbar">
-            <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
-              Navigation
-            </p>
+          <nav className="relative min-h-0 flex-1 overflow-y-visible">
+            {groupedNavItems.map((section, sectionIndex) => (
+              <div key={section.group} className={sectionIndex > 0 ? 'mt-5' : ''}>
+                <p className="px-3 pb-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
+                  {section.group}
+                </p>
 
-            {filteredNavItems.map(({ to, label, icon: Icon }) => (
-              <SidebarNavItem key={to} to={to} label={label} Icon={Icon} desktopAccent />
+                <div className="space-y-1">
+                  {section.items.map(({ to, label, icon: Icon }) => (
+                    <SidebarNavItem key={to} to={to} label={label} Icon={Icon} desktopAccent />
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
 
-          <div className="relative mt-auto shrink-0 space-y-3 pt-5">
-            <ThemeModeSwitch isDark={isDark} onToggle={handleThemeToggle} />
-
-
-
-            <button
-  type="button"
-  onClick={handleOpenActionCommandCenter}
-  className="group relative w-full overflow-hidden rounded-[24px] border border-white/20 bg-white/10 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
->
-  <div className="relative grid grid-cols-[auto_1fr_auto] items-center gap-3">
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white">
-      <ClipboardCheck className="h-5 w-5" />
-    </div>
-
-    <div className="min-w-0">
-      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">
-        Quick action
-      </p>
-
-      <p className="truncate text-sm font-black text-white">
-        Response action
-      </p>
-    </div>
-
-    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/70">
-      Open
-    </span>
-  </div>
-</button>
-          </div>
         </aside>
 
         <main className="min-w-0 flex-1">
