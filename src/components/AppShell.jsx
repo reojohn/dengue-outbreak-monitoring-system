@@ -2490,31 +2490,73 @@ export default function AppShell({ children }) {
         <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 left-0 h-60 w-60 rounded-full bg-emerald-400/[0.15] blur-3xl" />
 
-        <div className="dengue-mobile-drawer-header relative mb-8 flex shrink-0 items-center justify-between gap-3">
-          <div className="dengue-mobile-drawer-brand flex min-w-0 items-center gap-3">
-            <img
-              src={dengueLogo}
-              alt="Dengue Intelligence"
-              className="dengue-mobile-drawer-logo h-[72px] w-[72px] shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(2,6,23,0.30)]"
-            />
+        <div className="dengue-mobile-drawer-header relative mb-4 shrink-0">
+          <div className="relative overflow-hidden rounded-[24px] border border-white/20 bg-white/[0.08] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_34px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/[0.15] blur-2xl" />
 
-            <div className="dengue-mobile-drawer-brand-copy min-w-0">
-              <p className="dengue-mobile-drawer-title truncate text-lg font-black">Butuan City</p>
+            <div className="relative flex items-center gap-3 pr-11">
+              <img
+                src={dengueLogo}
+                alt="Dengue Intelligence"
+                className="dengue-mobile-drawer-logo h-[66px] w-[66px] shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(2,6,23,0.30)]"
+              />
 
-              <p className="dengue-mobile-drawer-role truncate text-sm font-medium text-white/60">
-                {roleLabel}
-              </p>
+              <div className="dengue-mobile-drawer-brand-copy min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-100/60">
+                  Dengue intelligence
+                </p>
+                <p className="dengue-mobile-drawer-title mt-1 truncate text-base font-black">
+                  Butuan City
+                </p>
+                <p className="dengue-mobile-drawer-role truncate text-xs font-semibold text-white/60">
+                  {roleLabel}
+                </p>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(false)}
+              className="dengue-mobile-drawer-close absolute right-3 top-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white transition hover:bg-white/20"
+              aria-label="Close navigation menu"
+            >
+              <X size={18} />
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(false)}
-            className="dengue-mobile-drawer-close flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white transition hover:bg-white/20"
-            aria-label="Close navigation menu"
-          >
-            <X size={20} />
-          </button>
+          <div className="relative mt-3 overflow-hidden rounded-[22px] border border-white/20 bg-slate-950/20 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_28px_rgba(2,6,23,0.16)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute -right-10 -top-10 h-24 w-24 rounded-full bg-cyan-300/[0.15] blur-2xl" />
+
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">
+                  Workspace status
+                </p>
+
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      hasDengueData
+                        ? 'bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]'
+                        : 'bg-amber-300 shadow-[0_0_14px_rgba(252,211,77,0.9)]'
+                    }`}
+                  />
+                  <span className="text-sm font-black text-white">
+                    {systemStatus.badge}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-right">
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">
+                  Area
+                </p>
+                <p className="mt-1 text-xs font-black text-cyan-100">
+                  Butuan City
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <nav className="dengue-mobile-drawer-nav relative min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
@@ -2540,8 +2582,6 @@ export default function AppShell({ children }) {
         </nav>
 
         <div className="dengue-mobile-drawer-footer relative mt-auto shrink-0 space-y-3 pt-8">
-          <ThemeModeSwitch isDark={isDark} onToggle={handleThemeToggle} />
-
           <button
             type="button"
             onClick={handleLogout}
@@ -2561,32 +2601,6 @@ export default function AppShell({ children }) {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={handleOpenActionCommandCenter}
-            className="dengue-mobile-quick-action group relative w-full overflow-hidden rounded-[22px] border border-white/20 bg-white/10 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur transition hover:bg-white/20"
-          >
-            <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-sky-300/20 blur-2xl" />
-
-            <div className="relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5">
-              <div className="dengue-mobile-quick-action-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-white/20 bg-white/10 text-white">
-                <ClipboardCheck className="h-5 w-5" />
-              </div>
-
-              <div className="min-w-0">
-                <p className="dengue-mobile-quick-action-label text-[9px] font-black uppercase tracking-[0.16em] text-white/50">
-                  Quick action
-                </p>
-                <p className="dengue-mobile-quick-action-title mt-0.5 truncate text-sm font-black leading-5 text-white">
-                  Response action
-                </p>
-              </div>
-
-              <span className="dengue-mobile-quick-action-open shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white/70">
-                Open
-              </span>
-            </div>
-          </button>
         </div>
       </aside>
 
