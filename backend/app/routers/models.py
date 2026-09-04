@@ -43,3 +43,12 @@ def latest_metrics():
 @router.post("/auto-run", dependencies=[Depends(require_roles("cho", "admin"))])
 def auto_run_model():
     return auto_run_latest_model()
+
+
+@router.post("/re-evaluate", dependencies=[Depends(require_roles("cho", "admin"))])
+def re_evaluate_model():
+    # Technical/research action: always retrain and re-evaluate the eight
+    # candidate models against the current integrated dataset, then publish a
+    # fresh forecast using the selected winner. This is intentionally separate
+    # from the normal cached auto-run used after uploads.
+    return auto_run_latest_model(force_retrain=True)

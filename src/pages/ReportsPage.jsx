@@ -32,7 +32,7 @@ import * as XLSX from 'xlsx'
 import pptxgen from 'pptxgenjs'
 import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
-import { createBackendNotificationEvent, getBarangayTrendAnalytics, getCityTrendAnalytics, getFieldUpdate, getFieldUpdates, saveGeneratedReport } from '../services/api'
+import { createBackendNotificationEvent, getBarangayTrendAnalytics, getCityTrendAnalytics, getDecisionActions, getFieldUpdate, getFieldUpdates, saveGeneratedReport } from '../services/api'
 import reportsHeroBackground from '../assets/reports.png'
 import FieldUpdateReportCard from '../components/FieldUpdateReportCard'
 import CityTrendAnalyticsPanel from '../components/CityTrendAnalyticsPanel'
@@ -191,6 +191,34 @@ const distributionItems = [
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
+}
+
+function formatCountLabel(value, singular, plural = `${singular}s`) {
+  const count = Number(value || 0)
+  return `${formatNumber(count)} ${count === 1 ? singular : plural}`
+}
+
+function getResponseManagementInterpretation(response = {}) {
+  const total = Number(response.total || 0)
+  const completed = Number(response.completed || 0)
+  const pending = Number(response.pending || 0)
+  const inProgress = Number(response.inProgress || 0)
+  const overdue = Number(response.overdue || 0)
+  const completionRate = Number(response.completionRate || 0)
+  const unresolved = pending + inProgress
+
+  if (total <= 0) {
+    return 'No tracked response action has been recorded yet. Once supervisors assign actions and BHWs submit updates, this section will measure completion, pending work, and overdue follow-up.'
+  }
+
+  if (unresolved === 0) {
+    const completionStatement = total === 1
+      ? `The tracked action is completed (${completionRate}%).`
+      : `All ${formatCountLabel(total, 'tracked action')} are completed (${completionRate}%).`
+    return `${completionStatement} No pending or in-progress actions remain${overdue > 0 ? `; ${formatCountLabel(overdue, 'overdue item')} still require record review` : ''}. Continue monitoring priority barangays and record new assignments or follow-up activities as they arise.`
+  }
+
+  return `${formatNumber(completed)} of ${formatNumber(total)} tracked actions are completed (${completionRate}%). ${formatCountLabel(unresolved, 'action')} remain pending or in progress${overdue > 0 ? `, including ${formatCountLabel(overdue, 'overdue item')}` : ''}. Follow-up should focus on unresolved actions in priority barangays.`
 }
 
 function toNumber(value) {
@@ -2194,7 +2222,7 @@ function buildBackendRationale({
   const rationale = [
     `Saved forecast classified ${barangay} as ${risk} risk.`,
     `Projected four-period cases: ${formatNumber(forecast)}.`,
-    `Forecast for the next period: ${formatNumber(forecastNextPeriod)} cases.`,
+    `${formatNumber(forecastNextPeriod)} ${Number(forecastNextPeriod || 0) === 1 ? 'case' : 'cases'} forecast for the next period.`,
     `Recent average cases: ${formatNumber(recentAverage)}.`,
     `Previous average cases: ${formatNumber(previousAverage)}.`,
     `Historical total cases: ${formatNumber(historicalTotalCases)}.`,
@@ -2610,7 +2638,7 @@ function getTopDecisionText(topBarangay, isBarangayScoped = false) {
     return `${topBarangay.barangay} currently has a ${decision.priority} response priority, ${formatNumber(topBarangay.forecast)} forecast cases, a Response score of ${formatNumber(decision.score)}, and a combined priority score of ${formatNumber(profile.score)}/100.`
   }
 
-  return `${topBarangay.barangay} is the top response priority with ${decision.priority}, ${formatNumber(topBarangay.forecast)} forecast cases, a Response score of ${formatNumber(decision.score)}, and a combined priority score of ${formatNumber(profile.score)}/100.`
+  return `${topBarangay.barangay} is the first-listed response-priority barangay with ${decision.priority}, ${formatNumber(topBarangay.forecast)} forecast cases, a Response score of ${formatNumber(decision.score)}, and a combined priority score of ${formatNumber(profile.score)}/100.`
 }
 
 function getReportSummary({ sortedRiskRows, dashboardStats, isBarangayScoped = false }) {
@@ -2737,7 +2765,7 @@ function getBarangayOperationalRationale({ row = null, decision = {}, actualSurv
   return [
     `Forecast risk: ${row?.risk || 'Unknown'}.`,
     `Projected four-period cases: ${formatNumber(row?.forecast || 0)}.`,
-    `Forecast for the next period: ${formatNumber(nextPeriodCases)} cases.`,
+    `${formatNumber(nextPeriodCases)} ${Number(nextPeriodCases || 0) === 1 ? 'case' : 'cases'} forecast for the next period.`,
     `Latest monthly movement: ${movement}${changeLabel ? ` · ${changeLabel}` : ''}.`,
     `Model recent trend signal: ${modelTrend}.`,
     `Historical cases used for model analysis: ${formatNumber(dashboardStats?.totalCases || 0)}.`,
@@ -2774,6 +2802,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
   const priorityDistribution = getPriorityDistribution(sortedRiskRows)
   const hotspotCounts = getHotspotCounts(hotspotRows)
   const topHotspot = getRankedHotspotRows(hotspotRows)[0] || null
+  const topBarangays = sortedRiskRows.slice(0, 5)
   const topBarangay = sortedRiskRows[0]
   const topDecision = getDecisionSupport(topBarangay)
   const officialMetadata = reportMetadata || getOfficialReportMetadata({
@@ -3315,7 +3344,240 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
   reportWindow.document.close()
 }
 
-function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
+function hexToRgb(value = '#64748b') {
+  const normalized = String(value || '').replace('#', '').trim()
+  const safe = normalized.length === 3
+    ? normalized.split('').map((char) => char + char).join('')
+    : normalized.padEnd(6, '0').slice(0, 6)
+  const number = Number.parseInt(safe, 16)
+  if (!Number.isFinite(number)) return [100, 116, 139]
+  return [(number >> 16) & 255, (number >> 8) & 255, number & 255]
+}
+
+function drawPdfHorizontalBars(doc, {
+  items = [],
+  x,
+  y,
+  width,
+  height,
+  labelKey = 'label',
+  valueKey = 'value',
+  title = '',
+  subtitle = '',
+  valueSuffix = '',
+  barColor = '#255f8f',
+  maxItems = 10,
+} = {}) {
+  const rows = items.slice(0, maxItems)
+  const maxValue = Math.max(1, ...rows.map((item) => Number(item?.[valueKey] || 0)))
+  const titleHeight = subtitle ? 28 : 18
+  const rowHeight = Math.max(18, (height - titleHeight - 10) / Math.max(rows.length, 1))
+  const labelWidth = Math.min(135, width * 0.36)
+  const valueWidth = 52
+  const barX = x + labelWidth
+  const barWidth = Math.max(60, width - labelWidth - valueWidth - 8)
+  const [barR, barG, barB] = hexToRgb(barColor)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(23, 32, 51)
+  doc.text(title, x, y + 10)
+  if (subtitle) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.text(subtitle, x, y + 21)
+  }
+
+  if (!rows.length) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text('No data available.', x, y + titleHeight + 18)
+    return
+  }
+
+  rows.forEach((item, index) => {
+    const rowY = y + titleHeight + index * rowHeight
+    const value = Number(item?.[valueKey] || 0)
+    const ratio = Math.max(0, Math.min(1, value / maxValue))
+    const label = String(item?.[labelKey] || 'Unknown')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.7)
+    doc.setTextColor(51, 65, 85)
+    doc.text(label.length > 24 ? `${label.slice(0, 22)}…` : label, x, rowY + 9)
+
+    doc.setFillColor(226, 232, 240)
+    doc.roundedRect(barX, rowY + 3, barWidth, 7, 3.5, 3.5, 'F')
+    if (value > 0) {
+      doc.setFillColor(barR, barG, barB)
+      doc.roundedRect(barX, rowY + 3, Math.max(3, barWidth * ratio), 7, 3.5, 3.5, 'F')
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.7)
+    doc.setTextColor(23, 32, 51)
+    doc.text(`${formatNumber(value)}${valueSuffix}`, x + width, rowY + 9, { align: 'right' })
+  })
+}
+
+function drawPdfActualForecastTimeline(doc, {
+  items = [],
+  x,
+  y,
+  width,
+  height,
+  title = 'Recorded actual vs forecast',
+  subtitle = '',
+} = {}) {
+  const rows = items.slice(-8)
+  const maxValue = Math.max(1, ...rows.map((item) => Number(item?.cases || 0)))
+  const titleHeight = subtitle ? 30 : 20
+  const rowHeight = Math.max(12, (height - titleHeight - 6) / Math.max(rows.length, 1))
+  const labelWidth = Math.min(110, width * 0.33)
+  const valueWidth = 44
+  const barX = x + labelWidth
+  const barWidth = Math.max(60, width - labelWidth - valueWidth - 8)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(23, 32, 51)
+  doc.text(title, x, y + 10)
+  if (subtitle) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.text(subtitle, x, y + 21)
+  }
+
+  if (!rows.length) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text('No actual-versus-forecast data available.', x, y + titleHeight + 18)
+    return
+  }
+
+  rows.forEach((item, index) => {
+    const rowY = y + titleHeight + index * rowHeight
+    const value = Number(item?.cases || 0)
+    const ratio = Math.max(0, Math.min(1, value / maxValue))
+    const isForecast = item?.phase === 'Forecast'
+    const color = isForecast ? '#7c3aed' : '#0891b2'
+    const [r, g, b] = hexToRgb(color)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.2)
+    doc.setTextColor(51, 65, 85)
+    doc.text(`${item?.label || '-'} ${isForecast ? '(F)' : '(A)'}`, x, rowY + 8)
+
+    doc.setFillColor(226, 232, 240)
+    doc.roundedRect(barX, rowY + 2, barWidth, 6, 3, 3, 'F')
+    if (value > 0) {
+      doc.setFillColor(r, g, b)
+      doc.roundedRect(barX, rowY + 2, Math.max(3, barWidth * ratio), 6, 3, 3, 'F')
+    }
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6.2)
+    doc.setTextColor(23, 32, 51)
+    doc.text(formatNumber(value), x + width, rowY + 8, { align: 'right' })
+  })
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.4)
+  doc.setTextColor(100, 116, 139)
+  doc.text('A = recorded actual   F = forecast', x, y + height + 5)
+}
+
+function drawPdfDistributionBars(doc, {
+  items = [],
+  x,
+  y,
+  width,
+  title = '',
+  subtitle = '',
+} = {}) {
+  const total = items.reduce((sumValue, item) => sumValue + Number(item?.value || 0), 0)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(23, 32, 51)
+  doc.text(title, x, y + 10)
+  if (subtitle) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.text(subtitle, x, y + 21)
+  }
+
+  let cursorX = x
+  const barY = y + (subtitle ? 34 : 24)
+  items.forEach((item) => {
+    const share = total > 0 ? Number(item?.value || 0) / total : 0
+    const segmentWidth = width * share
+    if (segmentWidth <= 0) return
+    const [r, g, b] = hexToRgb(item?.color || '#94a3b8')
+    doc.setFillColor(r, g, b)
+    doc.rect(cursorX, barY, segmentWidth, 16, 'F')
+    cursorX += segmentWidth
+  })
+  if (total <= 0) {
+    doc.setFillColor(226, 232, 240)
+    doc.rect(x, barY, width, 16, 'F')
+  }
+
+  items.forEach((item, index) => {
+    const legendY = barY + 30 + index * 16
+    const [r, g, b] = hexToRgb(item?.color || '#94a3b8')
+    doc.setFillColor(r, g, b)
+    doc.circle(x + 4, legendY - 2, 3, 'F')
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.3)
+    doc.setTextColor(71, 85, 105)
+    doc.text(`${item.label}: ${formatNumber(item.value)}`, x + 12, legendY)
+  })
+}
+
+function drawPdfHotspotMap(doc, {
+  boundaryGeoJson = null,
+  hotspotRows = [],
+  x,
+  y,
+  width,
+  height,
+} = {}) {
+  const snapshot = buildHotspotMapGeometry(boundaryGeoJson, hotspotRows, width, height, 8)
+  doc.setFillColor(248, 250, 252)
+  doc.setDrawColor(219, 228, 238)
+  doc.roundedRect(x, y, width, height, 6, 6, 'FD')
+
+  if (!snapshot.polygons.length) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Map boundary data is not available.', x + 12, y + 24)
+    return
+  }
+
+  snapshot.polygons.forEach((polygon) => {
+    const points = polygon.points
+    if (points.length < 3) return
+    const [r, g, b] = hexToRgb(polygon.fill)
+    doc.setFillColor(r, g, b)
+    doc.setDrawColor(255, 255, 255)
+    doc.setLineWidth(0.45)
+    const start = points[0]
+    const vectors = []
+    for (let index = 1; index < points.length; index += 1) {
+      vectors.push([points[index][0] - points[index - 1][0], points[index][1] - points[index - 1][1]])
+    }
+    vectors.push([start[0] - points[points.length - 1][0], start[1] - points[points.length - 1][1]])
+    doc.lines(vectors, x + start[0], y + start[1], [1, 1], 'FD', true)
+  })
+}
+
+function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, title, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null, decisionActionResult = null, boundaryGeoJson = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -3323,6 +3585,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   const hotspotCounts = getHotspotCounts(hotspotRows)
   const topHotspot = getRankedHotspotRows(hotspotRows)[0] || null
   const topBarangay = sortedRiskRows[0]
+  const topBarangays = sortedRiskRows.slice(0, 5)
   const topDecision = getDecisionSupport(topBarangay)
   const officialMetadata = reportMetadata || getOfficialReportMetadata({
     sourceStatus,
@@ -3334,6 +3597,13 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   const scopedTitle = reportScopeConfig.title
   const scopedBasename = reportScopeConfig.basename
   const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
+  const analyticsSnapshot = buildChoAnalyticsSnapshot({
+    sortedRiskRows,
+    cityTrendAnalytics,
+    hotspotRows,
+    decisionActionResult,
+    dashboardStats,
+  })
 
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -3359,8 +3629,8 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     startY: 106,
     head: [['Metric', 'Value']],
     body: [
-      [reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis', formatNumber(dashboardStats.totalCases)],
-      ['Urgent alerts', formatNumber(decisionCounts.urgent)],
+      [reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical dengue cases across all analysis years', formatNumber(dashboardStats.totalCases)],
+      ['System-generated urgent response alerts', formatNumber(decisionCounts.urgent)],
       ...(reportScopeConfig.isBarangayScoped
         ? [['Assigned barangay', barangayLabel], ['Current risk level', topBarangay?.risk || 'Unknown']]
         : [
@@ -3376,13 +3646,17 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       ['Hotspot results not checked', formatNumber(hotspotCounts.notChecked)],
       [reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for', formatNumber(getHotspotCountTotal(hotspotCounts))],
       ['Report data source', dataSourceLabel],
-      ['Forecast-horizon total', formatNumber(dashboardStats.fourWeekForecast)],
+      ['Citywide four-period forecast total', formatNumber(dashboardStats.fourWeekForecast)],
       ['Source valid-row rate', `${dashboardStats.dataQuality}%`],
       ...(reportScopeConfig.isBarangayScoped
         ? [['Current response priority', topDecision.priority || 'No data']]
         : [
-            ['Top priority barangay', topBarangay?.barangay || 'No data'],
-            ['Top response priority', topDecision.priority || 'No data'],
+            ['Highest-priority group', topBarangay
+              ? (analyticsSnapshot.priorityLeaderCount > 1
+                  ? `${analyticsSnapshot.priorityLeaderCount} barangays tied at ${formatNumber(analyticsSnapshot.priorityRows?.[0]?.score || getMultiSourceProfile(topBarangay).score)}/100`
+                  : `${topBarangay.barangay} · ${formatNumber(analyticsSnapshot.priorityRows?.[0]?.score || getMultiSourceProfile(topBarangay).score)}/100`)
+              : 'No data'],
+            ['First-listed barangay / response priority', topBarangay ? `${topBarangay.barangay} · ${topDecision.priority || 'No data'}` : 'No data'],
           ]),
     ],
     theme: 'grid',
@@ -3549,53 +3823,234 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   doc.setFontSize(8.5)
   doc.text(doc.splitTextToSize(actualSurveillance.interpretation, pageWidth - margin * 2), margin, interpretationY + 14)
 
-  doc.addPage()
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.text('Field Monitoring Summary', margin, 42)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.text('Summary of BHW field monitoring submissions. Individual detailed field reports remain separate.', margin, 60)
+  if (!reportScopeConfig.isBarangayScoped) {
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(23, 32, 51)
+    doc.text('CHO Analytics: Case Concentration and Risk', margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text(`Recorded case concentration and current forecast-risk distribution · ${analyticsSnapshot.scopeLabel}`, margin, 58)
 
-  autoTable(doc, {
-    startY: 76,
-    head: [['Field monitoring indicator', 'Count']],
-    body: [
-      ['Total field reports', formatNumber(fieldMonitoringSummary?.total || 0)],
-      ['Awaiting review', formatNumber(fieldMonitoringSummary?.awaitingReview || 0)],
-      ['Reviewed', formatNumber(fieldMonitoringSummary?.reviewed || 0)],
-      ['Follow-up required', formatNumber(fieldMonitoringSummary?.followUpRequired || 0)],
-      ['Urgent reports', formatNumber(fieldMonitoringSummary?.urgent || 0)],
-      ['Reports needing supplies', formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)],
-      ['Reports needing assistance', formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)],
-    ],
-    theme: 'grid',
-    styles: { fontSize: 8.5, cellPadding: 5 },
-    headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
-    columnStyles: { 0: { cellWidth: 260 }, 1: { cellWidth: 120 } },
-    margin: { left: margin, right: margin },
-  })
+    drawPdfHorizontalBars(doc, {
+      items: analyticsSnapshot.topCaseRows,
+      x: margin,
+      y: 76,
+      width: 360,
+      height: 300,
+      labelKey: 'barangay',
+      valueKey: 'cases',
+      title: 'Top 10 barangays by recorded cases',
+      subtitle: `Top 10 contribution: ${analyticsSnapshot.topTenContribution.toFixed(1)}% of selected-period cases`,
+      barColor: '#2563eb',
+    })
 
-  autoTable(doc, {
-    startY: doc.lastAutoTable.finalY + 18,
-    head: [['Common observed environmental factors', 'Reports']],
-    body: fieldMonitoringSummary?.commonObservations?.length
-      ? fieldMonitoringSummary.commonObservations.map((item) => [item.label, formatNumber(item.count)])
-      : [['No submitted environmental observations available', '-']],
-    theme: 'grid',
-    styles: { fontSize: 8.5, cellPadding: 5 },
-    headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
-    columnStyles: { 0: { cellWidth: 360 }, 1: { cellWidth: 120 } },
-    margin: { left: margin, right: margin },
-  })
+    drawPdfDistributionBars(doc, {
+      items: analyticsSnapshot.riskDistribution,
+      x: 438,
+      y: 76,
+      width: 330,
+      title: 'Forecast risk distribution',
+      subtitle: 'Current High / Moderate / Low barangay classification',
+    })
 
+    drawPdfHorizontalBars(doc, {
+      items: analyticsSnapshot.priorityRows.slice(0, 8),
+      x: 438,
+      y: 225,
+      width: 330,
+      height: 190,
+      labelKey: 'barangay',
+      valueKey: 'score',
+      valueSuffix: '/100',
+      title: 'Top combined priority scores',
+      subtitle: 'Decision-support ranking for CHO review',
+      barColor: '#7c3aed',
+      maxItems: 8,
+    })
+
+    autoTable(doc, {
+      startY: 405,
+      head: [['Analytics indicator', 'Value']],
+      body: [
+        ['Recorded cases in selected period', formatNumber(analyticsSnapshot.totalActualCases)],
+        ['Barangays with recorded cases', formatNumber(analyticsSnapshot.affectedBarangays)],
+        ['Current movement', `${analyticsSnapshot.movement} · ${analyticsSnapshot.movementChange}`],
+        ['Top 10 share of cases', `${analyticsSnapshot.topTenContribution.toFixed(1)}%`],
+      ],
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 4 },
+      headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+      margin: { left: margin, right: margin },
+    })
+
+    const riskInterpretationY = (doc.lastAutoTable?.finalY || 485) + 12
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.6)
+    doc.setTextColor(71, 85, 105)
+    doc.text('Interpretation note:', margin, riskInterpretationY)
+    doc.setFont('helvetica', 'normal')
+    doc.text(
+      doc.splitTextToSize(
+        'Forecast risk, spatial hotspot level, and response priority are separate indicators. A barangay can be Low forecast risk while still requiring monitoring because of recent case movement, spatial conditions, or other response factors.',
+        pageWidth - margin * 2 - 78
+      ),
+      margin + 76,
+      riskInterpretationY
+    )
+
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(23, 32, 51)
+    doc.text('CHO Analytics: Forecast, Spatial Risk, and Response', margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Forecast pressure, hotspot distribution, barangay map snapshot, and tracked intervention status.', margin, 58)
+
+    drawPdfActualForecastTimeline(doc, {
+      items: analyticsSnapshot.actualForecastTimeline,
+      x: margin,
+      y: 76,
+      width: 350,
+      height: 150,
+      title: 'Recorded actual vs four-period forecast',
+      subtitle: `Citywide forecast total: ${formatNumber(analyticsSnapshot.forecastTotal)} cases · barangay risk is classified separately`,
+    })
+
+    drawPdfDistributionBars(doc, {
+      items: analyticsSnapshot.response.total > 0 ? [
+        { label: 'Completed', value: analyticsSnapshot.response.completed, color: '#059669' },
+        { label: 'In progress', value: analyticsSnapshot.response.inProgress, color: '#2563eb' },
+        { label: 'Pending', value: analyticsSnapshot.response.pending, color: '#d97706' },
+      ] : [],
+      x: 425,
+      y: 76,
+      width: 343,
+      title: 'Response coordination status',
+      subtitle: `${analyticsSnapshot.response.completionRate}% completion · ${analyticsSnapshot.response.overdue} overdue`,
+    })
+
+    drawPdfDistributionBars(doc, {
+      items: analyticsSnapshot.hotspotDistribution,
+      x: margin,
+      y: 245,
+      width: 350,
+      title: 'Spatial hotspot distribution',
+      subtitle: 'Confirmed, Emerging, Watch, Low concern, and map review',
+    })
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(23, 32, 51)
+    doc.text('Barangay hotspot map snapshot', 425, 248)
+    drawPdfHotspotMap(doc, {
+      boundaryGeoJson,
+      hotspotRows,
+      x: 425,
+      y: 260,
+      width: 343,
+      height: 220,
+    })
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Map colors: red = Confirmed, orange = Emerging, yellow = Watch, green = Low concern, gray = Needs review / unavailable.', 425, 493)
+
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(23, 32, 51)
+    doc.text('CHO Key Findings and Recommended Priorities', margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Automated interpretation of the report analytics for decision-support review.', margin, 58)
+
+    autoTable(doc, {
+      startY: 76,
+      head: [['No.', 'Key finding']],
+      body: analyticsSnapshot.findings.map((item, index) => [index + 1, item]),
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 6, overflow: 'linebreak' },
+      headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 720 } },
+      margin: { left: margin, right: margin },
+    })
+
+    const recommendationY = doc.lastAutoTable.finalY + 20
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.setTextColor(4, 120, 87)
+    doc.text('Recommended priorities', margin, recommendationY)
+    autoTable(doc, {
+      startY: recommendationY + 12,
+      head: [['No.', 'Recommended CHO priority']],
+      body: analyticsSnapshot.recommendations.map((item, index) => [index + 1, item]),
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 6, overflow: 'linebreak' },
+      headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 720 } },
+      margin: { left: margin, right: margin },
+    })
+  }
+
+  if (reportScopeConfig.isBarangayScoped) {
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(14)
+    doc.text('Field Monitoring Summary', margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text('Summary of BHW field monitoring submissions. Individual detailed field reports remain separate.', margin, 60)
+    doc.setFontSize(7.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Note: BHW field reports marked urgent are separate from system-generated urgent response alerts shown in the executive summary.', margin, 73)
+    doc.setTextColor(23, 32, 51)
+  
+    autoTable(doc, {
+      startY: 86,
+      head: [['Field monitoring indicator', 'Count']],
+      body: [
+        ['Total field reports', formatNumber(fieldMonitoringSummary?.total || 0)],
+        ['Awaiting review', formatNumber(fieldMonitoringSummary?.awaitingReview || 0)],
+        ['Reviewed', formatNumber(fieldMonitoringSummary?.reviewed || 0)],
+        ['Follow-up required', formatNumber(fieldMonitoringSummary?.followUpRequired || 0)],
+        ['Urgent reports', formatNumber(fieldMonitoringSummary?.urgent || 0)],
+        ['Reports needing supplies', formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)],
+        ['Reports needing assistance', formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)],
+      ],
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 5 },
+      headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+      columnStyles: { 0: { cellWidth: 260 }, 1: { cellWidth: 120 } },
+      margin: { left: margin, right: margin },
+    })
+  
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 18,
+      head: [['Common observed environmental factors', 'Reports']],
+      body: fieldMonitoringSummary?.commonObservations?.length
+        ? fieldMonitoringSummary.commonObservations.map((item) => [item.label, formatNumber(item.count)])
+        : [['No submitted environmental observations available', '-']],
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 5 },
+      headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+      columnStyles: { 0: { cellWidth: 360 }, 1: { cellWidth: 120 } },
+      margin: { left: margin, right: margin },
+    })
+  }
   doc.addPage()
 
   const rankingStartY = 42
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Profile' : 'Barangay Response Planning Ranking', margin, rankingStartY)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Profile' : 'Appendix A — Response Priority Barangays', margin, rankingStartY)
 
   if (reportScopeConfig.isBarangayScoped) {
     const profile = getMultiSourceProfile(topBarangay)
@@ -3685,7 +4140,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Four-Period Forecast Detail', margin, forecastSectionY)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Four-Period Forecast Detail' : 'Appendix B — Four-Period Forecast Detail', margin, forecastSectionY)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.text('Each period is forecast separately. The four values are summed for the cumulative case-risk classification.', margin, forecastSectionY + 18)
@@ -3738,11 +4193,60 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     margin: { left: margin, right: margin },
   })
 
+  if (!reportScopeConfig.isBarangayScoped) {
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(14)
+    doc.text('Appendix C — Combined Risk Factors', margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text('Environmental, population, density, and forecast factors used by the response-priority ranking.', margin, 60)
+
+    autoTable(doc, {
+      startY: 76,
+      head: [['Barangay', 'Combined Score', 'Environment', 'Rainfall', 'Temperature', 'Humidity']],
+      body: topBarangays.length > 0
+        ? topBarangays.map((row) => {
+            const profile = getMultiSourceProfile(row)
+            return [
+              row.barangay,
+              `${formatNumber(profile.score)}/100`,
+              profile.environmentalSuitability,
+              profile.rainfallPressure,
+              profile.temperatureSuitability,
+              profile.humiditySuitability,
+            ]
+          })
+        : [['No barangay response data available', '-', '-', '-', '-', '-']],
+      theme: 'grid',
+      styles: { fontSize: 7.6, cellPadding: 5, overflow: 'linebreak' },
+      headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+      columnStyles: {
+        0: { cellWidth: 105 },
+        1: { cellWidth: 82 },
+        2: { cellWidth: 140 },
+        3: { cellWidth: 125 },
+        4: { cellWidth: 155 },
+        5: { cellWidth: 135 },
+      },
+      margin: { left: margin, right: margin },
+    })
+
+    const factorNoteY = (doc.lastAutoTable?.finalY || 260) + 20
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(23, 32, 51)
+    const factorNote = topBarangay
+      ? `${topBarangay.barangay} is first-listed in the current response-priority ordering at ${formatNumber(getMultiSourceProfile(topBarangay).score)}/100. The score combines forecast, recent case movement, weather suitability, population exposure, and density context.`
+      : 'Combined risk factors will appear after the required source data are available.'
+    doc.text(doc.splitTextToSize(factorNote, pageWidth - margin * 2), margin, factorNoteY)
+  }
+
   doc.addPage()
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Top Response Plan', margin, 42)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Appendix D — Priority Response Plan', margin, 42)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
@@ -3891,47 +4395,97 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     })
   }
 
-  const sources = Object.entries(sourceStatus || {})
-
-  if (reportScopeConfig.isBarangayScoped) {
+  if (!reportScopeConfig.isBarangayScoped) {
     doc.addPage()
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(14)
-    doc.text('Technical Appendix: Model Review', margin, 42)
+    doc.text('Appendix E — Field Monitoring Summary', margin, 42)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
-    doc.text('Model selection and evaluation details are separated from the BHW operational summary.', margin, 60)
+    doc.text('Summary of BHW field monitoring submissions. Individual detailed field reports remain separate.', margin, 60)
+    doc.setFontSize(7.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Note: BHW field reports marked urgent are separate from system-generated urgent response alerts shown in the executive summary.', margin, 73)
+    doc.setTextColor(23, 32, 51)
 
     autoTable(doc, {
-      startY: 74,
-      head: [['Technical field', 'Current model information']],
-      body: getTechnicalModelMetadataRows(officialMetadata),
+      startY: 86,
+      head: [['Field monitoring indicator', 'Count']],
+      body: [
+        ['Total field reports', formatNumber(fieldMonitoringSummary?.total || 0)],
+        ['Awaiting review', formatNumber(fieldMonitoringSummary?.awaitingReview || 0)],
+        ['Reviewed', formatNumber(fieldMonitoringSummary?.reviewed || 0)],
+        ['Follow-up required', formatNumber(fieldMonitoringSummary?.followUpRequired || 0)],
+        ['Urgent reports', formatNumber(fieldMonitoringSummary?.urgent || 0)],
+        ['Reports needing supplies', formatNumber(fieldMonitoringSummary?.suppliesNeeded || 0)],
+        ['Reports needing assistance', formatNumber(fieldMonitoringSummary?.assistanceNeeded || 0)],
+      ],
       theme: 'grid',
-      styles: {
-        fontSize: 8,
-        cellPadding: 5,
-        overflow: 'linebreak',
-      },
-      headStyles: {
-        fillColor: [37, 95, 143],
-        textColor: [255, 255, 255],
-      },
-      columnStyles: {
-        0: { cellWidth: 170 },
-        1: { cellWidth: 600 },
-      },
-      margin: {
-        left: margin,
-        right: margin,
-      },
+      styles: { fontSize: 8.5, cellPadding: 5 },
+      headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+      columnStyles: { 0: { cellWidth: 260 }, 1: { cellWidth: 120 } },
+      margin: { left: margin, right: margin },
+    })
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 18,
+      head: [['Common observed environmental factors', 'Reports']],
+      body: fieldMonitoringSummary?.commonObservations?.length
+        ? fieldMonitoringSummary.commonObservations.map((item) => [item.label, formatNumber(item.count)])
+        : [['No submitted environmental observations available', '-']],
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 5 },
+      headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+      columnStyles: { 0: { cellWidth: 360 }, 1: { cellWidth: 120 } },
+      margin: { left: margin, right: margin },
     })
   }
+
+  const sources = Object.entries(sourceStatus || {})
+
+  doc.addPage()
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Model Review' : 'Appendix F — Technical Model Review', margin, 42)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.text(
+    reportScopeConfig.isBarangayScoped
+      ? 'Model selection and evaluation details are separated from the BHW operational summary.'
+      : 'Model evaluation details are kept in the appendix so the main CHO report remains focused on surveillance and response decisions.',
+    margin,
+    60
+  )
+
+  autoTable(doc, {
+    startY: 74,
+    head: [['Technical field', 'Current model information']],
+    body: getTechnicalModelMetadataRows(officialMetadata),
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 5,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: [37, 95, 143],
+      textColor: [255, 255, 255],
+    },
+    columnStyles: {
+      0: { cellWidth: 170 },
+      1: { cellWidth: 600 },
+    },
+    margin: {
+      left: margin,
+      right: margin,
+    },
+  })
 
   doc.addPage()
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text(reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Uploaded Data Readiness', margin, 42)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Appendix G — Uploaded Data Readiness', margin, 42)
 
   autoTable(doc, {
     startY: 58,
@@ -4001,7 +4555,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   doc.addPage()
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('Limitations and Assumptions', margin, 42)
+  doc.text(reportScopeConfig.isBarangayScoped ? 'Limitations and Assumptions' : 'Appendix H — Limitations and Assumptions', margin, 42)
 
   autoTable(doc, {
     startY: 58,
@@ -4030,7 +4584,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   doc.save(`${scopedBasename}.pdf`)
 }
 
-function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
+function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null, decisionActionResult = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -4049,6 +4603,13 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   const scopedTitle = reportScopeConfig.title
   const scopedBasename = reportScopeConfig.basename
   const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
+  const analyticsSnapshot = buildChoAnalyticsSnapshot({
+    sortedRiskRows,
+    cityTrendAnalytics,
+    hotspotRows,
+    decisionActionResult,
+    dashboardStats,
+  })
 
   const workbook = XLSX.utils.book_new()
 
@@ -4077,8 +4638,8 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
         ]),
     [],
     ['Metric', 'Value'],
-    [reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis', Number(dashboardStats.totalCases || 0)],
-    ['Urgent alerts', decisionCounts.urgent],
+    [reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical dengue cases across all analysis years', Number(dashboardStats.totalCases || 0)],
+    ['System-generated urgent response alerts', decisionCounts.urgent],
     [reportScopeConfig.isBarangayScoped ? 'Preventive response status' : 'Preventive priority barangays', decisionCounts.preventive],
     [reportScopeConfig.isBarangayScoped ? 'Early warning / watch status' : 'Early warning / watch barangays', decisionCounts.watch],
     [reportScopeConfig.isBarangayScoped ? 'Routine monitoring status' : 'Routine monitoring barangays', decisionCounts.routine],
@@ -4094,7 +4655,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     [reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for', getHotspotCountTotal(hotspotCounts)],
     [reportScopeConfig.isBarangayScoped ? 'Barangay hotspot status' : 'Top hotspot barangay', reportScopeConfig.isBarangayScoped ? getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level) : (topHotspot?.barangay || 'Not checked')],
     ['Report data source', dataSourceLabel],
-    ['Forecast-horizon total', Number(dashboardStats.fourWeekForecast || 0)],
+    ['Citywide four-period forecast total', Number(dashboardStats.fourWeekForecast || 0)],
     ['Source valid-row rate', `${dashboardStats.dataQuality}%`],
     ...(reportScopeConfig.isBarangayScoped
       ? [
@@ -4107,9 +4668,10 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
           ['Recommended response', topDecision.summary || 'No recommendation available'],
         ]
       : [
-          ['Top priority barangay', topBarangay?.barangay || 'No data'],
-          ['Top response priority', topDecision.priority || 'No data'],
-          ['Top combined priority score', `${getMultiSourceProfile(topBarangay).score}/100`],
+          ['First-listed highest-priority barangay', topBarangay?.barangay || 'No data'],
+          ['Barangays tied at highest score', analyticsSnapshot.priorityLeaderCount || 0],
+          ['First-listed response priority', topDecision.priority || 'No data'],
+          ['Highest combined priority score', `${getMultiSourceProfile(topBarangay).score}/100`],
           ['Top environmental suitability', getMultiSourceProfile(topBarangay).environmentalSuitability],
           ['Top rainfall pressure', getMultiSourceProfile(topBarangay).rainfallPressure],
           ['Top temperature suitability', getMultiSourceProfile(topBarangay).temperatureSuitability],
@@ -4538,7 +5100,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   XLSX.writeFile(workbook, `${scopedBasename}.xlsx`)
 }
 
-async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null }) {
+async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceStatus, generatedAt, hotspotRows = [], hotspotSummary = null, dataSourceLabel = 'Current report data', reportMetadata = null, cityTrendAnalytics = null, fieldMonitoringSummary = null, decisionActionResult = null, boundaryGeoJson = null }) {
   const sortedRiskRows = getSortedRiskRows(riskRows)
   const { highRiskCount, moderateRiskCount, lowRiskCount } = getRiskCounts(sortedRiskRows)
   const decisionCounts = getDecisionCounts(sortedRiskRows)
@@ -4559,6 +5121,13 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const scopedTitle = reportScopeConfig.title
   const scopedBasename = reportScopeConfig.basename
   const barangayLabel = reportScopeConfig.barangay || topBarangay?.barangay || 'Assigned barangay'
+  const analyticsSnapshot = buildChoAnalyticsSnapshot({
+    sortedRiskRows,
+    cityTrendAnalytics,
+    hotspotRows,
+    decisionActionResult,
+    dashboardStats,
+  })
   const pptMetadataRows = reportScopeConfig.isBarangayScoped
     ? getOperationalMetadataRows(officialMetadata)
     : getOfficialMetadataRows(officialMetadata).filter(([label]) => ![
@@ -4911,143 +5480,520 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     margin: 0.12, fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
   })
 
+
+  if (!reportScopeConfig.isBarangayScoped) {
+    const analyticsCaseSlide = pptx.addSlide()
+    addSlideTitle(
+      analyticsCaseSlide,
+      'CHO Analytics: Case Concentration',
+      `Recorded case burden by barangay for ${analyticsSnapshot.scopeLabel}. This view highlights where reported dengue cases are concentrated.`
+    )
+
+    addMetricCard(analyticsCaseSlide, 'Recorded cases', formatNumber(analyticsSnapshot.totalActualCases), 0.7, 1.32, COLORS.lightBlue, COLORS.blue)
+    addMetricCard(analyticsCaseSlide, 'Affected barangays', formatNumber(analyticsSnapshot.affectedBarangays), 3.5, 1.32, COLORS.emerald, COLORS.green)
+    addMetricCard(analyticsCaseSlide, 'Top 10 contribution', `${analyticsSnapshot.topTenContribution.toFixed(1)}%`, 6.3, 1.32, COLORS.yellow, COLORS.amber)
+    addMetricCard(analyticsCaseSlide, 'Current movement', analyticsSnapshot.movement, 9.1, 1.32, COLORS.lightBlue, COLORS.blueDark)
+
+    analyticsCaseSlide.addText('Top 10 barangays by recorded cases', {
+      x: 0.7, y: 2.78, w: 7.75, h: 0.28, fontSize: 13, bold: true, color: COLORS.navy, margin: 0,
+    })
+    if (analyticsSnapshot.topCaseRows.length) {
+      analyticsCaseSlide.addChart(
+        pptx.ChartType.bar,
+        [{
+          name: 'Recorded cases',
+          labels: analyticsSnapshot.topCaseRows.map((row) => row.barangay),
+          values: analyticsSnapshot.topCaseRows.map((row) => Number(row.cases || 0)),
+        }],
+        {
+          x: 0.7, y: 3.08, w: 7.75, h: 3.22,
+          showLegend: false,
+          showTitle: false,
+          showValue: true,
+          chartColors: [COLORS.blue],
+          catAxisLabelFontSize: 8.5,
+          valAxisLabelFontSize: 8,
+          valGridLine: { color: COLORS.line, pt: 1 },
+          showCatAxisTitle: false,
+          showValAxisTitle: false,
+        }
+      )
+    } else {
+      analyticsCaseSlide.addText('No barangay case breakdown is available for the selected period.', {
+        x: 0.7, y: 3.08, w: 7.75, h: 3.22, fontSize: 12, color: COLORS.slate, align: 'center', valign: 'mid',
+        fill: { color: COLORS.white }, line: { color: COLORS.line }, margin: 0.1,
+      })
+    }
+
+    analyticsCaseSlide.addText('What this means', {
+      x: 8.78, y: 2.78, w: 3.7, h: 0.28, fontSize: 13, bold: true, color: COLORS.blueDark, margin: 0,
+    })
+    analyticsCaseSlide.addText(
+      analyticsSnapshot.findings.slice(0, 2).join('\n\n'),
+      {
+        x: 8.78, y: 3.08, w: 3.85, h: 2.0, fontSize: 11.2, color: COLORS.navy, margin: 0.16,
+        fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+      }
+    )
+    analyticsCaseSlide.addText(`Movement comparison: ${analyticsSnapshot.movementChange}`, {
+      x: 8.78, y: 5.32, w: 3.85, h: 0.62, fontSize: 10.5, bold: true, color: COLORS.blueDark, margin: 0.12,
+      fill: { color: COLORS.white }, line: { color: COLORS.line }, fit: 'shrink',
+    })
+
+    const analyticsRiskSlide = pptx.addSlide()
+    addSlideTitle(
+      analyticsRiskSlide,
+      'CHO Analytics: Risk and Priority',
+      'Forecast risk distribution and combined priority scores help CHO distinguish broad citywide risk from the barangays requiring the earliest review.'
+    )
+
+    analyticsRiskSlide.addText('Forecast risk distribution', {
+      x: 0.7, y: 1.33, w: 5.65, h: 0.3, fontSize: 14, bold: true, color: COLORS.navy, margin: 0,
+    })
+    analyticsRiskSlide.addChart(
+      pptx.ChartType.bar,
+      [{
+        name: 'Barangays',
+        labels: analyticsSnapshot.riskDistribution.map((item) => item.label),
+        values: analyticsSnapshot.riskDistribution.map((item) => Number(item.value || 0)),
+      }],
+      {
+        x: 0.7, y: 1.72, w: 5.65, h: 2.15,
+        showLegend: false,
+        showTitle: false,
+        showValue: true,
+        chartColors: [COLORS.red, COLORS.amber, COLORS.green],
+        catAxisLabelFontSize: 10,
+        valAxisLabelFontSize: 8,
+        valGridLine: { color: COLORS.line, pt: 1 },
+      }
+    )
+
+    analyticsRiskSlide.addText('Top combined priority scores', {
+      x: 6.75, y: 1.33, w: 5.75, h: 0.3, fontSize: 14, bold: true, color: COLORS.navy, margin: 0,
+    })
+    if (analyticsSnapshot.priorityRows.length) {
+      const priorityPptRows = analyticsSnapshot.priorityRows.slice(0, 8)
+      analyticsRiskSlide.addChart(
+        pptx.ChartType.bar,
+        [{
+          name: 'Combined priority score',
+          labels: priorityPptRows.map((row) => row.barangay),
+          values: priorityPptRows.map((row) => Number(row.score || 0)),
+        }],
+        {
+          x: 6.75, y: 1.72, w: 5.78, h: 2.15,
+          showLegend: false,
+          showTitle: false,
+          showValue: true,
+          chartColors: [COLORS.blueDark],
+          catAxisLabelFontSize: 8.5,
+          valAxisLabelFontSize: 8,
+          valAxisMinVal: 0,
+          valAxisMaxVal: 100,
+          valGridLine: { color: COLORS.line, pt: 1 },
+        }
+      )
+    }
+
+    analyticsRiskSlide.addTable(
+      [
+        ['Risk level', 'Barangays'],
+        ...analyticsSnapshot.riskDistribution.map((item) => [item.label, formatNumber(item.value)]),
+      ],
+      {
+        x: 0.7, y: 4.18, w: 5.65, h: 1.8, fontSize: 10.5, color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.07,
+      }
+    )
+    analyticsRiskSlide.addText(
+      analyticsSnapshot.priorityRows[0]
+        ? `${analyticsSnapshot.priorityLeadDescription} Priority ranking combines the system's response factors and should be reviewed alongside actual cases and field observations.`
+        : 'No combined priority ranking is available yet.',
+      {
+        x: 6.75, y: 4.18, w: 5.78, h: 1.8, fontSize: 11.1, color: COLORS.navy, margin: 0.17,
+        fill: { color: COLORS.yellow }, line: { color: 'FDE68A' }, fit: 'shrink',
+      }
+    )
+    analyticsRiskSlide.addText(
+      'Interpretation note: Forecast risk, spatial hotspot level, and response priority are separate indicators. A barangay can be Low forecast risk while still requiring monitoring because of recent case movement, spatial conditions, or other response factors.',
+      {
+        x: 0.7, y: 6.12, w: 11.83, h: 0.72, fontSize: 9.2, color: COLORS.slate, margin: 0.1,
+        fill: { color: 'F8FAFC' }, line: { color: COLORS.line }, fit: 'shrink',
+      }
+    )
+
+    const analyticsForecastSlide = pptx.addSlide()
+    addSlideTitle(
+      analyticsForecastSlide,
+      'CHO Analytics: Four-Period Forecast Outlook',
+      'Aggregate forecast pressure across all barangays. The citywide total is separate from per-barangay High, Moderate, and Low risk classification.'
+    )
+
+    addMetricCard(analyticsForecastSlide, 'Citywide forecast total', formatNumber(analyticsSnapshot.forecastTotal), 0.7, 1.32, COLORS.yellow, COLORS.amber)
+    addMetricCard(analyticsForecastSlide, 'Forecast peak', analyticsSnapshot.forecastPeak?.label || 'No data', 3.5, 1.32, COLORS.lightBlue, COLORS.blue)
+    addMetricCard(analyticsForecastSlide, 'Peak cases', formatNumber(analyticsSnapshot.forecastPeak?.cases || 0), 6.3, 1.32, COLORS.rose, COLORS.red)
+    addMetricCard(analyticsForecastSlide, 'High-risk barangays', formatNumber(analyticsSnapshot.riskDistribution.find((item) => item.label === 'High')?.value || 0), 9.1, 1.32, COLORS.rose, COLORS.red)
+
+    analyticsForecastSlide.addText('Recorded actual vs forecast outlook', {
+      x: 0.7, y: 2.78, w: 7.75, h: 0.28, fontSize: 13, bold: true, color: COLORS.navy, margin: 0,
+    })
+    if (analyticsSnapshot.actualForecastTimeline.length) {
+      const actualRows = analyticsSnapshot.actualForecastTimeline.filter((row) => row.phase === 'Actual')
+      const forecastRows = analyticsSnapshot.actualForecastTimeline.filter((row) => row.phase === 'Forecast')
+
+      analyticsForecastSlide.addText('Recorded actual', {
+        x: 0.72, y: 3.02, w: 3.55, h: 0.22, fontSize: 9, bold: true, color: COLORS.blueDark, margin: 0,
+      })
+      if (actualRows.length) {
+        analyticsForecastSlide.addChart(
+          pptx.ChartType.line,
+          [{
+            name: 'Recorded actual',
+            labels: actualRows.map((row) => row.label),
+            values: actualRows.map((row) => Number(row.cases || 0)),
+          }],
+          {
+            x: 0.7, y: 3.28, w: 3.72, h: 2.72,
+            showLegend: false,
+            showTitle: false,
+            showValue: false,
+            chartColors: [COLORS.blue],
+            catAxisLabelFontSize: 7.5,
+            valAxisLabelFontSize: 7.5,
+            valGridLine: { color: COLORS.line, pt: 1 },
+          }
+        )
+      }
+
+      analyticsForecastSlide.addText('Forecast', {
+        x: 4.63, y: 3.02, w: 3.55, h: 0.22, fontSize: 9, bold: true, color: '7C3AED', margin: 0,
+      })
+      if (forecastRows.length) {
+        analyticsForecastSlide.addChart(
+          pptx.ChartType.column,
+          [{
+            name: 'Forecast',
+            labels: forecastRows.map((row) => row.label),
+            values: forecastRows.map((row) => Number(row.cases || 0)),
+          }],
+          {
+            x: 4.55, y: 3.28, w: 3.9, h: 2.72,
+            showLegend: false,
+            showTitle: false,
+            showValue: true,
+            chartColors: ['7C3AED'],
+            catAxisLabelFontSize: 7.5,
+            valAxisLabelFontSize: 7.5,
+            valGridLine: { color: COLORS.line, pt: 1 },
+          }
+        )
+      }
+    } else {
+      analyticsForecastSlide.addText('No actual-versus-forecast timeline is available yet.', {
+        x: 0.7, y: 3.08, w: 7.75, h: 3.05, fontSize: 12, color: COLORS.slate, align: 'center', valign: 'mid',
+        fill: { color: COLORS.white }, line: { color: COLORS.line },
+      })
+    }
+
+    analyticsForecastSlide.addText('Forecast interpretation', {
+      x: 8.78, y: 2.78, w: 3.75, h: 0.28, fontSize: 13, bold: true, color: COLORS.amber, margin: 0,
+    })
+    analyticsForecastSlide.addText(
+      analyticsSnapshot.forecastPeak
+        ? `The highest aggregate forecast pressure occurs in ${analyticsSnapshot.forecastPeak.label}, with approximately ${formatNumber(analyticsSnapshot.forecastPeak.cases)} projected dengue cases across the city. Use this outlook to plan surveillance and resource readiness, while validating decisions against current recorded cases.`
+        : 'The forecast outlook is not available yet. Continue using recorded dengue cases and field observations until forecast data are produced.',
+      {
+        x: 8.78, y: 3.08, w: 3.85, h: 2.35, fontSize: 11.1, color: COLORS.navy, margin: 0.17,
+        fill: { color: COLORS.yellow }, line: { color: 'FDE68A' }, fit: 'shrink',
+      }
+    )
+
+    const analyticsSpatialSlide = pptx.addSlide()
+    addSlideTitle(
+      analyticsSpatialSlide,
+      'CHO Analytics: Spatial Hotspot Situation',
+      'Barangay hotspot levels show where elevated spatial concern is concentrated and where neighboring areas may require coordinated monitoring.'
+    )
+
+    const mapSvg = buildHotspotMapSvg(boundaryGeoJson, hotspotRows, 1100, 680)
+    const mapDataUri = boundaryGeoJson?.features?.length ? svgToBase64DataUri(mapSvg) : ''
+    if (mapDataUri) {
+      analyticsSpatialSlide.addImage({ data: mapDataUri, x: 0.7, y: 1.35, w: 7.55, h: 4.95 })
+    } else {
+      analyticsSpatialSlide.addText('Barangay boundary data is not available for the map snapshot.', {
+        x: 0.7, y: 1.35, w: 7.55, h: 4.95, fontSize: 12, color: COLORS.slate, align: 'center', valign: 'mid',
+        fill: { color: COLORS.white }, line: { color: COLORS.line }, margin: 0.1,
+      })
+    }
+
+    analyticsSpatialSlide.addText('Hotspot distribution', {
+      x: 8.6, y: 1.35, w: 3.85, h: 0.3, fontSize: 14, bold: true, color: COLORS.navy, margin: 0,
+    })
+    analyticsSpatialSlide.addTable(
+      [
+        ['Hotspot level', 'Barangays'],
+        ...analyticsSnapshot.hotspotDistribution.map((item) => [item.label, formatNumber(item.value)]),
+      ],
+      {
+        x: 8.6, y: 1.75, w: 3.9, h: 2.15, fontSize: 9.5, color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white }, margin: 0.06,
+      }
+    )
+
+    const mappedConcern = analyticsSnapshot.hotspotDistribution
+      .filter((item) => item.label === 'Confirmed' || item.label === 'Emerging')
+      .reduce((sumValue, item) => sumValue + Number(item.value || 0), 0)
+    analyticsSpatialSlide.addText(
+      mappedConcern > 0
+        ? `${formatNumber(mappedConcern)} barangays are currently classified as confirmed or emerging hotspots. CHO should review neighboring elevated areas together rather than treating each barangay as an isolated signal.`
+        : 'No confirmed or emerging hotspot cluster is currently identified. Continue monitoring Watch and Needs Review barangays for changes.',
+      {
+        x: 8.6, y: 4.18, w: 3.9, h: 1.25, fontSize: 10.8, color: COLORS.navy, margin: 0.15,
+        fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+      }
+    )
+    analyticsSpatialSlide.addText('Map legend: Confirmed = red • Emerging = orange • Watch = yellow • Low concern = green • Needs review = gray', {
+      x: 0.72, y: 6.38, w: 11.75, h: 0.36, fontSize: 8.8, color: COLORS.slate, margin: 0.05, fit: 'shrink',
+    })
+
+    const analyticsResponseSlide = pptx.addSlide()
+    addSlideTitle(
+      analyticsResponseSlide,
+      'CHO Analytics: Response Coordination',
+      'Tracked intervention status connects surveillance and forecasting with the field response activities already assigned through the system.'
+    )
+
+    addMetricCard(analyticsResponseSlide, 'Tracked actions', formatNumber(analyticsSnapshot.response.total), 0.7, 1.32, COLORS.lightBlue, COLORS.blue)
+    addMetricCard(analyticsResponseSlide, 'Completed', formatNumber(analyticsSnapshot.response.completed), 3.5, 1.32, COLORS.emerald, COLORS.green)
+    addMetricCard(analyticsResponseSlide, 'Completion rate', `${analyticsSnapshot.response.completionRate}%`, 6.3, 1.32, COLORS.emerald, COLORS.green)
+    addMetricCard(analyticsResponseSlide, 'Overdue', formatNumber(analyticsSnapshot.response.overdue), 9.1, 1.32, COLORS.rose, COLORS.red)
+
+    const responseChartRows = [
+      { label: 'Completed', value: analyticsSnapshot.response.completed },
+      { label: 'In Progress', value: analyticsSnapshot.response.inProgress },
+      { label: 'Pending', value: analyticsSnapshot.response.pending },
+    ]
+    analyticsResponseSlide.addText('Action status distribution', {
+      x: 0.7, y: 2.78, w: 6.1, h: 0.28, fontSize: 13, bold: true, color: COLORS.navy, margin: 0,
+    })
+    analyticsResponseSlide.addChart(
+      pptx.ChartType.bar,
+      [{
+        name: 'Tracked actions',
+        labels: responseChartRows.map((row) => row.label),
+        values: responseChartRows.map((row) => Number(row.value || 0)),
+      }],
+      {
+        x: 0.7, y: 3.08, w: 6.1, h: 2.72,
+        showLegend: false,
+        showTitle: false,
+        showValue: true,
+        chartColors: [COLORS.green, COLORS.blue, COLORS.amber],
+        catAxisLabelFontSize: 10,
+        valAxisLabelFontSize: 8,
+        valGridLine: { color: COLORS.line, pt: 1 },
+      }
+    )
+
+    analyticsResponseSlide.addText('Management interpretation', {
+      x: 7.15, y: 2.78, w: 5.3, h: 0.28, fontSize: 13, bold: true, color: COLORS.blueDark, margin: 0,
+    })
+    analyticsResponseSlide.addText(
+      getResponseManagementInterpretation(analyticsSnapshot.response),
+      {
+        x: 7.15, y: 3.08, w: 5.35, h: 2.15, fontSize: 11.5, color: COLORS.navy, margin: 0.18,
+        fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+      }
+    )
+
+    const analyticsFindingsSlide = pptx.addSlide()
+    addSlideTitle(
+      analyticsFindingsSlide,
+      'CHO Key Findings and Recommended Priorities',
+      'Automated report interpretation summarizes the strongest signals. Final public-health decisions remain with CHO and field personnel.'
+    )
+
+    analyticsFindingsSlide.addText('Key findings', {
+      x: 0.7, y: 1.35, w: 5.8, h: 0.34, fontSize: 16, bold: true, color: COLORS.blueDark, margin: 0,
+    })
+    analyticsSnapshot.findings.slice(0, 6).forEach((finding, index) => {
+      const y = 1.85 + index * 0.78
+      analyticsFindingsSlide.addText(`${index + 1}`, {
+        x: 0.72, y, w: 0.42, h: 0.42, fontSize: 10, bold: true, color: COLORS.white, align: 'center', valign: 'mid', margin: 0,
+        fill: { color: COLORS.blue }, line: { color: COLORS.blue },
+      })
+      analyticsFindingsSlide.addText(finding, {
+        x: 1.28, y: y - 0.02, w: 5.15, h: 0.55, fontSize: 10.5, color: COLORS.navy, margin: 0.05, fit: 'shrink',
+      })
+    })
+
+    analyticsFindingsSlide.addText('Recommended priorities', {
+      x: 6.85, y: 1.35, w: 5.65, h: 0.34, fontSize: 16, bold: true, color: COLORS.amber, margin: 0,
+    })
+    analyticsSnapshot.recommendations.slice(0, 4).forEach((recommendation, index) => {
+      const y = 1.87 + index * 1.05
+      analyticsFindingsSlide.addText(`${index + 1}`, {
+        x: 6.87, y, w: 0.42, h: 0.42, fontSize: 10, bold: true, color: COLORS.white, align: 'center', valign: 'mid', margin: 0,
+        fill: { color: COLORS.amber }, line: { color: COLORS.amber },
+      })
+      analyticsFindingsSlide.addText(recommendation, {
+        x: 7.43, y: y - 0.02, w: 5.0, h: 0.76, fontSize: 10.7, color: COLORS.navy, margin: 0.06,
+        fill: { color: COLORS.white }, line: { color: COLORS.line }, fit: 'shrink',
+      })
+    })
+
+    analyticsFindingsSlide.addText('Decision-support note', {
+      x: 6.87, y: 6.17, w: 2.0, h: 0.24, fontSize: 8.5, bold: true, color: COLORS.slate, margin: 0,
+    })
+    analyticsFindingsSlide.addText('Use these analytics together with current case verification, epidemiological judgment, field observations, and local response capacity.', {
+      x: 8.37, y: 6.08, w: 4.05, h: 0.48, fontSize: 9.2, color: COLORS.slate, margin: 0.04, fit: 'shrink',
+    })
+  }
+
+  if (reportScopeConfig.isBarangayScoped) {
   const summarySlide = pptx.addSlide()
-  addSlideTitle(
-    summarySlide,
-    'Response Summary',
-    'Key monitoring and response planning indicators from the current workspace.'
-  )
-
-  addMetricCard(
-    summarySlide,
-    reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis',
-    formatNumber(dashboardStats.totalCases),
-    0.7,
-    1.45,
-    COLORS.lightBlue,
-    COLORS.blue
-  )
-
-  addMetricCard(
-    summarySlide,
-    'Urgent alerts',
-    formatNumber(decisionCounts.urgent),
-    3.55,
-    1.45,
-    COLORS.rose,
-    COLORS.red
-  )
-
-  addMetricCard(
-    summarySlide,
-    'Forecast total',
-    formatNumber(dashboardStats.fourWeekForecast),
-    6.4,
-    1.45,
-    COLORS.yellow,
-    COLORS.amber
-  )
-
-  addMetricCard(
-    summarySlide,
-    'Source valid-row rate',
-    `${dashboardStats.dataQuality}%`,
-    9.25,
-    1.45,
-    COLORS.emerald,
-    COLORS.green
-  )
-
-  summarySlide.addText(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Risk' : 'Risk Distribution', {
-    x: 0.72,
-    y: 3.18,
-    w: 4.5,
-    h: 0.3,
-    fontSize: 17,
-    bold: true,
-    color: COLORS.navy,
-    margin: 0,
-  })
-
-  summarySlide.addTable(
-    [
-      ['Risk Level', reportScopeConfig.isBarangayScoped ? 'Assigned Barangay' : 'Barangay Count'],
-      ...(reportScopeConfig.isBarangayScoped
-        ? [[topBarangay?.risk || 'Unknown', barangayLabel]]
-        : [['High', highRiskCount], ['Moderate', moderateRiskCount], ['Low', lowRiskCount]]),
-    ],
-    {
+    addSlideTitle(
+      summarySlide,
+      'Response Summary',
+      'Key monitoring and response planning indicators from the current workspace.'
+    )
+  
+    addMetricCard(
+      summarySlide,
+      reportScopeConfig.isBarangayScoped ? 'Historical cases used for model analysis' : 'Historical cases used in analysis',
+      formatNumber(dashboardStats.totalCases),
+      0.7,
+      1.45,
+      COLORS.lightBlue,
+      COLORS.blue
+    )
+  
+    addMetricCard(
+      summarySlide,
+      'Urgent alerts',
+      formatNumber(decisionCounts.urgent),
+      3.55,
+      1.45,
+      COLORS.rose,
+      COLORS.red
+    )
+  
+    addMetricCard(
+      summarySlide,
+      'Forecast total',
+      formatNumber(dashboardStats.fourWeekForecast),
+      6.4,
+      1.45,
+      COLORS.yellow,
+      COLORS.amber
+    )
+  
+    addMetricCard(
+      summarySlide,
+      'Source valid-row rate',
+      `${dashboardStats.dataQuality}%`,
+      9.25,
+      1.45,
+      COLORS.emerald,
+      COLORS.green
+    )
+  
+    summarySlide.addText(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Risk' : 'Risk Distribution', {
       x: 0.72,
-      y: 3.66,
-      w: 5.4,
-      h: 1.55,
-      fontSize: 12,
-      color: COLORS.navy,
-      border: { color: COLORS.line, pt: 1 },
-      fill: { color: COLORS.white },
-      margin: 0.08,
-    }
-  )
-
-  summarySlide.addText('Hotspot Summary', {
-    x: 0.72,
-    y: 5.55,
-    w: 4.8,
-    h: 0.28,
-    fontSize: 14,
-    bold: true,
-    color: COLORS.navy,
-    margin: 0,
-  })
-
-  summarySlide.addText(
-    `Confirmed: ${formatNumber(hotspotCounts.confirmed)} • Emerging: ${formatNumber(hotspotCounts.emerging)} • Watch: ${formatNumber(hotspotCounts.watch)} • Low concern: ${formatNumber(hotspotCounts.low)} • Needs review: ${formatNumber(hotspotCounts.needsReview)} • Accounted: ${formatNumber(getHotspotCountTotal(hotspotCounts))}`,
-    {
-      x: 0.72,
-      y: 5.92,
-      w: 5.4,
-      h: 0.46,
-      fontSize: 10.5,
-      color: COLORS.slate,
-      margin: 0.08,
-      fill: { color: COLORS.white },
-      line: { color: COLORS.line },
-      fit: 'shrink',
-    }
-  )
-
-  summarySlide.addText(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Guidance' : 'Response Guidance', {
-    x: 6.72,
-    y: 3.18,
-    w: 4.5,
-    h: 0.3,
-    fontSize: 17,
-    bold: true,
-    color: COLORS.navy,
-    margin: 0,
-  })
-
-  summarySlide.addText(
-    getTopDecisionText(topBarangay, reportScopeConfig.isBarangayScoped),
-    {
-      x: 6.72,
-      y: 3.66,
-      w: 5.72,
-      h: 1.55,
-      fontSize: 13.2,
+      y: 3.18,
+      w: 4.5,
+      h: 0.3,
+      fontSize: 17,
       bold: true,
       color: COLORS.navy,
-      margin: 0.2,
-      fill: { color: COLORS.yellow },
-      line: { color: 'FDE68A' },
-      fit: 'shrink',
-    }
-  )
+      margin: 0,
+    })
+  
+    summarySlide.addTable(
+      [
+        ['Risk Level', reportScopeConfig.isBarangayScoped ? 'Assigned Barangay' : 'Barangay Count'],
+        ...(reportScopeConfig.isBarangayScoped
+          ? [[topBarangay?.risk || 'Unknown', barangayLabel]]
+          : [['High', highRiskCount], ['Moderate', moderateRiskCount], ['Low', lowRiskCount]]),
+      ],
+      {
+        x: 0.72,
+        y: 3.66,
+        w: 5.4,
+        h: 1.55,
+        fontSize: 12,
+        color: COLORS.navy,
+        border: { color: COLORS.line, pt: 1 },
+        fill: { color: COLORS.white },
+        margin: 0.08,
+      }
+    )
+  
+    summarySlide.addText('Hotspot Summary', {
+      x: 0.72,
+      y: 5.55,
+      w: 4.8,
+      h: 0.28,
+      fontSize: 14,
+      bold: true,
+      color: COLORS.navy,
+      margin: 0,
+    })
+  
+    summarySlide.addText(
+      `Confirmed: ${formatNumber(hotspotCounts.confirmed)} • Emerging: ${formatNumber(hotspotCounts.emerging)} • Watch: ${formatNumber(hotspotCounts.watch)} • Low concern: ${formatNumber(hotspotCounts.low)} • Needs review: ${formatNumber(hotspotCounts.needsReview)} • Accounted: ${formatNumber(getHotspotCountTotal(hotspotCounts))}`,
+      {
+        x: 0.72,
+        y: 5.92,
+        w: 5.4,
+        h: 0.46,
+        fontSize: 10.5,
+        color: COLORS.slate,
+        margin: 0.08,
+        fill: { color: COLORS.white },
+        line: { color: COLORS.line },
+        fit: 'shrink',
+      }
+    )
+  
+    summarySlide.addText(reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Guidance' : 'Response Guidance', {
+      x: 6.72,
+      y: 3.18,
+      w: 4.5,
+      h: 0.3,
+      fontSize: 17,
+      bold: true,
+      color: COLORS.navy,
+      margin: 0,
+    })
+  
+    summarySlide.addText(
+      getTopDecisionText(topBarangay, reportScopeConfig.isBarangayScoped),
+      {
+        x: 6.72,
+        y: 3.66,
+        w: 5.72,
+        h: 1.55,
+        fontSize: 13.2,
+        bold: true,
+        color: COLORS.navy,
+        margin: 0.2,
+        fill: { color: COLORS.yellow },
+        line: { color: 'FDE68A' },
+        fit: 'shrink',
+      }
+    )
+  
+  
+  }
+
+  // Main CHO briefing ends with Key Findings. Detailed operational tables continue as appendices.
 
   const prioritySlide = pptx.addSlide()
   addSlideTitle(
     prioritySlide,
-    reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Profile' : 'Response Priority Barangays',
+    reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Profile' : 'Appendix A — Response Priority Barangays',
     reportScopeConfig.isBarangayScoped
       ? `Current risk, response priority, combined score, and projected dengue cases for ${barangayLabel}.`
       : 'Top barangays ranked by risk level, combined priority score, response priority, and projected dengue cases.'
@@ -5323,7 +6269,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const forecastSlide = pptx.addSlide()
   addSlideTitle(
     forecastSlide,
-    'Four-Month Forecast Outlook',
+    reportScopeConfig.isBarangayScoped ? 'Four-Month Forecast Outlook' : 'Appendix B — Four-Month Forecast Detail',
     'Period 1 through Period 4 are generated separately; the total is used for forecast case-risk classification.'
   )
 
@@ -5364,7 +6310,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const factorSlide = pptx.addSlide()
   addSlideTitle(
     factorSlide,
-    'Combined Risk Factors',
+    reportScopeConfig.isBarangayScoped ? 'Combined Risk Factors' : 'Appendix C — Combined Risk Factors',
     reportScopeConfig.isBarangayScoped
       ? 'Environmental, population, density, and forecast factors supporting the assigned barangay response priority.'
       : 'Environmental, population, density, and forecast factors used by the Response ranking.'
@@ -5548,11 +6494,13 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const actionSlide = pptx.addSlide()
   addSlideTitle(
     actionSlide,
-    reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Top Response Plan',
+    reportScopeConfig.isBarangayScoped ? 'Assigned Barangay Response Plan' : 'Appendix D — Priority Response Plan',
     topBarangay
       ? (reportScopeConfig.isBarangayScoped
           ? `Recommended response guidance for ${topBarangay.barangay}.`
-          : `${topBarangay.barangay} is currently the top response priority.`)
+          : (analyticsSnapshot.priorityLeaderCount > 1
+              ? `Response guidance for ${topBarangay.barangay}, the first-listed barangay among ${analyticsSnapshot.priorityLeaderCount} tied at ${formatNumber(analyticsSnapshot.priorityRows?.[0]?.score || getMultiSourceProfile(topBarangay).score)}/100.`
+              : `Response guidance for ${topBarangay.barangay}, the current highest-scoring priority barangay.`))
       : (reportScopeConfig.isBarangayScoped ? 'No response plan is available yet.' : 'No top response plan is available yet.')
   )
 
@@ -5570,9 +6518,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     fit: 'shrink',
   })
 
-  const polishedPptActions = reportScopeConfig.isBarangayScoped
-    ? getPolishedActionList(topDecision.actions, topDecision.summary, 5)
-    : (topDecision.actions || []).slice(0, 5)
+  const polishedPptActions = getPolishedActionList(topDecision.actions, topDecision.summary, 5)
 
   const actions =
     polishedPptActions.length > 0
@@ -5611,8 +6557,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const fieldSlide = pptx.addSlide()
   addSlideTitle(
     fieldSlide,
-    'Field Monitoring Summary',
-    'BHW submissions are summarized here; detailed individual field reports remain separate.'
+    reportScopeConfig.isBarangayScoped ? 'Field Monitoring Summary' : 'Appendix E — Field Monitoring Summary',
+    'BHW submissions are summarized here. Urgent field reports are separate from system-generated urgent response alerts.'
   )
 
   addMetricCard(fieldSlide, 'Total field reports', formatNumber(fieldMonitoringSummary?.total || 0), 0.72, 1.45, COLORS.lightBlue, COLORS.blue)
@@ -5643,7 +6589,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const technicalSlide = pptx.addSlide()
   addSlideTitle(
     technicalSlide,
-    reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Model Review' : 'Technical Model Review',
+    reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Model Review' : 'Appendix F — Technical Model Review',
     'Model evaluation details are kept separate from the health-worker response summary.'
   )
 
@@ -5677,7 +6623,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const sourceSlide = pptx.addSlide()
   addSlideTitle(
     sourceSlide,
-    reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Uploaded Data Readiness',
+    reportScopeConfig.isBarangayScoped ? 'Technical Appendix: Data Readiness' : 'Appendix G — Uploaded Data Readiness',
     reportScopeConfig.isBarangayScoped ? 'Technical source-status information supporting the barangay report.' : 'Check status of uploaded or available files.'
   )
 
@@ -5744,7 +6690,7 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   const limitationsSlide = pptx.addSlide()
   addSlideTitle(
     limitationsSlide,
-    'Limitations and Assumptions',
+    reportScopeConfig.isBarangayScoped ? 'Limitations and Assumptions' : 'Appendix H — Limitations and Assumptions',
     'Important notes for interpreting the report before field implementation.'
   )
 
@@ -6133,6 +7079,763 @@ function MetadataDetailList({
   )
 }
 
+function getReportCaseBreakdown(cityTrendAnalytics = null, sortedRiskRows = []) {
+  const directRows = Array.isArray(cityTrendAnalytics?.barangay_breakdown)
+    ? cityTrendAnalytics.barangay_breakdown
+    : []
+
+  const normalized = directRows
+    .map((row) => ({
+      barangay: String(row?.barangay || '').trim(),
+      cases: Math.max(0, Number(row?.cases || 0)),
+      sharePercent: Math.max(0, Number(row?.share_percent || 0)),
+    }))
+    .filter((row) => row.barangay)
+
+  if (normalized.length) return normalized
+
+  const fallback = (Array.isArray(sortedRiskRows) ? sortedRiskRows : [])
+    .map((row) => ({
+      barangay: String(row?.barangay || '').trim(),
+      cases: Math.max(0, Number(row?.totalCases || row?.cases || 0)),
+      sharePercent: 0,
+    }))
+    .filter((row) => row.barangay)
+
+  const total = fallback.reduce((sumValue, row) => sumValue + row.cases, 0)
+  return fallback
+    .map((row) => ({
+      ...row,
+      sharePercent: total > 0 ? (row.cases / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.cases - a.cases || a.barangay.localeCompare(b.barangay))
+}
+
+function getDecisionActionAnalytics(result = null) {
+  const actions = Array.isArray(result?.actions) ? result.actions : []
+  const backendSummary = result?.summary || {}
+  const total = Number(backendSummary.total ?? actions.length ?? 0)
+  const pending = Number(backendSummary.pending ?? actions.filter((item) => item?.status === 'Pending').length)
+  const inProgress = Number(backendSummary.in_progress ?? actions.filter((item) => item?.status === 'In Progress').length)
+  const completed = Number(backendSummary.completed ?? actions.filter((item) => item?.status === 'Completed').length)
+  const overdue = Number(backendSummary.overdue ?? 0)
+  const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0
+
+  return {
+    available: Boolean(result),
+    total,
+    pending,
+    inProgress,
+    completed,
+    overdue,
+    completionRate,
+    actions,
+  }
+}
+
+function buildChoAnalyticsSnapshot({
+  sortedRiskRows = [],
+  cityTrendAnalytics = null,
+  hotspotRows = [],
+  decisionActionResult = null,
+  dashboardStats = {},
+} = {}) {
+  const caseBreakdown = getReportCaseBreakdown(cityTrendAnalytics, sortedRiskRows)
+  const topCaseRows = [...caseBreakdown]
+    .sort((a, b) => b.cases - a.cases || a.barangay.localeCompare(b.barangay))
+    .slice(0, 10)
+  const totalActualCases = caseBreakdown.reduce((sumValue, row) => sumValue + Number(row.cases || 0), 0)
+  const affectedBarangays = caseBreakdown.filter((row) => Number(row.cases || 0) > 0).length
+  const topTenCases = topCaseRows.reduce((sumValue, row) => sumValue + Number(row.cases || 0), 0)
+  const topTenContribution = totalActualCases > 0 ? Math.round((topTenCases / totalActualCases) * 1000) / 10 : 0
+
+  const riskCounts = getRiskCounts(sortedRiskRows)
+  const riskDistribution = [
+    { label: 'High', value: Number(riskCounts.highRiskCount || 0), color: '#dc2626' },
+    { label: 'Moderate', value: Number(riskCounts.moderateRiskCount || 0), color: '#d97706' },
+    { label: 'Low', value: Number(riskCounts.lowRiskCount || 0), color: '#059669' },
+  ]
+
+  const priorityRows = (Array.isArray(sortedRiskRows) ? sortedRiskRows : [])
+    .slice(0, 10)
+    .map((row, index) => {
+      const decision = getDecisionSupport(row)
+      return {
+        rank: index + 1,
+        barangay: row?.barangay || `Barangay ${index + 1}`,
+        score: Math.max(0, Math.min(100, Number(getCanonicalCombinedRiskScore(row) || 0))),
+        risk: row?.risk || 'Unknown',
+        priority: decision?.priority || 'Decision pending',
+        forecast: Number(row?.forecast || 0),
+      }
+    })
+
+  const forecastPeriodMap = new Map()
+  ;(Array.isArray(sortedRiskRows) ? sortedRiskRows : []).forEach((row) => {
+    getForecastPeriodDetails(row).forEach((period, index) => {
+      const key = Number(period?.horizon || index + 1)
+      const existing = forecastPeriodMap.get(key) || {
+        horizon: key,
+        label: period?.label || `Period ${key}`,
+        cases: 0,
+      }
+      existing.cases += Number(period?.predictedCases || 0)
+      if (period?.label && !String(existing.label || '').trim()) existing.label = period.label
+      forecastPeriodMap.set(key, existing)
+    })
+  })
+  const forecastPeriods = Array.from(forecastPeriodMap.values())
+    .sort((a, b) => a.horizon - b.horizon)
+    .slice(0, 4)
+  const forecastTotal = forecastPeriods.reduce((sumValue, row) => sumValue + Number(row.cases || 0), 0) || Number(dashboardStats?.fourWeekForecast || 0)
+  const forecastPeak = forecastPeriods.reduce((best, row) => (!best || row.cases > best.cases ? row : best), null)
+  const actualForecastTimeline = [
+    ...(Array.isArray(cityTrendAnalytics?.monthly) ? cityTrendAnalytics.monthly : [])
+      .slice(-6)
+      .map((row) => ({
+        label: row?.month_short || row?.month_label || 'Actual',
+        cases: Math.max(0, Number(row?.cases || 0)),
+        phase: 'Actual',
+      })),
+    ...forecastPeriods.map((row) => ({
+      label: row?.label || `Period ${row?.horizon || ''}`.trim(),
+      cases: Math.max(0, Number(row?.cases || 0)),
+      phase: 'Forecast',
+    })),
+  ]
+
+  const hotspotCounts = getHotspotCounts(hotspotRows)
+  const hotspotDistribution = [
+    { label: 'Confirmed', value: Number(hotspotCounts.confirmed || 0), color: '#dc2626' },
+    { label: 'Emerging', value: Number(hotspotCounts.emerging || 0), color: '#f59e0b' },
+    { label: 'Watch', value: Number(hotspotCounts.watch || 0), color: '#eab308' },
+    { label: 'Low concern', value: Number(hotspotCounts.low || 0), color: '#10b981' },
+    { label: 'Needs review', value: Number(hotspotCounts.needsReview || 0), color: '#64748b' },
+  ]
+  const topHotspots = getRankedHotspotRows(hotspotRows)
+    .slice(0, 8)
+    .map((row) => ({
+      barangay: row?.barangay || 'Unknown barangay',
+      score: Math.max(0, Number(row?.hotspot_score || 0)),
+      level: getHotspotLevelLabel(row?.hotspot_level),
+    }))
+
+  const response = getDecisionActionAnalytics(decisionActionResult)
+  const actualSummary = cityTrendAnalytics?.summary || {}
+  const topCase = topCaseRows[0] || null
+  const topPriority = priorityRows[0] || null
+  const topHotspot = topHotspots[0] || null
+  const topPriorityScore = Number(topPriority?.score || 0)
+  const priorityLeaderRows = topPriority
+    ? (Array.isArray(sortedRiskRows) ? sortedRiskRows : [])
+        .map((row) => ({
+          barangay: row?.barangay || 'Unknown barangay',
+          score: Math.max(0, Math.min(100, Number(getCanonicalCombinedRiskScore(row) || 0))),
+        }))
+        .filter((row) => row.score === topPriorityScore)
+    : []
+  const priorityLeaderNames = priorityLeaderRows.map((row) => row.barangay).filter(Boolean)
+  const priorityLeadDescription = topPriority
+    ? (priorityLeaderRows.length > 1
+        ? (priorityLeaderRows.length <= 5
+            ? `The highest combined priority score is ${formatNumber(topPriorityScore)}/100, shared by ${priorityLeaderNames.join(', ')}. ${topPriority.barangay} is listed first in the current report ordering.`
+            : `The highest combined priority score is ${formatNumber(topPriorityScore)}/100, shared by ${priorityLeaderRows.length} barangays. ${topPriority.barangay} is listed first in the current report ordering.`)
+        : `${topPriority.barangay} currently leads the combined priority ranking at ${formatNumber(topPriorityScore)}/100.`)
+    : 'No combined priority ranking is available yet.'
+
+  const highForecastRiskCount = Number(riskCounts.highRiskCount || 0)
+  const unresolvedResponseActions = Number(response.pending || 0) + Number(response.inProgress || 0)
+
+  const findings = [
+    topCase
+      ? `${topCase.barangay} has the highest recorded case burden in the selected report period with ${formatNumber(topCase.cases)} cases.`
+      : 'No barangay case ranking is available for the selected period.',
+    totalActualCases > 0
+      ? `The top 10 barangays account for ${topTenContribution.toFixed(1)}% of recorded cases in the selected period.`
+      : 'Case concentration cannot be calculated until recorded barangay cases are available.',
+    highForecastRiskCount === 0
+      ? 'No barangays are currently classified as high forecast risk using the per-barangay four-period thresholds.'
+      : `${formatCountLabel(highForecastRiskCount, 'barangay')} ${highForecastRiskCount === 1 ? 'is' : 'are'} currently classified as high forecast risk using the per-barangay four-period thresholds.`,
+    forecastPeak
+      ? `Forecast pressure is highest in ${forecastPeak.label}, with about ${formatNumber(forecastPeak.cases)} projected cases citywide for that forecast period.`
+      : 'The four-period forecast outlook is not available yet.',
+    topHotspot
+      ? `${topHotspot.barangay} currently has the highest spatial hotspot score among mapped barangays and is classified as ${topHotspot.level}.`
+      : 'No ranked spatial hotspot result is available yet.',
+    response.total > 0
+      ? (unresolvedResponseActions === 0
+          ? (Number(response.total || 0) === 1
+              ? `The tracked response action is completed (${response.completionRate}%), with no pending or in-progress actions.`
+              : `All ${formatCountLabel(response.total, 'tracked response action')} are completed (${response.completionRate}%), with no pending or in-progress actions.`)
+          : `${formatNumber(response.completed)} of ${formatNumber(response.total)} tracked response actions are completed (${response.completionRate}%), with ${formatCountLabel(unresolvedResponseActions, 'action')} still pending or in progress.`)
+      : 'No tracked response action has been recorded yet.',
+  ]
+
+  const recommendations = [
+    topPriority
+      ? (priorityLeaderRows.length > 1
+          ? (priorityLeaderRows.length <= 5
+              ? `Review the highest-scoring group first: ${priorityLeaderNames.join(', ')} (${formatNumber(topPriorityScore)}/100).`
+              : `Review the ${priorityLeaderRows.length} barangays tied for the highest combined priority score of ${formatNumber(topPriorityScore)}/100.`)
+          : `Prioritize CHO review and barangay coordination for ${topPriority.barangay}, which currently leads the combined response-priority list.`)
+      : 'Review the highest-ranked barangays once a response-priority list is available.',
+    topCase
+      ? `Maintain close surveillance in ${topCase.barangay} because it currently carries the largest recorded case burden in the selected period.`
+      : 'Continue validating actual barangay case reports to identify case concentration.',
+    hotspotCounts.confirmed + hotspotCounts.emerging > 0
+      ? `Coordinate surveillance across ${formatCountLabel(hotspotCounts.confirmed + hotspotCounts.emerging, 'confirmed or emerging hotspot barangay')} instead of treating each barangay in isolation.`
+      : (hotspotCounts.watch > 0
+          ? `Continue close spatial monitoring of ${formatCountLabel(hotspotCounts.watch, 'Watch barangay')}, especially where neighboring Watch areas cluster.`
+          : 'Continue spatial monitoring for emerging neighboring risk clusters.'),
+    response.pending + response.inProgress > 0
+      ? `Follow up ${response.pending + response.inProgress} pending or in-progress response action${response.pending + response.inProgress === 1 ? '' : 's'} and review overdue items before the next reporting cycle.`
+      : (response.total > 0
+          ? `Maintain timely recording of new response assignments and monitor whether the current ${response.completionRate}% completion rate is sustained in the next reporting cycle.`
+          : 'Continue recording action status so response completion can be measured in future reports.'),
+  ]
+
+  return {
+    caseBreakdown,
+    topCaseRows,
+    totalActualCases,
+    affectedBarangays,
+    topTenContribution,
+    riskDistribution,
+    priorityRows,
+    forecastPeriods,
+    forecastTotal,
+    forecastPeak,
+    actualForecastTimeline,
+    hotspotDistribution,
+    topHotspots,
+    response,
+    findings,
+    recommendations,
+    priorityLeadDescription,
+    priorityLeaderCount: priorityLeaderRows.length,
+    priorityLeaderNames,
+    movement: actualSummary?.trend_direction || 'No comparison',
+    movementChange: actualSummary?.change_label || 'No previous month available',
+    scopeLabel: cityTrendAnalytics?.filters?.scope_label || cityTrendAnalytics?.filters?.year || 'Selected report period',
+  }
+}
+
+function getHotspotMapFill(level = '') {
+  const value = String(level || '').toLowerCase()
+  if (value.includes('confirmed')) return '#dc2626'
+  if (value.includes('emerging')) return '#f59e0b'
+  if (value.includes('watch')) return '#eab308'
+  if (value.includes('low')) return '#10b981'
+  if (value.includes('review')) return '#64748b'
+  return '#cbd5e1'
+}
+
+function getGeometryRings(geometry = null) {
+  if (!geometry || !Array.isArray(geometry.coordinates)) return []
+  if (geometry.type === 'Polygon') return geometry.coordinates.length ? [geometry.coordinates[0]] : []
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates
+      .map((polygon) => (Array.isArray(polygon) && polygon.length ? polygon[0] : []))
+      .filter((ring) => Array.isArray(ring) && ring.length)
+  }
+  return []
+}
+
+function buildHotspotMapGeometry(boundaryGeoJson = null, hotspotRows = [], width = 800, height = 500, padding = 18) {
+  const features = Array.isArray(boundaryGeoJson?.features) ? boundaryGeoJson.features : []
+  const featureRings = features
+    .map((feature) => ({
+      feature,
+      rings: getGeometryRings(feature?.geometry),
+    }))
+    .filter((item) => item.rings.length)
+
+  const points = featureRings.flatMap((item) => item.rings.flat())
+  if (!points.length) return { width, height, polygons: [] }
+
+  const xs = points.map((point) => Number(point?.[0])).filter(Number.isFinite)
+  const ys = points.map((point) => Number(point?.[1])).filter(Number.isFinite)
+  if (!xs.length || !ys.length) return { width, height, polygons: [] }
+
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const spanX = Math.max(maxX - minX, 0.000001)
+  const spanY = Math.max(maxY - minY, 0.000001)
+  const scale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY)
+  const usedWidth = spanX * scale
+  const usedHeight = spanY * scale
+  const offsetX = (width - usedWidth) / 2
+  const offsetY = (height - usedHeight) / 2
+
+  const polygons = []
+  featureRings.forEach(({ feature, rings }) => {
+    const featureName = getFeatureName(feature)
+    const featureReference = getFeatureReferenceName(feature)
+    const hotspot = hotspotRows.find((row) => namesMatch(row?.barangay, featureName) || namesMatch(row?.barangay, featureReference))
+    const fill = getHotspotMapFill(hotspot?.hotspot_level)
+
+    rings.forEach((ring) => {
+      const transformed = ring
+        .map((point) => {
+          const x = offsetX + (Number(point?.[0]) - minX) * scale
+          const y = height - (offsetY + (Number(point?.[1]) - minY) * scale)
+          return [x, y]
+        })
+        .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+
+      if (transformed.length >= 3) {
+        polygons.push({
+          name: featureName,
+          fill,
+          points: transformed,
+        })
+      }
+    })
+  })
+
+  return { width, height, polygons }
+}
+
+function buildHotspotMapSvg(boundaryGeoJson = null, hotspotRows = [], width = 800, height = 500) {
+  const snapshot = buildHotspotMapGeometry(boundaryGeoJson, hotspotRows, width, height)
+  const paths = snapshot.polygons.map((polygon) => {
+    const d = polygon.points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ') + ' Z'
+    return `<path d="${d}" fill="${polygon.fill}" stroke="#ffffff" stroke-width="1.2" />`
+  }).join('')
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" rx="24" fill="#f8fafc"/>${paths}</svg>`
+}
+
+function svgToBase64DataUri(svg = '') {
+  try {
+    return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
+  } catch {
+    return ''
+  }
+}
+
+function AnalyticsHorizontalBars({ items = [], valueKey = 'value', labelKey = 'label', valueSuffix = '', emptyLabel = 'No data available', tone = 'blue', showRank = true }) {
+  const maxValue = Math.max(1, ...items.map((item) => Number(item?.[valueKey] || 0)))
+  const palettes = {
+    blue: {
+      track: 'bg-slate-200/80 dark:bg-slate-800',
+      bar: 'from-cyan-500 via-blue-500 to-indigo-500',
+      shadow: 'shadow-[0_0_18px_rgba(37,99,235,0.20)]',
+      rank: 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-500/10 dark:text-cyan-200',
+    },
+    violet: {
+      track: 'bg-slate-200/80 dark:bg-slate-800',
+      bar: 'from-cyan-500 via-blue-500 to-violet-500',
+      shadow: 'shadow-[0_0_18px_rgba(124,58,237,0.18)]',
+      rank: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
+    },
+    emerald: {
+      track: 'bg-slate-200/80 dark:bg-slate-800',
+      bar: 'from-emerald-500 via-teal-500 to-cyan-500',
+      shadow: 'shadow-[0_0_18px_rgba(16,185,129,0.18)]',
+      rank: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
+    },
+  }
+  const palette = palettes[tone] || palettes.blue
+
+  if (!items.length) return <p className="py-8 text-center text-sm font-semibold text-slate-400">{emptyLabel}</p>
+
+  return (
+    <div className="space-y-2 sm:space-y-2.5">
+      {items.map((item, index) => {
+        const value = Number(item?.[valueKey] || 0)
+        const width = Math.max(value > 0 ? 4 : 0, (value / maxValue) * 100)
+        return (
+          <div key={`${item?.[labelKey] || index}-${index}`} className="rounded-xl border border-slate-200/80 bg-white/80 px-2.5 py-2 dark:border-slate-800 dark:bg-slate-900/70 sm:rounded-2xl sm:px-3 sm:py-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {showRank && <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-black sm:h-7 sm:w-7 sm:text-[10px] ${palette.rank}`}>{index + 1}</span>}
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between gap-2 sm:mb-1.5 sm:gap-3">
+                  <p className="truncate text-[10px] font-black text-slate-700 dark:text-slate-200 sm:text-[11px]" title={String(item?.[labelKey] || '')}>{item?.[labelKey] || 'Unknown'}</p>
+                  <span className="shrink-0 text-[10px] font-black tabular-nums text-slate-900 dark:text-white sm:text-[11px]">{formatNumber(value)}{valueSuffix}</span>
+                </div>
+                <div className={`h-2.5 overflow-hidden rounded-full sm:h-3.5 ${palette.track}`}>
+                  <div className={`h-full rounded-full bg-gradient-to-r ${palette.bar} ${palette.shadow}`} style={{ width: `${width}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function AnalyticsDonut({ items = [], centerValue = '0', centerLabel = 'Total' }) {
+  const total = items.reduce((sumValue, item) => sumValue + Number(item?.value || 0), 0)
+  let cursor = 0
+  const stops = items.map((item) => {
+    const start = cursor
+    const share = total > 0 ? (Number(item?.value || 0) / total) * 100 : 0
+    cursor += share
+    return `${item.color || '#94a3b8'} ${start}% ${cursor}%`
+  })
+  const gradient = total > 0 ? `conic-gradient(${stops.join(', ')})` : 'conic-gradient(#e2e8f0 0 100%)'
+
+  return (
+    <div className="grid grid-cols-[104px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[144px_minmax(0,1fr)] sm:gap-4">
+      <div className="relative mx-auto h-24 w-24 rounded-full shadow-[0_14px_30px_rgba(15,23,42,0.12)] ring-4 ring-white/70 dark:ring-slate-950/60 sm:h-32 sm:w-32 sm:ring-6" style={{ background: gradient }}>
+        <div className="absolute inset-[16px] flex flex-col items-center justify-center rounded-full bg-white text-center shadow-inner dark:bg-slate-950 sm:inset-[21px]">
+          <strong className="text-lg font-black text-slate-950 dark:text-white sm:text-2xl">{centerValue}</strong>
+          <span className="mt-0.5 text-[7px] font-black uppercase tracking-[0.12em] text-slate-400 sm:text-[9px] sm:tracking-[0.14em]">{centerLabel}</span>
+        </div>
+      </div>
+      <div className="min-w-0 space-y-1.5 sm:space-y-2">
+        {items.map((item) => {
+          const value = Number(item?.value || 0)
+          const percent = total > 0 ? (value / total) * 100 : 0
+          return (
+            <div key={item.label} className="rounded-xl border border-slate-200/80 bg-white/80 px-2.5 py-2 dark:border-slate-800 dark:bg-slate-900/80 sm:rounded-2xl sm:px-3 sm:py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full sm:h-2.5 sm:w-2.5" style={{ backgroundColor: item.color }} />
+                  <span className="truncate text-[10px] font-bold text-slate-600 dark:text-slate-300 sm:text-xs">{item.label}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300 sm:px-2 sm:text-[9px]">{percent.toFixed(0)}%</span>
+                  <span className="text-[10px] font-black tabular-nums text-slate-950 dark:text-white sm:text-xs">{formatNumber(value)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ActualForecastAnalyticsChart({ items = [] }) {
+  const maxValue = Math.max(1, ...items.map((item) => Number(item?.cases || 0)))
+  const actualCount = items.filter((item) => item?.phase === 'Actual').length
+
+  if (!items.length) {
+    return <p className="py-8 text-center text-sm font-semibold text-slate-400">No actual-versus-forecast timeline is available yet.</p>
+  }
+
+  const chartWidth = 760
+  const chartHeight = 270
+  const margin = { top: 30, right: 12, bottom: 48, left: 42 }
+  const plotWidth = chartWidth - margin.left - margin.right
+  const plotHeight = chartHeight - margin.top - margin.bottom
+  const slotWidth = plotWidth / Math.max(items.length, 1)
+  const barWidth = Math.min(44, slotWidth * 0.62)
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((step) => Math.round(maxValue * step))
+  const monthMap = {
+    January: 'Jan', February: 'Feb', March: 'Mar', April: 'Apr', May: 'May', June: 'Jun',
+    July: 'Jul', August: 'Aug', September: 'Sep', October: 'Oct', November: 'Nov', December: 'Dec',
+  }
+  const compactLabel = (label = '') => {
+    const value = String(label || '').trim()
+    const match = value.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})$/)
+    if (match) return `${monthMap[match[1]]} '${match[2].slice(-2)}`
+    return value.length > 8 ? value.slice(0, 8) : value
+  }
+  const yForValue = (value) => margin.top + plotHeight - (Number(value || 0) / maxValue) * plotHeight
+  const separatorX = actualCount > 0 && actualCount < items.length
+    ? margin.left + actualCount * slotWidth
+    : null
+
+  return (
+    <div>
+      <div className="overflow-hidden rounded-[18px] border border-slate-200/80 bg-gradient-to-b from-slate-50 via-white to-white p-2 dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-slate-950 sm:rounded-[22px] sm:p-3">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="block h-auto w-full min-w-0" role="img" aria-label="Recorded actual versus four-period forecast cases">
+          <defs>
+            <linearGradient id="reportActualBars" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor="#0891b2" />
+              <stop offset="100%" stopColor="#38bdf8" />
+            </linearGradient>
+            <linearGradient id="reportForecastBars" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor="#7c3aed" />
+              <stop offset="100%" stopColor="#c084fc" />
+            </linearGradient>
+          </defs>
+
+          {yTicks.map((tick, index) => {
+            const y = yForValue(tick)
+            return (
+              <g key={`tick-${tick}-${index}`}>
+                <line x1={margin.left} y1={y} x2={chartWidth - margin.right} y2={y} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="5 6" opacity="0.55" />
+                <text x={margin.left - 8} y={y + 4} textAnchor="end" fontSize="11" fontWeight="800" fill="#94a3b8">{formatNumber(tick)}</text>
+              </g>
+            )
+          })}
+
+          {separatorX !== null && (
+            <g>
+              <line x1={separatorX} y1={margin.top - 5} x2={separatorX} y2={margin.top + plotHeight + 4} stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 5" opacity="0.8" />
+              <text x={separatorX + 7} y={margin.top + 10} fontSize="10" fontWeight="900" fill="#8b5cf6">FORECAST</text>
+            </g>
+          )}
+
+          {items.map((item, index) => {
+            const cases = Number(item?.cases || 0)
+            const isForecast = item?.phase === 'Forecast'
+            const x = margin.left + index * slotWidth + (slotWidth - barWidth) / 2
+            const y = yForValue(cases)
+            const height = Math.max(cases > 0 ? 5 : 2, margin.top + plotHeight - y)
+            return (
+              <g key={`${item?.phase}-${item?.label}-${index}`}>
+                <rect x={x} y={margin.top + plotHeight - height} width={barWidth} height={height} rx="7" fill={isForecast ? 'url(#reportForecastBars)' : 'url(#reportActualBars)'} />
+                <text x={x + barWidth / 2} y={Math.max(16, margin.top + plotHeight - height - 7)} textAnchor="middle" fontSize="11" fontWeight="900" fill={isForecast ? '#7c3aed' : '#0e7490'}>{formatNumber(cases)}</text>
+                <text x={x + barWidth / 2} y={chartHeight - 18} textAnchor="middle" fontSize="10" fontWeight="800" fill="#64748b">{compactLabel(item?.label)}</text>
+              </g>
+            )
+          })}
+
+          <text x="12" y="16" fontSize="10" fontWeight="900" fill="#64748b">CASES</text>
+        </svg>
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[9px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 sm:mt-3 sm:gap-4 sm:text-[10px] sm:tracking-[0.12em]">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-cyan-500" />Recorded actual</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-violet-500" />Forecast</span>
+      </div>
+    </div>
+  )
+}
+
+function ChoReportAnalytics({ analytics, boundaryGeoJson = null, hotspotRows = [] }) {
+  const mapSnapshot = useMemo(() => buildHotspotMapGeometry(boundaryGeoJson, hotspotRows, 800, 500), [boundaryGeoJson, hotspotRows])
+  const responseItems = [
+    { label: 'Completed', value: analytics.response.completed, color: '#059669' },
+    { label: 'In progress', value: analytics.response.inProgress, color: '#2563eb' },
+    { label: 'Pending', value: analytics.response.pending, color: '#d97706' },
+  ]
+  const watchCount = analytics.hotspotDistribution.find((item) => item.label === 'Watch')?.value || 0
+
+  return (
+    <section className="relative overflow-hidden rounded-[24px] border border-blue-200/80 bg-gradient-to-br from-white via-blue-50/50 to-cyan-50/60 p-3 shadow-[0_22px_60px_rgba(15,23,42,0.09)] dark:border-blue-400/15 dark:from-slate-950 dark:via-blue-950/20 dark:to-cyan-950/10 sm:rounded-[30px] sm:p-6">
+      <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-400/10" />
+      <div className="relative flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
+            <BarChart3 className="h-3.5 w-3.5" />
+            CHO decision analytics
+          </div>
+          <h2 className="mt-3 text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">Report analytics and decision insights</h2>
+          <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400 sm:text-sm sm:leading-6">These citywide analytics are also included in the generated PDF and PowerPoint so CHO can quickly see case concentration, forecast pressure, risk distribution, spatial concern, and response progress.</p>
+        </div>
+        <div className="w-full rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-sm dark:border-white/5 dark:bg-white/5 lg:w-auto">
+          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Analytics period</p>
+          <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{analytics.scopeLabel}</p>
+        </div>
+      </div>
+
+      <div className="relative mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:gap-2.5">
+        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 dark:border-blue-400/20 dark:bg-white/5 dark:text-blue-200">Top case burden <strong className="text-slate-900 dark:text-white">{analytics.topCaseRows?.[0]?.barangay || 'Not available'}</strong></span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-violet-700 dark:border-violet-400/20 dark:bg-white/5 dark:text-violet-200">Highest priority <strong className="text-slate-900 dark:text-white">{analytics.priorityRows?.[0]?.barangay || 'Not available'}</strong></span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 dark:border-amber-400/20 dark:bg-white/5 dark:text-amber-200">Forecast peak <strong className="text-slate-900 dark:text-white">{analytics.forecastPeak ? `${analytics.forecastPeak.label} · ${formatNumber(analytics.forecastPeak.cases)}` : 'Not available'}</strong></span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-400/20 dark:bg-white/5 dark:text-emerald-200">Watch barangays <strong className="text-slate-900 dark:text-white">{formatNumber(watchCount)}</strong></span>
+      </div>
+
+      <div className="relative mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-3">
+        {[
+          ['Recorded cases', analytics.totalActualCases, 'Selected period'],
+          ['Affected barangays', analytics.affectedBarangays, 'Barangays with recorded cases'],
+          ['Top 10 contribution', `${analytics.topTenContribution.toFixed(1)}%`, 'Share of recorded cases'],
+          ['Response completion', `${analytics.response.completionRate}%`, `${analytics.response.completed}/${analytics.response.total || 0} tracked actions`],
+        ].map(([label, value, note]) => (
+          <div key={label} className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/85">
+            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">{label}</p>
+            <p className="mt-2 text-2xl font-black tracking-tight text-slate-950 dark:text-white">{typeof value === 'number' ? formatNumber(value) : value}</p>
+            <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">{note}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative mt-4 grid items-start gap-3 sm:gap-4 xl:grid-cols-2">
+        <div className="min-w-0 space-y-3 sm:space-y-4">
+          <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-600 dark:text-blue-300">Case concentration</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Top 10 barangays by recorded cases</h3></div><span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-black text-blue-700 dark:bg-blue-500/10 dark:text-blue-200 sm:px-3 sm:text-[10px]">Actual cases</span></div>
+            <AnalyticsHorizontalBars items={analytics.topCaseRows} valueKey="cases" labelKey="barangay" tone="blue" emptyLabel="No barangay case breakdown is available yet." />
+          </div>
+
+          <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-violet-600 dark:text-violet-300">Priority ranking</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Top combined priority scores</h3></div>
+            <AnalyticsHorizontalBars items={analytics.priorityRows} valueKey="score" labelKey="barangay" tone="violet" valueSuffix="/100" emptyLabel="No priority ranking is available yet." />
+          </div>
+        </div>
+
+        <div className="min-w-0 space-y-3 sm:space-y-4">
+          <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-600 dark:text-rose-300">Forecast risk distribution</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Citywide risk levels</h3></div>
+            <AnalyticsDonut items={analytics.riskDistribution} centerValue={formatNumber(analytics.riskDistribution.reduce((sumValue, item) => sumValue + item.value, 0))} centerLabel="Barangays" />
+            <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-semibold leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 sm:mt-4"><span className="font-black text-slate-800 dark:text-slate-100">Interpretation:</span> Forecast risk, spatial hotspot level, and response priority are separate indicators. A barangay can remain Low forecast risk while still requiring monitoring because of recent case movement, spatial conditions, or other response factors.</p>
+          </div>
+
+          <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-600 dark:text-amber-300">Four-period outlook</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Citywide forecast pressure</h3></div>
+            <ActualForecastAnalyticsChart items={analytics.actualForecastTimeline} />
+            <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <p className="mb-3 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Forecast periods only</p>
+              <AnalyticsHorizontalBars items={analytics.forecastPeriods} valueKey="cases" labelKey="label" tone="emerald" showRank={false} emptyLabel="No forecast period totals are available yet." />
+            </div>
+            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 sm:text-xs">Citywide four-period forecast total: {formatNumber(analytics.forecastTotal)} cases. Risk levels are classified per barangay, so the citywide total does not determine whether an individual barangay is High, Moderate, or Low risk. {analytics.forecastPeak ? `Highest pressure: ${analytics.forecastPeak.label} (${formatNumber(analytics.forecastPeak.cases)} cases).` : 'Forecast peak is not available yet.'}</p>
+          </div>
+          <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-orange-600 dark:text-orange-300">Spatial hotspot analytics</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Barangay hotspot distribution</h3></div>
+            <AnalyticsDonut items={analytics.hotspotDistribution} centerValue={formatNumber(analytics.hotspotDistribution.reduce((sumValue, item) => sumValue + item.value, 0))} centerLabel="Mapped" />
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mt-3 min-w-0 sm:mt-4">
+        <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+          <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-600 dark:text-emerald-300">Response coordination</p>
+              <h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Tracked action status</h3>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">{formatNumber(analytics.response.completed)} completed</span>
+              <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">{formatNumber(analytics.response.inProgress)} in progress</span>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">{formatNumber(analytics.response.pending)} pending</span>
+            </div>
+          </div>
+          <AnalyticsDonut items={responseItems} centerValue={`${analytics.response.completionRate}%`} centerLabel="Completed" />
+          {analytics.response.overdue > 0 && <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200">{formatNumber(analytics.response.overdue)} overdue action{analytics.response.overdue === 1 ? '' : 's'} require follow-up.</p>}
+        </div>
+      </div>
+
+      <div className="relative mt-3 min-w-0 sm:mt-4">
+        <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-slate-950 p-3 shadow-sm dark:border-slate-800 sm:rounded-[26px] sm:p-4">
+          <div className="mb-3 flex items-center justify-between gap-3 px-1"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-cyan-300">Spatial snapshot</p><h3 className="mt-1 text-base font-black text-white sm:text-lg">Butuan barangay hotspot map</h3></div><MapPin className="h-5 w-5 shrink-0 text-cyan-300" /></div>
+          {mapSnapshot.polygons.length ? (
+            <div className="overflow-hidden rounded-[18px] bg-slate-100 sm:rounded-[22px]">
+              <svg viewBox={`0 0 ${mapSnapshot.width} ${mapSnapshot.height}`} preserveAspectRatio="xMidYMid meet" className="h-[340px] w-full sm:h-[460px] lg:h-[560px] 2xl:h-[620px]" role="img" aria-label="Butuan barangay hotspot map snapshot">
+                {mapSnapshot.polygons.map((polygon, index) => (
+                  <polygon key={`${polygon.name}-${index}`} points={polygon.points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')} fill={polygon.fill} stroke="#ffffff" strokeWidth="1.35"><title>{polygon.name}</title></polygon>
+                ))}
+              </svg>
+            </div>
+          ) : (
+            <div className="flex h-[300px] items-center justify-center rounded-[18px] bg-slate-900 px-4 text-center text-xs font-semibold text-slate-400 sm:h-[420px] sm:rounded-[22px] sm:text-sm">Map boundary data is not available yet.</div>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-[0.1em] text-slate-300">{analytics.hotspotDistribution.map((item) => <span key={item.label} className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />{item.label}<span className="text-white/60">{formatNumber(item.value)}</span></span>)}</div>
+        </div>
+      </div>
+
+      <div className="relative mt-3 min-w-0 sm:mt-4">
+        <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-600 dark:text-blue-300">Automated report interpretation</p>
+          <h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Key findings and recommended priorities</h3>
+          <div className="mt-4 grid gap-2.5 lg:grid-cols-2">
+            {analytics.findings.map((finding, index) => <div key={`finding-${index}`} className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-xs font-semibold leading-5 text-slate-700 dark:border-blue-400/15 dark:bg-blue-500/10 dark:text-slate-200"><span className="mr-2 font-black text-blue-700 dark:text-blue-300">{index + 1}.</span>{finding}</div>)}
+          </div>
+          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-emerald-600 dark:text-emerald-300">Recommended priorities</p>
+            <ul className="mt-2 grid gap-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300 lg:grid-cols-2">{analytics.recommendations.map((item, index) => <li key={`recommendation-${index}`} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" /><span>{item}</span></li>)}</ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ExportProgressModal({ state, onClose }) {
+  if (!state?.open || typeof document === 'undefined') return null
+
+  const formatMeta = {
+    pdf: {
+      label: 'PDF report',
+      Icon: FileText,
+      accent: '#e11d48',
+      soft: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-200 dark:border-rose-400/20',
+    },
+    excel: {
+      label: 'Excel workbook',
+      Icon: FileSpreadsheet,
+      accent: '#059669',
+      soft: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-200 dark:border-emerald-400/20',
+    },
+    powerpoint: {
+      label: 'PowerPoint deck',
+      Icon: Presentation,
+      accent: '#2563eb',
+      soft: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-200 dark:border-blue-400/20',
+    },
+  }
+  const meta = formatMeta[state.format] || formatMeta.pdf
+  const Icon = meta.Icon
+  const progress = Math.max(0, Math.min(100, Number(state.progress || 0)))
+  const isWorking = state.status === 'working'
+  const isSuccess = state.status === 'success'
+  const isError = state.status === 'error'
+
+  return createPortal(
+    <div className="fixed inset-0 z-[260] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="report-export-progress-title">
+      <div className="relative w-full max-w-[430px] overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_32px_100px_rgba(2,6,23,0.38)] dark:border-white/10 dark:bg-slate-950">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full opacity-20 blur-3xl" style={{ backgroundColor: meta.accent }} />
+        <div className="relative p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] ${meta.soft}`}>
+                <Download className="h-3.5 w-3.5" />
+                Export in progress
+              </span>
+              <h2 id="report-export-progress-title" className="mt-3 text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">
+                {isSuccess ? `${meta.label} ready` : isError ? `Could not generate ${meta.label}` : `Generating ${meta.label}`}
+              </h2>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500 dark:text-slate-400">
+                {isSuccess
+                  ? 'The file has been generated and handed to your browser for download.'
+                  : isError
+                    ? state.detail || 'The export stopped before the file could be created.'
+                    : 'Keep this window open while the system prepares the latest report data and builds your file.'}
+              </p>
+            </div>
+            {(isSuccess || isError) && (
+              <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300" aria-label="Close export status">
+                <span className="text-lg font-black leading-none">×</span>
+              </button>
+            )}
+          </div>
+
+          <div className="mt-6 flex items-center gap-5 rounded-[24px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(${meta.accent} ${progress}%, rgba(148,163,184,0.22) ${progress}% 100%)` }}>
+              {isWorking && <div className="absolute inset-1 rounded-full border-2 border-dashed border-white/70 animate-spin dark:border-slate-950/70" />}
+              <div className="relative flex h-[74px] w-[74px] flex-col items-center justify-center rounded-full bg-white shadow-inner dark:bg-slate-950">
+                {isSuccess ? <CheckCircle2 className="h-7 w-7 text-emerald-500" /> : <Icon className={`h-7 w-7 ${isWorking ? 'animate-bounce' : ''}`} style={{ color: isError ? '#e11d48' : meta.accent }} />}
+                <span className="mt-1 text-[11px] font-black tabular-nums text-slate-900 dark:text-white">{Math.round(progress)}%</span>
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Current step</p>
+              <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{state.stage || 'Preparing report'}</p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">{state.detail || 'Collecting the latest report information.'}</p>
+              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                <div className="relative h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${progress}%`, backgroundColor: isError ? '#e11d48' : meta.accent }}>
+                  {isWorking && <div className="absolute inset-0 animate-pulse bg-white/25" />}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+            <div className={`rounded-xl border px-2 py-2 ${progress >= 20 ? meta.soft : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900'}`}>Collect data</div>
+            <div className={`rounded-xl border px-2 py-2 ${progress >= 70 ? meta.soft : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900'}`}>Build file</div>
+            <div className={`rounded-xl border px-2 py-2 ${progress >= 94 ? meta.soft : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900'}`}>Download</div>
+          </div>
+
+          {isError && (
+            <button type="button" onClick={onClose} className="mt-4 inline-flex w-full items-center justify-center rounded-[18px] bg-slate-900 px-4 py-3 text-sm font-black text-white dark:bg-white dark:text-slate-950">
+              Close and try again
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export default function ReportsPage() {
   const [searchParams] = useSearchParams()
   const selectedFieldUpdateId = searchParams.get('field_update_id') || ''
@@ -6163,6 +7866,14 @@ export default function ReportsPage() {
   const [isLoadingSelectedFieldUpdate, setIsLoadingSelectedFieldUpdate] = useState(false)
   const [selectedFieldUpdateError, setSelectedFieldUpdateError] = useState('')
   const [format, setFormat] = useState('pdf')
+  const [exportProgress, setExportProgress] = useState({
+    open: false,
+    status: 'idle',
+    progress: 0,
+    format: 'pdf',
+    stage: '',
+    detail: '',
+  })
   const [isHeroExportMenuOpen, setIsHeroExportMenuOpen] = useState(false)
   const [heroExportMenuPosition, setHeroExportMenuPosition] = useState({ top: 0, left: 0, width: 0 })
   const [showAllPriorityBarangays, setShowAllPriorityBarangays] = useState(false)
@@ -6172,6 +7883,7 @@ export default function ReportsPage() {
   const [isLoadingHotspotReport, setIsLoadingHotspotReport] = useState(false)
   const [latestModelMetrics, setLatestModelMetrics] = useState(() => cachedLatestModelMetrics || null)
   const [isAiSnapshotOpen, setIsAiSnapshotOpen] = useState(false)
+  const [isChoAnalyticsOpen, setIsChoAnalyticsOpen] = useState(true)
   const [isAdditionalIndicatorsOpen, setIsAdditionalIndicatorsOpen] = useState(false)
   const [isHotspotDetailsOpen, setIsHotspotDetailsOpen] = useState(false)
   const [isOfficialDetailsOpen, setIsOfficialDetailsOpen] = useState(false)
@@ -6180,10 +7892,46 @@ export default function ReportsPage() {
   const [isActivityOpen, setIsActivityOpen] = useState(false)
   const [isTopResponseDetailsOpen, setIsTopResponseDetailsOpen] = useState(false)
   const [reportCityTrendAnalytics, setReportCityTrendAnalytics] = useState(null)
+  const [reportDecisionActionResult, setReportDecisionActionResult] = useState(null)
 
   const boundaryLoadRequestedRef = useRef(false)
   const heroExportMenuRef = useRef(null)
   const heroExportMenuPortalRef = useRef(null)
+
+  useEffect(() => {
+    if (!exportProgress.open || exportProgress.status !== 'working') return undefined
+
+    const timer = window.setInterval(() => {
+      setExportProgress((current) => {
+        if (!current.open || current.status !== 'working' || current.progress >= 91) return current
+        const increment = current.progress < 55 ? 2 : 1
+        return { ...current, progress: Math.min(91, current.progress + increment) }
+      })
+    }, 420)
+
+    return () => window.clearInterval(timer)
+  }, [exportProgress.open, exportProgress.status])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadReportDecisionActions() {
+      try {
+        const result = await getDecisionActions({
+          barangay: isBhwReport ? assignedBarangay : '',
+        })
+        if (active) setReportDecisionActionResult(result || null)
+      } catch {
+        if (active) setReportDecisionActionResult(null)
+      }
+    }
+
+    if (!isBhwReport || assignedBarangay) loadReportDecisionActions()
+
+    return () => {
+      active = false
+    }
+  }, [assignedBarangay, isBhwReport])
 
   useEffect(() => {
     if (boundaryRecords.length > 0 || boundaryLoadRequestedRef.current) return
@@ -6580,9 +8328,17 @@ export default function ReportsPage() {
   const topDecision = getDecisionSupport(topBarangay)
   const topProfile = getMultiSourceProfile(topBarangay)
   const averageMultiSourceScore = getAverageMultiSourceScore(sortedRiskRows)
+  const choAnalytics = useMemo(() => buildChoAnalyticsSnapshot({
+    sortedRiskRows,
+    cityTrendAnalytics: reportCityTrendAnalytics,
+    hotspotRows,
+    decisionActionResult: reportDecisionActionResult,
+    dashboardStats: reportDashboardStats,
+  }), [sortedRiskRows, reportCityTrendAnalytics, hotspotRows, reportDecisionActionResult, reportDashboardStats])
 
   const selectedExport = exportFormats.find((item) => item.id === format) || exportFormats[0]
   const SelectedExportIcon = selectedExport.icon
+  const isExportBusy = exportProgress.open && exportProgress.status === 'working'
   const selectedExportTheme = exportSelectionThemes[selectedExport.id] || exportSelectionThemes.pdf
   const heroReportReadyLabel = isBhwReport
     ? `${assignedBarangay || 'Barangay'} report ready`
@@ -6662,6 +8418,15 @@ export default function ReportsPage() {
       topHighRiskBarangays: reportMetadataForExport.topHighRiskBarangays || '',
       reportScope: isBhwReport ? 'assigned_barangay' : 'citywide',
       assignedBarangay: isBhwReport ? assignedBarangay : '',
+      recordedCasesInSelectedPeriod: isBhwReport ? undefined : Number(choAnalytics.totalActualCases || 0),
+      affectedBarangayCount: isBhwReport ? undefined : Number(choAnalytics.affectedBarangays || 0),
+      topTenCaseContributionPercent: isBhwReport ? undefined : Number(choAnalytics.topTenContribution || 0),
+      trackedResponseActionCount: Number(choAnalytics.response.total || 0),
+      completedResponseActionCount: Number(choAnalytics.response.completed || 0),
+      pendingResponseActionCount: Number(choAnalytics.response.pending || 0),
+      inProgressResponseActionCount: Number(choAnalytics.response.inProgress || 0),
+      overdueResponseActionCount: Number(choAnalytics.response.overdue || 0),
+      responseCompletionRate: Number(choAnalytics.response.completionRate || 0),
     }
   }
 
@@ -6727,145 +8492,207 @@ export default function ReportsPage() {
       return
     }
 
-    const title = activeReportTitle
-    const exportedAt = getCurrentDateTime()
-    const exportedAtIso = new Date().toISOString()
+    if (isExportBusy) return
 
-    let exportModelMetrics = latestModelMetrics
+    const showProgressModal = format !== 'print'
+    const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+    const setExportStage = (progress, stage, detail, status = 'working') => {
+      if (!showProgressModal) return
+      setExportProgress((current) => ({
+        ...current,
+        open: true,
+        status,
+        progress,
+        format,
+        stage,
+        detail,
+      }))
+    }
+
+    if (showProgressModal) {
+      setExportStage(6, `Preparing ${selectedExport.label}`, 'Starting the export and checking the latest report information.')
+      await sleep(90)
+    }
+
     try {
-      const refreshedMetrics = await loadLatestModelMetricsCached?.({ silent: true })
-      if (refreshedMetrics?.has_metrics || refreshedMetrics?.metrics) {
-        exportModelMetrics = refreshedMetrics
+      const title = activeReportTitle
+      const exportedAt = getCurrentDateTime()
+      const exportedAtIso = new Date().toISOString()
+
+      setExportStage(14, 'Refreshing model information', 'Checking the latest model metrics used in the technical report section.')
+      let exportModelMetrics = latestModelMetrics
+      try {
+        const refreshedMetrics = await loadLatestModelMetricsCached?.({ silent: true })
+        if (refreshedMetrics?.has_metrics || refreshedMetrics?.metrics) {
+          exportModelMetrics = refreshedMetrics
+        }
+      } catch {
+        // Use the already loaded metrics snapshot if the refresh is unavailable.
       }
-    } catch {
-      // Use the already loaded metrics snapshot if the refresh is unavailable.
-    }
 
-    const reportMetadataForExport = getOfficialReportMetadata({
-      sourceStatus,
-      backendForecastResult,
-      latestModelMetrics: exportModelMetrics,
-      generatedAt: exportedAt,
-      sortedRiskRows,
-      usingBackendForecast,
-      generatedBy: reportGeneratedBy,
-      role: reportRoleLabel,
-      reportScope: isBhwReport ? 'assigned_barangay' : 'citywide',
-      assignedBarangay: isBhwReport ? assignedBarangay : '',
-    })
-
-    let exportHotspotRows = hotspotRows
-    let exportHotspotSummary = hotspotSummary
-    let exportCityTrendAnalytics = null
-    let exportFieldMonitoringSummary = getFieldMonitoringSummary(null)
-
-    try {
-      const fieldUpdateResult = await getFieldUpdates({
-        limit: 200,
-        barangay: isBhwReport ? assignedBarangay : '',
-      })
-      exportFieldMonitoringSummary = getFieldMonitoringSummary(fieldUpdateResult)
-    } catch (error) {
-      addActivityLog?.(
-        'Field monitoring export fallback',
-        error?.message || 'BHW field monitoring summary could not be refreshed for this export.'
-      )
-    }
-
-    try {
-      const trendFilters = reportCityTrendAnalytics?.filters || {}
-      exportCityTrendAnalytics = isBhwReport
-        ? await getBarangayTrendAnalytics({
-            barangay: assignedBarangay,
-            year: trendFilters.year || undefined,
-            quarter: trendFilters.quarter || undefined,
-            month: trendFilters.month || undefined,
-          })
-        : await getCityTrendAnalytics({
-            year: trendFilters.year || undefined,
-            quarter: trendFilters.quarter || undefined,
-            month: trendFilters.month || undefined,
-            includeClassification: true,
-          })
-    } catch (error) {
-      addActivityLog?.(
-        'Actual surveillance export fallback',
-        error?.message || (isBhwReport ? 'Assigned barangay dengue surveillance could not be refreshed for this export.' : 'Citywide actual dengue surveillance could not be refreshed for this export.')
-      )
-    }
-
-    try {
-      const latestHotspotResult = await loadGeospatialHotspotsCached?.({
-    silent: true,
-  })
-  const latestRawHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
-    ? latestHotspotResult.hotspots
-    : rawHotspotRows
-
-  exportHotspotRows = reconcileHotspotRows(latestRawHotspotRows, sortedRiskRows)
-
-  const exportHotspotCounts = getHotspotCounts(exportHotspotRows)
-  exportHotspotSummary = buildReconciledHotspotSummary(
-    latestHotspotResult?.summary || hotspotSummary,
-    exportHotspotCounts,
-    sortedRiskRows.length
-  )
-    } catch {
-      exportHotspotRows = hotspotRows
-      exportHotspotSummary = hotspotSummary
-    }
-
-    const exportPayload = {
-  dashboardStats: reportDashboardStats,
-  riskRows: sortedRiskRows,
-  sourceStatus,
-  generatedAt: exportedAt,
-  hotspotRows: exportHotspotRows,
-  hotspotSummary: exportHotspotSummary,
-  dataSourceLabel: reportDataSourceLabel,
-  reportMetadata: reportMetadataForExport,
-  cityTrendAnalytics: exportCityTrendAnalytics,
-  fieldMonitoringSummary: exportFieldMonitoringSummary,
-}
-
-    if (format === 'pdf') {
-      downloadPdfReport({
-        ...exportPayload,
-        title,
+      const reportMetadataForExport = getOfficialReportMetadata({
+        sourceStatus,
+        backendForecastResult,
+        latestModelMetrics: exportModelMetrics,
+        generatedAt: exportedAt,
+        sortedRiskRows,
+        usingBackendForecast,
+        generatedBy: reportGeneratedBy,
+        role: reportRoleLabel,
+        reportScope: isBhwReport ? 'assigned_barangay' : 'citywide',
+        assignedBarangay: isBhwReport ? assignedBarangay : '',
       })
 
-      addActivityLog?.('Report exported', 'PDF response planning report downloaded directly.')
-      await recordReportGenerated('PDF', exportedAt, exportedAtIso, reportMetadataForExport)
-      return
+      let exportHotspotRows = hotspotRows
+      let exportHotspotSummary = hotspotSummary
+      let exportCityTrendAnalytics = null
+      let exportFieldMonitoringSummary = getFieldMonitoringSummary(null)
+      let exportDecisionActionResult = reportDecisionActionResult
+
+      setExportStage(27, 'Refreshing response coordination', 'Loading the latest tracked actions and completion status.')
+      try {
+        exportDecisionActionResult = await getDecisionActions({
+          barangay: isBhwReport ? assignedBarangay : '',
+          force: true,
+        })
+      } catch (error) {
+        addActivityLog?.(
+          'Response action export fallback',
+          error?.message || 'Tracked response action status could not be refreshed for this export.'
+        )
+      }
+
+      setExportStage(39, 'Collecting field monitoring data', 'Adding the latest BHW monitoring observations and operational needs.')
+      try {
+        const fieldUpdateResult = await getFieldUpdates({
+          limit: 200,
+          barangay: isBhwReport ? assignedBarangay : '',
+        })
+        exportFieldMonitoringSummary = getFieldMonitoringSummary(fieldUpdateResult)
+      } catch (error) {
+        addActivityLog?.(
+          'Field monitoring export fallback',
+          error?.message || 'BHW field monitoring summary could not be refreshed for this export.'
+        )
+      }
+
+      setExportStage(52, 'Building surveillance analytics', 'Preparing the selected-period dengue trend, case concentration, and classification data.')
+      try {
+        const trendFilters = reportCityTrendAnalytics?.filters || {}
+        exportCityTrendAnalytics = isBhwReport
+          ? await getBarangayTrendAnalytics({
+              barangay: assignedBarangay,
+              year: trendFilters.year || undefined,
+              quarter: trendFilters.quarter || undefined,
+              month: trendFilters.month || undefined,
+            })
+          : await getCityTrendAnalytics({
+              year: trendFilters.year || undefined,
+              quarter: trendFilters.quarter || undefined,
+              month: trendFilters.month || undefined,
+              includeClassification: true,
+              includeBarangayBreakdown: true,
+            })
+      } catch (error) {
+        addActivityLog?.(
+          'Actual surveillance export fallback',
+          error?.message || (isBhwReport ? 'Assigned barangay dengue surveillance could not be refreshed for this export.' : 'Citywide actual dengue surveillance could not be refreshed for this export.')
+        )
+      }
+
+      setExportStage(65, 'Preparing hotspot and map data', 'Refreshing spatial hotspot classifications and the barangay map snapshot.')
+      try {
+        const latestHotspotResult = await loadGeospatialHotspotsCached?.({ silent: true })
+        const latestRawHotspotRows = Array.isArray(latestHotspotResult?.hotspots)
+          ? latestHotspotResult.hotspots
+          : rawHotspotRows
+
+        exportHotspotRows = reconcileHotspotRows(latestRawHotspotRows, sortedRiskRows)
+
+        const exportHotspotCounts = getHotspotCounts(exportHotspotRows)
+        exportHotspotSummary = buildReconciledHotspotSummary(
+          latestHotspotResult?.summary || hotspotSummary,
+          exportHotspotCounts,
+          sortedRiskRows.length
+        )
+      } catch {
+        exportHotspotRows = hotspotRows
+        exportHotspotSummary = hotspotSummary
+      }
+
+      const exportPayload = {
+        dashboardStats: reportDashboardStats,
+        riskRows: sortedRiskRows,
+        sourceStatus,
+        generatedAt: exportedAt,
+        hotspotRows: exportHotspotRows,
+        hotspotSummary: exportHotspotSummary,
+        dataSourceLabel: reportDataSourceLabel,
+        reportMetadata: reportMetadataForExport,
+        cityTrendAnalytics: exportCityTrendAnalytics,
+        fieldMonitoringSummary: exportFieldMonitoringSummary,
+        decisionActionResult: exportDecisionActionResult,
+        boundaryGeoJson,
+      }
+
+      setExportStage(78, `Building ${selectedExport.label}`, format === 'powerpoint'
+        ? 'Designing the briefing slides, charts, tables, and appendix pages.'
+        : format === 'excel'
+          ? 'Creating workbook sheets, analytics tables, and response-planning data.'
+          : 'Rendering the report pages, analytics charts, tables, and map snapshot.')
+      if (showProgressModal) await sleep(80)
+
+      if (format === 'pdf') {
+        downloadPdfReport({ ...exportPayload, title })
+        setExportStage(94, 'Starting browser download', 'The PDF has been generated. Passing the file to your browser now.')
+        addActivityLog?.('Report exported', 'PDF response planning report downloaded directly.')
+        await recordReportGenerated('PDF', exportedAt, exportedAtIso, reportMetadataForExport)
+        setExportStage(100, 'Download ready', 'The PDF report has been generated and handed to your browser for download.', 'success')
+        await sleep(1200)
+        setExportProgress((current) => ({ ...current, open: false }))
+        return
+      }
+
+      if (format === 'excel') {
+        downloadExcelWorkbook(exportPayload)
+        setExportStage(94, 'Starting browser download', 'The Excel workbook has been generated. Passing the file to your browser now.')
+        addActivityLog?.('Report exported', 'Excel response planning workbook downloaded as an XLSX file.')
+        await recordReportGenerated('Excel', exportedAt, exportedAtIso, reportMetadataForExport)
+        setExportStage(100, 'Download ready', 'The Excel workbook has been generated and handed to your browser for download.', 'success')
+        await sleep(1200)
+        setExportProgress((current) => ({ ...current, open: false }))
+        return
+      }
+
+      if (format === 'powerpoint') {
+        await downloadPowerPointDeck(exportPayload)
+        setExportStage(94, 'Starting browser download', 'The PowerPoint deck has been generated. Passing the file to your browser now.')
+        addActivityLog?.('Report exported', 'PowerPoint response planning briefing deck generated and downloaded as a PPTX file.')
+        await recordReportGenerated('PowerPoint', exportedAt, exportedAtIso, reportMetadataForExport)
+        setExportStage(100, 'Download ready', 'The PowerPoint deck has been generated and handed to your browser for download.', 'success')
+        await sleep(1200)
+        setExportProgress((current) => ({ ...current, open: false }))
+        return
+      }
+
+      openPrintableReport({ ...exportPayload, title })
+      addActivityLog?.('Print view opened', 'Printable response planning report opened for manual printing.')
+      await recordReportGenerated('Printable', exportedAt, exportedAtIso, reportMetadataForExport)
+    } catch (error) {
+      if (showProgressModal) {
+        setExportProgress((current) => ({
+          ...current,
+          open: true,
+          status: 'error',
+          progress: Math.max(18, current.progress || 0),
+          format,
+          stage: 'Export stopped',
+          detail: error?.message || `The ${selectedExport.label.toLowerCase()} could not be generated. Please try again.`,
+        }))
+      }
+      addActivityLog?.('Report export failed', error?.message || `${selectedExport.label} could not be generated.`)
+      console.error('Report export failed:', error)
     }
-
-    if (format === 'excel') {
-      downloadExcelWorkbook(exportPayload)
-
-      addActivityLog?.('Report exported', 'Excel response planning workbook downloaded as an XLSX file.')
-      await recordReportGenerated('Excel', exportedAt, exportedAtIso, reportMetadataForExport)
-      return
-    }
-
-    if (format === 'powerpoint') {
-      await downloadPowerPointDeck(exportPayload)
-
-      addActivityLog?.(
-        'Report exported',
-        'PowerPoint response planning briefing deck generated and downloaded as a PPTX file.'
-      )
-      await recordReportGenerated('PowerPoint', exportedAt, exportedAtIso, reportMetadataForExport)
-
-      return
-    }
-
-    openPrintableReport({
-      ...exportPayload,
-      title,
-    })
-
-    addActivityLog?.('Print view opened', 'Printable response planning report opened for manual printing.')
-    await recordReportGenerated('Printable', exportedAt, exportedAtIso, reportMetadataForExport)
   }
 
 
@@ -8065,17 +9892,17 @@ export default function ReportsPage() {
               />
 
               <HeroMetric
-                label="Urgent alerts"
+                label="System urgent response alerts"
                 value={formatNumber(decisionCounts.urgent)}
-                helper="Urgent response priorities"
+                helper="System-generated urgent response priorities"
                 tone="rose"
                 informationType="decision"
               />
 
               <HeroMetric
-                label="Forecast total"
+                label="Citywide forecast total"
                 value={formatNumber(reportDashboardStats.fourWeekForecast)}
-                helper="Model-generated cases across the forecast periods"
+                helper="Citywide total across four forecast periods; barangay risk is classified separately"
                 tone="amber"
                 informationType="forecast"
               />
@@ -8145,7 +9972,7 @@ export default function ReportsPage() {
                         {selectedExport.label}
                       </p>
                       <p className="mt-1 truncate text-sm font-bold leading-6 text-white">
-                        {selectedExport.actionLabel || 'Generate selected output'}
+                        {isExportBusy ? `Generating ${selectedExport.label}...` : (selectedExport.actionLabel || 'Generate selected output')}
                       </p>
                       <p className="mt-1 text-xs font-medium leading-5 text-white/65">
                         {selectedExport.desc}
@@ -8289,12 +10116,13 @@ export default function ReportsPage() {
             <button
               type="button"
               onClick={handleExport}
+              disabled={isExportBusy}
               style={{
                 backgroundColor: '#ffffff',
                 color: '#0f172a',
                 borderColor: 'rgba(255,255,255,0.45)',
               }}
-              className="group relative mt-5 flex min-h-[78px] w-full items-center justify-between gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_18px_38px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.32)]"
+              className="group relative mt-5 flex min-h-[78px] w-full items-center justify-between gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[0_18px_38px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.32)] disabled:cursor-wait disabled:opacity-80 disabled:hover:translate-y-0"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-blue text-white shadow-[0_12px_24px_rgba(37,95,143,0.24)]">
@@ -8341,6 +10169,28 @@ export default function ReportsPage() {
         <CityTrendAnalyticsPanel context="reports" onAnalyticsChange={setReportCityTrendAnalytics} />
       )}
 
+      {!isBhwReport && (
+        <>
+          <DisclosureCard
+            id="cho-report-analytics"
+            open={isChoAnalyticsOpen}
+            onToggle={() => setIsChoAnalyticsOpen((current) => !current)}
+            icon={BarChart3}
+            title="CHO report analytics and decision insights"
+            description="Open this section to review the improved charts, map snapshot, and automated decision-support interpretation before generating the report."
+            summary={`${choAnalytics.scopeLabel} · ${formatNumber(choAnalytics.totalActualCases)} recorded cases · ${formatNumber(choAnalytics.affectedBarangays)} affected barangays`}
+            tone="blue"
+          />
+          {isChoAnalyticsOpen && (
+            <ChoReportAnalytics
+              analytics={choAnalytics}
+              boundaryGeoJson={boundaryGeoJson}
+              hotspotRows={hotspotRows}
+            />
+          )}
+        </>
+      )}
+
       <DisclosureCard
         id="additional-report-indicators"
         open={isAdditionalIndicatorsOpen}
@@ -8363,7 +10213,7 @@ export default function ReportsPage() {
         />
 
         <StatCard
-          label="Urgent alerts"
+          label="System urgent response alerts"
           value={formatNumber(decisionCounts.urgent)}
           helper="Immediate, high, or escalated priorities"
           icon={ShieldAlert}
@@ -8371,9 +10221,9 @@ export default function ReportsPage() {
         />
 
         <StatCard
-          label="Forecast total"
+          label="Citywide forecast total"
           value={formatNumber(reportDashboardStats.fourWeekForecast)}
-          helper="Model-generated cases across the forecast periods"
+          helper="Citywide total across four forecast periods; barangay risk is classified separately"
           icon={BarChart3}
           tone="amber"
         />
@@ -9460,7 +11310,8 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={handleExport}
-            className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[22px] px-4 py-3.5 text-sm font-black text-white transition-all duration-200 hover:-translate-y-0.5 ${selectedExportTheme.button}`}
+            disabled={isExportBusy}
+            className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[22px] px-4 py-3.5 text-sm font-black text-white transition-all duration-200 hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-80 disabled:hover:translate-y-0 ${selectedExportTheme.button}`}
           >
             {format === 'print' ? (
               <Printer className="h-4 w-4" />
@@ -9516,7 +11367,7 @@ export default function ReportsPage() {
             <p className="mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
               {usingBackendForecast
                ? 'PDF, Excel, PowerPoint, and print reports now include actual dengue trends, case classification, four-period forecasts, response priorities, hotspot context, field-monitoring summaries, model transparency details, recommended actions, and supporting rationale.'
-                : 'PDF, Excel, PowerPoint, and print reports include response priority, combined priority score, rainfall, temperature, humidity, population, density, action plan, and reasons for the recommendation.'}
+                : 'PDF and PowerPoint reports now include detailed CHO analytics: recorded-case concentration, top barangays, forecast risk distribution, combined priority ranking, four-period forecast pressure, spatial hotspot mapping, response completion, automated findings, and recommended priorities. Excel and print exports retain the detailed operational data tables.'}
             </p>
           </div>
 
@@ -9819,6 +11670,10 @@ export default function ReportsPage() {
         </div>
       </PremiumPanel>
       )}
+      <ExportProgressModal
+        state={exportProgress}
+        onClose={() => setExportProgress((current) => ({ ...current, open: false }))}
+      />
     </div>
   )
 }

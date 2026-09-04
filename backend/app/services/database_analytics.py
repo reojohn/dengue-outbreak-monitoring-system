@@ -1014,12 +1014,77 @@ def get_barangay_trend_analytics(
     payload["has_saved_dataset"] = True
     return payload
 
+
+def _get_city_barangay_breakdown(
+    connection,
+    *,
+    integration_run_id: Any,
+    year: int | None,
+    quarter: int | None,
+    month: int | None,
+) -> list[dict[str, Any]]:
+    """Return a compact, aggregated barangay case breakdown for CHO report analytics.
+
+    The aggregation stays inside PostgreSQL so the report page receives only one
+    row per barangay instead of downloading the integrated source rows.
+    """
+    if not integration_run_id or year is None:
+        return []
+
+    rows = connection.execute(
+        text(
+            """
+            select
+                barangay_key,
+                min(barangay) as barangay,
+                sum(coalesce(cases, 0))::bigint as cases
+            from public.integrated_dataset_rows
+            where integration_run_id = :integration_run_id
+              and year = cast(:year as integer)
+              and month between 1 and 12
+              and (cast(:month as integer) is null or month = cast(:month as integer))
+              and (
+                  cast(:quarter as integer) is null
+                  or month between ((cast(:quarter as integer) - 1) * 3 + 1)
+                               and ((cast(:quarter as integer) - 1) * 3 + 3)
+              )
+              and barangay_key is not null
+              and trim(barangay_key) <> ''
+              and barangay is not null
+              and trim(barangay) <> ''
+              and coalesce(barangay_match_status, '') in ('psgc_matched', 'exact_matched', 'auto_matched')
+            group by barangay_key
+            order by sum(coalesce(cases, 0)) desc, min(barangay) asc
+            """
+        ),
+        {
+            "integration_run_id": integration_run_id,
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+        },
+    ).mappings().all()
+
+    total_cases = sum(int(row.get("cases") or 0) for row in rows)
+
+    return [
+        {
+            "barangay": str(row.get("barangay") or "").strip(),
+            "barangay_key": str(row.get("barangay_key") or "").strip(),
+            "cases": int(row.get("cases") or 0),
+            "share_percent": round((int(row.get("cases") or 0) / total_cases) * 100, 2) if total_cases > 0 else 0.0,
+        }
+        for row in rows
+        if str(row.get("barangay") or "").strip()
+    ]
+
 def get_city_trend_analytics(
     *,
     year: int | None = None,
     quarter: int | None = None,
     month: int | None = None,
     include_classification: bool = False,
+    include_barangay_breakdown: bool = False,
 ) -> dict[str, Any]:
     """Return lightweight citywide actual-case trend analytics.
 
@@ -1043,6 +1108,7 @@ def get_city_trend_analytics(
                 "historical_peak": None,
                 "interpretation": "No saved integrated dengue dataset is available yet.",
                 "case_classification": _empty_case_classification("", "No saved integrated dengue dataset is available yet.") if include_classification else None,
+                "barangay_breakdown": [] if include_barangay_breakdown else None,
             }
 
         rows = connection.execute(
@@ -1084,6 +1150,14 @@ def get_city_trend_analytics(
                 quarter=quarter,
                 month=month,
                 scope_label=payload.get("filters", {}).get("scope_label") or "",
+            )
+        if include_barangay_breakdown:
+            payload["barangay_breakdown"] = _get_city_barangay_breakdown(
+                connection,
+                integration_run_id=latest_run["integration_run_id"],
+                year=payload.get("filters", {}).get("year"),
+                quarter=quarter,
+                month=month,
             )
         return payload
 

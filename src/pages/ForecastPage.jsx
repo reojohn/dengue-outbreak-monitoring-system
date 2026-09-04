@@ -30,6 +30,9 @@ import {
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import InformationTypeBadge from '../components/InformationTypeBadge'
+import AutoProcessingModal from '../components/uploads/AutoProcessingModal'
+import { reEvaluateModel } from '../services/api'
+import { getAuthSession } from '../utils/auth'
 import {
   compareCanonicalBarangayPriority,
   computeDecisionSupport,
@@ -81,6 +84,12 @@ const modelCatalog = [
   { model_key: 'lightgbm', model_name: 'LightGBM' },
   { model_key: 'catboost', model_name: 'CatBoost' },
 ]
+
+function waitForModelAnimation(milliseconds = 0) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds)
+  })
+}
 
 function getForecastPeriodDisplay(backendForecastResult = null) {
   const forecastRows = Array.isArray(backendForecastResult?.forecast_results)
@@ -3698,6 +3707,16 @@ export default function ForecastPage() {
   const [selectedResponseBarangay, setSelectedResponseBarangay] = useState('')
   const [selectedRiskExplanationBarangay, setSelectedRiskExplanationBarangay] = useState('')
   const [summaryListType, setSummaryListType] = useState(null)
+  const [isReevaluatingModel, setIsReevaluatingModel] = useState(false)
+  const [modelReevaluationNotice, setModelReevaluationNotice] = useState({ type: '', text: '' })
+  const [modelReevaluationProcessing, setModelReevaluationProcessing] = useState({
+    visible: false,
+    step: 'model',
+    detail: '',
+    selectedModel: '',
+  })
+  const authSession = useMemo(() => getAuthSession(), [])
+  const canReevaluateModel = ['cho', 'admin'].includes(String(authSession?.role || '').toLowerCase())
 
   const {
     dengueRecords = [],
@@ -3708,6 +3727,9 @@ export default function ForecastPage() {
     backendForecastResult = null,
     latestModelMetrics = null,
     loadLatestModelMetricsCached,
+    updateWorkspace,
+    addActivityLog,
+    warmNavigationCache,
   } = useData()
 
   const selectedMode = modeMeta.baseline
@@ -4532,9 +4554,110 @@ const activeModelComparison = (() => {
     }, 160)
   }
 
+  async function handleReevaluateModel() {
+    if (!canReevaluateModel || isReevaluatingModel) return
+
+    setIsReevaluatingModel(true)
+    setModelReevaluationNotice({ type: '', text: '' })
+    setModelReevaluationProcessing({
+      visible: true,
+      step: 'model',
+      detail: 'The system is re-evaluating all available machine learning models using the current integrated dataset. The model carousel will continue until the new winner is selected.',
+      selectedModel: '',
+    })
+
+    try {
+      const result = await reEvaluateModel()
+      const forecastResults = Array.isArray(result?.forecast_results) ? result.forecast_results : []
+
+      updateWorkspace?.((current) => ({
+        ...current,
+        backendForecastResult: result,
+        riskRows: forecastResults.length > 0 ? forecastResults : current.riskRows || [],
+      }))
+
+      const selectedModel =
+        result?.model_display_name ||
+        result?.model_name ||
+        result?.forecast_run?.model_name ||
+        'The best-performing model'
+
+      // Reuse the exact model-selection modal used after uploads. Freeze the
+      // carousel on the actual winner before moving to the forecast animation.
+      setModelReevaluationProcessing({
+        visible: true,
+        step: 'model',
+        detail: `${selectedModel} was selected for the current integrated dataset. Preparing the four forecast horizons next.`,
+        selectedModel,
+      })
+
+      await waitForModelAnimation(1400)
+
+      setModelReevaluationProcessing({
+        visible: true,
+        step: 'forecast',
+        detail: `${selectedModel} is finalizing the four-period dengue forecast and publishing the latest barangay results.`,
+        selectedModel,
+      })
+
+      await Promise.all([
+        waitForModelAnimation(4200),
+        loadLatestModelMetricsCached?.({ silent: true, force: true }),
+        Promise.resolve(warmNavigationCache?.()).catch(() => null),
+      ])
+
+      setModelReevaluationProcessing({
+        visible: true,
+        step: 'done',
+        detail: `${selectedModel} was re-evaluated successfully. The refreshed metrics, confusion matrix data, class counts, and forecast are now saved.`,
+        selectedModel,
+      })
+
+      await waitForModelAnimation(1500)
+
+      setModelReevaluationProcessing({
+        visible: false,
+        step: 'done',
+        detail: '',
+        selectedModel,
+      })
+
+      setModelReevaluationNotice({
+        type: 'success',
+        text: `${selectedModel} was freshly re-evaluated using the current integrated dataset. The latest technical metrics and forecast have been saved.`,
+      })
+
+      addActivityLog?.(
+        'Model re-evaluation completed',
+        `${selectedModel} was selected after a fresh model comparison. Updated evaluation metrics and forecast results were saved.`
+      )
+    } catch (error) {
+      setModelReevaluationProcessing({
+        visible: false,
+        step: 'model',
+        detail: '',
+        selectedModel: '',
+      })
+
+      const message = error?.message || 'The model could not be re-evaluated. Please make sure the integrated dataset is ready and try again.'
+      setModelReevaluationNotice({ type: 'error', text: message })
+      addActivityLog?.('Model re-evaluation failed', message)
+    } finally {
+      setIsReevaluatingModel(false)
+    }
+  }
+
   return (
     <div className="forecast-mobile-compact relative space-y-6 pb-10">
       <div className="pointer-events-none absolute inset-x-0 -top-20 -z-10 h-[420px] bg-[radial-gradient(circle_at_18%_24%,rgba(56,189,248,0.12),transparent_34%),radial-gradient(circle_at_78%_18%,rgba(16,185,129,0.10),transparent_28%)] blur-2xl dark:opacity-70" />
+
+      <AutoProcessingModal
+        visible={modelReevaluationProcessing.visible}
+        step={modelReevaluationProcessing.step}
+        detail={modelReevaluationProcessing.detail}
+        selectedModel={modelReevaluationProcessing.selectedModel}
+        barangayNames={forecastRows.map((row) => row?.barangay).filter(Boolean)}
+      />
 
       <SummaryBarangayListModal
         open={Boolean(summaryListType)}
@@ -4895,10 +5018,35 @@ const activeModelComparison = (() => {
       </p>
     </div>
 
-    <div className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-black text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-      {isMachineLearningForecast ? 'AutoML selection active' : 'Forecast available'}
+    <div className="flex flex-wrap items-center gap-2">
+      {canReevaluateModel && (
+        <button
+          type="button"
+          onClick={handleReevaluateModel}
+          disabled={isReevaluatingModel}
+          className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-black text-cyan-800 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60 dark:border-cyan-500/25 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/15"
+          title="Freshly compare all models using the current integrated dataset and save a new evaluation run"
+        >
+          <Play className={`h-4 w-4 ${isReevaluatingModel ? 'animate-pulse' : ''}`} />
+          {isReevaluatingModel ? 'Re-evaluating models...' : 'Re-evaluate model'}
+        </button>
+      )}
+
+      <div className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-black text-brand-green shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+        {isMachineLearningForecast ? 'AutoML selection active' : 'Forecast available'}
+      </div>
     </div>
   </div>
+
+  {modelReevaluationNotice.text && (
+    <div className={`mt-4 rounded-[18px] border px-4 py-3 text-sm font-semibold leading-6 ${
+      modelReevaluationNotice.type === 'error'
+        ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300'
+        : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+    }`}>
+      {modelReevaluationNotice.text}
+    </div>
+  )}
 
   <div className="mobile-field-grid-6 mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
     {[

@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
-from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, mean_squared_error, precision_score, recall_score, r2_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, mean_absolute_error, mean_squared_error, precision_recall_fscore_support, precision_score, recall_score, r2_score
 from sklearn.tree import DecisionTreeRegressor
 
 try:
@@ -50,7 +50,7 @@ FEATURE_COLUMNS = [
 FORECAST_HORIZONS = (1, 2, 3, 4)
 TARGET_COLUMNS = [f"target_period_{horizon}" for horizon in FORECAST_HORIZONS]
 FORECAST_STRATEGY = "direct_multi_step"
-MODEL_VERSION = "v4-chronological-leakage-safe"
+MODEL_VERSION = "v5-confusion-matrix-evaluation"
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "trained_models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -405,15 +405,70 @@ def _risk_class_from_cases(cases):
     return classify_forecast_risk(int(round(max(float(cases), 0))))
 
 
+RISK_CLASS_LABELS = ["Low", "Moderate", "High"]
+
+
 def _evaluate_regression_as_risk(y_true, y_pred):
+    """Evaluate cumulative case forecasts after converting them to risk classes.
+
+    The confusion matrix and class counts are stored as technical evaluation
+    artifacts for research/Chapter 4 reporting. They are not intended to be
+    displayed in the BHW or CHO operational interface.
+    """
     actual_classes = [_risk_class_from_cases(value) for value in y_true]
     predicted_classes = [_risk_class_from_cases(value) for value in y_pred]
+
+    matrix = confusion_matrix(
+        actual_classes,
+        predicted_classes,
+        labels=RISK_CLASS_LABELS,
+    )
+
+    per_class_precision, per_class_recall, per_class_f1, per_class_support = (
+        precision_recall_fscore_support(
+            actual_classes,
+            predicted_classes,
+            labels=RISK_CLASS_LABELS,
+            zero_division=0,
+        )
+    )
+
+    actual_counts = {
+        label: int(sum(1 for value in actual_classes if value == label))
+        for label in RISK_CLASS_LABELS
+    }
+    predicted_counts = {
+        label: int(sum(1 for value in predicted_classes if value == label))
+        for label in RISK_CLASS_LABELS
+    }
+
+    per_class_metrics = {
+        label: {
+            "precision": round(float(per_class_precision[index]), 4),
+            "recall": round(float(per_class_recall[index]), 4),
+            "f1_score": round(float(per_class_f1[index]), 4),
+            "support": int(per_class_support[index]),
+        }
+        for index, label in enumerate(RISK_CLASS_LABELS)
+    }
 
     return {
         "accuracy": round(float(accuracy_score(actual_classes, predicted_classes)), 4),
         "precision": round(float(precision_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
         "recall": round(float(recall_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
         "f1_score": round(float(f1_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
+        "confusion_matrix": {
+            "labels": RISK_CLASS_LABELS,
+            "matrix": matrix.astype(int).tolist(),
+            "orientation": "Rows = actual classes; columns = predicted classes",
+        },
+        "risk_class_counts": {
+            "actual": actual_counts,
+            "predicted": predicted_counts,
+            "total": int(len(actual_classes)),
+        },
+        "per_class_metrics": per_class_metrics,
+        "classification_average": "weighted",
     }
 
 
@@ -525,8 +580,9 @@ def _selection_confidence(comparison):
         label = "Review recommended"
 
     summary = (
-        f"{best.get('model_name', 'The selected model')} was selected because it produced the lowest RMSE"
-        f" and MAE among the evaluated algorithms. This heuristic selection-strength score is not a probability that the forecast is correct."
+        f"{best.get('model_name', 'The selected model')} was selected because it ranked first under the configured model-selection rule, "
+        "which prioritizes the lowest average four-horizon RMSE. MAE and cumulative RMSE are used only as tie-breakers. "
+        "This heuristic selection-strength score is not a probability that the forecast is correct."
     )
 
     return {
@@ -544,16 +600,25 @@ def _selection_explanation(comparison):
     best = comparison[0]
     runner_up = comparison[1] if len(comparison) > 1 else None
 
+    lowest_mae_model = min(comparison, key=lambda item: float(item.get("mae") or float("inf")))
+
     explanation = (
         f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest average four-horizon RMSE "
-        f"({best.get('rmse', 'N/A')}) and MAE ({best.get('mae', 'N/A')}) among the evaluated machine learning models. "
-        "Each candidate was evaluated separately for Periods 1 through 4, and lower average RMSE and MAE indicate smaller multi-step forecasting errors."
+        f"({best.get('rmse', 'N/A')}) under the configured ranking rule. Each candidate was evaluated separately for Periods 1 through 4, "
+        "with average RMSE as the primary selection criterion; MAE and cumulative RMSE are used as tie-breakers."
     )
+
+    if lowest_mae_model.get("model_key") != best.get("model_key"):
+        explanation += (
+            f" {lowest_mae_model.get('model_name', 'Another model')} produced the lowest average MAE "
+            f"({lowest_mae_model.get('mae', 'N/A')}), while {best.get('model_name', 'the selected model')} had MAE "
+            f"{best.get('mae', 'N/A')}."
+        )
 
     if runner_up:
         explanation += (
-            f" The next closest model was {runner_up.get('model_name', 'the runner-up model')} "
-            f"with average RMSE {runner_up.get('rmse', 'N/A')} and MAE {runner_up.get('mae', 'N/A')}."
+            f" The next closest model by RMSE was {runner_up.get('model_name', 'the runner-up model')} "
+            f"with average RMSE {runner_up.get('rmse', 'N/A')}."
         )
 
     return explanation
@@ -1124,7 +1189,7 @@ def forecast_with_latest_model(
     return forecast_result
 
 
-def auto_run_latest_model():
+def auto_run_latest_model(force_retrain=False):
     integration_run_id = _get_latest_integration_run_id()
 
     if not integration_run_id:
@@ -1137,11 +1202,16 @@ def auto_run_latest_model():
     saved_row = _get_saved_model_run(integration_run_id)
     dataframe = None
 
-    if saved_row:
+    # The ordinary automatic upload workflow reuses a matching saved model to
+    # avoid unnecessary retraining. The Forecast-page technical re-evaluation
+    # action deliberately bypasses that cache so Chapter 4 metrics (including
+    # the confusion matrix and class counts) can be reproduced on demand.
+    if saved_row and not force_retrain:
         training_result = _saved_model_response(saved_row)
     else:
         dataframe, integration_run_id = _load_integrated_dataframe(integration_run_id)
         training_result = train_latest_model(
+            force_retrain=force_retrain,
             dataframe=dataframe,
             integration_run_id=integration_run_id,
         )
@@ -1149,7 +1219,7 @@ def auto_run_latest_model():
     if dataframe is None:
         dataframe, integration_run_id = _load_integrated_dataframe(integration_run_id)
 
-    artifact = _load_model_and_metadata(integration_run_id)
+    artifact = _load_model_and_metadata(integration_run_id, dataframe=dataframe)
     forecast_result = forecast_with_latest_model(
         dataframe=dataframe,
         integration_run_id=integration_run_id,
@@ -1157,9 +1227,14 @@ def auto_run_latest_model():
     )
 
     forecast_result["auto_run"] = {
-        "message": "Automatic model training, evaluation, and forecasting completed.",
+        "message": (
+            "Fresh model re-evaluation and forecasting completed."
+            if force_retrain
+            else "Automatic model training, evaluation, and forecasting completed."
+        ),
         "training_message": training_result.get("message"),
         "used_cached_model": training_result.get("used_cached_model", False),
+        "force_retrain": bool(force_retrain),
         "model_run_id": training_result.get("model_run_id"),
     }
 

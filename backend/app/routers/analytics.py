@@ -35,6 +35,7 @@ def get_citywide_trends(
     quarter: int | None = Query(default=None, ge=1, le=4),
     month: int | None = Query(default=None, ge=1, le=12),
     include_classification: bool = Query(default=False),
+    include_barangay_breakdown: bool = Query(default=False),
     current_user=Depends(require_roles("cho", "supervisor", "admin", "viewer")),
 ):
     if quarter is not None and month is not None:
@@ -48,6 +49,7 @@ def get_citywide_trends(
         quarter=quarter,
         month=month,
         include_classification=include_classification,
+        include_barangay_breakdown=include_barangay_breakdown,
     )
 
 

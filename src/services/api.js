@@ -626,13 +626,14 @@ export async function getTrendAnalyticsBarangays() {
   )
 }
 
-export async function getCityTrendAnalytics({ year, quarter, month, includeClassification = false } = {}) {
+export async function getCityTrendAnalytics({ year, quarter, month, includeClassification = false, includeBarangayBreakdown = false } = {}) {
   const params = new URLSearchParams()
 
   if (year) params.set('year', String(year))
   if (quarter) params.set('quarter', String(quarter))
   if (month) params.set('month', String(month))
   if (includeClassification) params.set('include_classification', 'true')
+  if (includeBarangayBreakdown) params.set('include_barangay_breakdown', 'true')
 
   const query = params.toString()
   const url = `${API_BASE_URL}/analytics/city-trends${query ? `?${query}` : ''}`
@@ -1116,6 +1117,16 @@ export async function getLatestModelMetrics() {
 export async function autoRunModel() {
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/models/auto-run`,
+    { method: 'POST' },
+    180000
+  )
+
+  return handleApiResponse(response)
+}
+
+export async function reEvaluateModel() {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/models/re-evaluate`,
     { method: 'POST' },
     180000
   )

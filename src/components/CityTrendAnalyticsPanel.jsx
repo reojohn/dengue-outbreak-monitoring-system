@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, CalendarDays, Loader2, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { Activity, BarChart3, CalendarDays, Loader2, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import SparkChart from './SparkChart'
 import InformationTypeBadge from './InformationTypeBadge'
 import { TrendPanelSkeleton } from './SystemSkeleton'
@@ -58,6 +58,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
   const [analytics, setAnalytics] = useState(null)
   const [year, setYear] = useState('')
   const [period, setPeriod] = useState('all')
+  const [chartType, setChartType] = useState('line')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -229,7 +230,42 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
             </div>
             <p className="mt-1 text-xs text-slate-400">Actual recorded cases only. Predictions are shown in forecast sections.</p>
           </div>
-          <span className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold text-cyan-200">{scopeLabel}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="inline-flex items-center rounded-xl border border-cyan-400/20 bg-slate-950/45 p-1 shadow-inner"
+              role="group"
+              aria-label="Historical dengue chart type"
+            >
+              <button
+                type="button"
+                onClick={() => setChartType('line')}
+                aria-pressed={chartType === 'line'}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-black transition ${
+                  chartType === 'line'
+                    ? 'bg-cyan-400 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.28)]'
+                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                Trend
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('bar')}
+                aria-pressed={chartType === 'bar'}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-black transition ${
+                  chartType === 'bar'
+                    ? 'bg-cyan-400 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.28)]'
+                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                Bar graph
+              </button>
+            </div>
+
+            <span className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold text-cyan-200">{scopeLabel}</span>
+          </div>
         </div>
 
         <div className="min-h-[300px] w-full sm:min-h-[430px] lg:min-h-[520px]">
@@ -240,6 +276,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
             subtitle={`Recorded monthly dengue cases · ${scopeLabel}`}
             emptyLabel="No citywide monthly dengue records for this period"
             loading={loading}
+            mode={chartType}
           />
         </div>
       </div>

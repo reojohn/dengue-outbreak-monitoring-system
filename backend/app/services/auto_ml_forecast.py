@@ -7,7 +7,7 @@ import pandas as pd
 
 from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
-from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error, mean_squared_error, precision_score, recall_score, r2_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, mean_absolute_error, mean_squared_error, precision_recall_fscore_support, precision_score, recall_score, r2_score
 from sklearn.tree import DecisionTreeRegressor
 
 try:
@@ -185,15 +185,70 @@ def _risk_class_from_cases(cases):
     return classify_forecast_risk(int(round(max(float(cases), 0))))
 
 
+RISK_CLASS_LABELS = ["Low", "Moderate", "High"]
+
+
 def _evaluate_regression_as_risk(y_true, y_pred):
+    """Evaluate cumulative case forecasts after converting them to risk classes.
+
+    The confusion matrix and class counts are stored as technical evaluation
+    artifacts for research/Chapter 4 reporting. They are not intended to be
+    displayed in the BHW or CHO operational interface.
+    """
     actual_classes = [_risk_class_from_cases(value) for value in y_true]
     predicted_classes = [_risk_class_from_cases(value) for value in y_pred]
+
+    matrix = confusion_matrix(
+        actual_classes,
+        predicted_classes,
+        labels=RISK_CLASS_LABELS,
+    )
+
+    per_class_precision, per_class_recall, per_class_f1, per_class_support = (
+        precision_recall_fscore_support(
+            actual_classes,
+            predicted_classes,
+            labels=RISK_CLASS_LABELS,
+            zero_division=0,
+        )
+    )
+
+    actual_counts = {
+        label: int(sum(1 for value in actual_classes if value == label))
+        for label in RISK_CLASS_LABELS
+    }
+    predicted_counts = {
+        label: int(sum(1 for value in predicted_classes if value == label))
+        for label in RISK_CLASS_LABELS
+    }
+
+    per_class_metrics = {
+        label: {
+            "precision": round(float(per_class_precision[index]), 4),
+            "recall": round(float(per_class_recall[index]), 4),
+            "f1_score": round(float(per_class_f1[index]), 4),
+            "support": int(per_class_support[index]),
+        }
+        for index, label in enumerate(RISK_CLASS_LABELS)
+    }
 
     return {
         "accuracy": round(float(accuracy_score(actual_classes, predicted_classes)), 4),
         "precision": round(float(precision_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
         "recall": round(float(recall_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
         "f1_score": round(float(f1_score(actual_classes, predicted_classes, average="weighted", zero_division=0)), 4),
+        "confusion_matrix": {
+            "labels": RISK_CLASS_LABELS,
+            "matrix": matrix.astype(int).tolist(),
+            "orientation": "Rows = actual classes; columns = predicted classes",
+        },
+        "risk_class_counts": {
+            "actual": actual_counts,
+            "predicted": predicted_counts,
+            "total": int(len(actual_classes)),
+        },
+        "per_class_metrics": per_class_metrics,
+        "classification_average": "weighted",
     }
 
 
@@ -262,11 +317,34 @@ def _selection_confidence(comparison):
 def _selection_explanation(comparison):
     if not comparison:
         return "No model comparison was available."
+
     best = comparison[0]
-    return (
-        f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest RMSE "
-        f"({best.get('rmse', 'N/A')}) and MAE ({best.get('mae', 'N/A')}) among the evaluated machine learning models."
+    runner_up = comparison[1] if len(comparison) > 1 else None
+    lowest_mae_model = min(
+        comparison,
+        key=lambda item: float(item.get("mae")) if item.get("mae") is not None else float("inf"),
     )
+
+    explanation = (
+        f"{best.get('model_name', 'The selected model')} was selected because it achieved the lowest average four-horizon RMSE "
+        f"({best.get('rmse', 'N/A')}) under the configured ranking rule. Average RMSE is the primary selection criterion; "
+        "MAE and cumulative RMSE are used as tie-breakers."
+    )
+
+    if lowest_mae_model.get("model_key") != best.get("model_key"):
+        explanation += (
+            f" {lowest_mae_model.get('model_name', 'Another model')} produced the lowest average MAE "
+            f"({lowest_mae_model.get('mae', 'N/A')}), while {best.get('model_name', 'the selected model')} had MAE "
+            f"{best.get('mae', 'N/A')}."
+        )
+
+    if runner_up:
+        explanation += (
+            f" The next closest model by RMSE was {runner_up.get('model_name', 'the runner-up model')} "
+            f"with average RMSE {runner_up.get('rmse', 'N/A')}."
+        )
+
+    return explanation
 
 def _average_feature_importance(models, feature_columns):
     totals = {feature: 0.0 for feature in feature_columns}
@@ -779,7 +857,7 @@ def generate_auto_ml_dengue_forecast_from_dataframe(
         "invalid_preview": make_json_safe_records(invalid_preview_df.head(10)),
         "model_name": f"auto_selected_{selected_model_key}",
         "model_display_name": selected_model_name,
-        "model_version": "v4-chronological-leakage-safe",
+        "model_version": "v5-confusion-matrix-evaluation",
         "is_machine_learning": bool(used_machine_learning),
         "model_metrics": model_metrics,
         "model_comparison": model_comparison,

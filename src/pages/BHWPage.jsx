@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   ArrowUpRight,
   CalendarDays,
   Check,
@@ -2362,6 +2363,7 @@ export default function BHWPage() {
   const [trendAnalytics, setTrendAnalytics] = useState(null)
   const [trendYear, setTrendYear] = useState('')
   const [trendPeriod, setTrendPeriod] = useState('all')
+  const [trendChartType, setTrendChartType] = useState('line')
   const [trendLoading, setTrendLoading] = useState(false)
   const [trendError, setTrendError] = useState('')
 
@@ -3202,8 +3204,43 @@ export default function BHWPage() {
                   Recorded cases only. Forecast values are shown separately below.
                 </p>
               </div>
-              <div className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold text-cyan-200">
-                {trendScopeLabel}
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  className="inline-flex items-center rounded-xl border border-cyan-400/20 bg-slate-950/45 p-1 shadow-inner"
+                  role="group"
+                  aria-label="Historical dengue chart type"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setTrendChartType('line')}
+                    aria-pressed={trendChartType === 'line'}
+                    className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-black transition ${
+                      trendChartType === 'line'
+                        ? 'bg-cyan-400 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.28)]'
+                        : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    <TrendingUp className="h-3.5 w-3.5" />
+                    Trend
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTrendChartType('bar')}
+                    aria-pressed={trendChartType === 'bar'}
+                    className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-black transition ${
+                      trendChartType === 'bar'
+                        ? 'bg-cyan-400 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.28)]'
+                        : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" />
+                    Bar graph
+                  </button>
+                </div>
+
+                <div className="w-fit rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold text-cyan-200">
+                  {trendScopeLabel}
+                </div>
               </div>
             </div>
 
@@ -3215,6 +3252,7 @@ export default function BHWPage() {
                 subtitle={`Recorded monthly dengue cases · ${trendScopeLabel}`}
                 emptyLabel="No monthly dengue records for this period"
                 loading={trendLoading}
+                mode={trendChartType}
               />
             </div>
           </div>

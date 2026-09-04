@@ -71,9 +71,12 @@ export default function SparkChart({
   emptyLabel = 'No chart data available yet',
   loading = false,
   legendLabel = 'Actual dengue cases',
+  mode = 'line',
 }) {
   const rawId = useId()
   const chartId = rawId.replace(/:/g, '')
+
+  const chartMode = mode === 'bar' ? 'bar' : 'line'
 
   const chart = useMemo(() => {
     const numericValues = values
@@ -90,6 +93,9 @@ export default function SparkChart({
     const maximum = getNiceMaximum(Math.max(...numericValues, 0))
     const count = numericValues.length
     const step = count > 1 ? (right - left) / (count - 1) : 0
+    const barWidth = count > 0
+      ? Math.min(58, Math.max(24, (right - left) / Math.max(count * 1.7, 1)))
+      : 0
 
     const points = numericValues.map((value, index) => ({
       x: count === 1 ? (left + right) / 2 : left + step * index,
@@ -119,6 +125,7 @@ export default function SparkChart({
       top,
       baseline,
       maximum,
+      barWidth,
       points,
       linePath,
       areaPath,
@@ -138,6 +145,8 @@ export default function SparkChart({
     background: `${chartId}-background`,
     line: `${chartId}-line`,
     area: `${chartId}-area`,
+    bar: `${chartId}-bar`,
+    barHighlight: `${chartId}-bar-highlight`,
     depth: `${chartId}-depth`,
     floor: `${chartId}-floor`,
     floorEdge: `${chartId}-floor-edge`,
@@ -181,6 +190,18 @@ export default function SparkChart({
               <stop offset="0%" stopColor="#0284c7" stopOpacity="0.46" />
               <stop offset="55%" stopColor="#0ea5e9" stopOpacity="0.56" />
               <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.68" />
+            </linearGradient>
+
+            <linearGradient id={ids.bar} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.98" />
+              <stop offset="40%" stopColor="#0ea5e9" stopOpacity="0.94" />
+              <stop offset="100%" stopColor="#0369a1" stopOpacity="0.82" />
+            </linearGradient>
+
+            <linearGradient id={ids.barHighlight} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.08" />
+              <stop offset="50%" stopColor="#ffffff" stopOpacity="0.34" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.04" />
             </linearGradient>
 
             <linearGradient id={ids.depth} x1="0" y1="0" x2="0" y2="1">
@@ -373,124 +394,173 @@ export default function SparkChart({
             })}
           </g>
 
-          <path
-            d={chart.areaPath}
-            transform="translate(0 16)"
-            fill={`url(#${ids.depth})`}
-            opacity="0.52"
-            filter={`url(#${ids.softGlow})`}
-          />
-
-          <path
-            d={chart.areaPath}
-            fill={`url(#${ids.area})`}
-            stroke={`url(#${ids.line})`}
-            strokeWidth="2"
-            opacity="0.94"
-          />
-
-          <rect
-            x={chart.left}
-            y={chart.top}
-            width={chart.right - chart.left}
-            height={chart.baseline - chart.top}
-            fill={`url(#${ids.surface})`}
-            clipPath={`url(#${ids.areaClip})`}
-          />
-
-          <path
-            d={chart.linePath}
-            fill="none"
-            stroke={`url(#${ids.line})`}
-            strokeWidth="13"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.2"
-            filter={`url(#${ids.strongGlow})`}
-          />
-
-          <path
-            d={chart.linePath}
-            fill="none"
-            stroke={`url(#${ids.line})`}
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            filter={`url(#${ids.softGlow})`}
-          />
-
-          {chart.points.map((point, index) => (
-            <g key={`${point.label}-${index}`}>
-              <title>{`${point.label}: ${formatValue(point.value)} cases`}</title>
-
-              <line
-                x1={point.x}
-                y1={point.y + 10}
-                x2={point.x}
-                y2={chart.baseline}
-                stroke="#22d3ee"
-                strokeOpacity="0.58"
-                strokeWidth="1.5"
-                strokeDasharray="4 6"
-              />
-
-              <ellipse
-                cx={point.x}
-                cy={chart.baseline + 4}
-                rx="17"
-                ry="5"
-                fill="#38bdf8"
-                fillOpacity="0.16"
+          {chartMode === 'line' ? (
+            <>
+              <path
+                d={chart.areaPath}
+                transform="translate(0 16)"
+                fill={`url(#${ids.depth})`}
+                opacity="0.52"
                 filter={`url(#${ids.softGlow})`}
               />
 
-              <circle
-                cx={point.x}
-                cy={point.y}
-                r="15"
-                fill="#38bdf8"
-                fillOpacity="0.22"
+              <path
+                d={chart.areaPath}
+                fill={`url(#${ids.area})`}
+                stroke={`url(#${ids.line})`}
+                strokeWidth="2"
+                opacity="0.94"
+              />
+
+              <rect
+                x={chart.left}
+                y={chart.top}
+                width={chart.right - chart.left}
+                height={chart.baseline - chart.top}
+                fill={`url(#${ids.surface})`}
+                clipPath={`url(#${ids.areaClip})`}
+              />
+
+              <path
+                d={chart.linePath}
+                fill="none"
+                stroke={`url(#${ids.line})`}
+                strokeWidth="13"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.2"
                 filter={`url(#${ids.strongGlow})`}
               />
 
-              <circle
-                cx={point.x}
-                cy={point.y}
-                r="7"
-                fill="#f8fafc"
-                stroke="#22d3ee"
+              <path
+                d={chart.linePath}
+                fill="none"
+                stroke={`url(#${ids.line})`}
                 strokeWidth="4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                filter={`url(#${ids.softGlow})`}
               />
+            </>
+          ) : null}
 
-              <text
-                x={point.x}
-                y={Math.max(36, point.y - 21)}
-                textAnchor="middle"
-                fill="#67e8f9"
-                fontSize="20"
-                fontWeight="800"
-                fontFamily="Inter, ui-sans-serif, system-ui"
-                style={{ filter: 'drop-shadow(0 0 8px #38bdf8)' }}
-              >
-                {formatValue(point.value)}
-              </text>
+          {chart.points.map((point, index) => {
+            const barHeight = Math.max(3, chart.baseline - point.y)
+            const barY = chart.baseline - barHeight
+            const barX = point.x - (chart.barWidth / 2)
 
-              <text
-                x={point.x}
-                y={chart.baseline + 112}
-                textAnchor="middle"
-                fill="#cbd5e1"
-                fontSize="15"
-                fontWeight="700"
-                fontFamily="Inter, ui-sans-serif, system-ui"
-              >
-                {point.label}
-              </text>
-            </g>
-          ))}
+            return (
+              <g key={`${point.label}-${index}`}>
+                <title>{`${point.label}: ${formatValue(point.value)} cases`}</title>
+
+                {chartMode === 'line' ? (
+                  <>
+                    <line
+                      x1={point.x}
+                      y1={point.y + 10}
+                      x2={point.x}
+                      y2={chart.baseline}
+                      stroke="#22d3ee"
+                      strokeOpacity="0.58"
+                      strokeWidth="1.5"
+                      strokeDasharray="4 6"
+                    />
+
+                    <ellipse
+                      cx={point.x}
+                      cy={chart.baseline + 4}
+                      rx="17"
+                      ry="5"
+                      fill="#38bdf8"
+                      fillOpacity="0.16"
+                      filter={`url(#${ids.softGlow})`}
+                    />
+
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r="15"
+                      fill="#38bdf8"
+                      fillOpacity="0.22"
+                      filter={`url(#${ids.strongGlow})`}
+                    />
+
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r="7"
+                      fill="#f8fafc"
+                      stroke="#22d3ee"
+                      strokeWidth="4"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <ellipse
+                      cx={point.x}
+                      cy={chart.baseline + 4}
+                      rx={Math.max(14, chart.barWidth * 0.6)}
+                      ry="6"
+                      fill="#38bdf8"
+                      fillOpacity="0.16"
+                      filter={`url(#${ids.softGlow})`}
+                    />
+
+                    <rect
+                      x={barX}
+                      y={barY}
+                      width={chart.barWidth}
+                      height={barHeight}
+                      rx="10"
+                      fill={`url(#${ids.bar})`}
+                      stroke="#67e8f9"
+                      strokeOpacity="0.58"
+                      strokeWidth="1.5"
+                      filter={`url(#${ids.softGlow})`}
+                    />
+
+                    <rect
+                      x={barX + 5}
+                      y={barY + 5}
+                      width={Math.max(4, chart.barWidth - 10)}
+                      height={Math.max(2, Math.min(14, barHeight - 6))}
+                      rx="6"
+                      fill={`url(#${ids.barHighlight})`}
+                      opacity="0.9"
+                    />
+                  </>
+                )}
+
+                <text
+                  x={point.x}
+                  y={Math.max(36, (chartMode === 'line' ? point.y : barY) - 21)}
+                  textAnchor="middle"
+                  fill="#67e8f9"
+                  fontSize="20"
+                  fontWeight="800"
+                  fontFamily="Inter, ui-sans-serif, system-ui"
+                  style={{ filter: 'drop-shadow(0 0 8px #38bdf8)' }}
+                >
+                  {formatValue(point.value)}
+                </text>
+
+                <text
+                  x={point.x}
+                  y={chart.baseline + 112}
+                  textAnchor="middle"
+                  fill="#cbd5e1"
+                  fontSize="15"
+                  fontWeight="700"
+                  fontFamily="Inter, ui-sans-serif, system-ui"
+                >
+                  {point.label}
+                </text>
+              </g>
+            )
+          })}
 
           <g transform={`translate(350 ${chart.baseline + 150})`}>
-            <rect x="0" y="-14" width="22" height="14" rx="4" fill={`url(#${ids.line})`} />
+            <rect x="0" y="-14" width="22" height="14" rx="4" fill={`url(#${chartMode === 'bar' ? ids.bar : ids.line})`} />
             <rect x="0" y="-14" width="22" height="14" rx="4" fill="none" stroke="#bae6fd" strokeOpacity="0.5" />
             <text
               x="34"
