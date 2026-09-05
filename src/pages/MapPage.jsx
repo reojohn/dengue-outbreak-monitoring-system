@@ -35,6 +35,7 @@ import { getAuthSession } from '../utils/auth'
 import { getLatestSavedBoundaryGeoJson } from '../services/api'
 import gisGlobalNetworkGif from '../assets/gis-global-network.gif'
 import mapHeroBackground from '../assets/map.png'
+import mapLightHeroBackground from '../assets/maplight.png'
 
 const mapStyleOptions = [
   {
@@ -3447,7 +3448,16 @@ export default function MapPage() {
           alt=""
           aria-hidden="true"
           draggable="false"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center opacity-95"
+          className="government-hero-dark-image pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center opacity-95"
+          style={{ objectPosition: '58% center' }}
+        />
+
+        <img
+          src={mapLightHeroBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none object-cover"
           style={{ objectPosition: '58% center' }}
         />
 

@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
+import LandingPage from './pages/LandingPage'
 import DashboardPage from './pages/DashboardPage'
 import UploadPage from './pages/UploadPage'
 import ForecastPage from './pages/ForecastPage'
@@ -66,19 +67,20 @@ function RoleRoute({ allowedRoles = [], children }) {
   return children
 }
 
-function HomeRedirect() {
+function PublicHome() {
   const session = getAuthSession()
 
-  if (!session) {
-    return <Navigate to="/login" replace />
+  if (session) {
+    return <Navigate to={getRoleHome(session.role)} replace />
   }
 
-  return <Navigate to={getRoleHome(session.role)} replace />
+  return <LandingPage />
 }
 
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<PublicHome />} />
       <Route path="/login" element={<LoginPage />} />
 
       {/*
@@ -88,7 +90,6 @@ export default function App() {
         every time the user opens Forecast, Map, Reports, etc.
       */}
       <Route element={<AuthenticatedShell />}>
-        <Route path="/" element={<HomeRedirect />} />
         <Route
           path="/dashboard"
           element={

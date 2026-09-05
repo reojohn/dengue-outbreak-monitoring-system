@@ -1987,8 +1987,11 @@ html:not(.dark) .leaflet-popup-tip {
     background-attachment: scroll !important;
   }
 
-  #root .dengue-login-page > button {
+  /* Login top controls: keep the theme toggle compact, but give the
+     public-site action a real readable label and its own space. */
+  #root .dengue-login-page > .login-theme-toggle {
     right: 0.75rem !important;
+    left: auto !important;
     top: max(0.75rem, env(safe-area-inset-top, 0px)) !important;
     width: 2.45rem !important;
     height: 2.45rem !important;
@@ -1996,8 +1999,39 @@ html:not(.dark) .leaflet-popup-tip {
     min-height: 2.45rem !important;
   }
 
+  #root .dengue-login-page > .login-public-site-button {
+    left: 0.75rem !important;
+    right: auto !important;
+    top: max(0.75rem, env(safe-area-inset-top, 0px)) !important;
+    width: auto !important;
+    max-width: calc(100vw - 5.35rem) !important;
+    height: 2.45rem !important;
+    min-width: 9.65rem !important;
+    min-height: 2.45rem !important;
+    padding: 0 0.85rem !important;
+    gap: 0.45rem !important;
+    justify-content: center !important;
+    border-radius: 0.78rem !important;
+    white-space: nowrap !important;
+    font-size: 0.72rem !important;
+    line-height: 1 !important;
+    letter-spacing: 0.015em !important;
+    text-transform: none !important;
+  }
+
+  #root .dengue-login-page > .login-public-site-button span {
+    display: inline-block !important;
+    white-space: nowrap !important;
+  }
+
+  #root .dengue-login-page > .login-public-site-button svg {
+    width: 1rem !important;
+    height: 1rem !important;
+    flex: 0 0 auto !important;
+  }
+
   #root .dengue-login-page > .relative.grid {
-    margin-top: 0 !important;
+    margin-top: 3.35rem !important;
     border-radius: 1.25rem !important;
   }
 

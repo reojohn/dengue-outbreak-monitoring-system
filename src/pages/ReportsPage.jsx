@@ -34,6 +34,7 @@ import { useData } from '../context/DataContext'
 import { compareCanonicalBarangayPriority, computeDecisionSupport, computeMultiSourceRisk, riskStyles } from '../utils/analytics'
 import { createBackendNotificationEvent, getBarangayTrendAnalytics, getCityTrendAnalytics, getDecisionActions, getFieldUpdate, getFieldUpdates, saveGeneratedReport } from '../services/api'
 import reportsHeroBackground from '../assets/reports.png'
+import reportsLightHeroBackground from '../assets/reportslight.png'
 import FieldUpdateReportCard from '../components/FieldUpdateReportCard'
 import CityTrendAnalyticsPanel from '../components/CityTrendAnalyticsPanel'
 import InformationTypeBadge from '../components/InformationTypeBadge'
@@ -9848,7 +9849,7 @@ export default function ReportsPage() {
             alt=""
             aria-hidden="true"
             draggable="false"
-            className="absolute inset-0 h-full w-full select-none object-cover brightness-[0.9] saturate-[1.08]"
+            className="government-hero-dark-image absolute inset-0 h-full w-full select-none object-cover brightness-[0.9] saturate-[1.08]"
             style={{ objectPosition: '62% center' }}
           />
 
@@ -9859,6 +9860,15 @@ export default function ReportsPage() {
           <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
           <div className="absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-indigo-400/10 blur-3xl" />
         </div>
+
+        <img
+          src={reportsLightHeroBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none rounded-[38px] object-cover sm:rounded-[40px]"
+          style={{ objectPosition: '62% center' }}
+        />
 
         <div className="reports-hero-layout relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.62fr)] xl:items-center xl:p-10">
           <div className="flex flex-col justify-between">

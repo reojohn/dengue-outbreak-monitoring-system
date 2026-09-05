@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   ArrowRight,
+  ArrowLeft,
   CheckCircle2,
   AlertCircle,
   ShieldCheck,
@@ -594,8 +595,19 @@ export default function LoginPage() {
 
       <button
         type="button"
+        onClick={() => navigate('/')}
+        className="login-public-site-button absolute left-4 top-4 z-50 inline-flex min-h-[46px] items-center gap-2 rounded-full border border-white/20 bg-slate-950/70 px-4 text-[11px] font-black tracking-[0.035em] text-white shadow-[0_10px_28px_rgba(2,6,23,0.42)] backdrop-blur-xl transition hover:bg-slate-950/85 sm:left-5 sm:top-5 sm:text-xs"
+        aria-label="Back to public website"
+        title="Back to Public Site"
+      >
+        <ArrowLeft className="h-4 w-4 shrink-0" />
+        <span>Back to Public Site</span>
+      </button>
+
+      <button
+        type="button"
         onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-        className="absolute right-5 top-5 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-lg backdrop-blur-xl transition hover:bg-white/15"
+        className="login-theme-toggle absolute right-5 top-5 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-lg backdrop-blur-xl transition hover:bg-white/15"
         aria-label="Toggle login theme"
       >
         {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

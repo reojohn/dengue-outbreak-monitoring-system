@@ -18,8 +18,6 @@ import {
   FileText,
   LogOut,
   Loader2,
-  Moon,
-  Sun,
   Menu,
   X,
   UsersRound,
@@ -46,6 +44,7 @@ import {
 import { compareCanonicalBarangayPriority, getCanonicalCombinedRiskScore } from '../utils/analytics'
 import dengueLogo from '../assets/logodengue2.png'
 import LogoutTransition from './LogoutTransition'
+import GovernmentAppearanceSwitch from '../government/GovernmentAppearanceSwitch'
 
 const navItems = [
   { to: '/dashboard', label: 'Situation Overview', icon: LayoutDashboard, group: 'Monitor', roles: ['cho', 'supervisor', 'admin', 'viewer'] },
@@ -273,7 +272,7 @@ function formatYearRange(firstYear, lastYear) {
 function getInitialTheme() {
   const savedTheme = localStorage.getItem('dengue-theme-mode')
 
-  if (savedTheme === 'dark' || savedTheme === 'light') {
+  if (savedTheme === 'dark' || savedTheme === 'light' || savedTheme === 'government') {
     return savedTheme
   }
 
@@ -495,57 +494,6 @@ function getActivityNotificationTarget(log = {}) {
   }
 }
 
-function ThemeModeSwitch({ isDark, onToggle, compact = false }) {
-  const modeLabel = isDark ? 'Dark' : 'Light'
-  const actionLabel = isDark ? 'Switch to light mode' : 'Switch to dark mode'
-  const ModeIcon = isDark ? Moon : Sun
-
-  const switchSize = compact ? 'h-11 w-[118px]' : 'h-12 w-full'
-  const knobSize = compact ? 'w-[76px]' : 'w-[98px]'
-  const knobPosition = isDark ? 'right-1' : 'left-1'
-
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-label={actionLabel}
-      title={actionLabel}
-      className={`group relative inline-flex shrink-0 items-center overflow-hidden rounded-full border border-white/20 bg-[#111827] text-white transition duration-300 hover:-translate-y-0.5 ${switchSize}`}
-      style={{
-        boxShadow:
-          'inset 0 2px 5px rgba(255,255,255,0.12), inset 0 -10px 18px rgba(0,0,0,0.58), 0 14px 30px rgba(15,23,42,0.24)',
-      }}
-    >
-      <span
-        className={`absolute inset-y-1 rounded-full transition-all duration-300 ${
-          isDark
-            ? 'right-1 w-[58%] bg-gradient-to-r from-sky-500 to-cyan-300 shadow-[0_0_24px_rgba(14,165,233,0.78)]'
-            : 'left-1 w-[58%] bg-gradient-to-r from-orange-500 to-amber-300 shadow-[0_0_24px_rgba(249,115,22,0.78)]'
-        }`}
-      />
-
-      <span
-        className={`absolute top-1/2 z-[3] h-2.5 w-2.5 -translate-y-1/2 rounded-full transition-all duration-300 ${
-          isDark
-            ? 'left-4 bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.95)]'
-            : 'right-4 bg-orange-300 shadow-[0_0_12px_rgba(251,146,60,0.95)]'
-        }`}
-      />
-
-      <span
-        className={`absolute z-10 flex h-9 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 via-slate-900 to-black px-3 text-[10px] font-black uppercase tracking-[0.12em] text-white ring-1 ring-white/10 transition-all duration-300 ${knobPosition} ${knobSize}`}
-        style={{
-          boxShadow:
-            'inset 0 1px 2px rgba(255,255,255,0.16), inset 0 -8px 14px rgba(0,0,0,0.65), 0 8px 18px rgba(0,0,0,0.45)',
-        }}
-      >
-        <ModeIcon className="mr-1.5 h-3.5 w-3.5" />
-        {modeLabel}
-      </span>
-    </button>
-  )
-}
-
 function SettingsToggle({ enabled, onToggle, icon: Icon, title, description }) {
   return (
     <button
@@ -596,6 +544,8 @@ function SettingsToggle({ enabled, onToggle, icon: Icon, title, description }) {
 function DisplaySettingsPanel({
   panelRef,
   mobile = false,
+  appearanceMode,
+  onAppearanceChange,
   textScale,
   setTextScale,
   comfortableControls,
@@ -707,6 +657,20 @@ function DisplaySettingsPanel({
         ref={settingsBodyRef}
         className={mobile ? "dengue-settings-panel-body dengue-premium-scrollbar relative overflow-y-auto p-3" : "dengue-settings-panel-body dengue-premium-scrollbar relative max-h-[72vh] overflow-y-auto p-4"}
       >
+        <div className="gov-appearance-settings-card mb-3">
+          <div className="gov-appearance-settings-copy">
+            <p className="gov-appearance-settings-title">Interface appearance</p>
+            <p className="gov-appearance-settings-description">
+              Keep the original Light and Dark designs, or use the institutional Government interface.
+            </p>
+          </div>
+
+          <GovernmentAppearanceSwitch
+            mode={appearanceMode}
+            onChange={onAppearanceChange}
+          />
+        </div>
+
         <div className="dengue-settings-text-card overflow-hidden rounded-[28px] border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4 shadow-[0_18px_42px_rgba(14,165,233,0.10)] dark:border-sky-500/20 dark:from-sky-500/10 dark:via-slate-950 dark:to-cyan-500/10">
           <div className="dengue-settings-text-head flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -1166,6 +1130,7 @@ export default function AppShell({ children }) {
   )
 
   const isDark = theme === 'dark'
+  const isGovernment = theme === 'government'
 
   const session = getAuthSession()
   const currentRole = session?.role || 'viewer'
@@ -1616,9 +1581,12 @@ export default function AppShell({ children }) {
   }, [settingsOpen, notificationsOpen])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark)
+    const root = document.documentElement
+
+    root.classList.toggle('dark', isDark)
+    root.classList.toggle('dengue-government', isGovernment)
     localStorage.setItem('dengue-theme-mode', theme)
-  }, [theme, isDark])
+  }, [theme, isDark, isGovernment])
 
   useEffect(() => {
     localStorage.setItem(
@@ -2142,10 +2110,6 @@ export default function AppShell({ children }) {
     }
   }, [loggingOut, mobileNavOpen, settingsOpen, notificationsOpen, isCompactViewport])
 
-  function handleThemeToggle() {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
-  }
-
   function handleResetDisplaySettings() {
     setTextScale(100)
     setComfortableControls(false)
@@ -2431,6 +2395,8 @@ export default function AppShell({ children }) {
           <DisplaySettingsPanel
             panelRef={settingsPanelRef}
             mobile
+            appearanceMode={theme}
+            onAppearanceChange={setTheme}
             textScale={textScale}
             setTextScale={setTextScale}
             comfortableControls={comfortableControls}
@@ -2703,7 +2669,7 @@ export default function AppShell({ children }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <ThemeModeSwitch isDark={isDark} onToggle={handleThemeToggle} compact />
+                  <GovernmentAppearanceSwitch mode={theme} onChange={setTheme} compact />
 
                   <div className="relative z-[310]">
                     <button
@@ -2727,6 +2693,8 @@ export default function AppShell({ children }) {
                     {settingsOpen && !isCompactViewport && typeof document !== 'undefined' && createPortal(
                       <DisplaySettingsPanel
                         panelRef={settingsPanelRef}
+                        appearanceMode={theme}
+                        onAppearanceChange={setTheme}
                         textScale={textScale}
                         setTextScale={setTextScale}
                         comfortableControls={comfortableControls}
@@ -2800,7 +2768,7 @@ export default function AppShell({ children }) {
                     type="button"
                     onClick={handleLogout}
                     disabled={loggingOut}
-                    className="flex min-h-11 items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm font-black text-rose-200 shadow-sm transition hover:-translate-y-0.5 hover:border-rose-300/30 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="dengue-desktop-logout flex min-h-11 items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm font-black text-rose-200 shadow-sm transition hover:-translate-y-0.5 hover:border-rose-300/30 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {loggingOut ? (
                       <>

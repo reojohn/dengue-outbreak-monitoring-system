@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import uploadHeroBackground from '../assets/upload.png'
+import uploadLightHeroBackground from '../assets/uploadlight.png'
 import AutoProcessingModal from '../components/uploads/AutoProcessingModal'
 import { useData } from '../context/DataContext'
 import {
@@ -4792,7 +4793,15 @@ export default function UploadPage() {
           alt=""
           aria-hidden="true"
           draggable="false"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center"
+          className="government-hero-dark-image pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center"
+        />
+
+        <img
+          src={uploadLightHeroBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none object-cover object-center"
         />
 
         <div className="pointer-events-none absolute inset-0 bg-slate-950/30" />

@@ -31,6 +31,7 @@ import SectionTitle from '../components/SectionTitle'
 import CityTrendAnalyticsPanel from '../components/CityTrendAnalyticsPanel'
 import InformationTypeBadge from '../components/InformationTypeBadge'
 import dashboardBackground from '../assets/dashboard1.png'
+import dashboardLightBackground from '../assets/dashboard1light.png'
 import { useData } from '../context/DataContext'
 import {
   compareCanonicalBarangayPriority,
@@ -2925,7 +2926,15 @@ export default function DashboardPage() {
           alt=""
           aria-hidden="true"
           draggable="false"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center opacity-90"
+          className="government-hero-dark-image pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center opacity-90"
+        />
+
+        <img
+          src={dashboardLightBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none object-cover object-center"
         />
 
         <div className="absolute inset-0 bg-[linear-gradient(100deg,rgba(2,6,23,0.98)_0%,rgba(4,18,33,0.94)_36%,rgba(4,18,33,0.64)_61%,rgba(2,6,23,0.18)_100%)]" />

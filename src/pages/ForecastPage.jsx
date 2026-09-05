@@ -52,6 +52,7 @@ import ai6 from '../assets/ai6.png'
 import ai7 from '../assets/ai7.png'
 import ai8 from '../assets/ai8.png'
 import forecastHeroBackground from '../assets/forecast.png'
+import forecastLightHeroBackground from '../assets/forecastlight.png'
 
 const modeMeta = {
   baseline: {
@@ -4676,7 +4677,16 @@ const activeModelComparison = (() => {
           alt=""
           aria-hidden="true"
           draggable="false"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center brightness-[0.78] saturate-[1.08]"
+          className="government-hero-dark-image pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center brightness-[0.78] saturate-[1.08]"
+          style={{ objectPosition: '60% center' }}
+        />
+
+        <img
+          src={forecastLightHeroBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none object-cover"
           style={{ objectPosition: '60% center' }}
         />
 

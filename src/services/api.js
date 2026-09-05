@@ -426,6 +426,17 @@ export async function checkBackendHealth() {
   return handleApiResponse(response)
 }
 
+export async function getPublicSystemSummary() {
+  const response = await fetch(`${API_BASE_URL}/public/system-summary`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+    cache: 'no-store',
+  })
+  return handleApiResponse(response)
+}
+
 export async function inspectUploadedFile(file) {
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/uploads/inspect`,

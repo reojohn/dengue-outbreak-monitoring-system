@@ -1,0 +1,2053 @@
+/*
+ * Government / institutional presentation layer
+ * -------------------------------------------------------------
+ * Everything in this file is scoped under html.dengue-government.
+ * It intentionally contains no data, API, Supabase, or application logic.
+ * Light and Dark mode remain untouched when this class is absent.
+ */
+
+:root {
+  --gov-navy: #153b5c;
+  --gov-blue: #245a82;
+  --gov-blue-strong: #1b4c72;
+  --gov-blue-soft: #eaf1f6;
+  --gov-blue-soft-2: #f3f7fa;
+  --gov-bg: #eef2f5;
+  --gov-surface: #ffffff;
+  --gov-surface-soft: #f7f9fb;
+  --gov-border: #cbd5df;
+  --gov-border-strong: #aebdca;
+  --gov-text: #1f2f3d;
+  --gov-muted: #5f6f7c;
+  --gov-shadow: 0 3px 12px rgba(28, 52, 73, 0.08);
+  --gov-shadow-raised: 0 7px 22px rgba(28, 52, 73, 0.11);
+  --gov-radius: 10px;
+  --gov-radius-small: 7px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Three-state appearance selector                                             */
+/* -------------------------------------------------------------------------- */
+
+.gov-appearance-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  width: 100%;
+  padding: 3px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #eef2f6;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.gov-appearance-switch--compact {
+  width: 228px;
+  min-width: 228px;
+  height: 44px;
+  padding: 3px;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.gov-appearance-option {
+  min-width: 0;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #526273;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.gov-appearance-option svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.gov-appearance-option:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.7);
+  color: #1e4e73;
+}
+
+.gov-appearance-option.is-selected {
+  border-color: #b8c6d2;
+  background: #ffffff;
+  color: #173f60;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.10);
+}
+
+.gov-appearance-switch--compact .gov-appearance-option {
+  min-height: 36px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+}
+
+.gov-appearance-switch--compact .gov-appearance-option.is-selected {
+  border-color: rgba(255, 255, 255, 0.72);
+  background: #ffffff;
+  color: #173f60;
+}
+
+.gov-appearance-switch--compact .gov-appearance-option:hover:not(.is-selected) {
+  background: rgba(255, 255, 255, 0.10);
+  color: #ffffff;
+}
+
+/* The selector itself becomes deliberately flatter in Government mode. */
+html.dengue-government .gov-appearance-switch--compact {
+  border-color: #bcc9d4;
+  background: #e8eef3;
+}
+
+html.dengue-government .gov-appearance-switch--compact .gov-appearance-option {
+  color: #566675;
+}
+
+html.dengue-government .gov-appearance-switch--compact .gov-appearance-option.is-selected {
+  border-color: #173f60;
+  background: #173f60;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+html.dengue-government .gov-appearance-switch--compact .gov-appearance-option:hover:not(.is-selected) {
+  background: #f8fafc;
+  color: #173f60;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Government mode foundation                                                  */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government {
+  color-scheme: light;
+  background: var(--gov-bg) !important;
+}
+
+html.dengue-government body,
+html.dengue-government #root {
+  background: var(--gov-bg) !important;
+  color: var(--gov-text) !important;
+}
+
+html.dengue-government .dengue-app-shell {
+  background: var(--gov-bg) !important;
+  color: var(--gov-text) !important;
+}
+
+html.dengue-government .dengue-app-shell > .pointer-events-none.absolute {
+  opacity: 0 !important;
+  background: transparent !important;
+  filter: none !important;
+}
+
+html.dengue-government .dengue-layout-shell {
+  gap: 18px !important;
+}
+
+/* The outer content surface is document-like instead of glassmorphic. */
+html.dengue-government .dengue-layout-shell main > div {
+  border: 1px solid var(--gov-border) !important;
+  border-radius: var(--gov-radius) !important;
+  background: #f6f8fa !important;
+  box-shadow: var(--gov-shadow) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-layout-shell main > div > .pointer-events-none {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Desktop navigation                                                          */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .dengue-desktop-sidebar {
+  border: 1px solid var(--gov-border) !important;
+  border-radius: var(--gov-radius) !important;
+  background: var(--gov-surface) !important;
+  color: var(--gov-text) !important;
+  box-shadow: var(--gov-shadow-raised) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-desktop-sidebar > .pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .dengue-desktop-sidebar > div[class*="overflow-hidden"],
+html.dengue-government .dengue-desktop-sidebar > div[class*="bg-slate-950"] {
+  border-color: #d6dee6 !important;
+  border-radius: var(--gov-radius-small) !important;
+  background: var(--gov-blue-soft-2) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-desktop-sidebar img {
+  filter: none !important;
+  drop-shadow: none !important;
+}
+
+html.dengue-government .dengue-desktop-sidebar [class*="text-white"],
+html.dengue-government .dengue-desktop-sidebar [class*="text-cyan"],
+html.dengue-government .dengue-desktop-sidebar [class*="text-slate"] {
+  color: var(--gov-text) !important;
+  text-shadow: none !important;
+}
+
+html.dengue-government .dengue-desktop-sidebar nav > div > p {
+  margin-bottom: 5px;
+  padding-inline: 10px;
+  color: #697886 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.11em !important;
+}
+
+html.dengue-government .dengue-nav-item,
+html.dengue-government .dengue-nav-item-inner {
+  border-radius: 7px !important;
+}
+
+html.dengue-government .dengue-nav-item {
+  padding: 0 !important;
+}
+
+html.dengue-government .dengue-nav-item-inner {
+  min-height: 46px;
+  color: #344657 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-nav-item-inner:hover {
+  background: #f0f4f7 !important;
+  color: var(--gov-navy) !important;
+}
+
+html.dengue-government .dengue-sidebar-link[aria-current="page"] .dengue-nav-item-inner {
+  background: var(--gov-blue-soft) !important;
+  color: var(--gov-navy) !important;
+  box-shadow: inset 4px 0 0 var(--gov-blue) !important;
+}
+
+html.dengue-government .dengue-nav-icon {
+  border: 1px solid #d1dbe4 !important;
+  border-radius: 6px !important;
+  background: #f7f9fb !important;
+  color: var(--gov-blue) !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-sidebar-link[aria-current="page"] .dengue-nav-icon {
+  border-color: #b9cad8 !important;
+  background: #ffffff !important;
+  color: var(--gov-blue-strong) !important;
+}
+
+html.dengue-government .dengue-nav-label {
+  color: inherit !important;
+  font-weight: 700 !important;
+}
+
+html.dengue-government .dengue-nav-item-inner > span[aria-hidden="true"] {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Desktop page header                                                         */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .dengue-page-header {
+  border: 1px solid var(--gov-border) !important;
+  border-top: 4px solid var(--gov-blue) !important;
+  border-radius: var(--gov-radius) !important;
+  background: var(--gov-surface) !important;
+  color: var(--gov-text) !important;
+  box-shadow: var(--gov-shadow) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-page-header > .pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .dengue-page-header [class*="text-white"],
+html.dengue-government .dengue-page-header [class*="text-slate-100"],
+html.dengue-government .dengue-page-header [class*="text-slate-200"],
+html.dengue-government .dengue-page-header [class*="text-slate-300"] {
+  color: var(--gov-text) !important;
+}
+
+html.dengue-government .dengue-page-header [class*="text-cyan"] {
+  color: var(--gov-blue) !important;
+}
+
+html.dengue-government .dengue-page-header h1 {
+  color: #173247 !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.02em !important;
+}
+
+html.dengue-government .dengue-page-header h1 + p {
+  color: var(--gov-muted) !important;
+  font-weight: 550 !important;
+}
+
+html.dengue-government .dengue-page-header .flex.h-12.w-12 {
+  border-color: #c5d2dd !important;
+  border-radius: 7px !important;
+  background: var(--gov-blue-soft) !important;
+  color: var(--gov-blue) !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-page-header span.rounded-full {
+  border-color: #c7d2dc !important;
+  background: #f3f6f8 !important;
+  color: #415568 !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-page-header button:not(.gov-appearance-option) {
+  box-shadow: none !important;
+}
+
+/* Settings/notification square buttons become standard toolbar controls. */
+html.dengue-government .dengue-page-header button.h-11.w-11 {
+  border-color: #c8d3dc !important;
+  border-radius: 7px !important;
+  background: #f8fafb !important;
+  color: #40566a !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile application chrome                                                   */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .dengue-mobile-topbar {
+  border: 1px solid #b8c6d1 !important;
+  border-top: 3px solid var(--gov-blue) !important;
+  border-radius: 9px !important;
+  background: #ffffff !important;
+  color: var(--gov-text) !important;
+  box-shadow: 0 3px 12px rgba(28, 52, 73, 0.12) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-mobile-topbar > .pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .dengue-mobile-topbar p:first-child {
+  color: #173247 !important;
+}
+
+html.dengue-government .dengue-mobile-topbar p:last-child {
+  color: #647382 !important;
+}
+
+html.dengue-government .dengue-mobile-icon-button {
+  border-color: #c9d4dd !important;
+  border-radius: 7px !important;
+  background: #f5f7f9 !important;
+  color: var(--gov-blue) !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-mobile-drawer {
+  border-right: 1px solid var(--gov-border) !important;
+  background: #ffffff !important;
+  color: var(--gov-text) !important;
+  box-shadow: 12px 0 35px rgba(27, 48, 67, 0.18) !important;
+}
+
+html.dengue-government .dengue-mobile-drawer > .pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .dengue-mobile-drawer-header > div {
+  border-color: #d0dae3 !important;
+  border-radius: 9px !important;
+  background: var(--gov-blue-soft-2) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-mobile-drawer [class*="text-white"],
+html.dengue-government .dengue-mobile-drawer [class*="text-cyan"],
+html.dengue-government .dengue-mobile-drawer [class*="text-slate"] {
+  color: var(--gov-text) !important;
+}
+
+html.dengue-government .dengue-mobile-drawer-nav > div > p {
+  color: #687987 !important;
+  letter-spacing: 0.10em !important;
+}
+
+html.dengue-government .dengue-mobile-drawer-close,
+html.dengue-government .dengue-mobile-logout {
+  border-color: #c9d4dd !important;
+  border-radius: 7px !important;
+  background: #ffffff !important;
+  color: var(--gov-blue) !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-mobile-nav-overlay {
+  background: rgba(27, 44, 60, 0.38) !important;
+  backdrop-filter: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Page foundation                                                             */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .dashboard-mobile-compact,
+html.dengue-government .forecast-mobile-compact,
+html.dengue-government .map-mobile-compact,
+html.dengue-government .bhw-mobile-compact,
+html.dengue-government .supervisor-mobile-compact,
+html.dengue-government .reports-mobile-compact,
+html.dengue-government .upload-mobile-compact,
+html.dengue-government .user-mobile-compact,
+html.dengue-government .premium-upload-page {
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+html.dengue-government .dengue-scaled-content {
+  color: var(--gov-text) !important;
+}
+
+/* Default panels: lower radius, flat surfaces, restrained shadows. */
+html.dengue-government .dengue-scaled-content .panel,
+html.dengue-government .dengue-scaled-content [class*="border-slate-200"][class*="bg-white"],
+html.dengue-government .dengue-scaled-content [class*="border-slate-200"][class*="bg-slate-50"] {
+  border-color: #d1dae2 !important;
+  border-radius: var(--gov-radius) !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(28, 52, 73, 0.06) !important;
+  backdrop-filter: none !important;
+}
+
+/* Retain semantic red/amber/green/blue meaning, but remove neon/glow treatment. */
+html.dengue-government .dengue-scaled-content [class*="shadow-[0_0_"] {
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-scaled-content [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-scaled-content button,
+html.dengue-government .dengue-scaled-content a[href] {
+  text-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Hero / command-center areas                                                 */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .dashboard-mobile-compact > section:first-of-type,
+html.dengue-government .bhw-premium-hero,
+html.dengue-government .forecast-premium-hero,
+html.dengue-government .premium-map-hero,
+html.dengue-government .premium-upload-hero,
+html.dengue-government .reports-hero-panel,
+html.dengue-government .supervisor-hero-panel,
+html.dengue-government .user-hero-panel {
+  min-height: 0 !important;
+  border: 1px solid var(--gov-border) !important;
+  border-top: 5px solid var(--gov-blue) !important;
+  border-radius: var(--gov-radius) !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  color: var(--gov-text) !important;
+  box-shadow: var(--gov-shadow) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Hide only the decorative dark-mode overlay layers here. The actual hero
+   artwork is restored later at a low opacity for Government mode. */
+html.dengue-government .dashboard-mobile-compact > section:first-of-type > div.absolute,
+html.dengue-government .bhw-premium-hero > div.pointer-events-none,
+html.dengue-government .forecast-premium-hero > div.pointer-events-none,
+html.dengue-government .premium-map-hero > div.pointer-events-none,
+html.dengue-government .premium-upload-hero > div.pointer-events-none,
+html.dengue-government .reports-hero-panel > div.pointer-events-none,
+html.dengue-government .supervisor-hero-panel > div.pointer-events-none,
+html.dengue-government .user-hero-panel > div.pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .dengue-scaled-content .dengue-hero-title {
+  color: #173247 !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.025em !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+html.dengue-government .dengue-scaled-content .dengue-hero-copy {
+  color: #536575 !important;
+  font-weight: 500 !important;
+}
+
+html.dengue-government .dashboard-mobile-compact > section:first-of-type [class*="text-white"],
+html.dengue-government .bhw-premium-hero [class*="text-white"],
+html.dengue-government .forecast-premium-hero [class*="text-white"],
+html.dengue-government .premium-map-hero [class*="text-white"],
+html.dengue-government .premium-upload-hero [class*="text-white"],
+html.dengue-government .reports-hero-panel [class*="text-white"],
+html.dengue-government .supervisor-hero-panel [class*="text-white"],
+html.dengue-government .user-hero-panel [class*="text-white"] {
+  color: var(--gov-text) !important;
+}
+
+html.dengue-government .dashboard-mobile-compact > section:first-of-type [class*="text-slate-"],
+html.dengue-government .bhw-premium-hero [class*="text-slate-"],
+html.dengue-government .forecast-premium-hero [class*="text-slate-"],
+html.dengue-government .premium-map-hero [class*="text-slate-"],
+html.dengue-government .premium-upload-hero [class*="text-slate-"],
+html.dengue-government .reports-hero-panel [class*="text-slate-"],
+html.dengue-government .supervisor-hero-panel [class*="text-slate-"],
+html.dengue-government .user-hero-panel [class*="text-slate-"] {
+  color: #5c6d7a !important;
+}
+
+/* Command-center pills become conventional section labels. */
+html.dengue-government .dashboard-mobile-compact > section:first-of-type [class*="rounded-full"],
+html.dengue-government .bhw-premium-hero [class*="rounded-full"],
+html.dengue-government .forecast-premium-hero [class*="rounded-full"],
+html.dengue-government .premium-map-hero [class*="rounded-full"],
+html.dengue-government .premium-upload-hero [class*="rounded-full"],
+html.dengue-government .reports-hero-panel [class*="rounded-full"],
+html.dengue-government .supervisor-hero-panel [class*="rounded-full"],
+html.dengue-government .user-hero-panel [class*="rounded-full"] {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* Hero metrics become small administrative summary cells. */
+html.dengue-government .dashboard-hero-metric-card,
+html.dengue-government .bhw-hero-metrics > div,
+html.dengue-government .forecast-hero-metrics > div,
+html.dengue-government .premium-hero-metrics > div,
+html.dengue-government .reports-hero-metrics > div,
+html.dengue-government .supervisor-hero-metrics > div,
+html.dengue-government .user-hero-metrics > div {
+  border: 1px solid #ced9e1 !important;
+  border-radius: 8px !important;
+  background: #f7f9fb !important;
+  background-image: none !important;
+  color: var(--gov-text) !important;
+  box-shadow: none !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+  transform: none !important;
+}
+
+html.dengue-government .dashboard-hero-metric-card [class*="text-white"],
+html.dengue-government .bhw-hero-metrics [class*="text-white"],
+html.dengue-government .forecast-hero-metrics [class*="text-white"],
+html.dengue-government .premium-hero-metrics [class*="text-white"],
+html.dengue-government .reports-hero-metrics [class*="text-white"],
+html.dengue-government .supervisor-hero-metrics [class*="text-white"],
+html.dengue-government .user-hero-metrics [class*="text-white"] {
+  color: #20364a !important;
+}
+
+/* Risk/score rings keep data meaning but lose the luminous treatment. */
+html.dengue-government .dengue-hero-score-ring {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+html.dengue-government .dengue-hero-score-ring > div {
+  border-color: #d0dae2 !important;
+  background: #ffffff !important;
+  color: var(--gov-text) !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-hero-score-value {
+  color: #183d5d !important;
+}
+
+html.dengue-government .dengue-hero-score-label {
+  color: #607283 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Page-specific work areas                                                    */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .user-form-panel,
+html.dengue-government .user-list-panel,
+html.dengue-government .user-audit-panel,
+html.dengue-government .premium-upload-source-workspace,
+html.dengue-government .premium-source-selection-panel,
+html.dengue-government .bhw-case-classification-panel,
+html.dengue-government .bhw-field-update-panel,
+html.dengue-government .bhw-trend-panel,
+html.dengue-government .supervisor-action-shell,
+html.dengue-government .supervisor-priority-panel,
+html.dengue-government .supervisor-ranking-panel,
+html.dengue-government .supervisor-response-panel,
+html.dengue-government .map-workspace-shell,
+html.dengue-government .map-priority-panel,
+html.dengue-government .forecast-ai-wide-panel,
+html.dengue-government .forecast-ai-model-board {
+  border-color: #cfd9e2 !important;
+  border-radius: var(--gov-radius) !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: var(--gov-shadow) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .user-form-panel > .absolute,
+html.dengue-government .user-list-panel > .absolute,
+html.dengue-government .user-audit-panel > .absolute {
+  display: none !important;
+}
+
+html.dengue-government .user-account-card,
+html.dengue-government .dashboard-priority-card,
+html.dengue-government .forecast-priority-card,
+html.dengue-government .reports-priority-card {
+  border-color: #d0dae2 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: 0 2px 8px rgba(28, 52, 73, 0.06) !important;
+  transform: none !important;
+}
+
+/* Remove purely decorative top color strips from non-semantic management panels. */
+html.dengue-government .user-form-panel > div[class*="h-1"],
+html.dengue-government .user-list-panel > div[class*="h-1"],
+html.dengue-government .user-audit-panel > div[class*="h-1"] {
+  display: none !important;
+}
+
+/* Inputs and dropdowns read like standard government forms. */
+html.dengue-government input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+html.dengue-government select,
+html.dengue-government textarea {
+  border-color: #bdcbd7 !important;
+  border-radius: 7px !important;
+  background-color: #ffffff !important;
+  color: #203342 !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government input:focus,
+html.dengue-government select:focus,
+html.dengue-government textarea:focus {
+  border-color: var(--gov-blue) !important;
+  box-shadow: 0 0 0 3px rgba(36, 90, 130, 0.12) !important;
+}
+
+/* Primary actions: one institutional blue instead of decorative cyan gradients. */
+html.dengue-government .dengue-scaled-content button[class~="from-cyan-300"],
+html.dengue-government .dengue-scaled-content button[class~="from-cyan-400"],
+html.dengue-government .dengue-scaled-content button[class~="from-cyan-500"],
+html.dengue-government .dengue-scaled-content button[class~="from-cyan-600"],
+html.dengue-government .dengue-scaled-content button[class~="from-sky-300"],
+html.dengue-government .dengue-scaled-content button[class~="from-sky-400"],
+html.dengue-government .dengue-scaled-content button[class~="from-sky-500"],
+html.dengue-government .dengue-scaled-content button[class~="from-sky-600"],
+html.dengue-government .dengue-scaled-content button[class~="bg-brand-blue"],
+html.dengue-government .dengue-scaled-content a[class~="from-cyan-300"],
+html.dengue-government .dengue-scaled-content a[class~="from-cyan-400"],
+html.dengue-government .dengue-scaled-content a[class~="from-cyan-500"],
+html.dengue-government .dengue-scaled-content a[class~="from-cyan-600"],
+html.dengue-government .dengue-scaled-content a[class~="from-sky-300"],
+html.dengue-government .dengue-scaled-content a[class~="from-sky-400"],
+html.dengue-government .dengue-scaled-content a[class~="from-sky-500"],
+html.dengue-government .dengue-scaled-content a[class~="from-sky-600"],
+html.dengue-government .dengue-scaled-content a[class~="bg-brand-blue"] {
+  border-color: var(--gov-blue-strong) !important;
+  background: var(--gov-blue) !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+/* Section titles are systematic and document-like. */
+html.dengue-government .dengue-scaled-content h2,
+html.dengue-government .dengue-scaled-content h3 {
+  text-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Display settings / notifications                                            */
+/* -------------------------------------------------------------------------- */
+
+html.dengue-government .dengue-premium-panel {
+  border-color: var(--gov-border) !important;
+  border-radius: var(--gov-radius) !important;
+  background: #ffffff !important;
+  box-shadow: var(--gov-shadow-raised) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .dengue-premium-panel > .pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .dengue-settings-panel-header {
+  border-color: #d8e0e7 !important;
+  background: #f4f7f9 !important;
+  background-image: none !important;
+}
+
+html.dengue-government .dengue-settings-header-icon {
+  border-radius: 7px !important;
+  background: var(--gov-blue) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .dengue-settings-text-card,
+html.dengue-government .dengue-settings-slider-card,
+html.dengue-government .dengue-settings-toggle {
+  border-color: #d1dbe3 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile density                                                              */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 1279px) {
+  html.dengue-government .dengue-layout-shell main > div {
+    border-radius: 8px !important;
+    background: #f4f7f9 !important;
+  }
+
+  html.dengue-government .dashboard-mobile-compact > section:first-of-type,
+  html.dengue-government .bhw-premium-hero,
+  html.dengue-government .forecast-premium-hero,
+  html.dengue-government .premium-map-hero,
+  html.dengue-government .premium-upload-hero,
+  html.dengue-government .reports-hero-panel,
+  html.dengue-government .supervisor-hero-panel,
+  html.dengue-government .user-hero-panel {
+    border-radius: 8px !important;
+  }
+}
+
+@media (max-width: 639px) {
+  html.dengue-government .dengue-app-shell {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  html.dengue-government .dengue-layout-shell main > div {
+    padding: 8px !important;
+  }
+
+  html.dengue-government .dengue-scaled-content {
+    --gov-mobile-gap: 14px;
+  }
+
+  html.dengue-government .dashboard-mobile-compact,
+  html.dengue-government .forecast-mobile-compact,
+  html.dengue-government .map-mobile-compact,
+  html.dengue-government .bhw-mobile-compact,
+  html.dengue-government .supervisor-mobile-compact,
+  html.dengue-government .reports-mobile-compact,
+  html.dengue-government .upload-mobile-compact,
+  html.dengue-government .user-mobile-compact {
+    gap: var(--gov-mobile-gap) !important;
+  }
+
+  html.dengue-government .dengue-scaled-content [class*="rounded-[34px]"],
+  html.dengue-government .dengue-scaled-content [class*="rounded-[36px]"],
+  html.dengue-government .dengue-scaled-content [class*="rounded-[38px]"],
+  html.dengue-government .dengue-scaled-content [class*="rounded-[40px]"] {
+    border-radius: 9px !important;
+  }
+}
+
+/* Respect the app's reduced-motion accessibility setting. */
+html.dengue-government.dengue-reduce-motion *,
+html.dengue-government.dengue-reduce-motion *::before,
+html.dengue-government.dengue-reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Appearance card inside the existing Display Settings panel. */
+.gov-appearance-settings-card {
+  border: 1px solid #d4dee6;
+  border-radius: 12px;
+  background: #f7f9fb;
+  padding: 14px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+}
+
+.gov-appearance-settings-copy {
+  margin-bottom: 12px;
+}
+
+.gov-appearance-settings-title {
+  margin: 0;
+  color: #20364a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.gov-appearance-settings-description {
+  margin: 5px 0 0;
+  color: #647483;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.55;
+}
+
+html.dark:not(.dengue-government) .gov-appearance-settings-card {
+  border-color: #334155;
+  background: rgba(15, 23, 42, 0.82);
+}
+
+html.dark:not(.dengue-government) .gov-appearance-settings-title {
+  color: #f8fafc;
+}
+
+html.dark:not(.dengue-government) .gov-appearance-settings-description {
+  color: #94a3b8;
+}
+
+html.dark:not(.dengue-government) .gov-appearance-switch {
+  border-color: #475569;
+  background: #0f172a;
+}
+
+html.dark:not(.dengue-government) .gov-appearance-option {
+  color: #aebdca;
+}
+
+html.dark:not(.dengue-government) .gov-appearance-option:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+html.dark:not(.dengue-government) .gov-appearance-option.is-selected {
+  border-color: #64748b;
+  background: #27364a;
+  color: #ffffff;
+}
+
+/* ========================================================================== */
+/* Government mode polish pass 2 — softer surfaces, contrast, mobile chrome   */
+/* ========================================================================== */
+
+/*
+ * This pass intentionally stays inside the Government presentation layer.
+ * It does not alter page logic, API calls, Supabase queries, realtime, or
+ * forecasting.  The palette is also lowered in luminance to reduce glare.
+ */
+html.dengue-government {
+  --gov-bg: #dfe5e8;
+  --gov-surface: #f3f5f6;
+  --gov-surface-soft: #e9eef1;
+  --gov-blue-soft: #dfe8ee;
+  --gov-blue-soft-2: #e7edf1;
+  --gov-border: #bcc8d1;
+  --gov-border-strong: #a9b8c4;
+  --gov-text: #223746;
+  --gov-muted: #586a77;
+  --gov-shadow: 0 2px 8px rgba(28, 52, 73, 0.07);
+  --gov-shadow-raised: 0 5px 16px rgba(28, 52, 73, 0.10);
+}
+
+html.dengue-government body,
+html.dengue-government #root,
+html.dengue-government .dengue-app-shell {
+  background: var(--gov-bg) !important;
+}
+
+html.dengue-government .dengue-layout-shell main > div {
+  background: #e8edef !important;
+  border-color: #b9c5ce !important;
+}
+
+/* Softer government surfaces: off-white rather than pure white. */
+html.dengue-government .dengue-desktop-sidebar,
+html.dengue-government .dengue-page-header,
+html.dengue-government .dengue-premium-panel,
+html.dengue-government .user-form-panel,
+html.dengue-government .user-list-panel,
+html.dengue-government .user-audit-panel,
+html.dengue-government .premium-upload-source-workspace,
+html.dengue-government .premium-source-selection-panel,
+html.dengue-government .bhw-case-classification-panel,
+html.dengue-government .bhw-field-update-panel,
+html.dengue-government .bhw-trend-panel,
+html.dengue-government .supervisor-action-shell,
+html.dengue-government .supervisor-priority-panel,
+html.dengue-government .supervisor-ranking-panel,
+html.dengue-government .supervisor-response-panel,
+html.dengue-government .map-workspace-shell,
+html.dengue-government .map-priority-panel,
+html.dengue-government .forecast-ai-wide-panel,
+html.dengue-government .forecast-ai-model-board,
+html.dengue-government .user-account-card,
+html.dengue-government .dashboard-priority-card,
+html.dengue-government .forecast-priority-card,
+html.dengue-government .reports-priority-card,
+html.dengue-government .dengue-scaled-content .panel,
+html.dengue-government .dengue-scaled-content [class*="border-slate-200"][class*="bg-white"],
+html.dengue-government .dengue-scaled-content [class*="border-slate-200"][class*="bg-slate-50"] {
+  background-color: var(--gov-surface) !important;
+  background-image: none !important;
+}
+
+html.dengue-government .dashboard-mobile-compact > section:first-of-type,
+html.dengue-government .bhw-premium-hero,
+html.dengue-government .forecast-premium-hero,
+html.dengue-government .premium-map-hero,
+html.dengue-government .premium-upload-hero,
+html.dengue-government .reports-hero-panel,
+html.dengue-government .supervisor-hero-panel,
+html.dengue-government .user-hero-panel {
+  background: #f0f3f4 !important;
+  border-color: #b7c4cd !important;
+}
+
+html.dengue-government .dashboard-hero-metric-card,
+html.dengue-government .bhw-hero-metrics > div,
+html.dengue-government .forecast-hero-metrics > div,
+html.dengue-government .premium-hero-metrics > div,
+html.dengue-government .reports-hero-metrics > div,
+html.dengue-government .supervisor-hero-metrics > div,
+html.dengue-government .user-hero-metrics > div {
+  background: #e6ecef !important;
+  border-color: #bcc8d1 !important;
+}
+
+/* Government hero badges/pills were originally pale text on a dark hero.
+   After flattening the hero to a light surface they need explicit contrast. */
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-cyan-100"],
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-cyan-200"] {
+  color: #245b7a !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-emerald-100"],
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-emerald-200"] {
+  color: #2f6a53 !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-amber-100"],
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-amber-200"] {
+  color: #76571b !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-violet-100"],
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="text-violet-200"] {
+  color: #5c4d79 !important;
+}
+
+/* Muted pill fills replace nearly-white translucent fills. */
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="bg-cyan-300/10"] {
+  background-color: #dce8ee !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="bg-emerald-300/10"] {
+  background-color: #dfeae4 !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="bg-amber-300/10"] {
+  background-color: #eee8d8 !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) [class*="bg-violet-300/10"] {
+  background-color: #e7e2ee !important;
+}
+
+/* The former dark 'focus' cards become calm blue-gray administrative cards. */
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) {
+  border-color: #aebdc8 !important;
+  background: #dfe6ea !important;
+  background-image: none !important;
+  color: var(--gov-text) !important;
+  box-shadow: 0 3px 10px rgba(28, 52, 73, 0.09) !important;
+  ring: none !important;
+  backdrop-filter: none !important;
+  transform: none !important;
+}
+
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) > .pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) [class*="text-white"] {
+  color: #233746 !important;
+}
+
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) [class*="text-slate-300"],
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) [class*="text-slate-400"],
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) [class*="text-slate-500"] {
+  color: #586a77 !important;
+}
+
+/* Nested cells inside converted focus cards must not stay charcoal. */
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) :is(
+  [class*="bg-slate-950"],
+  [class*="bg-[#071525]"],
+  [class*="bg-white/[0.0"],
+  [class*="bg-white/10"]
+) {
+  background-color: #edf1f3 !important;
+  background-image: none !important;
+  border-color: #bdc9d2 !important;
+}
+
+/* Keep score-ring contrast deterministic after the nested surface conversion. */
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) .dengue-hero-score-ring > div {
+  background: #f3f5f6 !important;
+  color: #20384a !important;
+}
+
+/* Upload readiness source rows: standard selectable records, not dark glass. */
+html.dengue-government .premium-workspace-readiness-card .premium-readiness-source-list button,
+html.dengue-government .premium-workspace-readiness-card .premium-current-source-card {
+  border-color: #b9c7d0 !important;
+  background: #edf1f3 !important;
+  background-image: none !important;
+  color: var(--gov-text) !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .premium-workspace-readiness-card .premium-readiness-source-list button:hover {
+  background: #e5ebee !important;
+  border-color: #91a7b6 !important;
+  transform: none !important;
+}
+
+html.dengue-government .premium-workspace-readiness-card .premium-readiness-source-list [class*="text-slate-100"],
+html.dengue-government .premium-workspace-readiness-card .premium-current-source-card [class*="text-white"] {
+  color: #253a49 !important;
+}
+
+/* Map priority cards were accidentally being caught by the broad gradient
+   button selector because they contain before:from-cyan-* utility classes. */
+html.dengue-government .map-priority-list > button {
+  border-color: #bcc8d1 !important;
+  background: #edf1f3 !important;
+  background-image: none !important;
+  color: var(--gov-text) !important;
+  box-shadow: 0 1px 4px rgba(28, 52, 73, 0.06) !important;
+  transform: none !important;
+}
+
+html.dengue-government .map-priority-list > button::before {
+  background: var(--gov-blue) !important;
+}
+
+html.dengue-government .map-priority-list > button[class*="border-blue-300"] {
+  border-color: #7896aa !important;
+  background: #dce6ec !important;
+  box-shadow: inset 3px 0 0 var(--gov-blue) !important;
+}
+
+html.dengue-government .map-priority-list > button:hover {
+  border-color: #8fa5b4 !important;
+  background: #e6ecef !important;
+  box-shadow: 0 2px 7px rgba(28, 52, 73, 0.08) !important;
+}
+
+html.dengue-government .map-priority-list > button .h-10.w-10 {
+  background: #294d68 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .map-priority-list > button [class*="text-brand-text"],
+html.dengue-government .map-priority-list > button [class*="text-brand-muted"] {
+  color: var(--gov-text) !important;
+}
+
+/* Inputs and settings also use a dimmer off-white fill. */
+html.dengue-government input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+html.dengue-government select,
+html.dengue-government textarea,
+html.dengue-government .dengue-settings-text-card,
+html.dengue-government .dengue-settings-slider-card,
+html.dengue-government .dengue-settings-toggle,
+html.dengue-government .gov-appearance-settings-card {
+  background-color: #edf1f3 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile navbar / drawer polish                                               */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 1279px) {
+  html.dengue-government .dengue-app-shell {
+    padding-top: 4.65rem !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar {
+    left: 8px !important;
+    right: 8px !important;
+    min-height: 52px !important;
+    padding: 6px 8px !important;
+    border: 1px solid #aebdc8 !important;
+    border-top: 2px solid var(--gov-blue) !important;
+    border-radius: 8px !important;
+    background: #edf1f3 !important;
+    box-shadow: 0 2px 7px rgba(28, 52, 73, 0.11) !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar > .relative.flex {
+    display: grid !important;
+    grid-template-columns: 36px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar .dengue-mobile-icon-button {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 6px !important;
+    background: #e3e9ed !important;
+    border-color: #b9c6cf !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar .flex.shrink-0.items-center {
+    gap: 4px !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar p:first-child {
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    font-weight: 800 !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar p:last-child {
+    margin-top: 1px !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    font-weight: 650 !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer {
+    width: min(92vw, 340px) !important;
+    max-width: 340px !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    padding: 10px !important;
+    border-right-color: #aebdc8 !important;
+    background: #eef2f4 !important;
+    overflow: hidden !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-header {
+    margin-bottom: 8px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-header > div:first-child {
+    padding: 10px !important;
+    background: #e4eaee !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-logo {
+    width: 50px !important;
+    height: 50px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-title {
+    font-size: 14px !important;
+    line-height: 1.2 !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-role {
+    font-size: 10px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-header > div:nth-child(2) {
+    margin-top: 7px !important;
+    padding: 8px 10px !important;
+    background: #e7ecef !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-nav {
+    padding-right: 2px !important;
+    padding-bottom: 8px !important;
+    scroll-padding-bottom: 10px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-nav > div + div {
+    margin-top: 12px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-nav > div > p {
+    padding-inline: 8px !important;
+    padding-bottom: 3px !important;
+    font-size: 9px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer .dengue-nav-item-inner {
+    min-height: 39px !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-footer {
+    z-index: 20 !important;
+    margin-top: 8px !important;
+    padding-top: 10px !important;
+    padding-bottom: max(2px, env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid #c1ccd4 !important;
+    background: #eef2f4 !important;
+  }
+
+  html.dengue-government .dengue-mobile-logout {
+    min-height: 40px !important;
+    padding: 9px 12px !important;
+    background: #e2e8ec !important;
+    color: #294d68 !important;
+  }
+
+  html.dengue-government .dengue-mobile-nav-overlay {
+    background: rgba(35, 53, 67, 0.28) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  html.dengue-government .dengue-mobile-topbar {
+    left: 6px !important;
+    right: 6px !important;
+    padding-inline: 6px !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar > .relative.flex {
+    grid-template-columns: 34px minmax(0, 1fr) auto !important;
+    gap: 4px !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar .dengue-mobile-icon-button {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar p:first-child {
+    font-size: 11px !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar p:last-child {
+    font-size: 8px !important;
+  }
+}
+
+
+/* ========================================================================== */
+/* Government mode polish pass 3 — hero hierarchy + softer low-glare palette */
+/* ========================================================================== */
+
+/*
+ * Goal of this pass:
+ * - lower the overall luminance one more step without making the UI muddy;
+ * - replace neutral gray hero cards with restrained blue-gray surfaces;
+ * - explicitly fix pale legacy cyan/white text that came from the dark theme;
+ * - keep all changes presentation-only and scoped to Government mode.
+ */
+html.dengue-government {
+  --gov-bg: #d5dde1;
+  --gov-surface: #edf1f3;
+  --gov-surface-soft: #e2e8ec;
+  --gov-blue-soft: #d9e4ea;
+  --gov-blue-soft-2: #e1e8ec;
+  --gov-border: #afbdc7;
+  --gov-border-strong: #98aab7;
+  --gov-text: #1b3445;
+  --gov-muted: #4c6270;
+}
+
+html.dengue-government body,
+html.dengue-government #root,
+html.dengue-government .dengue-app-shell {
+  background: #d5dde1 !important;
+}
+
+html.dengue-government .dengue-layout-shell main > div {
+  background: #dce4e8 !important;
+  border-color: #aebcc6 !important;
+}
+
+/* Lower-glare institutional chrome. */
+html.dengue-government .dengue-desktop-sidebar,
+html.dengue-government .dengue-page-header {
+  background: #e8edef !important;
+  border-color: #aebdc7 !important;
+}
+
+html.dengue-government .dengue-desktop-sidebar > div[class*="overflow-hidden"],
+html.dengue-government .dengue-desktop-sidebar > div[class*="bg-slate-950"] {
+  background: #dde7eb !important;
+  border-color: #b3c1ca !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Hero foundations: muted blue-gray instead of bright white / plain gray.    */
+/* -------------------------------------------------------------------------- */
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) {
+  background: #e3eaee !important;
+  border-color: #a7b7c2 !important;
+  border-top-color: #245a82 !important;
+  box-shadow: 0 3px 12px rgba(28, 52, 73, 0.08) !important;
+}
+
+html.dengue-government .dengue-scaled-content .dengue-hero-title {
+  color: #183246 !important;
+}
+
+html.dengue-government .dengue-scaled-content .dengue-hero-copy {
+  color: #4c6270 !important;
+}
+
+/* Legacy dark-theme text tokens need deterministic contrast on light heroes. */
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) :is(
+  [class*="text-cyan-50"],
+  [class*="text-cyan-100"],
+  [class*="text-cyan-200"],
+  [class*="text-cyan-300"]
+) {
+  color: #1f5a7a !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) :is(
+  [class*="text-white"],
+  [class*="text-slate-100"],
+  [class*="text-slate-200"]
+) {
+  color: #223b4b !important;
+}
+
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) :is(
+  [class*="text-slate-300"],
+  [class*="text-slate-400"],
+  [class*="text-slate-500"]
+) {
+  color: #506675 !important;
+}
+
+/* Command/status chips: remove charcoal pills and keep the information type. */
+html.dengue-government :is(
+  .bhw-premium-hero,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel,
+  .supervisor-hero-panel,
+  .user-hero-panel
+) :is(
+  div.inline-flex[class*="bg-slate-950"],
+  div.inline-flex[class*="bg-white/"],
+  span.inline-flex[class*="bg-slate-950"]
+) {
+  background: #d5e5ec !important;
+  background-image: none !important;
+  border-color: #aac0cc !important;
+  color: #1f5a7a !important;
+  box-shadow: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Hero summary metrics: no charcoal/gray tiles.                              */
+/* -------------------------------------------------------------------------- */
+html.dengue-government :is(
+  .dashboard-hero-metric-card,
+  .bhw-hero-metrics > div,
+  .forecast-hero-metrics > div,
+  .premium-hero-metrics > div,
+  .reports-hero-metrics > div,
+  .supervisor-hero-metrics > div,
+  .user-hero-metrics > div,
+  .map-mobile-hero-grid > div
+) {
+  background: #d9e4e9 !important;
+  background-image: none !important;
+  border-color: #aabdc8 !important;
+  color: #183246 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+html.dengue-government :is(
+  .dashboard-hero-metric-card,
+  .bhw-hero-metrics > div,
+  .forecast-hero-metrics > div,
+  .premium-hero-metrics > div,
+  .reports-hero-metrics > div,
+  .supervisor-hero-metrics > div,
+  .user-hero-metrics > div,
+  .map-mobile-hero-grid > div
+) :is([class*="text-white"], [class*="text-slate-100"], [class*="text-slate-200"]) {
+  color: #173247 !important;
+}
+
+html.dengue-government :is(
+  .dashboard-hero-metric-card,
+  .bhw-hero-metrics > div,
+  .forecast-hero-metrics > div,
+  .premium-hero-metrics > div,
+  .reports-hero-metrics > div,
+  .supervisor-hero-metrics > div,
+  .user-hero-metrics > div,
+  .map-mobile-hero-grid > div
+) :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-slate-500"]) {
+  color: #496271 !important;
+}
+
+html.dengue-government .map-mobile-hero-grid > div > .pointer-events-none {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Former dark focus cards: use a blue institutional surface, not flat gray.  */
+/* -------------------------------------------------------------------------- */
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) {
+  background: #d5e3e9 !important;
+  background-image: none !important;
+  border-color: #9fb4c1 !important;
+  color: #1b3445 !important;
+  box-shadow: 0 3px 10px rgba(28, 52, 73, 0.08) !important;
+}
+
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) :is([class*="text-white"], [class*="text-slate-100"], [class*="text-slate-200"]) {
+  color: #203a4b !important;
+}
+
+html.dengue-government :is(
+  [class*="group/top-priority"],
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-slate-500"]) {
+  color: #506776 !important;
+}
+
+/* Nested information cells inside focus cards. */
+html.dengue-government :is(
+  .bhw-hero-risk-wrap > div,
+  .map-hero-selected-card > div,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap > div,
+  .user-access-health-wrap > div,
+  .reports-selected-output
+) :is(
+  [class*="bg-slate-950"],
+  [class*="bg-[#071525]"],
+  [class*="bg-white/[0.0"],
+  [class*="bg-white/10"],
+  [class*="bg-black/20"]
+) {
+  background: #e5ecef !important;
+  background-image: none !important;
+  border-color: #aec0ca !important;
+}
+
+/* Forecast output is made of two direct light cards; remove the remaining
+   gray translucent appearance from both while preserving semantic insets. */
+html.dengue-government .forecast-scenario-card > div.relative {
+  background: #e2ebef !important;
+  background-image: none !important;
+  border-color: #a8bec9 !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .forecast-scenario-card > div.relative [class*="bg-emerald"] {
+  background-color: #d9e8df !important;
+  border-color: #a9c9b7 !important;
+}
+
+/* BHW selector was still a large charcoal/gray block in Government mode. */
+html.dengue-government .bhw-selector-shell {
+  background: #d7e4ea !important;
+  background-image: none !important;
+  border-color: #9fb5c2 !important;
+  box-shadow: 0 2px 8px rgba(28, 52, 73, 0.07) !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .bhw-selector-shell :is([class*="text-cyan"], [class*="text-white"]) {
+  color: #1d5878 !important;
+}
+
+html.dengue-government .bhw-selector-shell :is([class*="text-slate-300"], [class*="text-slate-400"], [class*="text-slate-500"]) {
+  color: #4e6573 !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Hero action contrast                                                       */
+/* -------------------------------------------------------------------------- */
+html.dengue-government :is(
+  .user-hero-actions,
+  .map-hero-actions,
+  .premium-hero-actions,
+  .forecast-premium-hero,
+  .supervisor-hero-panel,
+  .bhw-hero-risk-wrap
+) :is(
+  button[class*="bg-cyan"],
+  button[class*="bg-slate-950"],
+  button[class*="bg-white/"],
+  a[class*="bg-cyan"]
+) {
+  background: #d7e6ed !important;
+  background-image: none !important;
+  border-color: #9bb2c0 !important;
+  color: #183b55 !important;
+  box-shadow: 0 1px 4px rgba(28, 52, 73, 0.06) !important;
+  text-shadow: none !important;
+}
+
+html.dengue-government :is(
+  .user-hero-actions,
+  .map-hero-actions,
+  .premium-hero-actions,
+  .forecast-premium-hero,
+  .supervisor-hero-panel,
+  .bhw-hero-risk-wrap
+) :is(
+  button[class*="bg-cyan"],
+  button[class*="bg-slate-950"],
+  button[class*="bg-white/"],
+  a[class*="bg-cyan"]
+):hover {
+  background: #cddfe7 !important;
+  border-color: #809eaf !important;
+  color: #143750 !important;
+  transform: none !important;
+}
+
+/* Reports export card had a translucent red/dark selector because its child
+   button inherited the output theme beneath it. Give the selector its own
+   readable institutional surface instead. */
+html.dengue-government .reports-selected-output #hero-report-export-format-button {
+  background: #e1eaee !important;
+  background-image: none !important;
+  border-color: #a6bbc6 !important;
+  color: #1c384a !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .reports-selected-output #hero-report-export-format-button:hover {
+  background: #d8e5ea !important;
+  border-color: #8fa9b7 !important;
+}
+
+html.dengue-government .reports-selected-output #hero-report-export-format-button :is(
+  [class*="text-cyan"],
+  [class*="text-white"]
+) {
+  color: #23475f !important;
+}
+
+html.dengue-government .reports-selected-output > .relative.mt-4 {
+  background: #dde7eb !important;
+  border-color: #a8bbc6 !important;
+  box-shadow: none !important;
+}
+
+html.dengue-government .reports-selected-output > button {
+  background: #e7edef !important;
+  border-color: #aebfc8 !important;
+  box-shadow: 0 1px 4px rgba(28, 52, 73, 0.06) !important;
+}
+
+/* Score rings stay readable against the dimmer surfaces. */
+html.dengue-government :is(
+  .bhw-hero-risk-wrap,
+  .map-hero-selected-card,
+  .forecast-scenario-card,
+  .premium-workspace-readiness-card,
+  .supervisor-top-priority-wrap,
+  .user-access-health-wrap
+) .dengue-hero-score-ring > div {
+  background: #edf1f3 !important;
+  border-color: #aebfc9 !important;
+  color: #17374d !important;
+}
+
+/* Inputs in the hero and general government mode are kept low-glare. */
+html.dengue-government input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+html.dengue-government select,
+html.dengue-government textarea,
+html.dengue-government .dengue-settings-text-card,
+html.dengue-government .dengue-settings-slider-card,
+html.dengue-government .dengue-settings-toggle,
+html.dengue-government .gov-appearance-settings-card {
+  background-color: #e7ecef !important;
+  border-color: #abbac4 !important;
+}
+
+/* Mobile chrome follows the same slightly dimmer palette. */
+@media (max-width: 1279px) {
+  html.dengue-government .dengue-mobile-topbar {
+    background: #e6ecef !important;
+    border-color: #a7b7c1 !important;
+  }
+
+  html.dengue-government .dengue-mobile-topbar .dengue-mobile-icon-button {
+    background: #d9e3e8 !important;
+    border-color: #aabac5 !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer,
+  html.dengue-government .dengue-mobile-drawer-footer {
+    background: #e4eaed !important;
+  }
+
+  html.dengue-government .dengue-mobile-drawer-header > div:first-child,
+  html.dengue-government .dengue-mobile-drawer-header > div:nth-child(2) {
+    background: #dce6ea !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Government mode hero images v7 — real React assets, no pseudo backgrounds */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The previous CSS-only approach used ::before for the light artwork. Several
+ * page components already define hero pseudo-elements in their own inline
+ * <style> blocks, so those backgrounds could be replaced or hidden later in
+ * the cascade. v7 renders the light files as actual <img> elements instead.
+ */
+
+/* Normal Light/Dark interface: keep the original image and never show the
+   Government-specific light asset. */
+.government-hero-light-image {
+  display: none !important;
+}
+
+/* Government mode: switch the real image elements. */
+html.dengue-government .government-hero-dark-image {
+  display: none !important;
+}
+
+html.dengue-government .government-hero-light-image {
+  display: block !important;
+  z-index: 0 !important;
+  opacity: 0.72 !important;
+  filter: saturate(1.04) contrast(1.02) !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Ensure every image-backed hero has a stable stacking context and a light
+   base underneath transparent/very pale areas of the new artwork. */
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel
+) {
+  position: relative !important;
+  isolation: isolate !important;
+  background: #e8eef1 !important;
+  background-image: none !important;
+}
+
+/* Keep all legacy dark/neon overlays off in Government mode. Dashboard uses
+   absolute divs without pointer-events-none; the other pages use
+   pointer-events-none overlays. */
+html.dengue-government .dashboard-mobile-compact > section:first-of-type > div.absolute,
+html.dengue-government .forecast-premium-hero > div.pointer-events-none,
+html.dengue-government .premium-map-hero > div.pointer-events-none,
+html.dengue-government .premium-upload-hero > div.pointer-events-none,
+html.dengue-government .reports-hero-panel > div.pointer-events-none {
+  display: none !important;
+}
+
+/* Reports' new light image is intentionally outside the old decorative
+   pointer-events-none wrapper, because that wrapper is hidden above. */
+html.dengue-government .reports-hero-panel > .government-hero-light-image {
+  display: block !important;
+}
+
+/* Hero content always sits above the image. */
+html.dengue-government :is(
+  .dashboard-mobile-compact > section:first-of-type,
+  .forecast-premium-hero,
+  .premium-map-hero,
+  .premium-upload-hero,
+  .reports-hero-panel
+) > .relative,
+html.dengue-government .reports-hero-layout {
+  position: relative;
+  z-index: 10 !important;
+}
+
+/* The generated light art already has pale/empty space behind the text, so no
+   extra white veil is applied. This is why the illustration remains visible. */
+
+@media (max-width: 768px) {
+  html.dengue-government .government-hero-light-image {
+    opacity: 0.64 !important;
+  }
+
+  html.dengue-government .dashboard-mobile-compact > section:first-of-type > .government-hero-light-image {
+    object-position: 62% center !important;
+  }
+
+  html.dengue-government .forecast-premium-hero > .government-hero-light-image,
+  html.dengue-government .premium-map-hero > .government-hero-light-image,
+  html.dengue-government .premium-upload-hero > .government-hero-light-image,
+  html.dengue-government .reports-hero-panel > .government-hero-light-image {
+    object-position: 68% center !important;
+  }
+}
+
+
+/* ========================================================================== */
+/* Government mode v9 — FINAL lower hero image opacity override                     */
+/* ========================================================================== */
+/*
+ * This block MUST remain at the end of government.css.
+ * It deliberately uses page-specific direct-image selectors so it wins over
+ * the earlier generic v7 opacity rule and any page-level hero styling.
+ *
+ * Desktop/tablet: 40% opacity
+ * Mobile:         34% opacity
+ */
+html.dengue-government .dashboard-mobile-compact > section:first-of-type > img.government-hero-light-image,
+html.dengue-government .forecast-premium-hero > img.government-hero-light-image,
+html.dengue-government .premium-map-hero > img.government-hero-light-image,
+html.dengue-government .premium-upload-hero > img.government-hero-light-image,
+html.dengue-government .reports-hero-panel > img.government-hero-light-image {
+  display: block !important;
+  opacity: 0.40 !important;
+  filter: saturate(1) contrast(1) !important;
+  mix-blend-mode: normal !important;
+}
+
+@media (max-width: 768px) {
+  html.dengue-government .dashboard-mobile-compact > section:first-of-type > img.government-hero-light-image,
+  html.dengue-government .forecast-premium-hero > img.government-hero-light-image,
+  html.dengue-government .premium-map-hero > img.government-hero-light-image,
+  html.dengue-government .premium-upload-hero > img.government-hero-light-image,
+  html.dengue-government .reports-hero-panel > img.government-hero-light-image {
+    opacity: 0.34 !important;
+  }
+}
+
+/* ========================================================================== */
+/* Government mode v10 — desktop logout visibility                            */
+/* ========================================================================== */
+/*
+ * The desktop Logout button is rose-on-dark in the standard interface.
+ * Government mode uses a light header, so give this control an explicit,
+ * restrained destructive treatment with enough contrast to remain readable.
+ */
+html.dengue-government .dengue-page-header .dengue-desktop-logout {
+  min-height: 44px !important;
+  border: 1px solid #c56f73 !important;
+  border-radius: 10px !important;
+  background: #f1d7d9 !important;
+  background-image: none !important;
+  color: #7a2026 !important;
+  box-shadow: 0 1px 3px rgba(91, 33, 38, 0.10) !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+html.dengue-government .dengue-page-header .dengue-desktop-logout svg {
+  color: #8d2830 !important;
+  stroke: currentColor !important;
+}
+
+html.dengue-government .dengue-page-header .dengue-desktop-logout:hover:not(:disabled) {
+  border-color: #ad555b !important;
+  background: #e9c5c8 !important;
+  color: #68181e !important;
+  box-shadow: 0 2px 6px rgba(91, 33, 38, 0.12) !important;
+  transform: none !important;
+}
+
+html.dengue-government .dengue-page-header .dengue-desktop-logout:focus-visible {
+  outline: 2px solid #9f444b !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(159, 68, 75, 0.14) !important;
+}
+
+html.dengue-government .dengue-page-header .dengue-desktop-logout:disabled {
+  border-color: #c8a2a5 !important;
+  background: #e7d6d8 !important;
+  color: #8a6064 !important;
+  opacity: 0.72 !important;
+}

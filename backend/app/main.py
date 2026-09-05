@@ -16,6 +16,7 @@ from app.routers import (
     integration,
     models,
     notifications,
+    public,
     reports,
     sessions,
     uploads,
@@ -102,6 +103,7 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+app.include_router(public.router)
 app.include_router(auth.router)
 app.include_router(analytics.router)
 app.include_router(uploads.router, dependencies=[Depends(require_roles("cho", "admin"))])
