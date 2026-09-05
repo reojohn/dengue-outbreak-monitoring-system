@@ -3922,12 +3922,112 @@
   }
 }
 
+/* System logo refinement for the public landing page */
+.gov-brand-mark--logo {
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.gov-brand-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 2px 4px rgba(10, 41, 63, 0.14));
+}
+
+.gov-brand-mark--footer.gov-brand-mark--logo {
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.gov-brand-logo--footer {
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.22));
+}
+
+@media (max-width: 768px) {
+  .gov-brand-mark--logo {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+  }
+
+  .gov-brand-mark--footer.gov-brand-mark--logo {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    padding: 4px;
+  }
+}
+
+@media (max-width: 380px) {
+  .gov-brand-mark--logo {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+  }
+}
+
+
+/* Footer logo sizing - dedicated wrapper avoids inherited header/logo sizing rules */
+.gov-footer-system-logo {
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.gov-footer-system-logo-image {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain;
+  object-position: center;
+  padding: 0 !important;
+  margin: 0 !important;
+  transform: scale(1.22);
+  transform-origin: center;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.24));
+}
+
+@media (max-width: 768px) {
+  .gov-footer-system-logo {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+  }
+
+  .gov-footer-system-logo-image {
+    transform: scale(1.2);
+  }
+}
+
 /* -------------------------------------------------------------------------- */
-/* Desktop hero final framing: reveal mosquito while retaining red hotspot     */
+/* Restore desktop hero framing + enlarge footer system logo                   */
 /* -------------------------------------------------------------------------- */
-/* Mobile framing is intentionally left untouched. On desktop, shift the
-   vertical crop upward from the hotspot-heavy framing so the mosquito returns
-   into view while the lower red hotspot remains inside the taller hero. */
+/* Keep the mobile focal point exactly as currently tuned. On desktop, bring
+   the crop upward enough for the mosquito to remain visible while retaining
+   the red hotspot within the taller hero. */
 @media (min-width: 921px) {
   .gov-hero {
     background-position: 50% 45%;
@@ -3945,5 +4045,35 @@
 
   .gov-hero-video {
     object-position: 50% 44%;
+  }
+}
+
+/* Make the actual system mark visibly larger in the footer. This dedicated
+   footer sizing intentionally does not affect the navbar/header logo. */
+.gov-footer-system-logo {
+  width: 82px;
+  height: 82px;
+  flex: 0 0 82px;
+  padding: 0;
+}
+
+.gov-footer-system-logo-image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+  object-position: center;
+  transform: scale(1.3);
+  transform-origin: center;
+}
+
+@media (max-width: 768px) {
+  .gov-footer-system-logo {
+    width: 68px;
+    height: 68px;
+    flex: 0 0 68px;
+  }
+
+  .gov-footer-system-logo-image {
+    transform: scale(1.26);
   }
 }

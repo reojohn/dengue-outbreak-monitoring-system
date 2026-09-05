@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import dengueBackground from '../assets/denguebg.png'
 import dengueVideo from '../assets/denguevideo.mp4'
+import dengueLogo from '../assets/logodengue2.png'
 import reoImage from '../assets/reo.png'
 import tyronImage from '../assets/tyron.png'
 import { getPublicSystemSummary } from '../services/api'
@@ -235,8 +236,8 @@ export default function LandingPage() {
             onClick={() => scrollToSection('home', closeMobileMenu)}
             aria-label="Go to landing page home"
           >
-            <span className="gov-brand-mark" aria-hidden="true">
-              <Activity />
+            <span className="gov-brand-mark gov-brand-mark--logo" aria-hidden="true">
+              <img className="gov-brand-logo" src={dengueLogo} alt="" />
             </span>
             <span className="gov-brand-copy">
               <strong>Dengue Surveillance & Decision Support</strong>
@@ -784,7 +785,9 @@ export default function LandingPage() {
       <footer className="gov-footer">
         <div className="gov-landing-container gov-footer-main">
           <div className="gov-footer-brand">
-            <span className="gov-brand-mark gov-brand-mark--footer" aria-hidden="true"><Activity /></span>
+            <span className="gov-footer-system-logo" aria-hidden="true">
+              <img className="gov-footer-system-logo-image" src={dengueLogo} alt="" />
+            </span>
             <div>
               <strong>Dengue Surveillance & Decision Support System</strong>
               <p>College of Computing and Information Sciences • Caraga State University</p>
