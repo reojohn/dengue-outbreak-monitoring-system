@@ -3746,3 +3746,204 @@
     grid-column: auto;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Hero video framing: reveal more of the original 16:9 artwork                */
+/* -------------------------------------------------------------------------- */
+/*
+  The hero uses object-fit: cover so the video never distorts. The important
+  change here is the crop anchor: desktop is biased upward so increasing the
+  hero height reveals more of the source frame (mosquito/virus/sky) instead of
+  keeping an overly centered crop. On phones the source is necessarily cropped
+  horizontally because a 16:9 video cannot fully fit a portrait hero; anchoring
+  to the right preserves the map, mosquito and virus artwork while the existing
+  light overlay keeps the copy area readable.
+*/
+@media (min-width: 921px) {
+  .gov-hero {
+    min-height: 820px;
+    background-position: 50% 24%;
+  }
+
+  .gov-hero-video {
+    object-fit: cover;
+    object-position: 50% 24%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gov-hero {
+    min-height: 860px;
+    background-position: 50% 20%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 20%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 920px) {
+  .gov-hero {
+    background-position: 82% 24%;
+  }
+
+  .gov-hero-video {
+    object-position: 82% 24%;
+  }
+}
+
+@media (max-width: 640px) {
+  .gov-hero {
+    background-position: 100% 28%;
+  }
+
+  .gov-hero-video {
+    object-fit: cover;
+    object-position: 100% 28%;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Final hero video positioning refinement                                    */
+/* -------------------------------------------------------------------------- */
+/* Pull the desktop crop slightly upward to reveal more of the mosquito/virus
+   area. On mobile, push the video artwork farther to the right so the text-safe
+   left side stays calmer while the dengue/map visuals remain visible. */
+@media (min-width: 921px) {
+  .gov-hero {
+    background-position: 50% 16%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 16%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gov-hero {
+    background-position: 50% 12%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 12%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 920px) {
+  .gov-hero {
+    background-position: 90% 20%;
+  }
+
+  .gov-hero-video {
+    object-position: 90% 20%;
+  }
+}
+
+@media (max-width: 640px) {
+  .gov-hero {
+    background-position: 112% 24%;
+  }
+
+  .gov-hero-video {
+    object-position: 112% 24%;
+  }
+}
+
+@media (max-width: 380px) {
+  .gov-hero {
+    background-position: 116% 24%;
+  }
+
+  .gov-hero-video {
+    object-position: 116% 24%;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Final hero focal-point correction                                           */
+/* -------------------------------------------------------------------------- */
+/*
+  Mobile: move the SOURCE CONTENT visually to the right by using a lower
+  horizontal object-position value. This places the large virus farther toward
+  the phone's right edge, away from the copy, so more of it remains visible.
+
+  Desktop: bias the crop toward the bottom of the 16:9 source frame. Because
+  object-fit: cover crops a small amount vertically on wide desktop heroes,
+  using a larger Y position lifts the lower map content into view and exposes
+  more of the red hotspot without stretching the video.
+*/
+@media (min-width: 921px) {
+  .gov-hero {
+    background-position: 50% 64%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 64%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gov-hero {
+    background-position: 50% 70%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 70%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 920px) {
+  .gov-hero {
+    background-position: 88% 50%;
+  }
+
+  .gov-hero-video {
+    object-position: 88% 50%;
+  }
+}
+
+@media (max-width: 640px) {
+  .gov-hero {
+    background-position: 88% 50%;
+  }
+
+  .gov-hero-video {
+    object-position: 88% 50%;
+  }
+}
+
+@media (max-width: 380px) {
+  .gov-hero {
+    background-position: 84% 50%;
+  }
+
+  .gov-hero-video {
+    object-position: 84% 50%;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Desktop hero final framing: reveal mosquito while retaining red hotspot     */
+/* -------------------------------------------------------------------------- */
+/* Mobile framing is intentionally left untouched. On desktop, shift the
+   vertical crop upward from the hotspot-heavy framing so the mosquito returns
+   into view while the lower red hotspot remains inside the taller hero. */
+@media (min-width: 921px) {
+  .gov-hero {
+    background-position: 50% 45%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 45%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gov-hero {
+    background-position: 50% 44%;
+  }
+
+  .gov-hero-video {
+    object-position: 50% 44%;
+  }
+}
