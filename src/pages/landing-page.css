@@ -271,7 +271,10 @@
 
 .gov-hero {
   position: relative;
-  min-height: 650px;
+  isolation: isolate;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  min-height: 690px;
   display: flex;
   align-items: stretch;
   overflow: hidden;
@@ -281,17 +284,45 @@
   border-bottom: 1px solid #b5c5d1;
 }
 
+.gov-hero-video {
+  position: absolute;
+  /* A tiny overscan keeps the browser from repeatedly sampling the exact
+     video edge while the hero is composited/scaled, which can look like
+     subtle frame-to-frame "shaking" on detailed map lines. */
+  inset: -2px;
+  z-index: 0;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  display: block;
+  object-fit: cover;
+  object-position: center center;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
+  animation: none !important;
+  transition: none !important;
+  pointer-events: none;
+  user-select: none;
+}
+
 .gov-hero-overlay {
   position: absolute;
   inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* Keep the text side consistently quiet even while the video moves. */
   background:
-    linear-gradient(90deg, rgba(248, 251, 253, 0.99) 0%, rgba(248, 251, 253, 0.96) 34%, rgba(248, 251, 253, 0.78) 53%, rgba(244, 249, 252, 0.34) 72%, rgba(15, 58, 91, 0.12) 100%),
+    linear-gradient(90deg, rgba(248, 251, 253, 0.995) 0%, rgba(248, 251, 253, 0.985) 26%, rgba(248, 251, 253, 0.95) 42%, rgba(248, 251, 253, 0.84) 52%, rgba(244, 249, 252, 0.48) 66%, rgba(15, 58, 91, 0.12) 100%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(11, 47, 73, 0.1));
 }
 
 .gov-hero::after {
   content: '';
   position: absolute;
+  z-index: 3;
   left: 0;
   right: 0;
   bottom: 0;
@@ -304,8 +335,8 @@
   z-index: 2;
   display: flex;
   align-items: center;
-  padding-top: 76px;
-  padding-bottom: 82px;
+  padding-top: 84px;
+  padding-bottom: 90px;
 }
 
 .gov-hero-copy {
@@ -1058,12 +1089,12 @@
   }
 
   .gov-hero {
-    min-height: 680px;
+    min-height: 730px;
   }
 
   .gov-hero-content {
-    padding-top: 82px;
-    padding-bottom: 90px;
+    padding-top: 90px;
+    padding-bottom: 98px;
   }
 
   .gov-stat-item {
@@ -2736,6 +2767,10 @@
     background-repeat: no-repeat;
   }
 
+  .gov-hero-video {
+    object-position: 66% center;
+  }
+
   .gov-hero-overlay {
     background:
       linear-gradient(
@@ -2842,6 +2877,10 @@
     background-position: 64% center;
   }
 
+  .gov-hero-video {
+    object-position: 64% center;
+  }
+
   .gov-hero-content {
     min-height: 500px;
     padding-top: 30px;
@@ -2875,6 +2914,12 @@
 
   .gov-hero-notice {
     font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gov-hero-video {
+    display: none;
   }
 }
 
@@ -2987,5 +3032,717 @@
   .gov-landing {
     --gov-mobile-utility-height: 36px;
     --gov-mobile-header-height: 72px;
+  }
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Hero video clarity pass                                                    */
+/* -------------------------------------------------------------------------- */
+/*
+  Keep the text-safe area light, but stop the readability wash from muting the
+  entire map. The video itself stays fully opaque and receives only a very
+  small contrast/saturation lift; no blur or scaling is applied.
+*/
+.gov-hero-video {
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  opacity: 1;
+  filter: contrast(1.075) saturate(1.055) brightness(1.015);
+  -webkit-filter: contrast(1.075) saturate(1.055) brightness(1.015);
+}
+
+.gov-hero-overlay {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(248, 251, 253, 0.995) 0%,
+      rgba(248, 251, 253, 0.985) 27%,
+      rgba(248, 251, 253, 0.94) 38%,
+      rgba(248, 251, 253, 0.78) 47%,
+      rgba(248, 251, 253, 0.43) 55%,
+      rgba(248, 251, 253, 0.16) 61%,
+      rgba(248, 251, 253, 0.035) 67%,
+      rgba(248, 251, 253, 0) 73%,
+      rgba(248, 251, 253, 0) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.015) 0%,
+      rgba(9, 42, 66, 0.035) 100%
+    );
+}
+
+/* Tablet: keep enough protection for the wider copy while letting the far
+   right of the animation remain crisp and almost completely untouched. */
+@media (min-width: 641px) and (max-width: 920px) {
+  .gov-hero-overlay {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(248, 251, 253, 0.995) 0%,
+        rgba(248, 251, 253, 0.975) 34%,
+        rgba(248, 251, 253, 0.90) 48%,
+        rgba(248, 251, 253, 0.68) 60%,
+        rgba(248, 251, 253, 0.31) 72%,
+        rgba(248, 251, 253, 0.08) 84%,
+        rgba(248, 251, 253, 0) 94%,
+        rgba(248, 251, 253, 0) 100%
+      ),
+      linear-gradient(180deg, rgba(255,255,255,0.02), rgba(9,42,66,0.035));
+  }
+}
+
+/* Phone: preserve the desktop-like left-copy/right-artwork composition. The
+   text side remains quiet, while the last quarter of the frame is allowed to
+   show the video with much stronger native contrast. */
+@media (max-width: 640px) {
+  .gov-hero-video {
+    filter: contrast(1.06) saturate(1.045) brightness(1.01);
+    -webkit-filter: contrast(1.06) saturate(1.045) brightness(1.01);
+  }
+
+  .gov-hero-overlay {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(248, 251, 253, 0.99) 0%,
+        rgba(248, 251, 253, 0.965) 34%,
+        rgba(248, 251, 253, 0.90) 49%,
+        rgba(248, 251, 253, 0.68) 63%,
+        rgba(248, 251, 253, 0.32) 77%,
+        rgba(248, 251, 253, 0.09) 89%,
+        rgba(248, 251, 253, 0) 100%
+      ),
+      linear-gradient(180deg, rgba(255,255,255,0.015), rgba(9,42,66,0.035));
+  }
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Taller desktop hero + refined institutional research/access notice          */
+/* -------------------------------------------------------------------------- */
+/* A taller canvas reveals more of the 16:9 video while preserving the same
+   government-style composition and centered copy. */
+@media (min-width: 921px) {
+  .gov-hero {
+    min-height: 760px;
+  }
+
+  .gov-hero-content {
+    padding-top: 96px;
+    padding-bottom: 104px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .gov-hero {
+    min-height: 800px;
+  }
+
+  .gov-hero-content {
+    padding-top: 104px;
+    padding-bottom: 112px;
+  }
+}
+
+/* Replace the flat white strip with a compact, structured institutional
+   notice. It remains deliberately restrained: no glassmorphism or flashy
+   effects, just clear hierarchy and a secure-access cue. */
+.gov-hero-notice {
+  width: min(760px, 100%);
+  max-width: 760px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  margin-top: 28px;
+  border: 1px solid rgba(128, 158, 179, 0.58);
+  border-left: 4px solid var(--landing-blue);
+  border-radius: 6px;
+  background: rgba(248, 251, 253, 0.92);
+  box-shadow: 0 8px 24px rgba(17, 53, 80, 0.08);
+  padding: 13px 15px 13px 13px;
+  color: #41596b;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.gov-hero-notice-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #b9cfde;
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--landing-blue-strong);
+}
+
+.gov-hero-notice-icon svg {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+}
+
+.gov-hero-notice-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.gov-hero-notice-copy strong {
+  color: #183f5d;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 800;
+}
+
+.gov-hero-notice-copy span {
+  color: #5b7080;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 560;
+}
+
+.gov-hero-notice-access {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c9d8e2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #234c69;
+  padding: 0 11px;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.gov-hero-notice-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #2c7ca8;
+  box-shadow: 0 0 0 3px rgba(44, 124, 168, 0.12);
+}
+
+@media (max-width: 1100px) and (min-width: 921px) {
+  .gov-hero-notice {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .gov-hero-notice-access {
+    grid-column: 2;
+    width: fit-content;
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .gov-hero-notice {
+    width: 100%;
+    max-width: 330px;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 9px 10px;
+    margin-top: 15px;
+    border-left-width: 3px;
+    border-radius: 5px;
+    padding: 10px;
+    background: rgba(248, 251, 253, 0.90);
+    box-shadow: 0 5px 16px rgba(17, 53, 80, 0.07);
+  }
+
+  .gov-hero-notice-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .gov-hero-notice-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .gov-hero-notice-copy strong {
+    font-size: 11.5px;
+  }
+
+  .gov-hero-notice-copy span {
+    font-size: 10.5px;
+    line-height: 1.4;
+  }
+
+  .gov-hero-notice-access {
+    grid-column: 2;
+    min-height: 27px;
+    width: fit-content;
+    padding: 0 9px;
+    font-size: 8.5px;
+    letter-spacing: 0.025em;
+  }
+
+  .gov-hero-notice-dot {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile monitoring summary: keep the four hero statistics in one row.       */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .gov-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .gov-stat-item,
+  .gov-stat-item:nth-child(3),
+  .gov-stat-item:nth-child(4) {
+    min-width: 0;
+    min-height: 90px;
+    padding: 12px 5px;
+    gap: 4px;
+    border-top: 0;
+    border-left: 1px solid var(--landing-border);
+    border-right: 0;
+  }
+
+  .gov-stat-item:first-child {
+    border-left: 0;
+  }
+
+  .gov-stat-item:last-child {
+    border-right: 0;
+  }
+
+  .gov-stat-item strong {
+    font-size: clamp(12.5px, 3.3vw, 15px);
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .gov-stat-item span {
+    margin-top: 1px;
+    font-size: clamp(7.25px, 2vw, 9px);
+    line-height: 1.25;
+    letter-spacing: 0.025em;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+}
+
+@media (max-width: 360px) {
+  .gov-stat-item {
+    min-height: 86px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .gov-stat-item strong {
+    font-size: 11.75px;
+  }
+
+  .gov-stat-item span {
+    font-size: 6.9px;
+    letter-spacing: 0.015em;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Final mobile landing-page polish                                           */
+/* -------------------------------------------------------------------------- */
+.gov-research-transparency-mobile {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /* Shorter page rhythm without making the page feel cramped. */
+  .gov-section {
+    padding-top: 44px;
+    padding-bottom: 44px;
+  }
+
+  .gov-section-heading,
+  .gov-contact-heading {
+    margin-bottom: 26px;
+  }
+
+  .gov-section-heading p,
+  .gov-data-copy > p,
+  .gov-research-copy > p,
+  .gov-access-inner > div > p {
+    margin-top: 12px;
+    font-size: 16px;
+    line-height: 1.58;
+  }
+
+  .gov-section h2,
+  .gov-research-layout h2,
+  .gov-access-inner h2 {
+    margin-top: 7px;
+    font-size: clamp(28px, 7.6vw, 34px);
+    line-height: 1.08;
+  }
+
+  .gov-eyebrow {
+    font-size: 10.5px;
+    letter-spacing: 0.13em;
+  }
+
+  /* Keep the two-column card treatment but prioritize readable body copy. */
+  .gov-capability-grid,
+  .gov-role-grid,
+  .gov-info-grid {
+    gap: 8px;
+  }
+
+  .gov-capability-card,
+  .gov-role-card,
+  .gov-info-card {
+    padding: 14px 12px;
+  }
+
+  .gov-capability-card {
+    min-height: 178px;
+  }
+
+  .gov-role-card,
+  .gov-info-card {
+    min-height: 176px;
+  }
+
+  .gov-role-card:last-child,
+  .gov-info-card:last-child {
+    min-height: 142px;
+  }
+
+  .gov-step-card h3,
+  .gov-capability-card h3,
+  .gov-role-card h3,
+  .gov-info-card h3 {
+    margin-top: 11px;
+    font-size: 16.5px;
+    line-height: 1.2;
+  }
+
+  .gov-step-card p,
+  .gov-capability-card p,
+  .gov-role-card p,
+  .gov-info-card p {
+    margin-top: 6px;
+    font-size: 15px;
+    line-height: 1.46;
+  }
+
+  .gov-step-card {
+    min-height: 205px;
+    padding: 16px 13px;
+  }
+
+  .gov-step-card:last-child {
+    min-height: 154px;
+  }
+
+  /* Data sources stay 2x2, while the processing workflow becomes a compact
+     2x2 progression rather than a long vertical stack. */
+  .gov-data-layout {
+    gap: 22px;
+  }
+
+  .gov-source-list {
+    margin-top: 16px;
+    gap: 7px;
+  }
+
+  .gov-source-item {
+    min-height: 58px;
+    padding: 8px;
+    gap: 7px;
+    font-size: 13.5px;
+    line-height: 1.25;
+  }
+
+  .gov-source-item > span {
+    width: 29px;
+    height: 29px;
+  }
+
+  .gov-process-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 13px;
+  }
+
+  .gov-process-row {
+    display: contents;
+  }
+
+  .gov-process-arrow,
+  .gov-process-line {
+    display: none;
+  }
+
+  .gov-process-box {
+    position: relative;
+    min-height: 82px;
+    padding: 10px 7px;
+    gap: 7px;
+    font-size: 13.5px;
+    line-height: 1.25;
+  }
+
+  .gov-process-box svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .gov-process-row:first-of-type .gov-process-box:first-child::before,
+  .gov-process-row:first-of-type .gov-process-box:last-child::before,
+  .gov-process-row:nth-of-type(3) .gov-process-box:first-child::before,
+  .gov-process-row:nth-of-type(3) .gov-process-box:last-child::before {
+    position: absolute;
+    top: 6px;
+    left: 7px;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #e9f2f7;
+    color: #315b78;
+    font-size: 9px;
+    font-weight: 850;
+  }
+
+  .gov-process-row:first-of-type .gov-process-box:first-child::before { content: '1'; }
+  .gov-process-row:first-of-type .gov-process-box:last-child::before { content: '2'; }
+  .gov-process-row:nth-of-type(3) .gov-process-box:first-child::before { content: '3'; }
+  .gov-process-row:nth-of-type(3) .gov-process-box:last-child::before { content: '4'; }
+
+  .gov-process-card > p {
+    grid-column: 1 / -1;
+    margin-top: 3px;
+    padding: 10px 11px;
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+
+  /* Keep public-health guidance readable but remove unnecessary card height. */
+  .gov-health-notice {
+    margin-top: 15px;
+    padding: 13px;
+    gap: 10px;
+  }
+
+  .gov-health-notice strong {
+    font-size: 15px;
+  }
+
+  .gov-health-notice p {
+    margin-top: 4px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Show the essential research context immediately and tuck the second
+     transparency paragraph into a native accessible disclosure on phones. */
+  .gov-research-layout {
+    gap: 20px;
+  }
+
+  .gov-research-transparency-desktop {
+    display: none;
+  }
+
+  .gov-research-transparency-mobile {
+    display: block;
+    margin-top: 14px;
+    border: 1px solid #c9d7e0;
+    border-radius: 6px;
+    background: #ffffff;
+  }
+
+  .gov-research-transparency-mobile summary {
+    position: relative;
+    padding: 12px 34px 12px 12px;
+    color: #244b67;
+    font-size: 13.5px;
+    line-height: 1.35;
+    font-weight: 800;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .gov-research-transparency-mobile summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .gov-research-transparency-mobile summary::after {
+    content: '+';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #2c6f99;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .gov-research-transparency-mobile[open] summary::after {
+    content: '−';
+  }
+
+  .gov-research-transparency-mobile p {
+    margin: 0;
+    border-top: 1px solid #dbe4ea;
+    padding: 11px 12px 13px;
+    color: #5b6f7d;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .gov-research-card {
+    padding: 16px;
+  }
+
+  .gov-research-card > span {
+    margin-top: 12px;
+  }
+
+  .gov-research-card h3 {
+    margin-top: 6px;
+    font-size: 17px;
+    line-height: 1.35;
+  }
+
+  .gov-research-card dl {
+    margin-top: 13px;
+  }
+
+  .gov-research-card dl > div {
+    padding: 8px 0;
+  }
+
+  .gov-research-card dt {
+    font-size: 10.5px;
+  }
+
+  .gov-research-card dd {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  /* Contact details remain visible, but use less vertical space before the
+     actual form so users reach the action sooner. */
+  .gov-contact-layout {
+    gap: 16px;
+  }
+
+  .gov-contact-details {
+    gap: 7px;
+  }
+
+  .gov-contact-card {
+    padding: 12px 10px;
+    gap: 8px;
+  }
+
+  .gov-contact-card strong,
+  .gov-contact-process-heading strong {
+    margin-top: 4px;
+    font-size: 15px;
+  }
+
+  .gov-contact-card p {
+    margin-top: 5px;
+    font-size: 13.5px;
+    line-height: 1.42;
+  }
+
+  .gov-contact-kicker {
+    font-size: 9.5px;
+  }
+
+  .gov-contact-meta {
+    margin-top: 7px;
+    padding-top: 7px;
+    font-size: 11.5px;
+  }
+
+  .gov-contact-icon-badge {
+    width: 34px;
+    height: 34px;
+  }
+
+  .gov-contact-icon-badge svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .gov-contact-process-card {
+    padding: 13px;
+  }
+
+  .gov-contact-process-heading {
+    gap: 9px;
+    padding-bottom: 10px;
+  }
+
+  .gov-contact-process-list li {
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px 0;
+  }
+
+  .gov-contact-process-list li > span {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+
+  .gov-contact-process-list p {
+    margin-top: 1px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .gov-contact-form-header {
+    padding: 17px 14px 15px;
+  }
+
+  .gov-contact-form-body {
+    padding: 17px 14px 19px;
+  }
+
+  .gov-form-section + .gov-form-section {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 350px) {
+  .gov-capability-card,
+  .gov-role-card,
+  .gov-info-card {
+    min-height: 0;
+  }
+
+  .gov-process-card {
+    grid-template-columns: 1fr;
+  }
+
+  .gov-process-card > p {
+    grid-column: auto;
   }
 }

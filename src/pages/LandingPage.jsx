@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import dengueBackground from '../assets/denguebg.png'
+import dengueVideo from '../assets/denguevideo.mp4'
 import reoImage from '../assets/reo.png'
 import tyronImage from '../assets/tyron.png'
 import { getPublicSystemSummary } from '../services/api'
@@ -295,6 +296,20 @@ export default function LandingPage() {
           className="gov-hero gov-anchor-section"
           style={{ backgroundImage: `url(${dengueBackground})` }}
         >
+          <video
+            className="gov-hero-video"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            poster={dengueBackground}
+            aria-hidden="true"
+            tabIndex={-1}
+            disablePictureInPicture
+          >
+            <source src={dengueVideo} type="video/mp4" />
+          </video>
           <div className="gov-hero-overlay" />
           <div className="gov-landing-container gov-hero-content">
             <div className="gov-hero-copy">
@@ -323,10 +338,17 @@ export default function LandingPage() {
               </div>
 
               <div className="gov-hero-notice">
-                <CheckCircle2 aria-hidden="true" />
-                <span>
-                  Research prototype for academic evaluation and local public-health decision support. Internal operational tools remain protected by staff authentication.
-                </span>
+                <div className="gov-hero-notice-icon" aria-hidden="true">
+                  <CheckCircle2 />
+                </div>
+                <div className="gov-hero-notice-copy">
+                  <strong>Academic research prototype</strong>
+                  <span>Designed for evaluation and local public-health decision support.</span>
+                </div>
+                <div className="gov-hero-notice-access">
+                  <span className="gov-hero-notice-dot" aria-hidden="true" />
+                  Staff authentication required
+                </div>
               </div>
             </div>
           </div>
@@ -519,15 +541,21 @@ export default function LandingPage() {
 
         <section id="research" className="gov-section gov-section--muted gov-anchor-section">
           <div className="gov-landing-container gov-research-layout">
-            <div>
+            <div className="gov-research-copy">
               <span className="gov-eyebrow">RESEARCH & TRANSPARENCY</span>
               <h2>An academic system designed around a real local public-health use case</h2>
               <p>
                 This platform was developed as an undergraduate research project under the College of Computing and Information Sciences, Caraga State University. It explores how predictive analytics, geospatial information, and coordinated field workflows can support barangay-level dengue response in Butuan City.
               </p>
-              <p>
+              <p className="gov-research-transparency-desktop">
                 The public landing page intentionally identifies the platform as a research prototype. It does not present itself as an official City Government of Butuan website or replace existing government health systems and official public-health advisories.
               </p>
+              <details className="gov-research-transparency-mobile">
+                <summary>Why this is labeled a research prototype</summary>
+                <p>
+                  The landing page clearly identifies the platform as an academic prototype. It is not an official City Government of Butuan website and does not replace government health systems or official public-health advisories.
+                </p>
+              </details>
             </div>
 
             <aside className="gov-research-card">
