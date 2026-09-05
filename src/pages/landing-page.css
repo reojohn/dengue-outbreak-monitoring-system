@@ -4077,3 +4077,58 @@
     transform: scale(1.26);
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Footer logo final refinement: remove the surrounding box entirely          */
+/* -------------------------------------------------------------------------- */
+/* Present the system logo as a free-standing mark so it no longer looks cut
+   off inside a framed container. This only affects the footer. */
+.gov-footer-brand .gov-footer-system-logo {
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  flex: 0 0 auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+  line-height: 0 !important;
+}
+
+.gov-footer-brand .gov-footer-system-logo-image {
+  display: block !important;
+  width: 92px !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.24)) !important;
+}
+
+.gov-footer-brand {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .gov-footer-brand .gov-footer-system-logo-image {
+    width: 78px !important;
+  }
+
+  .gov-footer-brand {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 380px) {
+  .gov-footer-brand .gov-footer-system-logo-image {
+    width: 72px !important;
+  }
+}

@@ -25,7 +25,6 @@ import dengueVideo from '../assets/denguevideo.mp4'
 import dengueLogo from '../assets/logodengue2.png'
 import reoImage from '../assets/reo.png'
 import tyronImage from '../assets/tyron.png'
-import { getPublicSystemSummary } from '../services/api'
 import './landing-page.css'
 
 const capabilities = [
@@ -106,7 +105,6 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [contactStatus, setContactStatus] = useState(null)
   const [contactSubmitting, setContactSubmitting] = useState(false)
-  const [historicalDengueRange, setHistoricalDengueRange] = useState('2018–2025')
 
   useEffect(() => {
     document.title = 'Dengue Surveillance & Decision Support System'
@@ -117,43 +115,11 @@ export default function LandingPage() {
     root.classList.remove('dark')
     root.classList.remove('dengue-government')
 
-    let cancelled = false
-
-    const refreshPublicSummary = async () => {
-      try {
-        const summary = await getPublicSystemSummary()
-        const rangeLabel = summary?.historical_dengue?.range_label
-
-        if (!cancelled && rangeLabel) {
-          setHistoricalDengueRange(rangeLabel)
-        }
-      } catch (error) {
-        // Keep the current known coverage as a graceful fallback if the API is
-        // temporarily unavailable. A successful request always replaces it
-        // with the latest completed integration range.
-        console.warn('Unable to refresh public dengue coverage:', error)
-      }
-    }
-
-    refreshPublicSummary()
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshPublicSummary()
-    }
-
-    window.addEventListener('focus', refreshPublicSummary)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener('focus', refreshPublicSummary)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
   }, [])
 
   const publicStats = [
     { value: '86', label: 'Barangays monitored' },
-    { value: historicalDengueRange, label: 'Historical dengue records' },
+    { value: '4-Month', label: 'Forecast horizon' },
     { value: 'Barangay-level', label: 'Risk monitoring' },
     { value: 'Multi-source', label: 'Decision support' },
   ]
