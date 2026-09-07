@@ -22,6 +22,8 @@ import {
 } from 'lucide-react'
 import dengueBackground from '../assets/denguebg.png'
 import dengueVideo from '../assets/denguevideo.mp4'
+import capabilitiesAnimation from '../assets/animation.mp4'
+import capabilitiesAnimationPoster from '../assets/animation-poster.jpg'
 import dengueLogo from '../assets/logodengue2.png'
 import reoImage from '../assets/reo.png'
 import tyronImage from '../assets/tyron.png'
@@ -372,6 +374,33 @@ export default function LandingPage() {
               <h2>One platform for monitoring, analysis, mapping, and response</h2>
               <p>
                 The public page introduces the system at a high level. Detailed forecasts, response records, model information, uploads, and operational reports are available only after authorized sign-in.
+              </p>
+            </div>
+
+            <div className="gov-capabilities-video-block">
+              <div className="gov-capabilities-video-heading">
+                <span className="gov-eyebrow">PUBLIC HEALTH WORKFLOW</span>
+                <h3>See how the response workflow works</h3>
+                <p>
+                  Follow the flow from barangay field monitoring and data collection to forecasting, risk mapping, coordinated response, and reporting.
+                </p>
+              </div>
+
+              <div className="gov-capabilities-video-frame">
+                <video
+                  className="gov-capabilities-video"
+                  controls
+                  playsInline
+                  preload="metadata"
+                  poster={capabilitiesAnimationPoster}
+                  aria-label="Animated overview of the dengue surveillance and response workflow"
+                >
+                  <source src={capabilitiesAnimation} type="video/mp4" />
+                  Your browser does not support embedded video.
+                </video>
+              </div>
+              <p className="gov-capabilities-video-caption">
+                Animated explainer of the system-supported public-health workflow.
               </p>
             </div>
 
