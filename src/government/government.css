@@ -515,6 +515,43 @@ html.dengue-government .dengue-scaled-content .dengue-hero-copy {
   font-weight: 500 !important;
 }
 
+/* Barangay Workspace hero in Government mode keeps the same semantic
+   Low/Moderate/High meaning through the full hero background. */
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--low {
+  border-top-color: #1f9d68 !important;
+  background: linear-gradient(135deg, #eef9f3 0%, #e4f5eb 52%, #f8fcfa 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--moderate {
+  border-top-color: #d79b11 !important;
+  background: linear-gradient(135deg, #fff8e6 0%, #fff1c7 52%, #fffaf0 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--high {
+  border-top-color: #d1495b !important;
+  background: linear-gradient(135deg, #fff1f3 0%, #ffe1e6 52%, #fff8f8 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--pending {
+  border-top-color: var(--gov-blue) !important;
+  background: #ffffff !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--low .bhw-selector-shell {
+  border-color: #c8e6d5 !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--moderate .bhw-selector-shell {
+  border-color: #eadca8 !important;
+  background: rgba(255, 251, 240, 0.82) !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--high .bhw-selector-shell {
+  border-color: #efc7cf !important;
+  background: rgba(255, 246, 247, 0.82) !important;
+}
+
 html.dengue-government .dashboard-mobile-compact > section:first-of-type [class*="text-white"],
 html.dengue-government .bhw-premium-hero [class*="text-white"],
 html.dengue-government .forecast-premium-hero [class*="text-white"],
@@ -577,6 +614,21 @@ html.dengue-government .reports-hero-metrics [class*="text-white"],
 html.dengue-government .supervisor-hero-metrics [class*="text-white"],
 html.dengue-government .user-hero-metrics [class*="text-white"] {
   color: #20364a !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--low .bhw-hero-metrics > div {
+  border-color: #c4dfd1 !important;
+  background: #f5fbf7 !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--moderate .bhw-hero-metrics > div {
+  border-color: #e4d6a4 !important;
+  background: #fffaf0 !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--high .bhw-hero-metrics > div {
+  border-color: #e8c0c8 !important;
+  background: #fff5f6 !important;
 }
 
 /* Risk/score rings keep data meaning but lose the luminous treatment. */
@@ -1136,6 +1188,21 @@ html.dengue-government :is(
   .reports-selected-output
 ) > .pointer-events-none {
   display: none !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--low .bhw-hero-risk-wrap > div {
+  border-color: #b9d8c7 !important;
+  background: #e6f4ec !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--moderate .bhw-hero-risk-wrap > div {
+  border-color: #dccd95 !important;
+  background: #fff1c7 !important;
+}
+
+html.dengue-government .bhw-premium-hero.bhw-premium-hero--high .bhw-hero-risk-wrap > div {
+  border-color: #e0b5bd !important;
+  background: #fde5e9 !important;
 }
 
 html.dengue-government :is(
@@ -2050,4 +2117,804 @@ html.dengue-government .dengue-page-header .dengue-desktop-logout:disabled {
   background: #e7d6d8 !important;
   color: #8a6064 !important;
   opacity: 0.72 !important;
+}
+
+/* ========================================================================== */
+/* Government mode v11 — BHW hero risk-level semantic colors                 */
+/* ========================================================================== */
+/*
+ * Keep this block at the end of government.css. Earlier Government polish
+ * passes intentionally normalize all page heroes to blue-gray, so the BHW
+ * Workspace needs this final, more-specific override to preserve the same
+ * Low / Moderate / High visual meaning used by the standard Light/Dark UI.
+ */
+html.dengue-government .bhw-premium-hero[data-risk="low"] {
+  background: linear-gradient(135deg, #dcefe5 0%, #e7f4ec 52%, #f2f8f4 100%) !important;
+  background-image: linear-gradient(135deg, #dcefe5 0%, #e7f4ec 52%, #f2f8f4 100%) !important;
+  border-color: #9cc9b0 !important;
+  border-top-color: #1f9d68 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] {
+  background: linear-gradient(135deg, #f6e7b8 0%, #faefce 52%, #fcf7e9 100%) !important;
+  background-image: linear-gradient(135deg, #f6e7b8 0%, #faefce 52%, #fcf7e9 100%) !important;
+  border-color: #d8bd69 !important;
+  border-top-color: #d79b11 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] {
+  background: linear-gradient(135deg, #f4d8dc 0%, #f8e3e6 52%, #fbf0f1 100%) !important;
+  background-image: linear-gradient(135deg, #f4d8dc 0%, #f8e3e6 52%, #fbf0f1 100%) !important;
+  border-color: #d99aa5 !important;
+  border-top-color: #cf4054 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] {
+  background: #e3eaee !important;
+  background-image: none !important;
+  border-color: #a7b7c2 !important;
+  border-top-color: #245a82 !important;
+}
+
+/* Make the selector and summary cells belong visually to the same risk hero. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-selector-shell {
+  background: #edf7f1 !important;
+  border-color: #acd4bd !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-selector-shell {
+  background: #fff8e6 !important;
+  border-color: #dfca88 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-selector-shell {
+  background: #fff1f3 !important;
+  border-color: #e1aeb7 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-metrics > div {
+  background: #edf7f1 !important;
+  border-color: #acd4bd !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-metrics > div {
+  background: #fff7df !important;
+  border-color: #dfca88 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-metrics > div {
+  background: #fff0f2 !important;
+  border-color: #e1aeb7 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-risk-wrap > div {
+  background: #d7eddf !important;
+  background-image: none !important;
+  border-color: #91c6a7 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-risk-wrap > div {
+  background: #f5e5b3 !important;
+  background-image: none !important;
+  border-color: #d3b85f !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap > div {
+  background: #f1d2d7 !important;
+  background-image: none !important;
+  border-color: #d58f9b !important;
+}
+
+/* ========================================================================== */
+/* Government mode v12 — force visible risk-colored BHW hero surface         */
+/* ========================================================================== */
+/*
+ * The previous Government overrides flattened all heroes to a near-white
+ * administrative card. For the Barangay Workspace, the user explicitly wants
+ * the main hero itself to visibly change color by risk level, similar to the
+ * standard light/dark UI. This block intentionally sits at the very end of the
+ * stylesheet so it wins over the earlier generic hero background rules.
+ */
+html.dengue-government .bhw-premium-hero[data-risk] {
+  background-image: none !important;
+}
+
+/* Restore the decorative hero surface for BHW only so the full panel no
+   longer looks white/flat in Government mode. */
+html.dengue-government .bhw-premium-hero > div.pointer-events-none {
+  display: block !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] {
+  background: linear-gradient(135deg, #0b3327 0%, #0f4332 48%, #145640 100%) !important;
+  border-color: #2b7a61 !important;
+  border-top-color: #1fb57a !important;
+  box-shadow: 0 22px 54px rgba(12, 55, 41, 0.22) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] {
+  background: linear-gradient(135deg, #4e3405 0%, #6a4709 48%, #8a6211 100%) !important;
+  border-color: #b98923 !important;
+  border-top-color: #efb02d !important;
+  box-shadow: 0 22px 54px rgba(106, 71, 9, 0.18) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] {
+  background: linear-gradient(135deg, #4a0f18 0%, #641320 48%, #7f1a2b 100%) !important;
+  border-color: #bc5264 !important;
+  border-top-color: #ef5f78 !important;
+  box-shadow: 0 22px 54px rgba(100, 19, 32, 0.20) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] {
+  background: linear-gradient(135deg, #24425c 0%, #2d5576 48%, #39698c 100%) !important;
+  border-color: #5b88aa !important;
+  border-top-color: #7ab3de !important;
+  box-shadow: 0 22px 54px rgba(36, 66, 92, 0.18) !important;
+}
+
+/* Government text flattening made the BHW hero title/copy dark even when the
+   hero background becomes dark green/yellow/red. Make hero copy readable. */
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-title {
+  color: #f8fffb !important;
+  text-shadow: 0 8px 22px rgba(2, 6, 23, 0.30) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-copy {
+  color: rgba(245, 251, 248, 0.92) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] :is(
+  [class*="text-slate-300"],
+  [class*="text-slate-400"],
+  [class*="text-slate-500"]
+) {
+  color: rgba(232, 244, 239, 0.82) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] :is(
+  [class*="text-cyan-100"],
+  [class*="text-cyan-200"]
+) {
+  color: rgba(238, 251, 246, 0.95) !important;
+}
+
+/* Make the selector box, metric cards, and risk card clearly belong to the
+   active risk color instead of staying near-white. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-metrics > div,
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(135deg, rgba(9, 39, 29, 0.82), rgba(17, 73, 55, 0.68)) !important;
+  border-color: rgba(119, 204, 165, 0.36) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-metrics > div,
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(135deg, rgba(77, 52, 5, 0.82), rgba(121, 88, 18, 0.68)) !important;
+  border-color: rgba(244, 203, 112, 0.36) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-metrics > div,
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(135deg, rgba(75, 15, 24, 0.84), rgba(128, 26, 43, 0.68)) !important;
+  border-color: rgba(244, 140, 160, 0.36) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-metrics > div,
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(135deg, rgba(25, 48, 69, 0.82), rgba(52, 93, 122, 0.68)) !important;
+  border-color: rgba(133, 182, 215, 0.34) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div {
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.18) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics p:nth-child(2),
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap h2,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap .text-white,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell .text-brand-text,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell [class*="dark:text-white"] {
+  color: #ffffff !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-barangay-selector > button {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.52) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-barangay-selector > button span[class*="text-brand-muted"] {
+  color: #4e6573 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-score-ring > div {
+  background: rgba(7, 21, 37, 0.92) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap a {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap a:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.30) !important;
+}
+
+/* ========================================================================== */
+/* Government mode v13 — softer semantic BHW hero with readable admin cards  */
+/* ========================================================================== */
+/*
+ * The previous fix made the hero colored, but it felt too dark and the inner
+ * cards/text looked visually inconsistent for Government mode. This final pass
+ * keeps the risk-based hero color while returning the cleaner Government-style
+ * readability: soft colored hero, dark text, and light cards.
+ */
+html.dengue-government .bhw-premium-hero > div.pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] {
+  background: linear-gradient(135deg, #d9eee0 0%, #cfead7 48%, #e9f5ed 100%) !important;
+  border-color: #9fcbb0 !important;
+  border-top-color: #22a06b !important;
+  box-shadow: 0 18px 42px rgba(44, 101, 72, 0.12) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] {
+  background: linear-gradient(135deg, #f7e6b0 0%, #f7e9c2 48%, #fcf5de 100%) !important;
+  border-color: #d9bf73 !important;
+  border-top-color: #d59a10 !important;
+  box-shadow: 0 18px 42px rgba(125, 93, 26, 0.12) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] {
+  background: linear-gradient(135deg, #f2d6db 0%, #f5e0e4 48%, #fbf1f3 100%) !important;
+  border-color: #d6a0aa !important;
+  border-top-color: #cb4053 !important;
+  box-shadow: 0 18px 42px rgba(124, 47, 60, 0.12) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] {
+  background: linear-gradient(135deg, #dbe6ed 0%, #d4e0e8 48%, #edf3f7 100%) !important;
+  border-color: #adc0cd !important;
+  border-top-color: #2b648d !important;
+  box-shadow: 0 18px 42px rgba(53, 91, 119, 0.12) !important;
+}
+
+/* Restore clean readable hero text in Government mode. */
+html.dengue-government .bhw-premium-hero[data-risk] h1.dengue-hero-title {
+  color: #173247 !important;
+  text-shadow: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] p.dengue-hero-copy {
+  color: #334e62 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] :is(
+  [class*="text-slate-300"],
+  [class*="text-slate-400"],
+  [class*="text-slate-500"]
+) {
+  color: #4f6575 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] :is(
+  [class*="text-cyan-100"],
+  [class*="text-cyan-200"]
+) {
+  color: #1f5675 !important;
+}
+
+/* Top status pills stay crisp and readable. */
+html.dengue-government .bhw-premium-hero[data-risk] .flex.flex-wrap.items-center.gap-2\.5 > span:first-child {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: #c7d7e1 !important;
+  color: #1d5f82 !important;
+  box-shadow: 0 2px 8px rgba(28, 52, 73, 0.05) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: #dff5e7 !important;
+  border-color: #8dcdab !important;
+  color: #1f7a55 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: #fff4d5 !important;
+  border-color: #e2c46c !important;
+  color: #9b6c00 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: #fce5e9 !important;
+  border-color: #e2a3af !important;
+  color: #9e3951 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: #e4eef5 !important;
+  border-color: #abc1cf !important;
+  color: #2d6485 !important;
+}
+
+/* Selector + metric cards become clean light surfaces with a subtle tint. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-metrics > div {
+  background: rgba(255, 255, 255, 0.62) !important;
+  border-color: #9fd0b1 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-metrics > div {
+  background: rgba(255, 251, 238, 0.78) !important;
+  border-color: #dfca88 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-metrics > div {
+  background: rgba(255, 247, 248, 0.78) !important;
+  border-color: #e0b1ba !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-metrics > div {
+  background: rgba(255, 255, 255, 0.72) !important;
+  border-color: #b6c8d4 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div {
+  backdrop-filter: none !important;
+  box-shadow: 0 6px 18px rgba(28, 52, 73, 0.06) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div {
+  background-image: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div .text-white,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div p:nth-child(2),
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell .text-brand-text,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell [class*="dark:text-white"] {
+  color: #183247 !important;
+}
+
+/* Keep the dropdown trigger readable. */
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-barangay-selector > button {
+  background: #f8fbfc !important;
+  border-color: #c8d6df !important;
+  box-shadow: 0 2px 8px rgba(28, 52, 73, 0.06) !important;
+}
+
+/* Risk summary card on the right follows the active semantic color, but stays
+   lighter than the full hero so the content is easy to read. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #d6eddf 0%, #c9e7d6 100%) !important;
+  border-color: #89bfa0 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #f6e6b4 0%, #efdeb0 100%) !important;
+  border-color: #ccb05d !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #f2d8dd 0%, #edcdd3 100%) !important;
+  border-color: #d0939f !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #d9e6ee 0%, #cfdee8 100%) !important;
+  border-color: #a2b8c7 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div {
+  box-shadow: 0 8px 22px rgba(28, 52, 73, 0.08) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div :is(h2, .text-white, .dengue-hero-score-value) {
+  color: #173247 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div .dengue-hero-score-label {
+  color: #2c5a76 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-score-ring > div {
+  background: #eef4f7 !important;
+  border-color: rgba(23, 50, 71, 0.10) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div .rounded-\[18px\],
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div .rounded-\[20px\] {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border-color: rgba(23, 50, 71, 0.12) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div a {
+  background: rgba(255, 255, 255, 0.55) !important;
+  border-color: rgba(23, 50, 71, 0.16) !important;
+  color: #1d5b80 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div a:hover {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border-color: rgba(23, 50, 71, 0.22) !important;
+}
+
+/* ========================================================================== */
+/* Government mode v14 — clearly visible semantic BHW hero                   */
+/* ========================================================================== */
+/* Keep the full Barangay Workspace hero visibly risk-colored, but use
+   high-contrast Government-style cards and typography inside it. */
+html.dengue-government .bhw-premium-hero[data-risk] {
+  background-image: none !important;
+  color: #173247 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] {
+  background-color: #bfe2cb !important;
+  background: linear-gradient(135deg, #add7bc 0%, #bee1ca 46%, #d3ebda 100%) !important;
+  border-color: #79b792 !important;
+  border-top-color: #168f5e !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] {
+  background-color: #f3d98f !important;
+  background: linear-gradient(135deg, #efd27c 0%, #f3dda0 46%, #faedc9 100%) !important;
+  border-color: #d0ad48 !important;
+  border-top-color: #c98500 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] {
+  background-color: #edbdc5 !important;
+  background: linear-gradient(135deg, #e8aeb9 0%, #efc1c9 46%, #f7d9de 100%) !important;
+  border-color: #c87887 !important;
+  border-top-color: #b83248 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] {
+  background-color: #c7dce8 !important;
+  background: linear-gradient(135deg, #bdd5e3 0%, #cbdfea 46%, #e1edf3 100%) !important;
+  border-color: #87aabd !important;
+  border-top-color: #245f88 !important;
+}
+
+/* The hero background itself is the semantic color, so the decorative dark
+   overlay must remain off in Government mode. */
+html.dengue-government .bhw-premium-hero > div.pointer-events-none {
+  display: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-title {
+  color: #12344b !important;
+  text-shadow: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-copy {
+  color: #294b60 !important;
+}
+
+/* Left selector area */
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell {
+  background: rgba(248, 251, 252, 0.76) !important;
+  background-image: none !important;
+  border-color: rgba(49, 93, 117, 0.28) !important;
+  box-shadow: 0 8px 22px rgba(28, 52, 73, 0.08) !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell :is(
+  [class*="text-cyan"],
+  [class*="text-slate"],
+  [class*="text-white"]
+) {
+  color: #355a70 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-barangay-selector > button {
+  background: #f8fbfc !important;
+  border-color: #c4d4de !important;
+  color: #173247 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-barangay-selector > button [class*="text-brand-text"],
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-barangay-selector > button [class*="text-white"] {
+  color: #173247 !important;
+}
+
+/* Hero metric cards */
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div {
+  background: rgba(248, 251, 252, 0.78) !important;
+  background-image: none !important;
+  border-color: rgba(49, 93, 117, 0.26) !important;
+  box-shadow: 0 7px 18px rgba(28, 52, 73, 0.07) !important;
+  backdrop-filter: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div :is(
+  [class*="text-slate"],
+  [class*="text-white"]
+) {
+  color: #35576b !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div p:nth-child(2) {
+  color: #173247 !important;
+}
+
+/* Right-side risk card: slightly stronger version of the same risk tone. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #a9d8ba 0%, #bde2ca 100%) !important;
+  border-color: #72ad8a !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #edcf75 0%, #f2dea0 100%) !important;
+  border-color: #c9a43c !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #e5a8b4 0%, #efc0c8 100%) !important;
+  border-color: #c16c7c !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-risk-wrap > div {
+  background: linear-gradient(180deg, #b8d3e1 0%, #c9deea 100%) !important;
+  border-color: #7ea3b8 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div {
+  background-image: none !important;
+  box-shadow: 0 10px 26px rgba(28, 52, 73, 0.10) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div :is(
+  h2,
+  [class*="text-white"],
+  [class*="text-slate"],
+  [class*="text-cyan"]
+) {
+  color: #173247 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-score-ring > div {
+  background: #f4f8fa !important;
+  border-color: rgba(23, 50, 71, 0.12) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-score-value {
+  color: #173247 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-score-label {
+  color: #315d78 !important;
+}
+
+/* Inner mini-cards on the right */
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div .rounded-\[18px\],
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap > div .rounded-\[20px\] {
+  background: rgba(249, 252, 253, 0.82) !important;
+  border-color: rgba(23, 50, 71, 0.13) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap a {
+  background: rgba(249, 252, 253, 0.82) !important;
+  border-color: rgba(23, 50, 71, 0.15) !important;
+  color: #1a5779 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap a:hover {
+  background: #ffffff !important;
+  color: #174c6a !important;
+}
+
+/* Keep both hero chips readable without making them look like unrelated cards. */
+html.dengue-government .bhw-premium-hero[data-risk] .flex.flex-wrap.items-center.gap-2\.5 > span:first-child {
+  background: rgba(248, 251, 252, 0.88) !important;
+  border-color: rgba(49, 93, 117, 0.25) !important;
+  color: #1b5c7f !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: rgba(224, 247, 232, 0.88) !important;
+  border-color: #75bd95 !important;
+  color: #176f4b !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: rgba(255, 244, 208, 0.88) !important;
+  border-color: #d4b04c !important;
+  color: #8c6200 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: rgba(252, 226, 231, 0.90) !important;
+  border-color: #cf7d8c !important;
+  color: #96384b !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .flex.flex-wrap.items-center.gap-2\.5 > span:last-child {
+  background: rgba(229, 240, 247, 0.90) !important;
+  border-color: #91afc0 !important;
+  color: #2f6484 !important;
+}
+
+/* ========================================================================== */
+/* Government mode v15 — dedicated BHW semantic hero surface                 */
+/* ========================================================================== */
+/*
+ * Important: Government mode has several shared hero-normalization rules that
+ * intentionally flatten page heroes to a blue-gray surface. Rather than
+ * fighting those rules with another section background declaration, the BHW
+ * workspace now renders its own child surface underneath the content. This
+ * layer is independent of the shared hero background and therefore always
+ * reflects the selected barangay risk.
+ */
+html.dengue-government .bhw-premium-hero > .bhw-government-risk-surface {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  border-radius: inherit !important;
+  pointer-events: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #b7dec5 0%, #c9e7d3 50%, #dff1e5 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #efd17d 0%, #f4dfa3 50%, #faedc8 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #e8acb7 0%, #efc0c8 50%, #f7d9de 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #bad3e2 0%, #ccdfeb 50%, #e0edf4 100%) !important;
+}
+
+/* Keep the semantic panel boundary visible even if an earlier shared rule
+   rewrites the general hero border. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] {
+  border: 1px solid #78b58f !important;
+  border-top: 5px solid #168d5c !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] {
+  border: 1px solid #cba744 !important;
+  border-top: 5px solid #c88706 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] {
+  border: 1px solid #c47382 !important;
+  border-top: 5px solid #b73449 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] {
+  border: 1px solid #84a8bc !important;
+  border-top: 5px solid #2b638b !important;
+}
+
+/* Content remains above the dedicated semantic surface. */
+html.dengue-government .bhw-premium-hero > .bhw-hero-layout {
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+/* Clean Government-style cards on top of the colored hero. */
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div {
+  background: rgba(248, 251, 252, 0.88) !important;
+  background-image: none !important;
+  border-color: rgba(43, 78, 99, 0.24) !important;
+  color: #173247 !important;
+  box-shadow: 0 7px 18px rgba(28, 52, 73, 0.07) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-risk-wrap > div {
+  background: rgba(211, 238, 221, 0.94) !important;
+  border-color: #80b99a !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-risk-wrap > div {
+  background: rgba(248, 229, 170, 0.95) !important;
+  border-color: #c7a74c !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap > div {
+  background: rgba(244, 213, 219, 0.95) !important;
+  border-color: #c9808d !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-risk-wrap > div {
+  background: rgba(216, 231, 240, 0.95) !important;
+  border-color: #8eacbd !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-title,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics p:nth-child(2),
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-risk-wrap h2 {
+  color: #12344b !important;
+  text-shadow: none !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk] .dengue-hero-copy {
+  color: #294b60 !important;
+}
+
+/* ========================================================================== */
+/* Government mode v16 — slightly stronger BHW semantic hero colors          */
+/* ========================================================================== */
+/* User requested the same BHW risk-colored hero, but just a little stronger. */
+html.dengue-government .bhw-premium-hero[data-risk="low"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #a9d7b8 0%, #bce0c7 50%, #d4eadc 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #e7c765 0%, #efd78e 50%, #f7e7b8 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #dfa0ad 0%, #e8b5be 50%, #f3d3d9 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] > .bhw-government-risk-surface {
+  background: linear-gradient(135deg, #a9c8da 0%, #bdd5e3 50%, #d7e7ef 100%) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] {
+  border: 1px solid #6ea987 !important;
+  border-top: 5px solid #147f53 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] {
+  border: 1px solid #c29d39 !important;
+  border-top: 5px solid #bc7f03 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] {
+  border: 1px solid #bc6b7b !important;
+  border-top: 5px solid #ac3247 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] {
+  border: 1px solid #7a9fb5 !important;
+  border-top: 5px solid #275e83 !important;
+}
+
+/* Let a touch more of the hero color show through the selector and summary cards. */
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-selector-shell,
+html.dengue-government .bhw-premium-hero[data-risk] .bhw-hero-metrics > div {
+  background: rgba(248, 251, 252, 0.82) !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="low"] .bhw-hero-risk-wrap > div {
+  background: rgba(201, 232, 212, 0.96) !important;
+  border-color: #73af8d !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="moderate"] .bhw-hero-risk-wrap > div {
+  background: rgba(243, 221, 149, 0.96) !important;
+  border-color: #bd9c41 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap > div {
+  background: rgba(239, 202, 210, 0.96) !important;
+  border-color: #be7483 !important;
+}
+
+html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-risk-wrap > div {
+  background: rgba(206, 224, 235, 0.96) !important;
+  border-color: #82a4b7 !important;
 }

@@ -4398,14 +4398,14 @@ export default function MapPage() {
             padding: 0.6rem !important;
           }
 
-          .map-mobile-compact #hotspot-map .flex.flex-wrap.gap-2 {
+          .map-mobile-compact #hotspot-map .map-workspace-controls > .flex.flex-wrap.gap-2 {
             display: grid !important;
             grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
             gap: 0.35rem !important;
           }
 
-          .map-mobile-compact #hotspot-map .flex.flex-wrap.gap-2 > div,
-          .map-mobile-compact #hotspot-map .flex.flex-wrap.gap-2 > span {
+          .map-mobile-compact #hotspot-map .map-workspace-controls > .flex.flex-wrap.gap-2 > div,
+          .map-mobile-compact #hotspot-map .map-workspace-controls > .flex.flex-wrap.gap-2 > span {
             width: 100% !important;
             max-width: 100% !important;
             padding: 0.34rem 0.45rem !important;
@@ -4415,8 +4415,11 @@ export default function MapPage() {
             white-space: normal !important;
           }
 
-          .map-mobile-compact #hotspot-map .flex.flex-wrap.items-center.gap-2 {
+          .map-mobile-compact #hotspot-map .map-control-stack {
+            width: 100% !important;
+            display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.35rem !important;
           }
 
           .map-mobile-compact #hotspot-map .map-layer-toggle,
@@ -4452,8 +4455,8 @@ export default function MapPage() {
             height: 0.72rem !important;
           }
 
-          .map-mobile-compact #hotspot-map button.group.inline-flex,
-          .map-mobile-compact #hotspot-map button.inline-flex.items-center.gap-2 {
+          .map-mobile-compact #hotspot-map .map-hotspot-button {
+            grid-column: 1 / -1 !important;
             width: 100% !important;
             min-height: 38px !important;
             justify-content: center !important;
@@ -4463,12 +4466,7 @@ export default function MapPage() {
             letter-spacing: 0.06em !important;
           }
 
-          .map-mobile-compact #hotspot-map button.group.inline-flex .h-9.w-9 {
-            display: none !important;
-          }
-
-          .map-mobile-compact #hotspot-map button.group.inline-flex svg,
-          .map-mobile-compact #hotspot-map button.inline-flex.items-center.gap-2 svg {
+          .map-mobile-compact #hotspot-map .map-hotspot-button svg {
             width: 0.8rem !important;
             height: 0.8rem !important;
           }
@@ -4959,8 +4957,7 @@ export default function MapPage() {
             width: 100% !important;
           }
 
-          .map-mobile-compact #hotspot-map button.group.inline-flex,
-          .map-mobile-compact #hotspot-map button.inline-flex.items-center.gap-2 {
+          .map-mobile-compact #hotspot-map .map-hotspot-button {
             width: 100% !important;
             min-height: 46px !important;
             justify-content: center !important;
@@ -4968,12 +4965,6 @@ export default function MapPage() {
             border-radius: 13px !important;
             font-size: 0.8125rem !important;
             line-height: 1.15 !important;
-          }
-
-          .map-mobile-compact #hotspot-map button.group.inline-flex .h-9.w-9 {
-            display: flex !important;
-            width: 2rem !important;
-            height: 2rem !important;
           }
 
           /* Map canvas: compact still large enough to interact with,
@@ -5420,7 +5411,97 @@ export default function MapPage() {
           }
         }
 
+        /* Leaflet overlay isolation. These selectors are deliberately more
+           specific than the page-wide mobile helpers so the floating map UI
+           keeps its own dimensions. */
+        @media (max-width: 639px) {
+          .map-mobile-compact #hotspot-map .risk-map-root .risk-map-boundary-card {
+            left: 8px !important;
+            top: 8px !important;
+            width: 154px !important;
+            max-width: 154px !important;
+            padding: 8px 9px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root .risk-map-top-actions {
+            right: 8px !important;
+            top: 8px !important;
+            width: auto !important;
+            max-width: 116px !important;
+            display: flex !important;
+            grid-template-columns: none !important;
+            gap: 5px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root button.risk-map-view-button.group.inline-flex {
+            width: 42px !important;
+            min-width: 42px !important;
+            max-width: 42px !important;
+            min-height: 42px !important;
+            padding: 5px !important;
+            justify-content: center !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root button.risk-map-view-button.group.inline-flex > span:first-child {
+            display: flex !important;
+            width: 30px !important;
+            height: 30px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root button.risk-map-view-button.group.inline-flex > span:nth-child(2) {
+            display: none !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root .risk-map-basemap-card {
+            width: 68px !important;
+            min-width: 68px !important;
+            max-width: 68px !important;
+            min-height: 42px !important;
+            padding: 7px 8px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root .risk-map-legend {
+            right: 7px !important;
+            bottom: 22px !important;
+            left: 7px !important;
+            width: auto !important;
+            max-width: none !important;
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            flex-wrap: initial !important;
+            gap: 4px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root .risk-map-legend > div {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            padding: 5px 4px !important;
+            font-size: 8px !important;
+            line-height: 1.05 !important;
+            text-align: center !important;
+            white-space: normal !important;
+          }
+
+          /* Keep the native Leaflet +/- zoom control beside the Boundary Layer
+             card on phones. This must stay here because these page-level
+             selectors are more specific than the component-level map CSS. */
+          .map-mobile-compact #hotspot-map .risk-map-root .leaflet-top.leaflet-left {
+            top: 8px !important;
+            left: 170px !important;
+          }
+
+          .map-mobile-compact #hotspot-map .risk-map-root .leaflet-top.leaflet-left .leaflet-control {
+            margin: 0 !important;
+          }
+        }
+
         @media (max-width: 374px) {
+          .map-mobile-compact #hotspot-map .risk-map-root .leaflet-top.leaflet-left {
+            top: 8px !important;
+            left: 158px !important;
+          }
+
           .map-mobile-compact #hotspot-map .map-control-stack > .map-style-toggle {
             grid-template-columns: minmax(0, 1fr) !important;
           }

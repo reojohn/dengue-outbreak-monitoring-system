@@ -76,11 +76,6 @@ const tileLayers = {
     name: 'Satellite',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri',
-    // TileLayer receives a `subdomains` prop for every basemap. Leaving it
-    // undefined overrides Leaflet's default and can crash while resolving
-    // satellite tile URLs, which blanks the React page when Satellite is chosen.
-    // The Esri URL does not use {s}, so this value is harmless but keeps
-    // Leaflet's TileLayer options valid.
     subdomains: 'abc',
     maxZoom: 18,
   },
@@ -1332,7 +1327,7 @@ export default function LeafletRiskMap({
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-[22px] bg-slate-950">
+    <div className="risk-map-root relative h-full w-full overflow-hidden rounded-[22px] bg-slate-950">
       <MapContainer
         center={BUTUAN_CENTER}
         zoom={11}
@@ -1448,7 +1443,7 @@ export default function LeafletRiskMap({
           })}
       </MapContainer>
 
-      <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-[18px] border border-white/10 bg-slate-950/80 px-4 py-3 text-white shadow-xl backdrop-blur">
+      <div className="risk-map-boundary-card pointer-events-none absolute left-4 top-4 z-[500] w-[240px] rounded-[18px] border border-white/10 bg-slate-950/80 px-4 py-3 text-white shadow-xl backdrop-blur">
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
           Boundary Layer
         </p>
@@ -1468,12 +1463,12 @@ export default function LeafletRiskMap({
         </p>
       </div>
 
-      <div className="absolute right-4 top-4 z-[500] flex max-w-[calc(100%-2rem)] items-start gap-2">
+      <div className="risk-map-top-actions absolute right-4 top-4 z-[500] flex max-w-[calc(100%-2rem)] items-start gap-2">
         {typeof onToggleExpanded === 'function' && (
           <button
             type="button"
             onClick={onToggleExpanded}
-            className="group pointer-events-auto inline-flex min-h-[58px] items-center gap-2 rounded-[18px] border border-cyan-300/20 bg-slate-950/85 px-3.5 py-2.5 text-white shadow-xl backdrop-blur transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+            className="risk-map-view-button group pointer-events-auto inline-flex min-h-[58px] items-center gap-2 rounded-[18px] border border-cyan-300/20 bg-slate-950/85 px-3.5 py-2.5 text-white shadow-xl backdrop-blur transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
             aria-label={isExpanded ? 'Compact map' : 'Expand map'}
             title={isExpanded ? 'Compact map' : 'Expand map'}
           >
@@ -1487,7 +1482,7 @@ export default function LeafletRiskMap({
           </button>
         )}
 
-        <div className="pointer-events-none min-h-[58px] rounded-[18px] border border-white/10 bg-slate-950/80 px-4 py-3 text-white shadow-xl backdrop-blur">
+        <div className="risk-map-basemap-card pointer-events-none min-h-[58px] rounded-[18px] border border-white/10 bg-slate-950/80 px-4 py-3 text-white shadow-xl backdrop-blur">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
             Base Map
           </p>
@@ -1498,7 +1493,7 @@ export default function LeafletRiskMap({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
+      <div className="risk-map-legend pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] flex-wrap gap-2">
         {Object.entries(layerMode === 'hotspot' ? hotspotTheme : forecastRiskTheme)
           .filter(([key]) => key !== 'None')
           .map(([key, theme]) => (
@@ -1524,6 +1519,16 @@ export default function LeafletRiskMap({
         .leaflet-container {
           background: #020617;
           font-family: inherit;
+        }
+
+        /* Keep Leaflet's +/- group beside the Boundary Layer card. */
+        .risk-map-root .leaflet-top.leaflet-left {
+          top: 16px !important;
+          left: 268px !important;
+        }
+
+        .risk-map-root .leaflet-top.leaflet-left .leaflet-control {
+          margin: 0 !important;
         }
 
         .leaflet-control-zoom {
@@ -1649,6 +1654,196 @@ export default function LeafletRiskMap({
 
         .barangay-detail-popup .leaflet-popup-content {
           margin: 0 !important;
+        }
+
+        /* Phone map overlays are intentionally compact and isolated from the
+           MapPage's broader mobile button/grid rules. */
+        @media (max-width: 639px) {
+          .risk-map-boundary-card {
+            left: 8px !important;
+            top: 8px !important;
+            width: 154px !important;
+            max-width: 154px !important;
+            border-radius: 14px !important;
+            padding: 8px 9px !important;
+          }
+
+          .risk-map-boundary-card p:first-child {
+            font-size: 8px !important;
+            line-height: 1.1 !important;
+            letter-spacing: 0.12em !important;
+          }
+
+          .risk-map-boundary-card p:nth-child(2) {
+            margin-top: 4px !important;
+            font-size: 10px !important;
+            line-height: 1.15 !important;
+          }
+
+          .risk-map-boundary-card p:nth-child(3) {
+            margin-top: 3px !important;
+            font-size: 8px !important;
+            line-height: 1.2 !important;
+          }
+
+          .risk-map-top-actions {
+            right: 8px !important;
+            top: 8px !important;
+            width: 76px !important;
+            max-width: 76px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 5px !important;
+          }
+
+          .risk-map-basemap-card {
+            order: 1 !important;
+            width: 76px !important;
+            min-width: 76px !important;
+            max-width: 76px !important;
+            min-height: 48px !important;
+            border-radius: 13px !important;
+            padding: 7px 8px !important;
+          }
+
+          .risk-map-view-button {
+            order: 2 !important;
+            width: 76px !important;
+            min-width: 76px !important;
+            max-width: 76px !important;
+            min-height: 38px !important;
+            justify-content: flex-start !important;
+            gap: 5px !important;
+            padding: 4px 6px !important;
+            border-radius: 12px !important;
+          }
+
+          .risk-map-view-button > span:first-child {
+            display: flex !important;
+            width: 26px !important;
+            height: 26px !important;
+            border-radius: 8px !important;
+          }
+
+          .risk-map-view-button > span:first-child svg {
+            width: 13px !important;
+            height: 13px !important;
+          }
+
+          .risk-map-view-button > span:nth-child(2) {
+            display: block !important;
+            min-width: 0 !important;
+          }
+
+          .risk-map-view-button > span:nth-child(2) > span:first-child {
+            display: none !important;
+          }
+
+          .risk-map-view-button > span:nth-child(2) > span:last-child {
+            margin-top: 0 !important;
+            white-space: normal !important;
+            font-size: 7px !important;
+            line-height: 1.05 !important;
+          }
+
+          .risk-map-basemap-card p:first-child {
+            font-size: 7px !important;
+            line-height: 1.05 !important;
+            letter-spacing: 0.1em !important;
+          }
+
+          .risk-map-basemap-card p:last-child {
+            margin-top: 4px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            font-size: 9px !important;
+            line-height: 1.1 !important;
+          }
+
+          .risk-map-root .leaflet-top.leaflet-left {
+            top: 8px !important;
+            left: 170px !important;
+          }
+
+          .risk-map-root .leaflet-top.leaflet-left .leaflet-control {
+            margin: 0 !important;
+          }
+
+          .leaflet-control-zoom {
+            border-radius: 11px !important;
+          }
+
+          .leaflet-control-zoom a {
+            width: 29px !important;
+            height: 29px !important;
+            line-height: 29px !important;
+            font-size: 16px !important;
+          }
+
+          .risk-map-legend {
+            right: 7px !important;
+            bottom: 22px !important;
+            left: 7px !important;
+            width: auto !important;
+            max-width: none !important;
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 4px !important;
+          }
+
+          .risk-map-legend > div {
+            min-width: 0 !important;
+            width: 100% !important;
+            padding: 5px 4px !important;
+            font-size: 8px !important;
+            line-height: 1.05 !important;
+            text-align: center !important;
+            white-space: normal !important;
+          }
+
+          .risk-map-legend > div span {
+            width: 7px !important;
+            height: 7px !important;
+            margin-right: 4px !important;
+          }
+
+          .leaflet-control-attribution {
+            max-width: calc(100% - 12px) !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            font-size: 7px !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .risk-map-boundary-card {
+            width: 142px !important;
+            max-width: 142px !important;
+          }
+
+          .risk-map-top-actions {
+            width: 70px !important;
+            max-width: 70px !important;
+          }
+
+          .risk-map-view-button {
+            width: 70px !important;
+            min-width: 70px !important;
+            max-width: 70px !important;
+          }
+
+          .risk-map-basemap-card {
+            width: 70px !important;
+            min-width: 70px !important;
+            max-width: 70px !important;
+          }
+
+          .risk-map-root .leaflet-top.leaflet-left {
+            left: 158px !important;
+          }
         }
 
         .barangay-detail-card {

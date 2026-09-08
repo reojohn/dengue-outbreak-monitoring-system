@@ -2924,10 +2924,25 @@ export default function BHWPage() {
 
   const completedTaskCount = checklist.filter((item) => fieldUpdate.tasks?.[item.id]).length
   const taskProgress = Math.round((completedTaskCount / checklist.length) * 100)
+  const heroRiskClass = risk === 'High'
+    ? 'high'
+    : risk === 'Moderate'
+      ? 'moderate'
+      : risk === 'Low'
+        ? 'low'
+        : 'pending'
 
   return (
     <div className="bhw-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-7 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(16,185,129,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
-      <section className="bhw-premium-hero relative isolate overflow-visible rounded-[36px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]">
+      <section
+        className={`bhw-premium-hero bhw-premium-hero--${heroRiskClass} relative isolate overflow-visible rounded-[36px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]`}
+        data-risk={heroRiskClass}
+      >
+        {/* Government mode uses this dedicated semantic surface so generic
+            Government hero rules cannot flatten the BHW risk color. It stays
+            hidden in the normal Light/Dark interface. */}
+        <div className="bhw-government-risk-surface absolute inset-0 z-0 hidden overflow-hidden rounded-[inherit]" aria-hidden="true" />
+
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <div className={`absolute inset-0 bg-gradient-to-br ${tone.heroSurface}`} />
           <div className={`absolute inset-y-0 right-0 w-[58%] bg-gradient-to-l ${tone.heroBeam}`} />
@@ -2940,13 +2955,13 @@ export default function BHWPage() {
         <div className="bhw-hero-layout relative z-10 grid min-h-[520px] gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(330px,0.62fr)] lg:items-center lg:p-10 xl:min-h-[550px] xl:p-12">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur-xl">
+              <span className="bhw-command-chip inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 shadow-lg backdrop-blur-xl">
                 <Sparkles className="h-3.5 w-3.5" />
                 BHW field command center
               </span>
 
               <span
-                className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] backdrop-blur-xl ${tone.heroChip}`}
+                className={`bhw-status-chip inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] backdrop-blur-xl ${tone.heroChip}`}
               >
                 <span
                   className={`h-2 w-2 rounded-full bg-gradient-to-r ${tone.gradient} shadow-[0_0_14px_currentColor]`}
@@ -3017,7 +3032,7 @@ export default function BHWPage() {
           </div>
 
           <div className="bhw-hero-risk-wrap w-full self-end justify-self-end lg:max-w-[390px]">
-            <div className={`group/risk-card relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${tone.heroCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
+            <div className={`bhw-risk-summary-card group/risk-card relative overflow-hidden rounded-[32px] border border-white/15 bg-gradient-to-br ${tone.heroCard} p-5 text-white shadow-[0_30px_78px_rgba(2,6,23,0.52)] ring-1 ring-white/10 backdrop-blur-2xl transition duration-300 hover:-translate-y-1 hover:border-white/25 sm:p-6`}>
               <div className={`pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full ${tone.glow} blur-3xl`} />
 
               <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-start gap-5">
@@ -3037,7 +3052,7 @@ export default function BHWPage() {
                     <h2 className={`mt-2 text-3xl font-black tracking-[-0.04em] ${tone.text}`}>{risk}</h2>
                     {citywidePriorityRank && citywidePriorityTotal > 0 ? (
                       <div
-                        className="mt-4 max-w-[230px] overflow-hidden rounded-[20px] border border-cyan-300/20 bg-gradient-to-br from-cyan-300/[0.11] via-white/[0.05] to-sky-400/[0.07] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_28px_rgba(2,8,23,0.16)]"
+                        className="bhw-priority-card mt-4 max-w-[230px] overflow-hidden rounded-[20px] border border-cyan-300/20 bg-gradient-to-br from-cyan-300/[0.11] via-white/[0.05] to-sky-400/[0.07] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_28px_rgba(2,8,23,0.16)]"
                         title={`Citywide priority rank ${citywidePriorityRank} of ${citywidePriorityTotal}. Rank 1 is the highest priority.`}
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -3076,11 +3091,11 @@ export default function BHWPage() {
               </div>
 
               <div className="relative mt-5 grid grid-cols-2 gap-2.5">
-                <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
+                <div className="bhw-risk-mini-stat rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Predicted</p>
                   <p className="mt-1 text-lg font-black text-white">{formatNumber(predictedCases)} cases</p>
                 </div>
-                <div className="rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
+                <div className="bhw-risk-mini-stat rounded-[18px] border border-white/[0.15] bg-white/[0.07] p-3 shadow-inner">
                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Boundary</p>
                   <p className="mt-1 text-sm font-black leading-6 text-white">{selectedBoundaryFeature ? 'Matched' : 'Needs review'}</p>
                 </div>
@@ -3090,7 +3105,7 @@ export default function BHWPage() {
                 <div className={`h-2.5 rounded-full bg-gradient-to-r ${tone.gradient}`} style={{ width: `${scorePercent}%` }} />
               </div>
 
-              <Link to="/map" className="relative mt-5 flex w-full items-center justify-between rounded-[18px] border border-cyan-300/[0.15] bg-cyan-300/10 px-4 py-3 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.15]">
+              <Link to="/map" className="bhw-risk-map-link relative mt-5 flex w-full items-center justify-between rounded-[18px] border border-cyan-300/[0.15] bg-cyan-300/10 px-4 py-3 text-sm font-black text-cyan-50 transition hover:bg-cyan-300/[0.15]">
                 Open full hotspot map
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
