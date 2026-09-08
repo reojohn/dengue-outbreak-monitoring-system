@@ -76,6 +76,12 @@ const tileLayers = {
     name: 'Satellite',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri',
+    // TileLayer receives a `subdomains` prop for every basemap. Leaving it
+    // undefined overrides Leaflet's default and can crash while resolving
+    // satellite tile URLs, which blanks the React page when Satellite is chosen.
+    // The Esri URL does not use {s}, so this value is harmless but keeps
+    // Leaflet's TileLayer options valid.
+    subdomains: 'abc',
     maxZoom: 18,
   },
 }
