@@ -32,6 +32,7 @@ import FieldUpdateReviewPanel from '../components/FieldUpdateReviewPanel'
 import InformationTypeBadge from '../components/InformationTypeBadge'
 import { subscribeWorkflowRealtime } from '../services/api'
 import aiGif from '../assets/ai.gif'
+import supervisorHeroLightBackground from '../assets/supervisor.png'
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
@@ -3133,6 +3134,15 @@ export default function SupervisorPage() {
   return (
     <div className="supervisor-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[36px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(99,102,241,0.07),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.72),rgba(248,250,252,0))] pb-7 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_92%_8%,rgba(99,102,241,0.06),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.35),rgba(15,23,42,0))]">
       <section className="supervisor-hero-panel relative isolate overflow-hidden rounded-[38px] border border-white/10 bg-[#061321] shadow-[0_34px_94px_rgba(2,6,23,0.32)] ring-1 ring-white/10 sm:rounded-[40px]">
+        <img
+          src={supervisorHeroLightBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none rounded-[inherit] object-cover"
+          style={{ objectPosition: 'center center' }}
+        />
+
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <div className="absolute inset-0 bg-[linear-gradient(112deg,#020617_0%,#061321_48%,#0b1f34_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_24%,rgba(56,189,248,0.16),transparent_27%),radial-gradient(circle_at_94%_92%,rgba(59,130,246,0.13),transparent_28%)]" />

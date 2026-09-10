@@ -1981,7 +1981,10 @@ html.dengue-government :is(
   .forecast-premium-hero,
   .premium-map-hero,
   .premium-upload-hero,
-  .reports-hero-panel
+  .reports-hero-panel,
+  .bhw-premium-hero,
+  .supervisor-hero-panel,
+  .user-hero-panel
 ) {
   position: relative !important;
   isolation: isolate !important;
@@ -2012,7 +2015,10 @@ html.dengue-government :is(
   .forecast-premium-hero,
   .premium-map-hero,
   .premium-upload-hero,
-  .reports-hero-panel
+  .reports-hero-panel,
+  .bhw-premium-hero,
+  .supervisor-hero-panel,
+  .user-hero-panel
 ) > .relative,
 html.dengue-government .reports-hero-layout {
   position: relative;
@@ -2034,7 +2040,10 @@ html.dengue-government .reports-hero-layout {
   html.dengue-government .forecast-premium-hero > .government-hero-light-image,
   html.dengue-government .premium-map-hero > .government-hero-light-image,
   html.dengue-government .premium-upload-hero > .government-hero-light-image,
-  html.dengue-government .reports-hero-panel > .government-hero-light-image {
+  html.dengue-government .reports-hero-panel > .government-hero-light-image,
+  html.dengue-government .bhw-premium-hero > .government-hero-light-image,
+  html.dengue-government .supervisor-hero-panel > .government-hero-light-image,
+  html.dengue-government .user-hero-panel > .government-hero-light-image {
     object-position: 68% center !important;
   }
 }
@@ -2055,7 +2064,10 @@ html.dengue-government .dashboard-mobile-compact > section:first-of-type > img.g
 html.dengue-government .forecast-premium-hero > img.government-hero-light-image,
 html.dengue-government .premium-map-hero > img.government-hero-light-image,
 html.dengue-government .premium-upload-hero > img.government-hero-light-image,
-html.dengue-government .reports-hero-panel > img.government-hero-light-image {
+html.dengue-government .reports-hero-panel > img.government-hero-light-image,
+html.dengue-government .bhw-premium-hero > img.government-hero-light-image,
+html.dengue-government .supervisor-hero-panel > img.government-hero-light-image,
+html.dengue-government .user-hero-panel > img.government-hero-light-image {
   display: block !important;
   opacity: 0.40 !important;
   filter: saturate(1) contrast(1) !important;
@@ -2067,7 +2079,10 @@ html.dengue-government .reports-hero-panel > img.government-hero-light-image {
   html.dengue-government .forecast-premium-hero > img.government-hero-light-image,
   html.dengue-government .premium-map-hero > img.government-hero-light-image,
   html.dengue-government .premium-upload-hero > img.government-hero-light-image,
-  html.dengue-government .reports-hero-panel > img.government-hero-light-image {
+  html.dengue-government .reports-hero-panel > img.government-hero-light-image,
+  html.dengue-government .bhw-premium-hero > img.government-hero-light-image,
+  html.dengue-government .supervisor-hero-panel > img.government-hero-light-image,
+  html.dengue-government .user-hero-panel > img.government-hero-light-image {
     opacity: 0.34 !important;
   }
 }
@@ -2917,4 +2932,70 @@ html.dengue-government .bhw-premium-hero[data-risk="high"] .bhw-hero-risk-wrap >
 html.dengue-government .bhw-premium-hero[data-risk="pending"] .bhw-hero-risk-wrap > div {
   background: rgba(206, 224, 235, 0.96) !important;
   border-color: #82a4b7 !important;
+}
+
+
+/* ========================================================================== */
+/* Government mode v17 — Barangay Workspace hero image                        */
+/* ========================================================================== */
+/* Use src/assets/bhw.png the same way as the other hero illustrations: low
+   opacity, decorative only, and still readable under Government mode. */
+html.dengue-government .bhw-premium-hero > img.government-hero-light-image {
+  display: block !important;
+  z-index: 1 !important;
+  opacity: 0.38 !important;
+  object-position: 62% center !important;
+  filter: saturate(1) contrast(1) !important;
+  mix-blend-mode: normal !important;
+}
+
+@media (max-width: 768px) {
+  html.dengue-government .bhw-premium-hero > img.government-hero-light-image {
+    opacity: 0.33 !important;
+    object-position: 68% center !important;
+  }
+}
+
+
+/* ========================================================================== */
+/* Government mode v18 — Response Coordination hero image                     */
+/* ========================================================================== */
+/* Use src/assets/supervisor.png the same way as the other Government hero
+   illustrations: low opacity, decorative, and kept behind hero content. */
+html.dengue-government .supervisor-hero-panel > img.government-hero-light-image {
+  display: block !important;
+  z-index: 1 !important;
+  opacity: 0.38 !important;
+  object-position: 62% center !important;
+  filter: saturate(1) contrast(1) !important;
+  mix-blend-mode: normal !important;
+}
+
+@media (max-width: 768px) {
+  html.dengue-government .supervisor-hero-panel > img.government-hero-light-image {
+    opacity: 0.33 !important;
+    object-position: 68% center !important;
+  }
+}
+
+
+/* ========================================================================== */
+/* Government mode v19 — User Accounts hero image                             */
+/* ========================================================================== */
+/* Use src/assets/user.png the same way as the other Government hero
+   illustrations: low opacity, decorative, and kept behind hero content. */
+html.dengue-government .user-hero-panel > img.government-hero-light-image {
+  display: block !important;
+  z-index: 1 !important;
+  opacity: 0.38 !important;
+  object-position: 62% center !important;
+  filter: saturate(1) contrast(1) !important;
+  mix-blend-mode: normal !important;
+}
+
+@media (max-width: 768px) {
+  html.dengue-government .user-hero-panel > img.government-hero-light-image {
+    opacity: 0.33 !important;
+    object-position: 68% center !important;
+  }
 }

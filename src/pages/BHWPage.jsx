@@ -46,6 +46,7 @@ import {
   computeDecisionSupport,
   getCanonicalCombinedRiskScore,
 } from '../utils/analytics'
+import bhwHeroLightBackground from '../assets/bhw.png'
 
 function formatNumber(value) {
   return new Intl.NumberFormat('en-PH').format(Number(value || 0))
@@ -2942,6 +2943,15 @@ export default function BHWPage() {
             Government hero rules cannot flatten the BHW risk color. It stays
             hidden in the normal Light/Dark interface. */}
         <div className="bhw-government-risk-surface absolute inset-0 z-0 hidden overflow-hidden rounded-[inherit]" aria-hidden="true" />
+
+        <img
+          src={bhwHeroLightBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none rounded-[inherit] object-cover"
+          style={{ objectPosition: 'center center' }}
+        />
 
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <div className={`absolute inset-0 bg-gradient-to-br ${tone.heroSurface}`} />

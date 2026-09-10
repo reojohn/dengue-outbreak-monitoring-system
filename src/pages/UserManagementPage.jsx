@@ -37,6 +37,7 @@ import {
 } from '../services/api'
 import { getAuthSession } from '../utils/auth'
 import { UserAccountsSkeleton } from '../components/SystemSkeleton'
+import userHeroLightBackground from '../assets/user.png'
 
 let userManagementSessionCache = null
 const USER_MANAGEMENT_CACHE_TTL_MS = 60_000
@@ -826,6 +827,15 @@ export default function UserManagementPage() {
   return (
     <div className="user-mobile-compact space-y-6">
       <section className="user-hero-panel relative isolate overflow-hidden rounded-[34px] border border-white/10 bg-[#061321] text-white shadow-[0_34px_94px_rgba(2,6,23,0.30)] ring-1 ring-white/10 sm:rounded-[40px]">
+        <img
+          src={userHeroLightBackground}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          className="government-hero-light-image pointer-events-none absolute inset-0 hidden h-full w-full select-none rounded-[inherit] object-cover"
+          style={{ objectPosition: 'center center' }}
+        />
+
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_74%_22%,rgba(34,211,238,0.23),transparent_27%),radial-gradient(circle_at_92%_92%,rgba(99,102,241,0.18),transparent_28%),linear-gradient(104deg,rgba(2,6,23,0.99)_0%,rgba(4,18,33,0.96)_48%,rgba(7,34,56,0.84)_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.09),transparent_26%),radial-gradient(circle_at_82%_28%,rgba(34,211,238,0.10),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.035),transparent_42%)] opacity-90" />
