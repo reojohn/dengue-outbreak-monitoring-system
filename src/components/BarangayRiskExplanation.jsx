@@ -150,6 +150,94 @@ function FactorCard({ label, value, helper, signal, icon: Icon, tone = 'blue' })
   )
 }
 
+function getWorkspaceRiskScoringGuide(row = {}, label = '', componentValue = 0) {
+  const normalizedLabel = String(label || '').trim().toLowerCase()
+  const risk = normalizeRisk(row?.risk_level ?? row?.risk)
+  const forecast = firstNumber(row, ['forecast_next_4_periods', 'forecasted_cases', 'predictedCases', 'predicted_cases', 'forecast', 'forecastCases', 'forecast_cases', 'cases', 'totalCases', 'total_cases']) || 0
+  const trend = firstText(row, ['trendLabel', 'trend', 'trend_direction'], 'Trend unavailable')
+  const rainfall = firstNumber(row, ['averageRainfall', 'average_rainfall', 'avgRainfall', 'avg_rainfall']) || 0
+  const temperature = firstNumber(row, ['averageTemperature', 'average_temperature', 'avgTemperature', 'avg_temperature']) || 0
+  const humidity = firstNumber(row, ['averageHumidity', 'average_humidity', 'avgHumidity', 'avg_humidity']) || 0
+  const population = firstNumber(row, ['population', 'totalPopulation', 'population_count']) || 0
+  const density = firstNumber(row, ['density', 'populationDensity', 'population_density']) || 0
+
+  const guides = {
+    'risk level': {
+      current: `${risk} risk · ${formatNumber(componentValue)} pts`,
+      explanation: 'Risk level comes from the cumulative four-period forecast case total.',
+      rows: [
+        { range: '< 25 forecast cases', result: 'Low risk', points: 10, active: risk === 'Low' },
+        { range: '25–59.99 forecast cases', result: 'Moderate risk', points: 25, active: risk === 'Moderate' },
+        { range: '≥ 60 forecast cases', result: 'High risk', points: 40, active: risk === 'High' },
+      ],
+    },
+    'forecast volume': {
+      current: `${formatNumber(forecast, 2)} forecast cases · ${formatNumber(componentValue, 2)} pts`,
+      explanation: 'Forecast volume adds forecast cases ÷ 8, capped at 15 points.',
+      rows: [
+        { range: 'Forecast cases ÷ 8', result: 'Gradual score', points: '0–15', active: forecast < 120 },
+        { range: '≥ 120 forecast cases', result: 'Maximum contribution', points: 15, active: forecast >= 120 },
+      ],
+    },
+    'recent trend': {
+      current: `${trend} · ${formatNumber(componentValue)} pts`,
+      explanation: 'The recent case direction determines the trend contribution.',
+      rows: [
+        { range: 'Decreasing', result: 'Recent trend', points: 1, active: String(trend).toLowerCase().includes('decreasing') },
+        { range: 'Stable', result: 'Recent trend', points: 5, active: String(trend).toLowerCase().includes('stable') },
+        { range: 'Increasing', result: 'Recent trend', points: 10, active: String(trend).toLowerCase().includes('increasing') },
+      ],
+    },
+    rainfall: {
+      current: rainfall > 0 ? `${formatDecimal(rainfall)} mm average · ${formatNumber(componentValue)} pts` : 'Rainfall data unavailable',
+      explanation: 'The shared forecast-period average rainfall is matched to these scoring bands.',
+      rows: [
+        { range: '< 20 mm', result: 'Low rainfall pressure', points: 3, active: rainfall > 0 && rainfall < 20 },
+        { range: '20–79.99 mm', result: 'Moderate rainfall pressure', points: 7, active: rainfall >= 20 && rainfall < 80 },
+        { range: '≥ 80 mm', result: 'High rainfall pressure', points: 10, active: rainfall >= 80 },
+      ],
+    },
+    temperature: {
+      current: temperature > 0 ? `${formatDecimal(temperature)} °C · ${formatNumber(componentValue)} pts` : 'Temperature data unavailable',
+      explanation: 'The shared forecast-period average temperature is matched to these suitability bands.',
+      rows: [
+        { range: '< 20°C or > 35°C', result: 'Less suitable', points: 2, active: temperature > 0 && (temperature < 20 || temperature > 35) },
+        { range: '20–<24°C or >32–35°C', result: 'Partly suitable', points: 6, active: temperature >= 20 && (temperature < 24 || (temperature > 32 && temperature <= 35)) },
+        { range: '24–32°C', result: 'Suitable for mosquito activity', points: 10, active: temperature >= 24 && temperature <= 32 },
+      ],
+    },
+    humidity: {
+      current: humidity > 0 ? `${formatDecimal(humidity)}% · ${formatNumber(componentValue)} pts` : 'Humidity data unavailable',
+      explanation: 'The shared forecast-period average humidity is matched to these scoring bands.',
+      rows: [
+        { range: '< 60%', result: 'Low suitability', points: 3, active: humidity > 0 && humidity < 60 },
+        { range: '60–79.99%', result: 'Moderate suitability', points: 7, active: humidity >= 60 && humidity < 80 },
+        { range: '≥ 80%', result: 'High suitability', points: 10, active: humidity >= 80 },
+      ],
+    },
+    population: {
+      current: population > 0 ? `${formatNumber(population)} people · ${formatNumber(componentValue)} pts` : 'Population data unavailable',
+      explanation: 'Barangay population is matched to these exposure bands.',
+      rows: [
+        { range: '< 8,000 people', result: 'Lower exposure', points: 2, active: population > 0 && population < 8000 },
+        { range: '8,000–14,999 people', result: 'Moderate exposure', points: 5, active: population >= 8000 && population < 15000 },
+        { range: '≥ 15,000 people', result: 'High exposure', points: 8, active: population >= 15000 },
+      ],
+    },
+    crowding: {
+      current: density > 0 ? `${formatNumber(density)} people/km² · ${formatNumber(componentValue)} pts` : 'Density data unavailable',
+      explanation: 'Population density is used as the crowding measure.',
+      rows: [
+        { range: '< 500 people/km²', result: 'Lower density', points: 1, active: density > 0 && density < 500 },
+        { range: '500–1,499 people/km²', result: 'Moderate density', points: 3, active: density >= 500 && density < 1500 },
+        { range: '1,500–4,999 people/km²', result: 'Dense barangay', points: 5, active: density >= 1500 && density < 5000 },
+        { range: '≥ 5,000 people/km²', result: 'Very dense barangay', points: 7, active: density >= 5000 },
+      ],
+    },
+  }
+  return guides[normalizedLabel] || null
+}
+
 export default function BarangayRiskExplanation({
   row,
   barangayName,
@@ -157,9 +245,23 @@ export default function BarangayRiskExplanation({
   priorityTotal,
 }) {
   const [open, setOpen] = useState(false)
+  const [riskGuideOpen, setRiskGuideOpen] = useState(true)
+  const [expandedScoreFactor, setExpandedScoreFactor] = useState('')
   const risk = normalizeRisk(row?.risk_level ?? row?.risk)
   const score = Math.round(Number(getCanonicalCombinedRiskScore(row) || 0))
   const rankAvailable = Number(priorityRank) > 0 && Number(priorityTotal) > 0
+  const forecastCases = firstNumber(row, [
+    'forecast_next_4_periods',
+    'forecasted_cases',
+    'predictedCases',
+    'predicted_cases',
+    'forecast',
+    'forecastCases',
+    'forecast_cases',
+    'cases',
+    'totalCases',
+    'total_cases',
+  ])
 
   const averageRainfall = firstNumber(row, ['averageRainfall', 'average_rainfall', 'avgRainfall', 'avg_rainfall'])
   const averageTemperature = firstNumber(row, ['averageTemperature', 'average_temperature', 'avgTemperature', 'avg_temperature'])
@@ -211,6 +313,71 @@ export default function BarangayRiskExplanation({
 
       {open && (
         <div className="border-t border-slate-200/80 p-5 dark:border-white/10 sm:p-6">
+          <div className="mb-5 overflow-hidden rounded-[24px] border border-emerald-200/80 bg-emerald-50/55 dark:border-emerald-400/20 dark:bg-emerald-500/[0.07]">
+            <button
+              type="button"
+              onClick={() => setRiskGuideOpen((current) => !current)}
+              className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left"
+              aria-expanded={riskGuideOpen}
+            >
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+                  How risk levels are classified
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Based on the cumulative four-period forecast case total.
+                </p>
+              </div>
+              {riskGuideOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" /> : <ChevronDown className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" />}
+            </button>
+
+            {riskGuideOpen && (
+              <div className="border-t border-emerald-200/70 px-4 py-4 dark:border-emerald-400/15">
+                <div className="mb-3 rounded-[16px] border border-white/80 bg-white/80 px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-950/55 dark:text-slate-300">
+                  Current cumulative forecast:{' '}
+                  <span className="font-black text-slate-950 dark:text-white">
+                    {forecastCases !== null ? `${formatNumber(forecastCases, 2)} cases` : 'No forecast value'}
+                  </span>
+                  {risk !== 'Pending' && (
+                    <> · <span className="font-black text-emerald-700 dark:text-emerald-300">{risk} Risk</span></>
+                  )}
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    { label: '< 25 forecast cases', risk: 'Low', points: 'Low Risk' },
+                    { label: '25–59.99 forecast cases', risk: 'Moderate', points: 'Moderate Risk' },
+                    { label: '≥ 60 forecast cases', risk: 'High', points: 'High Risk' },
+                  ].map((item) => {
+                    const current = risk === item.risk
+                    return (
+                      <div
+                        key={item.risk}
+                        className={`rounded-[16px] border px-3 py-3 ${
+                          current
+                            ? 'border-emerald-300 bg-emerald-100/80 shadow-sm dark:border-emerald-400/35 dark:bg-emerald-500/15'
+                            : 'border-slate-200 bg-white/80 dark:border-white/10 dark:bg-slate-950/50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-black text-slate-800 dark:text-slate-100">{item.label}</p>
+                            <p className="mt-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">{item.points}</p>
+                          </div>
+                          {current && (
+                            <span className="rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-white">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
@@ -268,19 +435,66 @@ export default function BarangayRiskExplanation({
                 {components.map(([label, value]) => {
                   const numeric = Number(value || 0)
                   const width = Math.min(Math.max(numeric, 0), 40) * 2.5
+                  const guide = getWorkspaceRiskScoringGuide(row, label, numeric)
+                  const isExpanded = expandedScoreFactor === label
 
                   return (
-                    <div key={label} className="rounded-[18px] border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-white/10 dark:bg-slate-950/65">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">{label}</span>
-                        <span className="text-sm font-black text-slate-900 dark:text-white">{formatNumber(numeric, 2)}</span>
-                      </div>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-sky-600 to-cyan-400"
-                          style={{ width: `${width}%` }}
-                        />
-                      </div>
+                    <div
+                      key={label}
+                      className={`overflow-hidden rounded-[18px] border bg-white shadow-sm transition dark:bg-slate-950/65 ${
+                        isExpanded
+                          ? 'border-sky-300 ring-2 ring-sky-100 dark:border-sky-500/50 dark:ring-sky-500/10'
+                          : 'border-slate-200 dark:border-white/10'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setExpandedScoreFactor((current) => current === label ? '' : label)}
+                        className="w-full px-3 py-3 text-left"
+                        aria-expanded={isExpanded}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">{label}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-sm font-black text-slate-900 dark:text-white">{formatNumber(numeric, 2)}</span>
+                            {isExpanded
+                              ? <ChevronUp className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+                              : <ChevronDown className="h-4 w-4 text-slate-500 dark:text-slate-400" />}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                          <div className="h-full rounded-full bg-gradient-to-r from-sky-600 to-cyan-400" style={{ width: `${width}%` }} />
+                        </div>
+                      </button>
+
+                      {isExpanded && guide && (
+                        <div className="border-t border-slate-100 bg-slate-50/80 px-3 pb-3 pt-3 dark:border-slate-800 dark:bg-slate-900/60">
+                          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300">How this score was calculated</p>
+                          <p className="mt-1 text-xs font-bold leading-5 text-slate-900 dark:text-slate-200">Current: {guide.current}</p>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">{guide.explanation}</p>
+                          <div className="mt-3 space-y-1.5">
+                            {guide.rows.map((threshold, index) => (
+                              <div
+                                key={`${label}-${index}`}
+                                className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border px-2.5 py-2 ${
+                                  threshold.active
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+                                    : 'border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-black">{threshold.range}</p>
+                                  <p className="mt-0.5 text-[10px] leading-4 opacity-80">{threshold.result}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-right text-[11px] font-black">
+                                  {typeof threshold.points === 'string' ? threshold.points : formatNumber(threshold.points)} pts
+                                  {threshold.active && <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.08em] text-white">Current</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
