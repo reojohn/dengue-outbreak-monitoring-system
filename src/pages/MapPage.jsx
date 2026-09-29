@@ -3297,7 +3297,7 @@ export default function MapPage() {
                   </>
                 ) : (
                   <>
-                    <div className="map-mobile-field-grid-3 mt-4 grid gap-3 sm:grid-cols-3">
+                                        <div className="map-mobile-field-grid-3 mt-4 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
                           Hotspot score
@@ -3879,7 +3879,37 @@ export default function MapPage() {
             </button>
 
             {legendOpen && (
-              <div className={`map-mobile-legend-grid grid gap-3 border-t border-slate-100 px-4 py-4 dark:border-slate-800 ${showingHotspotLayer ? 'sm:grid-cols-2 xl:grid-cols-5' : 'sm:grid-cols-3'}`}>
+              <>
+                {showingHotspotLayer && (
+                  <div className="border-t border-slate-100 px-4 pt-4 dark:border-slate-800">
+                    <details className="group overflow-hidden rounded-[22px] border border-violet-100 bg-violet-50/70 shadow-sm dark:border-violet-500/20 dark:bg-violet-500/10">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">How hotspot levels are classified</p>
+                          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">Hotspot score = 60% barangay risk + 25% spatial influence + 15% spatial concentration.</p>
+                        </div>
+                        <ChevronDown className="h-5 w-5 shrink-0 text-violet-600 transition-transform group-open:rotate-180 dark:text-violet-300" />
+                      </summary>
+                      <div className="grid gap-2 border-t border-violet-100 px-4 py-4 dark:border-violet-500/20 sm:grid-cols-2 xl:grid-cols-4">
+                        {[
+                          { label: 'Low Spatial Concern', range: '< 45' },
+                          { label: 'Watch Area', range: '45–59.99' },
+                          { label: 'Emerging Hotspot', range: '60–74.99' },
+                          { label: 'Confirmed Hotspot', range: '≥ 75' },
+                        ].map((threshold) => (
+                          <div key={threshold.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                            <p className="text-sm font-black text-brand-text dark:text-slate-100">{threshold.range}</p>
+                            <p className="mt-1 text-xs font-black text-violet-700 dark:text-violet-300">{threshold.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="border-t border-violet-100 px-4 py-3 text-[11px] leading-5 text-brand-muted dark:border-violet-500/20 dark:text-slate-400">
+                        Needs Map Review is not a numeric hotspot level. It appears when the barangay cannot be reliably matched to the uploaded map boundary.
+                      </p>
+                    </details>
+                  </div>
+                )}
+                <div className={`map-mobile-legend-grid grid gap-3 ${showingHotspotLayer ? '' : 'border-t'} border-slate-100 px-4 py-4 dark:border-slate-800 ${showingHotspotLayer ? 'sm:grid-cols-2 xl:grid-cols-5' : 'sm:grid-cols-3'}`}>
                 {activeLegendItems.map((item) => {
                   const Icon = item.icon
 
@@ -3910,6 +3940,7 @@ export default function MapPage() {
                   )
                 })}
               </div>
+              </>
             )}
           </div>
 
