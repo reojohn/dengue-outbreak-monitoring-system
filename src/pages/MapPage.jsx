@@ -3885,23 +3885,44 @@ export default function MapPage() {
                     <details className="group overflow-hidden rounded-[22px] border border-violet-100 bg-violet-50/70 shadow-sm dark:border-violet-500/20 dark:bg-violet-500/10">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left">
                         <div>
-                          <p className="text-xs font-black uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">How hotspot levels are classified</p>
-                          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">Hotspot score = 60% barangay risk + 25% spatial influence + 15% spatial concentration.</p>
+                          <p className="text-xs font-black uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">How the hotspot score and level are calculated</p>
+                          <p className="mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">Open to review the three weighted score components and the thresholds used to assign a hotspot level.</p>
                         </div>
                         <ChevronDown className="h-5 w-5 shrink-0 text-violet-600 transition-transform group-open:rotate-180 dark:text-violet-300" />
                       </summary>
-                      <div className="grid gap-2 border-t border-violet-100 px-4 py-4 dark:border-violet-500/20 sm:grid-cols-2 xl:grid-cols-4">
-                        {[
-                          { label: 'Low Spatial Concern', range: '< 45' },
-                          { label: 'Watch Area', range: '45–59.99' },
-                          { label: 'Emerging Hotspot', range: '60–74.99' },
-                          { label: 'Confirmed Hotspot', range: '≥ 75' },
-                        ].map((threshold) => (
-                          <div key={threshold.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                            <p className="text-sm font-black text-brand-text dark:text-slate-100">{threshold.range}</p>
-                            <p className="mt-1 text-xs font-black text-violet-700 dark:text-violet-300">{threshold.label}</p>
-                          </div>
-                        ))}
+                      <div className="border-t border-violet-100 px-4 py-4 dark:border-violet-500/20">
+                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-text dark:text-slate-100">How the hotspot score is calculated</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          {[
+                            { weight: '60%', label: 'Local / Barangay Risk', note: "The selected barangay's own dengue risk contributes the largest share of the hotspot score." },
+                            { weight: '25%', label: 'Nearby Barangay Influence', note: 'Risk from nearby barangays contributes to the spatial hotspot score.' },
+                            { weight: '15%', label: 'Spatial Concentration', note: 'Measures how concentrated dengue risk is around the selected barangay.' },
+                          ].map((component) => (
+                            <div key={component.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                              <p className="text-lg font-black text-violet-700 dark:text-violet-300">{component.weight}</p>
+                              <p className="mt-1 text-xs font-black text-brand-text dark:text-slate-100">{component.label}</p>
+                              <p className="mt-1 text-[11px] leading-5 text-brand-muted dark:text-slate-400">{component.note}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 rounded-[18px] border border-violet-100 bg-white/70 px-3 py-2 text-center text-xs font-black text-violet-700 dark:border-violet-500/20 dark:bg-slate-950/40 dark:text-violet-300">
+                          60% Local Risk + 25% Nearby Influence + 15% Spatial Concentration = Hotspot Score / 100
+                        </div>
+
+                        <p className="mt-5 text-[11px] font-black uppercase tracking-[0.14em] text-brand-text dark:text-slate-100">How the score becomes a hotspot level</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            { label: 'Low Spatial Concern', range: '< 45' },
+                            { label: 'Watch Area', range: '45–59.99' },
+                            { label: 'Emerging Hotspot', range: '60–74.99' },
+                            { label: 'Confirmed Hotspot', range: '≥ 75' },
+                          ].map((threshold) => (
+                            <div key={threshold.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                              <p className="text-sm font-black text-brand-text dark:text-slate-100">{threshold.range}</p>
+                              <p className="mt-1 text-xs font-black text-violet-700 dark:text-violet-300">{threshold.label}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <p className="border-t border-violet-100 px-4 py-3 text-[11px] leading-5 text-brand-muted dark:border-violet-500/20 dark:text-slate-400">
                         Needs Map Review is not a numeric hotspot level. It appears when the barangay cannot be reliably matched to the uploaded map boundary.
