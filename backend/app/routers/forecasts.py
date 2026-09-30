@@ -6,11 +6,37 @@ from app.auth_security import get_current_user
 from app.services.barangay_normalizer import normalize_barangay_key
 from app.services.database_forecasts import get_latest_forecast_result_from_database
 from app.services.database_uploads import get_latest_dataset_uploads
+from app.services.baseline_forecast import classify_forecast_risk, get_recommendation
+from app.services.risk_configuration import public_risk_configuration
 
 router = APIRouter(
     prefix="/forecast",
     tags=["forecast"],
 )
+
+
+def _apply_active_risk_thresholds(result: dict) -> dict:
+    """Reclassify saved case forecasts at read time using the active CHO/Admin cutoffs.
+
+    Forecast case values remain unchanged; only the operational Low/Moderate/High
+    label and recommendation are refreshed. This avoids rewriting forecast rows.
+    """
+    if not result or not result.get("has_saved_forecast"):
+        return result
+    updated = deepcopy(result)
+    rows = list(updated.get("forecast_results") or [])
+    counts = {"High": 0, "Moderate": 0, "Low": 0}
+    for row in rows:
+        forecast = row.get("forecast_next_4_periods") or row.get("forecast") or 0
+        risk = classify_forecast_risk(forecast)
+        row["risk_level"] = risk
+        row["risk"] = risk
+        row["recommendation"] = get_recommendation(risk, row.get("trend_direction") or row.get("trend") or "Stable")
+        counts[risk] += 1
+    updated["forecast_results"] = rows
+    updated["risk_counts"] = counts
+    updated["risk_thresholds"] = public_risk_configuration()
+    return updated
 
 
 def _scope_forecast_for_user(result: dict, current_user: dict) -> dict:
@@ -53,7 +79,7 @@ def _scope_forecast_for_user(result: dict, current_user: dict) -> dict:
 
 @router.get("/latest")
 def get_latest_saved_forecast(current_user=Depends(get_current_user)):
-    result = get_latest_forecast_result_from_database()
+    result = _apply_active_risk_thresholds(get_latest_forecast_result_from_database())
     return _scope_forecast_for_user(result, current_user)
 
 

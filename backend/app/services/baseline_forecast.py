@@ -1,5 +1,7 @@
 from fastapi import HTTPException, UploadFile
 
+from app.services.risk_configuration import classify_forecast_cases
+
 from app.services.file_inspector import (
     make_json_safe_records,
     prepare_clean_dengue_dataframe,
@@ -8,13 +10,7 @@ from app.services.file_inspector import (
 
 
 def classify_forecast_risk(forecast_next_4_periods: int):
-    if forecast_next_4_periods >= 60:
-        return "High"
-
-    if forecast_next_4_periods >= 25:
-        return "Moderate"
-
-    return "Low"
+    return classify_forecast_cases(forecast_next_4_periods)
 
 
 def get_trend_direction(recent_average: float, previous_average: float):

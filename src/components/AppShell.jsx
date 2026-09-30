@@ -22,6 +22,7 @@ import {
   X,
   UsersRound,
   Settings,
+  Settings2,
   Type,
   Eye,
   MousePointer2,
@@ -55,6 +56,7 @@ const navItems = [
   { to: '/reports', label: 'Reports', icon: FileText, group: 'Manage', roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
   { to: '/upload', label: 'Data Upload', icon: Upload, group: 'Manage', roles: ['cho', 'admin'] },
   { to: '/users', label: 'User Accounts', icon: UsersRound, group: 'Manage', roles: ['cho', 'admin'] },
+  { to: '/configuration', label: 'Configurations', icon: Settings2, group: 'Manage', roles: ['cho', 'admin'] },
 ]
 
 const navGroups = ['Monitor', 'Respond', 'Manage']
@@ -2335,6 +2337,17 @@ export default function AppShell({ children }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            {['cho', 'admin'].includes(String(session?.role || '').toLowerCase()) && (
+              <button
+                type="button"
+                onClick={() => navigate('/configuration')}
+                className={`dengue-mobile-icon-button flex h-10 w-10 items-center justify-center rounded-2xl border shadow-sm transition hover:-translate-y-0.5 ${location.pathname === '/configuration' ? 'border-cyan-300/40 bg-cyan-300/[0.15] text-cyan-100' : 'border-white/10 bg-white/[0.07] text-white/70 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100'}`}
+                aria-label="System configurations"
+                title="System configurations"
+              >
+                <Settings2 size={17} />
+              </button>
+            )}
             <div className="relative z-[370]">
               <button
                 ref={mobileSettingsButtonRef}
@@ -2670,6 +2683,23 @@ export default function AppShell({ children }) {
 
                 <div className="flex flex-wrap items-center gap-2">
                   <GovernmentAppearanceSwitch mode={theme} onChange={setTheme} compact />
+
+                  {['cho', 'admin'].includes(String(session?.role || '').toLowerCase()) && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/configuration')}
+                      className={`relative flex h-11 items-center justify-center gap-2 rounded-2xl border px-3.5 text-sm font-black shadow-sm transition hover:-translate-y-0.5 ${
+                        location.pathname === '/configuration'
+                          ? 'border-cyan-300/40 bg-cyan-300/[0.15] text-cyan-100'
+                          : 'border-white/10 bg-white/[0.07] text-white/80 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100'
+                      }`}
+                      aria-label="System configurations"
+                      title="System configurations"
+                    >
+                      <Settings2 size={18} />
+                      <span className="hidden 2xl:inline">Configurations</span>
+                    </button>
+                  )}
 
                   <div className="relative z-[310]">
                     <button

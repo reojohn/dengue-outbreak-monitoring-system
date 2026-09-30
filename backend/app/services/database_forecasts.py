@@ -5,6 +5,7 @@ from sqlalchemy import text
 
 from app.database import engine
 from app.services.barangay_normalizer import normalize_barangay_key
+from app.services.risk_configuration import public_risk_configuration, classify_forecast_cases
 
 
 def _to_json(value: Any) -> str:
@@ -986,7 +987,7 @@ def get_latest_forecast_result_from_database() -> dict:
         ),
         "forecast_strategy": validation_summary.get("forecast_strategy"),
         "model_version": forecast_run["model_version"] or "v1",
-        "risk_thresholds": "Forecast case-risk thresholds for the cumulative four-period prediction: High = 60 or more predicted cases; Moderate = 25 to 59; Low = fewer than 25. The 0-100 combined prioritization score is a separate multi-source decision-support measure.",
+        "risk_thresholds": public_risk_configuration(),
         "forecast_window": forecast_horizon_label,
         "temporal_granularity": temporal_granularity,
         "forecast_period_unit": forecast_period_unit,
@@ -1031,7 +1032,7 @@ def get_latest_forecast_risk_levels() -> list[dict]:
 
         rows = connection.execute(
             text("""
-                select barangay, barangay_key, risk_level
+                select barangay, barangay_key, risk_level, forecast_next_4_periods
                 from public.forecast_results
                 where forecast_run_id = :forecast_run_id
                 order by barangay
@@ -1043,7 +1044,7 @@ def get_latest_forecast_risk_levels() -> list[dict]:
         {
             "barangay": row["barangay"],
             "barangay_key": row["barangay_key"],
-            "risk_level": row["risk_level"],
+            "risk_level": classify_forecast_cases(row["forecast_next_4_periods"]),
         }
         for row in rows
     ]

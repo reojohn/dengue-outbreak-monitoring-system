@@ -97,8 +97,8 @@ def get_shared_boundary_geojson(
 
 @router.get("/hotspots")
 def get_geospatial_hotspots(
-    radius_km: float = Query(
-        3.0,
+    radius_km: float | None = Query(
+        None,
         ge=0.5,
         le=15,
         description="Distance radius in kilometers used to check nearby barangay influence.",

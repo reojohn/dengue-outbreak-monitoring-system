@@ -9,6 +9,7 @@ from app.database import engine, test_database_connection
 from app.routers import (
     analytics,
     auth,
+    configuration,
     decision_actions,
     field_updates,
     forecasts,
@@ -24,6 +25,7 @@ from app.routers import (
     workflow_realtime,
 )
 from app.routers.auth import ensure_auth_tables
+from app.services.risk_configuration import ensure_risk_configuration_table
 
 
 def _is_production_runtime() -> bool:
@@ -105,6 +107,7 @@ async def add_security_headers(request: Request, call_next):
 
 app.include_router(public.router)
 app.include_router(auth.router)
+app.include_router(configuration.router, dependencies=[Depends(require_roles("cho", "supervisor", "bhw", "admin", "viewer"))])
 app.include_router(analytics.router)
 app.include_router(uploads.router, dependencies=[Depends(require_roles("cho", "admin"))])
 app.include_router(integration.router, dependencies=[Depends(require_roles("cho", "admin"))])
@@ -127,6 +130,9 @@ if not IS_PRODUCTION:
 @app.on_event("startup")
 def startup_auth_setup():
     ensure_auth_tables()
+    ensure_risk_configuration_table()
+    from app.services.hotspot_configuration import ensure_hotspot_configuration_table
+    ensure_hotspot_configuration_table()
     notifications.ensure_notification_preferences_table()
     field_updates.ensure_field_updates_table()
 

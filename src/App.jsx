@@ -9,6 +9,7 @@ import ReportsPage from './pages/ReportsPage'
 import BHWPage from './pages/BHWPage'
 import SupervisorPage from './pages/SupervisorPage'
 import UserManagementPage from './pages/UserManagementPage'
+import ConfigurationPage from './pages/ConfigurationPage'
 import AppShell from './components/AppShell'
 import { canAccessRole, getAuthSession, getRoleHome } from './utils/auth'
 import { useData } from './context/DataContext'
@@ -135,6 +136,14 @@ export default function App() {
           element={
             <RoleRoute allowedRoles={['cho', 'supervisor', 'bhw', 'admin', 'viewer']}>
               <MapPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/configuration"
+          element={
+            <RoleRoute allowedRoles={['cho', 'admin']}>
+              <ConfigurationPage />
             </RoleRoute>
           }
         />

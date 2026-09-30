@@ -682,17 +682,17 @@ export async function getBarangayTrendAnalytics({
 
 
 export async function getGeospatialHotspots({
-  radiusKm = 3,
+  radiusKm = null,
   fallbackNearestCount = 3,
   forceRefresh = false,
   cachedOnly = false,
 } = {}) {
   const params = new URLSearchParams({
-    radius_km: String(radiusKm),
     fallback_nearest_count: String(fallbackNearestCount),
     force_refresh: String(Boolean(forceRefresh)),
     cached_only: String(Boolean(cachedOnly)),
   })
+  if (radiusKm !== null && radiusKm !== undefined && radiusKm !== '') params.set('radius_km', String(radiusKm))
 
   const response = await apiFetch(`${API_BASE_URL}/geospatial/hotspots?${params.toString()}`)
   return handleApiResponse(response)
@@ -1143,4 +1143,60 @@ export async function reEvaluateModel() {
   )
 
   return handleApiResponse(response)
+}
+
+export function getRiskThresholdConfiguration({ force = false } = {}) {
+  return cachedJsonGet(
+    'configuration:risk-thresholds',
+    `${API_BASE_URL}/configuration/risk-thresholds`,
+    { ttlMs: 10 * 60_000, force }
+  )
+}
+
+
+export function getHotspotConfiguration({ force = false } = {}) {
+  return cachedJsonGet(
+    'configuration:hotspot-analysis',
+    `${API_BASE_URL}/configuration/hotspot-analysis`,
+    { ttlMs: 10 * 60_000, force }
+  )
+}
+
+export async function updateHotspotConfiguration(config) {
+  const result = await apiFetch(`${API_BASE_URL}/configuration/hotspot-analysis`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  }).then(handleApiResponse)
+  clearReadResponseCache('configuration:hotspot-analysis')
+  return result
+}
+
+export async function resetHotspotConfiguration() {
+  const result = await apiFetch(`${API_BASE_URL}/configuration/hotspot-analysis/reset`, { method: 'POST' }).then(handleApiResponse)
+  clearReadResponseCache('configuration:hotspot-analysis')
+  return result
+}
+
+export async function updateRiskThresholdConfiguration({ moderateThreshold, highThreshold }) {
+  const result = await apiFetch(`${API_BASE_URL}/configuration/risk-thresholds`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      moderate_threshold: Number(moderateThreshold),
+      high_threshold: Number(highThreshold),
+    }),
+  }).then(handleApiResponse)
+  clearReadResponseCache('configuration:risk-thresholds')
+  clearReadResponseCache('forecast:')
+  return result
+}
+
+export async function resetRiskThresholdConfiguration() {
+  const result = await apiFetch(`${API_BASE_URL}/configuration/risk-thresholds/reset`, {
+    method: 'POST',
+  }).then(handleApiResponse)
+  clearReadResponseCache('configuration:risk-thresholds')
+  clearReadResponseCache('forecast:')
+  return result
 }

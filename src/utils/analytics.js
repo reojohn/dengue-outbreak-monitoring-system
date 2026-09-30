@@ -9,6 +9,16 @@ export const riskThresholds = {
   moderate: 25,
 }
 
+export function configureRiskThresholds({ moderate_threshold, high_threshold, moderate, high } = {}) {
+  const nextModerate = Number(moderate_threshold ?? moderate)
+  const nextHigh = Number(high_threshold ?? high)
+  if (Number.isFinite(nextModerate) && nextModerate >= 0 && Number.isFinite(nextHigh) && nextHigh > nextModerate) {
+    riskThresholds.moderate = nextModerate
+    riskThresholds.high = nextHigh
+  }
+  return { ...riskThresholds }
+}
+
 export const densityLevels = {
   VERY_HIGH: 'Very high density',
   HIGH: 'High density',
@@ -572,14 +582,14 @@ function getForecastPressure(forecast) {
     }
   }
 
-  if (value >= 60) {
+  if (value >= riskThresholds.high) {
     return {
       label: 'High forecast pressure',
       score: 3,
     }
   }
 
-  if (value >= 25) {
+  if (value >= riskThresholds.moderate) {
     return {
       label: 'Moderate forecast pressure',
       score: 2,

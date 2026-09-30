@@ -1518,6 +1518,11 @@ function formatThresholds(value) {
   if (typeof value === 'string') return value
 
   if (typeof value === 'object') {
+    const moderate = Number(value.moderate_threshold ?? value.moderate)
+    const high = Number(value.high_threshold ?? value.high)
+    if (Number.isFinite(moderate) && Number.isFinite(high) && high > moderate) {
+      return `Forecast case-risk thresholds (cumulative forecast cases across four future periods): High = ${high} or more; Moderate = ${moderate} to ${high - 1}; Low = fewer than ${moderate}. The 0–100 combined prioritization score is separate.`
+    }
     return Object.entries(value)
       .map(([key, item]) => `${toTitleCase(key)}: ${item}`)
       .join('; ')

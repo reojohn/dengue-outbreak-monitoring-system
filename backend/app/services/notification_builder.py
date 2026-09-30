@@ -5,6 +5,7 @@ from sqlalchemy import text
 
 from app.database import engine
 from app.services.baseline_forecast import classify_forecast_risk
+from app.services.risk_configuration import get_risk_configuration
 from app.services.notification_state import (
     clear_generated_hotspot_notifications,
     get_notification_events,
@@ -169,7 +170,7 @@ def _forecast_response_priority(row):
     )
 
     if risk == "high" and (
-        is_increasing or is_high_environment or is_dense or forecast >= 60
+        is_increasing or is_high_environment or is_dense or forecast >= get_risk_configuration()["high_threshold"]
     ):
         return 7
 
@@ -301,7 +302,7 @@ def _get_latest_forecast_from_database():
                 "trend_direction": row["trend_direction"],
                 "forecast_next_period": _safe_number(row["forecast_next_period"], 0),
                 "forecast_next_4_periods": _safe_number(row["forecast_next_4_periods"], 0),
-                "risk_level": row["risk_level"],
+                "risk_level": classify_forecast_risk(_safe_number(row["forecast_next_4_periods"], 0)),
                 "risk_score": _safe_number(row["risk_score"], 0),
                 "combined_risk_score": _safe_number(row["combined_risk_score"], 0),
                 "multi_source_risk_score": _safe_number(row["combined_risk_score"], 0),

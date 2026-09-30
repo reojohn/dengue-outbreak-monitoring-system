@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { computeDecisionSupport, computeMultiSourceRisk } from '../utils/analytics'
+import { computeDecisionSupport, computeMultiSourceRisk, configureRiskThresholds } from '../utils/analytics'
 import { getAuthSession } from '../utils/auth'
 import {
   buildBackendIntegrationDataset,
@@ -16,6 +16,7 @@ import {
   getSavedWorkspaceState,
   saveWorkspaceState,
   clearSavedWorkspaceState,
+  getRiskThresholdConfiguration,
 } from '../services/api'
 
 const DataContext = createContext(null)
@@ -1667,6 +1668,7 @@ export function DataProvider({ children }) {
   const [initialDataLoading, setInitialDataLoading] = useState(authenticatedAtMount)
   const [initialDataReady, setInitialDataReady] = useState(!authenticatedAtMount)
   const [initialDataError, setInitialDataError] = useState('')
+  const [riskConfiguration, setRiskConfiguration] = useState({ moderate_threshold: 25, high_threshold: 60, is_default: true })
 
   // Small session-only caches used by Forecast/Map/Reports/Upload. These stay
   // alive while the user navigates between routes, so reopening a page does
@@ -2680,6 +2682,18 @@ export function DataProvider({ children }) {
     if (!workspaceHydrated) return
     if (!getAuthSession()) return
 
+    // Risk thresholds are a tiny, cached configuration read. It is intentionally
+    // not realtime/polled, protecting Supabase egress. CHO/Admin saves trigger an
+    // explicit refresh; other sessions pick up changes on their next app load.
+    getRiskThresholdConfiguration()
+      .then((config) => {
+        configureRiskThresholds(config)
+        setRiskConfiguration(config)
+      })
+      .catch(() => {
+        configureRiskThresholds({ moderate_threshold: 25, high_threshold: 60 })
+      })
+
     // When the app is opened while already signed in, restore only the small
     // pieces of persisted state needed by the dashboard and workflow status.
     // Data Upload fetches its preview rows lazily when that page is opened.
@@ -2704,6 +2718,8 @@ export function DataProvider({ children }) {
     workspace.populationRecords,
     workspace.boundaryRecords,
     workspace.weatherRecords,
+    riskConfiguration.moderate_threshold,
+    riskConfiguration.high_threshold,
   ])
 
   const weeklyTotals = useMemo(() => {
@@ -2758,6 +2774,8 @@ export function DataProvider({ children }) {
     weeklyTotals,
     dashboardStats,
     integrationReadiness,
+    riskConfiguration,
+    setRiskConfiguration,
 
     // First authenticated hydration state. The route shell uses this to show
     // a page-shaped skeleton instead of temporary zero/N/A values while the

@@ -7,7 +7,7 @@ import {
   Gauge,
   Thermometer,
 } from 'lucide-react'
-import { getCanonicalCombinedRiskScore } from '../utils/analytics'
+import { getCanonicalCombinedRiskScore, riskThresholds } from '../utils/analytics'
 
 function formatNumber(value, maximumFractionDigits = 0) {
   const numeric = Number(value)
@@ -166,9 +166,9 @@ function getWorkspaceRiskScoringGuide(row = {}, label = '', componentValue = 0) 
       current: `${risk} risk · ${formatNumber(componentValue)} pts`,
       explanation: 'Risk level comes from the cumulative four-period forecast case total.',
       rows: [
-        { range: '< 25 forecast cases', result: 'Low risk', points: 10, active: risk === 'Low' },
-        { range: '25–59.99 forecast cases', result: 'Moderate risk', points: 25, active: risk === 'Moderate' },
-        { range: '≥ 60 forecast cases', result: 'High risk', points: 40, active: risk === 'High' },
+        { range: `< ${riskThresholds.moderate} forecast cases`, result: 'Low risk', points: 10, active: risk === 'Low' },
+        { range: `${riskThresholds.moderate}–${riskThresholds.high - 1} forecast cases`, result: 'Moderate risk', points: 25, active: risk === 'Moderate' },
+        { range: `≥ ${riskThresholds.high} forecast cases`, result: 'High risk', points: 40, active: risk === 'High' },
       ],
     },
     'forecast volume': {
@@ -345,9 +345,9 @@ export default function BarangayRiskExplanation({
 
                 <div className="grid gap-2 sm:grid-cols-3">
                   {[
-                    { label: '< 25 forecast cases', risk: 'Low', points: 'Low Risk' },
-                    { label: '25–59.99 forecast cases', risk: 'Moderate', points: 'Moderate Risk' },
-                    { label: '≥ 60 forecast cases', risk: 'High', points: 'High Risk' },
+                    { label: `< ${riskThresholds.moderate} forecast cases`, risk: 'Low', points: 'Low Risk' },
+                    { label: `${riskThresholds.moderate}–${riskThresholds.high - 1} forecast cases`, risk: 'Moderate', points: 'Moderate Risk' },
+                    { label: `≥ ${riskThresholds.high} forecast cases`, risk: 'High', points: 'High Risk' },
                   ].map((item) => {
                     const current = risk === item.risk
                     return (

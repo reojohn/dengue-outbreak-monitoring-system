@@ -40,6 +40,7 @@ import {
   computeRiskLevel,
   getCanonicalCombinedRiskScore,
   riskStyles,
+  riskThresholds,
 } from '../utils/analytics'
 
 import aiGif from '../assets/ai.gif'
@@ -1578,9 +1579,9 @@ function getRiskScoringGuide(row = {}, label = '', componentValue = 0) {
       current: `${risk} risk · ${formatNumber(componentValue)} pts`,
       explanation: 'Risk level comes from the cumulative four-period forecast case total.',
       rows: [
-        { range: '< 25 forecast cases', result: 'Low risk', points: 10, active: String(risk).toLowerCase() === 'low' },
-        { range: '25–59.99 forecast cases', result: 'Moderate risk', points: 25, active: String(risk).toLowerCase() === 'moderate' },
-        { range: '≥ 60 forecast cases', result: 'High risk', points: 40, active: String(risk).toLowerCase() === 'high' },
+        { range: `< ${riskThresholds.moderate} forecast cases`, result: 'Low risk', points: 10, active: String(risk).toLowerCase() === 'low' },
+        { range: `${riskThresholds.moderate}–${riskThresholds.high - 1} forecast cases`, result: 'Moderate risk', points: 25, active: String(risk).toLowerCase() === 'moderate' },
+        { range: `≥ ${riskThresholds.high} forecast cases`, result: 'High risk', points: 40, active: String(risk).toLowerCase() === 'high' },
       ],
     },
     'forecast volume': {
@@ -6298,9 +6299,9 @@ const activeModelComparison = (() => {
             </summary>
             <div className="grid gap-2 border-t border-emerald-100 px-4 py-4 dark:border-emerald-500/20 sm:grid-cols-3">
               {[
-                { label: 'Low risk', range: '< 25 forecast cases', helper: 'Routine watch' },
-                { label: 'Moderate risk', range: '25–59.99 forecast cases', helper: 'Close monitoring' },
-                { label: 'High risk', range: '≥ 60 forecast cases', helper: 'Immediate response' },
+                { label: 'Low risk', range: `< ${riskThresholds.moderate} forecast cases`, helper: 'Routine watch' },
+                { label: 'Moderate risk', range: `${riskThresholds.moderate}–${riskThresholds.high - 1} forecast cases`, helper: 'Close monitoring' },
+                { label: 'High risk', range: `≥ ${riskThresholds.high} forecast cases`, helper: 'Immediate response' },
               ].map((threshold) => (
                 <div key={threshold.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                   <p className="text-sm font-black text-brand-text dark:text-slate-100">{threshold.range}</p>

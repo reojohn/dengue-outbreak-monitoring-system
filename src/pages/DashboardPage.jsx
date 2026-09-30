@@ -39,6 +39,7 @@ import {
   computeMultiSourceRisk,
   getCanonicalCombinedRiskScore,
   riskStyles,
+  riskThresholds,
 } from '../utils/analytics'
 
 const actionRoutes = {
@@ -695,8 +696,8 @@ function getDensityLevelLabel(density) {
 function getForecastPressureLabel(forecast) {
   const value = Number(forecast || 0)
 
-  if (value >= 60) return 'High forecast pressure'
-  if (value >= 25) return 'Moderate forecast pressure'
+  if (value >= riskThresholds.high) return 'High forecast pressure'
+  if (value >= riskThresholds.moderate) return 'Moderate forecast pressure'
   if (value > 0) return 'Low forecast pressure'
 
   return 'Forecast pressure unavailable'

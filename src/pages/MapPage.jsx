@@ -2090,6 +2090,7 @@ export default function MapPage() {
   const [selected, setSelected] = useState('')
   const [focusSelectedBarangay, setFocusSelectedBarangay] = useState(false)
   const [selectedPanelOpen, setSelectedPanelOpen] = useState(false)
+  const [selectedPanelView, setSelectedPanelView] = useState('overview')
   const [selectedPanelPosition, setSelectedPanelPosition] = useState(() => getDefaultPanelPosition())
   const [dragState, setDragState] = useState(null)
   const [legendOpen, setLegendOpen] = useState(true)
@@ -2117,6 +2118,11 @@ export default function MapPage() {
     boundaryFeatureCount > 0
 
   const canShowMap = hasRiskData || hasBoundaryData
+
+  const hotspotConfig = hotspotResult?.hotspot_configuration || {
+    local_weight: 60, nearby_weight: 25, spatial_weight: 15,
+    watch_threshold: 45, emerging_threshold: 60, confirmed_threshold: 75, radius_km: 3,
+  }
 
   const rawHotspotRows = useMemo(() => {
     return Array.isArray(hotspotResult?.hotspots)
@@ -2923,6 +2929,10 @@ export default function MapPage() {
     },
   ]
 
+  const overviewSelectedMetrics = selectedMetrics.filter(
+    (metric) => !['Hotspot level', 'Hotspot score', 'Nearby barangay effect'].includes(metric.label)
+  )
+
   async function handleRunHotspotAnalysis() {
     setHotspotError('')
     setIsLoadingHotspots(true)
@@ -3181,8 +3191,35 @@ export default function MapPage() {
               </span>
             </div>
 
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-[20px] border border-slate-200/80 bg-slate-100/80 p-1.5 dark:border-slate-700 dark:bg-slate-900/80">
+              <button
+                type="button"
+                onClick={() => setSelectedPanelView('overview')}
+                className={`rounded-[15px] px-4 py-2.5 text-sm font-black transition ${
+                  selectedPanelView === 'overview'
+                    ? 'bg-white text-brand-blue shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-blue-300 dark:ring-slate-700'
+                    : 'text-brand-muted hover:text-brand-text dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                Barangay Overview
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPanelView('hotspot')}
+                className={`rounded-[15px] px-4 py-2.5 text-sm font-black transition ${
+                  selectedPanelView === 'hotspot'
+                    ? 'bg-violet-600 text-white shadow-sm'
+                    : 'text-brand-muted hover:text-brand-text dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                Hotspot Analysis
+              </button>
+            </div>
+
+            {selectedPanelView === 'overview' && (
+              <>
             <div className="map-mobile-selected-metrics mt-5 grid gap-3 sm:grid-cols-2">
-              {selectedMetrics.map((metric) => {
+              {overviewSelectedMetrics.map((metric) => {
                 const Icon = metric.icon
 
                 return (
@@ -3210,6 +3247,28 @@ export default function MapPage() {
               })}
             </div>
 
+            <div className="mt-4 rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950 dark:shadow-none">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">Recommended response</p>
+                  <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Based on forecast, trend, risk level, rainfall, temperature, humidity, population count, and density.</p>
+                </div>
+                <span className={`w-fit rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(selectedPriority)}`}>{selectedPriority}</span>
+              </div>
+              <p className="mt-3 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">{selectedRecommendation}</p>
+              {selectedActionPlan.length > 0 && (
+                <div className="mt-4 rounded-[20px] border border-white/[0.80] bg-white/[0.80] p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">Response plan</p>
+                  <ul className="mt-2 space-y-2 text-sm font-semibold leading-6 text-brand-text dark:text-slate-200">
+                    {selectedActionPlan.map((item, index) => (<li key={`${item}-${index}`} className="flex gap-2"><span className="font-black text-brand-orange">{index + 1}.</span><span>{item}</span></li>))}
+                  </ul>
+                </div>
+              )}
+            </div>
+              </>
+            )}
+
+            {selectedPanelView === 'hotspot' && (
             <div className={`mt-4 rounded-[26px] border p-5 shadow-sm ${
               selectedNeedsMapReview
                 ? 'border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 dark:border-blue-500/25 dark:from-blue-500/10 dark:via-slate-900 dark:to-slate-950'
@@ -3297,19 +3356,19 @@ export default function MapPage() {
                   </>
                 ) : (
                   <>
-                                        <div className="map-mobile-field-grid-3 mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
-                          Hotspot score
+                          Local barangay risk · {hotspotConfig.local_weight}%
                         </p>
                         <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
-                          {formatHotspotScore(selectedHotspot.hotspot_score)}
+                          {formatHotspotScore(selectedHotspot.base_risk_score)}
                         </p>
                       </div>
 
                       <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
-                          Nearby barangay effect
+                          Nearby barangay influence · {hotspotConfig.nearby_weight}%
                         </p>
                         <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
                           {formatHotspotScore(selectedHotspot.neighbor_influence_score)}
@@ -3318,12 +3377,35 @@ export default function MapPage() {
 
                       <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
                         <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
-                          Nearby barangay used
+                          Spatial concentration · {hotspotConfig.spatial_weight}%
                         </p>
-                        <p className="mt-2 text-base font-black leading-6 text-brand-text dark:text-slate-100">
-                          {getHotspotInfluenceLabel(selectedHotspot)}
+                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                          {formatHotspotScore(selectedHotspot.spatial_concentration_score)}
                         </p>
                       </div>
+
+                      <div className="rounded-[20px] border border-violet-200 bg-violet-50/90 p-4 dark:border-violet-500/25 dark:bg-violet-500/10">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">
+                          Final hotspot score
+                        </p>
+                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
+                          {formatHotspotScore(selectedHotspot.hotspot_score)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-[20px] border border-violet-100 bg-violet-50/70 p-4 text-sm font-semibold leading-6 text-brand-muted dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-slate-300">
+                      <span className="font-black text-violet-700 dark:text-violet-300">Calculation:</span>{' '}
+                      ({formatHotspotScore(selectedHotspot.base_risk_score)} × {hotspotConfig.local_weight}%) + ({formatHotspotScore(selectedHotspot.neighbor_influence_score)} × {hotspotConfig.nearby_weight}%) + ({formatHotspotScore(selectedHotspot.spatial_concentration_score)} × {hotspotConfig.spatial_weight}%) = {formatHotspotScore(selectedHotspot.hotspot_score)}
+                    </div>
+
+                    <div className="mt-3 rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
+                        Nearby barangay used
+                      </p>
+                      <p className="mt-2 text-base font-black leading-6 text-brand-text dark:text-slate-100">
+                        {getHotspotInfluenceLabel(selectedHotspot)}
+                      </p>
                     </div>
 
                     <p className="mt-4 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">
@@ -3352,72 +3434,7 @@ export default function MapPage() {
               )}
             </div>
 
-            <div className="mt-4 rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 via-orange-50 to-white p-4 shadow-sm dark:border-amber-500/20 dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-950 dark:shadow-none">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">
-                    Recommended response
-                  </p>
-
-                  <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">
-                    Based on forecast, trend, risk level, rainfall, temperature, humidity, population count, and density.
-                  </p>
-                </div>
-
-                <span
-                  className={`w-fit rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(selectedPriority)}`}
-                >
-                  {selectedPriority}
-                </span>
-              </div>
-
-              <p className="mt-3 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">
-                {selectedRecommendation}
-              </p>
-
-              {selectedActionPlan.length > 0 && (
-                <div className="mt-4 rounded-[20px] border border-white/[0.80] bg-white/[0.80] p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                    Response plan
-                  </p>
-
-                  <div className="mt-3 space-y-2">
-                    {selectedActionPlan.slice(0, 8).map((action, index) => (
-                      <div
-                        key={`${action}-${index}`}
-                        className="flex gap-3 text-base leading-7 text-brand-text dark:text-slate-300"
-                      >
-                        <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-black text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                          {index + 1}
-                        </span>
-
-                        <span>{action}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedRationale.length > 0 && (
-                <div className="mt-3 rounded-[20px] border border-white/[0.80] bg-white/[0.80] p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">
-                    Why this is recommended
-                  </p>
-
-                  <div className="mt-3 space-y-2">
-                    {selectedRationale.slice(0, 8).map((reason, index) => (
-                      <div
-                        key={`${reason}-${index}`}
-                        className="flex gap-3 text-sm leading-6 text-brand-muted dark:text-slate-400"
-                      >
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-green dark:text-emerald-300" />
-                        <span>{reason}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-brand-muted dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
@@ -3894,9 +3911,9 @@ export default function MapPage() {
                         <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-text dark:text-slate-100">How the hotspot score is calculated</p>
                         <div className="mt-3 grid gap-2 sm:grid-cols-3">
                           {[
-                            { weight: '60%', label: 'Local / Barangay Risk', note: "The selected barangay's own dengue risk contributes the largest share of the hotspot score." },
-                            { weight: '25%', label: 'Nearby Barangay Influence', note: 'Risk from nearby barangays contributes to the spatial hotspot score.' },
-                            { weight: '15%', label: 'Spatial Concentration', note: 'Measures how concentrated dengue risk is around the selected barangay.' },
+                            { weight: `${hotspotConfig.local_weight}%`, label: 'Local / Barangay Risk', note: "The selected barangay's own dengue risk contributes the largest share of the hotspot score." },
+                            { weight: `${hotspotConfig.nearby_weight}%`, label: 'Nearby Barangay Influence', note: 'Risk from nearby barangays contributes to the spatial hotspot score.' },
+                            { weight: `${hotspotConfig.spatial_weight}%`, label: 'Spatial Concentration', note: 'Measures how concentrated dengue risk is around the selected barangay.' },
                           ].map((component) => (
                             <div key={component.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                               <p className="text-lg font-black text-violet-700 dark:text-violet-300">{component.weight}</p>
@@ -3906,16 +3923,16 @@ export default function MapPage() {
                           ))}
                         </div>
                         <div className="mt-3 rounded-[18px] border border-violet-100 bg-white/70 px-3 py-2 text-center text-xs font-black text-violet-700 dark:border-violet-500/20 dark:bg-slate-950/40 dark:text-violet-300">
-                          60% Local Risk + 25% Nearby Influence + 15% Spatial Concentration = Hotspot Score / 100
+                          {hotspotConfig.local_weight}% Local Risk + {hotspotConfig.nearby_weight}% Nearby Influence + {hotspotConfig.spatial_weight}% Spatial Concentration = Hotspot Score / 100
                         </div>
 
                         <p className="mt-5 text-[11px] font-black uppercase tracking-[0.14em] text-brand-text dark:text-slate-100">How the score becomes a hotspot level</p>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                           {[
-                            { label: 'Low Spatial Concern', range: '< 45' },
-                            { label: 'Watch Area', range: '45–59.99' },
-                            { label: 'Emerging Hotspot', range: '60–74.99' },
-                            { label: 'Confirmed Hotspot', range: '≥ 75' },
+                            { label: 'Low Spatial Concern', range: `< ${hotspotConfig.watch_threshold}` },
+                            { label: 'Watch Area', range: `${hotspotConfig.watch_threshold}–${hotspotConfig.emerging_threshold - 0.01}` },
+                            { label: 'Emerging Hotspot', range: `${hotspotConfig.emerging_threshold}–${hotspotConfig.confirmed_threshold - 0.01}` },
+                            { label: 'Confirmed Hotspot', range: `≥ ${hotspotConfig.confirmed_threshold}` },
                           ].map((threshold) => (
                             <div key={threshold.label} className="rounded-[18px] border border-white/80 bg-white/90 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
                               <p className="text-sm font-black text-brand-text dark:text-slate-100">{threshold.range}</p>

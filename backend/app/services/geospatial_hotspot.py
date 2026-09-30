@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from app.database import engine
 from app.services.barangay_normalizer import normalize_barangay_key
+from app.services.hotspot_configuration import get_hotspot_configuration
 
 
 _HOTSPOT_CACHE_READY = False
@@ -470,23 +471,25 @@ def _weighted_neighbor_average(neighbors):
     return total_score / total_weight
 
 
-def _classify_hotspot(score, has_centroid):
+def _classify_hotspot(score, has_centroid, config=None):
     if not has_centroid:
         return "Needs Map Review"
 
-    if score >= 75:
+    config = config or get_hotspot_configuration()
+    if score >= config["confirmed_threshold"]:
         return "Confirmed Hotspot"
 
-    if score >= 60:
+    if score >= config["emerging_threshold"]:
         return "Emerging Hotspot"
 
-    if score >= 45:
+    if score >= config["watch_threshold"]:
         return "Watch Area"
 
     return "Low Spatial Concern"
 
 
-def _build_reason(item, influence_barangays, hotspot_score, has_centroid, influence_source="within_radius"):
+def _build_reason(item, influence_barangays, hotspot_score, has_centroid, influence_source="within_radius", config=None):
+    config = config or get_hotspot_configuration()
     if not has_centroid:
         return (
             "This barangay has dengue records, but it could not be matched to a map boundary. "
@@ -500,13 +503,13 @@ def _build_reason(item, influence_barangays, hotspot_score, has_centroid, influe
     ]
 
     if influence_source == "nearest_fallback":
-        if hotspot_score >= 75:
+        if hotspot_score >= config["confirmed_threshold"]:
             return (
                 "This barangay has high local risk. No barangay was found inside the selected radius, "
                 "so the system used the closest available barangay or barangays only as fallback spatial context."
             )
 
-        if hotspot_score >= 60:
+        if hotspot_score >= config["emerging_threshold"]:
             return (
                 "This barangay shows elevated local risk. No barangay was found inside the selected radius, "
                 "so the closest available barangay or barangays were used only as fallback spatial context."
@@ -523,13 +526,13 @@ def _build_reason(item, influence_barangays, hotspot_score, has_centroid, influe
             "No barangay was found inside the selected radius, so nearest fallback context was used."
         )
 
-    if hotspot_score >= 75:
+    if hotspot_score >= config["confirmed_threshold"]:
         return (
             "This barangay has high local risk and has elevated-risk barangay influence within the selected radius. "
             "It should be treated as a priority hotspot for immediate field response."
         )
 
-    if hotspot_score >= 60:
+    if hotspot_score >= config["emerging_threshold"]:
         return (
             "This barangay shows elevated risk and spatial influence from barangays within the selected radius. "
             "It should be monitored closely and included in targeted prevention activities."
@@ -727,12 +730,14 @@ def _save_cached_hotspot_result(result, radius_km, fallback_nearest_count):
 
 
 def build_geospatial_hotspots(
-    radius_km=3.0,
+    radius_km=None,
     fallback_nearest_count=3,
     force_refresh=False,
     cached_only=False,
 ):
-    radius_km = round(_clamp(_to_number(radius_km, 3.0), 0.5, 15), 3)
+    hotspot_config = get_hotspot_configuration()
+    radius_km = hotspot_config["radius_km"] if radius_km is None else radius_km
+    radius_km = round(_clamp(_to_number(radius_km, hotspot_config["radius_km"]), 0.5, 15), 3)
     fallback_nearest_count = int(_clamp(_to_number(fallback_nearest_count, 3), 1, 8))
     integration_run_id = _get_latest_integration_run_id()
 
@@ -819,14 +824,15 @@ def build_geospatial_hotspots(
 
             item["neighbor_influence_score"] = 0
             item["spatial_concentration_score"] = 0
-            item["hotspot_score"] = round(item["base_risk_score"] * 0.60, 2)
-            item["hotspot_level"] = _classify_hotspot(item["hotspot_score"], False)
+            item["hotspot_score"] = round(item["base_risk_score"] * (hotspot_config["local_weight"] / 100), 2)
+            item["hotspot_level"] = _classify_hotspot(item["hotspot_score"], False, hotspot_config)
             item["reason"] = _build_reason(
                 item,
                 [],
                 item["hotspot_score"],
                 False,
                 "no_map_boundary",
+                hotspot_config,
             )
             item["recommended_map_action"] = _recommended_action(item["hotspot_level"])
             continue
@@ -903,13 +909,13 @@ def build_geospatial_hotspots(
             )
 
         hotspot_score = (
-            item["base_risk_score"] * 0.60
-            + neighbor_score * 0.25
-            + spatial_concentration * 0.15
+            item["base_risk_score"] * (hotspot_config["local_weight"] / 100)
+            + neighbor_score * (hotspot_config["nearby_weight"] / 100)
+            + spatial_concentration * (hotspot_config["spatial_weight"] / 100)
         )
 
         hotspot_score = round(_clamp(hotspot_score), 2)
-        hotspot_level = _classify_hotspot(hotspot_score, True)
+        hotspot_level = _classify_hotspot(hotspot_score, True, hotspot_config)
 
         item["within_radius_barangays"] = within_radius
         item["nearest_barangays_used"] = nearest_fallback
@@ -930,6 +936,7 @@ def build_geospatial_hotspots(
             hotspot_score,
             True,
             influence_source,
+            hotspot_config,
         )
         item["recommended_map_action"] = _recommended_action(item["hotspot_level"])
 
@@ -956,7 +963,7 @@ def build_geospatial_hotspots(
         "boundary_source": boundary_source["source"],
         "boundary_upload_id": boundary_source["upload_id"],
         "formula": {
-            "hotspot_score": "60% barangay risk + 25% spatial influence + 15% spatial concentration",
+            "hotspot_score": f"{hotspot_config['local_weight']}% barangay risk + {hotspot_config['nearby_weight']}% spatial influence + {hotspot_config['spatial_weight']}% spatial concentration",
             "spatial_influence_rule": (
                 "Use barangays within the selected radius. If none are found, use the nearest barangays only as fallback spatial context and label them separately."
             ),
@@ -968,6 +975,7 @@ def build_geospatial_hotspots(
                 "population density",
             ],
         },
+        "hotspot_configuration": hotspot_config,
         "parameters": {
             "neighbor_radius_km": radius_km,
             "fallback_nearest_count": fallback_nearest_count,
