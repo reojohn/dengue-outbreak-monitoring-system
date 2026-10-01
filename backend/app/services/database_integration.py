@@ -290,6 +290,7 @@ limit 300
 
         rows = rows_result.mappings().all()
 
+
     merged_dataset = []
 
     for row in rows:
@@ -343,4 +344,53 @@ limit 300
         # remains saved in public.integrated_dataset_rows.
         "merged_dataset": merged_dataset,
         "merged_preview": merged_dataset[:25],
+    }
+
+def get_barangay_integration_readiness(barangay: str) -> dict:
+    """Return a tiny readiness summary for one barangay without changing latest-dataset."""
+    requested = str(barangay or "").strip()
+    if not requested:
+        return {"barangay": "", "found": False}
+
+    with engine.connect() as connection:
+        latest_run = connection.execute(
+            text("""
+                select integration_run_id
+                from public.integration_runs
+                where status = 'completed'
+                order by created_at desc
+                limit 1
+            """)
+        ).mappings().first()
+
+        if not latest_run:
+            return {"barangay": requested, "found": False}
+
+        row = connection.execute(
+            text("""
+                select
+                    min(barangay) as barangay,
+                    count(*) as integrated_row_count,
+                    count(*) filter (
+                        where rainfall is not null or temperature is not null or humidity is not null
+                    ) as weather_linked_row_count,
+                    count(*) filter (where population is not null) as population_linked_row_count,
+                    count(*) filter (
+                        where geometry_id is not null or boundary_area_sqkm is not null
+                    ) as boundary_linked_row_count
+                from public.integrated_dataset_rows
+                where integration_run_id = :integration_run_id
+                  and lower(trim(barangay)) = lower(trim(:barangay))
+            """),
+            {"integration_run_id": latest_run["integration_run_id"], "barangay": requested},
+        ).mappings().first()
+
+    count = int((row or {}).get("integrated_row_count") or 0)
+    return {
+        "barangay": (row or {}).get("barangay") or requested,
+        "found": count > 0,
+        "integrated_row_count": count,
+        "weather_linked_row_count": int((row or {}).get("weather_linked_row_count") or 0),
+        "population_linked_row_count": int((row or {}).get("population_linked_row_count") or 0),
+        "boundary_linked_row_count": int((row or {}).get("boundary_linked_row_count") or 0),
     }

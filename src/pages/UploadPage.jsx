@@ -5332,6 +5332,7 @@ export default function UploadPage() {
           </div>
           </ExpandableSection>
 
+          <div id="integration-readiness" className="scroll-mt-24">
           <ExpandableSection
             title="File Compatibility Details"
             summary={`${integrationScore}% compatibility • ${integrationStatus}`}
@@ -5433,6 +5434,8 @@ export default function UploadPage() {
             </div>
           </div>
           </ExpandableSection>
+
+          </div>
 
           <ExpandableSection
             title="Combined Data Details"
@@ -5671,6 +5674,7 @@ export default function UploadPage() {
           </div>
           </ExpandableSection>
 
+          <div id="barangay-name-matching" className="scroll-mt-24">
           <ExpandableSection
             title="Barangay Name Matching Details"
             summary={activeAlignmentReport
@@ -5851,6 +5855,8 @@ export default function UploadPage() {
             </p>
           </div>
           </ExpandableSection>
+
+          </div>
 
           <ExpandableSection
             title="Preview Uploaded Records"

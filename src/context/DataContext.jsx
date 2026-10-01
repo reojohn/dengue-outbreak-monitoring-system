@@ -398,6 +398,11 @@ function normalizeDatabaseUploadStatus(upload = {}, fallback = {}, datasetType =
     duplicateCount: Number.isFinite(duplicateCount) ? duplicateCount : 0,
     sourceDiscrepancyCount: Number.isFinite(sourceDiscrepancyCount) ? sourceDiscrepancyCount : 0,
     validationCounts,
+    // Preserve the server-side audit metadata for transparent dashboard
+    // reporting. These values describe the currently saved upload and are
+    // refreshed from /uploads/database-status after login/refresh.
+    validationSummary: upload.validation_summary || upload.validationSummary || fallback.validationSummary || {},
+    detectionResult: upload.detection_result || upload.detectionResult || fallback.detectionResult || {},
     uploadId: String(upload.upload_id || upload.uploadId || fallback.uploadId || ''),
     datasetType: upload.dataset_type || upload.datasetType || fallback.datasetType || datasetType,
     fileType: upload.file_type || upload.fileType || fallback.fileType || '',

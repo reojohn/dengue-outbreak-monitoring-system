@@ -4207,3 +4207,55 @@ html:not(.dark) .leaflet-popup-tip {
   box-shadow: 0 0 0 1000px #ffffff inset !important;
   transition: background-color 9999s ease-out 0s;
 }
+
+/* Dataset & model coverage modal: compact themed scrollbar + page-style loading shimmer. */
+.dengue-dataset-modal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.58) rgba(15, 23, 42, 0.58);
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.dengue-dataset-modal-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dengue-dataset-modal-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.58);
+  border-radius: 999px;
+}
+
+.dengue-dataset-modal-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.68), rgba(14, 165, 233, 0.52));
+  border: 2px solid rgba(7, 21, 37, 0.9);
+  border-radius: 999px;
+}
+
+.dengue-dataset-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(103, 232, 249, 0.82), rgba(56, 189, 248, 0.68));
+}
+
+.dengue-dataset-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.dengue-dataset-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.18), transparent);
+  animation: dengue-dataset-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+@keyframes dengue-dataset-skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dengue-dataset-skeleton::after {
+    animation: none;
+  }
+}

@@ -33,6 +33,7 @@ import InformationTypeBadge from '../components/InformationTypeBadge'
 import dashboardBackground from '../assets/dashboard1.png'
 import dashboardLightBackground from '../assets/dashboard1light.png'
 import { useData } from '../context/DataContext'
+import { getBarangayIntegrationReadiness } from '../services/api'
 import {
   compareCanonicalBarangayPriority,
   computeDecisionSupport,
@@ -1065,6 +1066,97 @@ function buildBackendPriorityRows(backendForecastResult = null, backendMergedDat
     .sort(compareCanonicalBarangayPriority)
 }
 
+function buildBarangayIntegrationReadiness({
+  barangayName = '',
+  backendMergedDataset = [],
+  backendForecastResult = null,
+  backendBarangayReadiness = null,
+}) {
+  const targetKey = normalizeDashboardBarangayKey(barangayName)
+  const mergedRows = (Array.isArray(backendMergedDataset) ? backendMergedDataset : []).filter((row) => {
+    const rowName = row?.barangay || row?.barangay_original || row?.barangayOriginal || row?.barangay_name || ''
+    return normalizeDashboardBarangayKey(rowName) === targetKey
+  })
+  const forecastRows = (backendForecastResult?.forecast_results || []).filter((row) => {
+    const rowName = row?.barangay || row?.barangay_original || row?.barangayOriginal || ''
+    return normalizeDashboardBarangayKey(rowName) === targetKey
+  })
+
+  // Use the backend summary computed across the COMPLETE saved integration run.
+  // backendMergedDataset is intentionally only a browser preview and may not
+  // contain the selected/top-priority barangay at all.
+  const readinessRow = backendBarangayReadiness && typeof backendBarangayReadiness === 'object'
+    ? backendBarangayReadiness
+    : null
+  const hasCompleteSummary = Boolean(readinessRow?.found && normalizeDashboardBarangayKey(readinessRow?.barangay || barangayName) === targetKey)
+  const statusIs = (value, accepted) => accepted.includes(String(value || '').trim().toLowerCase())
+  const hasDengueRows = hasCompleteSummary
+    ? Number(readinessRow?.integrated_row_count || 0) > 0
+    : mergedRows.length > 0
+  const weatherReady = hasCompleteSummary
+    ? Number(readinessRow?.weather_linked_row_count || 0) > 0
+    : mergedRows.some((row) =>
+        statusIs(row?.weather_match_status, ['exact_date', 'weekly_average', 'monthly_average', 'calendar_month_average', 'overall_average', 'matched']) ||
+        row?.rainfall != null || row?.temperature != null || row?.humidity != null
+      )
+  const populationReady = hasCompleteSummary
+    ? Number(readinessRow?.population_linked_row_count || 0) > 0
+    : mergedRows.some((row) =>
+        statusIs(row?.population_match_status, ['matched', 'psgc_matched', 'found']) || row?.population != null
+      )
+  const boundaryReady = hasCompleteSummary
+    ? Number(readinessRow?.boundary_linked_row_count || 0) > 0
+    : mergedRows.some((row) =>
+        statusIs(row?.boundary_match_status, ['matched', 'psgc_matched', 'found']) || Boolean(row?.geometry_id) || row?.boundary_area_sqkm != null
+      )
+  const forecastReady = forecastRows.length > 0
+
+  const checks = [
+    {
+      id: 'barangay-dengue', label: 'Dengue records available', ready: hasDengueRows,
+      value: hasDengueRows ? 'Available' : 'Missing',
+      description: hasDengueRows
+        ? `Integrated dengue records are available for ${barangayName}.`
+        : `No integrated dengue records were found for ${barangayName}. Review the dengue source and barangay name.`,
+    },
+    {
+      id: 'barangay-weather', label: 'Weather data linked', ready: weatherReady,
+      value: weatherReady ? 'Linked' : 'Needs Review',
+      description: weatherReady
+        ? `Weather values are linked to ${barangayName}.`
+        : `Weather values are not linked to ${barangayName}. Review the weather source and rerun integration.`,
+    },
+    {
+      id: 'barangay-population', label: 'Population data linked', ready: populationReady,
+      value: populationReady ? 'Linked' : 'Needs Review',
+      description: populationReady
+        ? `Population data is linked to ${barangayName}.`
+        : `Population data is not linked to ${barangayName}. Review its barangay name in the population source.`,
+    },
+    {
+      id: 'barangay-boundary', label: 'Map boundary linked', ready: boundaryReady,
+      value: boundaryReady ? 'Linked' : 'Needs Review',
+      description: boundaryReady
+        ? `${barangayName} is linked to a barangay map boundary.`
+        : `${barangayName} is not linked to a map boundary. Review its barangay name against the boundary file.`,
+    },
+    {
+      id: 'barangay-forecast', label: 'Forecast result available', ready: forecastReady,
+      value: forecastReady ? 'Available' : 'Needs Review',
+      description: forecastReady
+        ? `A saved forecast result is available for ${barangayName}.`
+        : `No saved forecast result was found for ${barangayName}. Rerun integration and forecasting after resolving source issues.`,
+    },
+  ]
+  const readyCount = checks.filter((check) => check.ready).length
+  const score = checks.length ? Math.round((readyCount / checks.length) * 100) : 0
+  return {
+    barangayName,
+    status: score === 100 ? 'Ready' : score > 0 ? 'Needs Review' : 'Pending',
+    score, readyCount, checkCount: checks.length, checks,
+  }
+}
+
 function buildDatabaseIntegrationReadiness({
   backendMergedDataset = [],
   backendForecastResult = null,
@@ -1511,6 +1603,265 @@ function PremiumStatCard({
         </div>
       </div>
     </CardComponent>
+  )
+}
+
+function IntegrationReviewModal({ barangayName, status, score, checks = [], onClose, onReviewUpload }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function handleKeyDown(event) { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  const normalizedChecks = Array.isArray(checks) ? checks : []
+  const reviewChecks = normalizedChecks.filter((check) => !check?.ready)
+  const readyChecks = normalizedChecks.filter((check) => check?.ready)
+  const hasNameReview = reviewChecks.some((check) => ['barangay-dengue', 'barangay-population', 'barangay-boundary'].includes(String(check?.id || '')))
+
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="integration-review-title">
+      <button type="button" className="absolute inset-0 cursor-default bg-slate-950/75 backdrop-blur-md" onClick={onClose} aria-label="Close integration review" />
+      <section className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[760px] overflow-y-auto rounded-[28px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_36px_120px_rgba(2,6,23,0.72)] ring-1 ring-cyan-300/10 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">Barangay integration</span>
+            <h2 id="integration-review-title" className="mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl">What needs review?</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-400">
+              This review is specific to <span className="font-black text-slate-200">{barangayName || 'the selected barangay'}</span>. It checks whether its dengue, weather, population, map boundary, and forecast data are linked and ready for barangay-level decision support.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10" aria-label="Close integration review"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-400">Integration status</p>
+            <p className="mt-1 text-xl font-black text-amber-100">{status || 'Pending'}</p>
+          </div>
+          <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
+            <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-400">Readiness</p>
+            <p className="mt-1 text-xl font-black text-cyan-100">{formatNumber(score)}%</p>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Needs attention</p>
+          <div className="space-y-2.5">
+            {reviewChecks.length > 0 ? reviewChecks.map((check) => (
+              <div key={check.id || check.label} className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                      <p className="font-black text-amber-100">{check.label || 'Integration check'}</p>
+                      {check.value && <span className="shrink-0 text-xs font-black text-amber-200">{check.value}</span>}
+                    </div>
+                    <p className="mt-1 text-sm leading-5 text-slate-300">{check.description || check.detail || 'This integration check requires review.'}</p>
+                    {Array.isArray(check.missingPreview) && check.missingPreview.length > 0 && (
+                      <p className="mt-2 text-xs leading-5 text-slate-400"><span className="font-black text-slate-300">Examples:</span> {check.missingPreview.join(', ')}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-4 text-sm leading-6 text-emerald-100">No integration check currently requires attention.</div>
+            )}
+          </div>
+        </div>
+
+        {readyChecks.length > 0 && (
+          <details className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <summary className="cursor-pointer text-sm font-black text-slate-200">Show {readyChecks.length} check{readyChecks.length === 1 ? '' : 's'} already ready</summary>
+            <div className="mt-3 space-y-2">
+              {readyChecks.map((check) => (
+                <div key={check.id || check.label} className="flex items-start gap-2 rounded-xl bg-white/[0.03] p-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                  <div><p className="text-xs font-black text-slate-200">{check.label}</p><p className="mt-0.5 text-xs text-slate-400">{check.value || check.description || check.detail}</p></div>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {reviewChecks.length > 0 ? (
+          <div className="mt-5 rounded-2xl border border-sky-300/15 bg-sky-300/[0.05] p-4">
+            <p className="text-sm font-black text-sky-100">How to resolve it</p>
+            <p className="mt-1 text-sm leading-6 text-slate-300">
+              {hasNameReview
+                ? <>Open Data Upload and review the source matching for <strong>{barangayName || 'this barangay'}</strong>. Correct only the source name or link that is flagged, then rerun integration/forecasting as needed.</>
+                : <>Open Data Upload and review the source indicated above for <strong>{barangayName || 'this barangay'}</strong>, then rerun integration/forecasting as needed.</>}
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+              <div>
+                <p className="text-sm font-black text-emerald-100">Integration complete</p>
+                <p className="mt-1 text-sm leading-6 text-slate-300">
+                  All required data sources for <strong>{barangayName || 'this barangay'}</strong> are linked and ready for barangay-level decision support. No action is required.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-black text-slate-200 hover:bg-white/10">Close</button>
+          {reviewChecks.length > 0 && (
+            <button type="button" onClick={() => onReviewUpload(hasNameReview)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-black text-white hover:bg-sky-400">
+              Review in Data Upload <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </section>
+    </div>, document.body
+  )
+}
+
+function BarangayMatchingDetailsModal({ details, onClose, onViewBarangays }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function handleKeyDown(event) { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  const reportedCases = Math.max(0, Number(details?.reportedCases || 0))
+  const extractedCases = Math.max(0, Number(details?.extractedCases || 0))
+  const cleanedCases = Math.max(0, Number(details?.cleanedCases || 0))
+  const matchedCases = Math.max(0, Number(details?.matchedCases || 0))
+  const unknownCases = Math.max(0, Number(details?.unknownCases || 0))
+  const unknownRecords = Math.max(0, Number(details?.unknownRecords || 0))
+  const discrepancies = Array.isArray(details?.monthlyDiscrepancies) ? details.monthlyDiscrepancies : []
+  const postCleaningGap = Math.max(0, cleanedCases - matchedCases)
+
+  const actions = []
+  if (unknownCases > 0 || unknownRecords > 0) actions.push({
+    title: 'Unknown or blank locations excluded',
+    value: `${formatNumber(unknownCases)} cases`,
+    text: `${formatNumber(unknownRecords)} source record${unknownRecords === 1 ? '' : 's'} had no reliable barangay. The system preserved the source rows but did not guess a location for barangay-level modeling.`,
+    tone: 'amber',
+  })
+  if (discrepancies.length > 0) actions.push({
+    title: 'Source total discrepancy detected',
+    value: `${formatNumber(discrepancies.length)} period${discrepancies.length === 1 ? '' : 's'}`,
+    text: 'The system independently compared each reported period total with the sum of its detailed barangay rows. The exact differences are shown below and were flagged for review; the uploaded source values were not silently changed.',
+    tone: 'amber',
+    discrepancies,
+  })
+  if (postCleaningGap > 0) actions.push({
+    title: 'Not carried into final barangay matching',
+    value: `${formatNumber(postCleaningGap)} cases`,
+    text: 'These cases are present after the safe cleaning stage but are not represented in the final barangay-matched modeling total. The system keeps this difference visible instead of inventing a barangay assignment or hiding the gap.',
+    tone: 'slate',
+  })
+  if (actions.length === 0) actions.push({
+    title: 'No processing issue detected', value: 'Passed',
+    text: 'The current processing metadata reports no excluded-location cases or source-total discrepancies.', tone: 'emerald',
+  })
+
+  const toneClass = (tone) => tone === 'emerald'
+    ? 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100'
+    : tone === 'amber'
+      ? 'border-amber-300/20 bg-amber-300/[0.07] text-amber-100'
+      : 'border-white/10 bg-white/[0.04] text-slate-100'
+
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="data-processing-details-title">
+      <button type="button" className="absolute inset-0 cursor-default bg-slate-950/75 backdrop-blur-md" onClick={onClose} aria-label="Close data processing details" />
+      <section className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[900px] overflow-y-auto rounded-[28px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_36px_120px_rgba(2,6,23,0.72)] ring-1 ring-cyan-300/10 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <span className="rounded-full border border-sky-300/25 bg-sky-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-100">Data transparency</span>
+            <h2 id="data-processing-details-title" className="mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl">Data Processing &amp; Matching Details</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-400">How the current historical dengue dataset was read, validated, safely cleaned, and prepared for barangay-level modeling.</p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10" aria-label="Close data processing details"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-4">
+          {[
+            ['Reported cases', reportedCases, 'Source-reported total'],
+            ['Extracted detail cases', extractedCases, 'Sum read from detail rows'],
+            ['Validated & cleaned', cleanedCases, 'Cases safe for location processing'],
+            ['Barangay matched', matchedCases, 'Final modeling case total'],
+          ].map(([label, value, note], index) => (
+            <div key={label} className={`rounded-2xl border p-4 text-center ${index === 2 ? 'border-emerald-300/20 bg-emerald-300/10' : index === 3 ? 'border-cyan-300/20 bg-cyan-300/10' : 'border-sky-300/20 bg-sky-300/[0.08]'}`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-300">{label}</p>
+              <p className="mt-1 text-2xl font-black sm:text-3xl">{formatNumber(value)}</p>
+              <p className="mt-1 text-[10px] leading-4 text-slate-400">{note}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5">
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">What the system detected and did</p>
+          <div className="space-y-3">
+            {actions.map((item) => (
+              <div key={item.title} className={`rounded-2xl border p-4 ${toneClass(item.tone)}`}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-5">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-black">{item.title}</p>
+                    <p className="mt-1 text-sm leading-5 text-slate-300">{item.text}</p>
+                    {Array.isArray(item.discrepancies) && item.discrepancies.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {item.discrepancies.map((issue, issueIndex) => {
+                          const year = Number(issue?.year)
+                          const month = Number(issue?.month)
+                          const reported = Math.max(0, Number(issue?.reported_total || 0))
+                          const calculated = Math.max(0, Number(issue?.calculated_barangay_total || 0))
+                          const difference = Number(issue?.difference || (calculated - reported))
+                          const periodLabel = Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12
+                            ? new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+                            : `Period ${issueIndex + 1}`
+                          const signedDifference = `${difference > 0 ? '+' : ''}${formatNumber(difference)}`
+                          return (
+                            <div key={`${year}-${month}-${issueIndex}`} className="rounded-xl border border-amber-200/15 bg-slate-950/25 p-3">
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="text-sm font-black text-amber-100">{periodLabel}</p>
+                                <span className="text-xs font-black text-amber-200">Difference: {signedDifference} case{Math.abs(difference) === 1 ? '' : 's'}</span>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+                                <div className="rounded-lg bg-white/[0.04] p-2">
+                                  <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">Reported total</p>
+                                  <p className="mt-1 text-base font-black text-white">{formatNumber(reported)}</p>
+                                </div>
+                                <div className="rounded-lg bg-white/[0.04] p-2">
+                                  <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">Detailed rows sum</p>
+                                  <p className="mt-1 text-base font-black text-white">{formatNumber(calculated)}</p>
+                                </div>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-slate-400"><span className="font-black text-slate-300">Action:</span> Flagged for review. Original source values were preserved.</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <strong className="shrink-0 text-lg">{item.value}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="mt-4 text-xs leading-5 text-slate-500">Original uploaded records remain preserved. Automatic cleaning is limited to safe validation and normalization; unresolved locations are never guessed.</p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-black text-slate-200 hover:bg-white/10">Close</button>
+          <button type="button" onClick={onViewBarangays} className="rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-black text-white hover:bg-sky-400">View barangay case totals</button>
+        </div>
+      </section>
+    </div>, document.body
   )
 }
 
@@ -2625,6 +2976,9 @@ function SectionBadge({ children, tone = 'slate' }) {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [barangayModal, setBarangayModal] = useState(null)
+  const [matchingDetailsOpen, setMatchingDetailsOpen] = useState(false)
+  const [integrationReviewOpen, setIntegrationReviewOpen] = useState(false)
+  const [barangayIntegrationSummary, setBarangayIntegrationSummary] = useState(null)
   const [sourceSummaryOpen, setSourceSummaryOpen] = useState(false)
   const {
     dashboardStats = {},
@@ -2634,6 +2988,7 @@ export default function DashboardPage() {
     backendForecastResult = null,
     backendDengueSummary = null,
     backendMergedDataset = [],
+    backendIntegrationResult = null,
     integrationReadiness = null,
     weatherRecords = [],
     resetSampleData,
@@ -2782,14 +3137,78 @@ export default function DashboardPage() {
     ? getMergedDatasetEnvironmentalSummary(backendMergedDataset, displayRiskRows)
     : getEnvironmentalSummary(displayRiskRows)
   const sourceHealth = getSourceHealth(sourceStatus)
-  const integrationStatus = displayIntegrationReadiness?.status || 'Pending'
-  const integrationScore = toNumber(displayIntegrationReadiness?.score)
-  const integrationChecks = displayIntegrationReadiness?.checks || []
+  const topPriorityBarangayName = topPriority?.barangay || topPriority?.name || ''
+
+  useEffect(() => {
+    let cancelled = false
+    setBarangayIntegrationSummary(null)
+
+    if (!topPriorityBarangayName) return () => { cancelled = true }
+
+    getBarangayIntegrationReadiness(topPriorityBarangayName)
+      .then((result) => {
+        if (!cancelled) setBarangayIntegrationSummary(result || null)
+      })
+      .catch(() => {
+        // Keep the existing dashboard state intact if this optional detail lookup fails.
+        if (!cancelled) setBarangayIntegrationSummary(null)
+      })
+
+    return () => { cancelled = true }
+  }, [topPriorityBarangayName])
+
+  const topBarangayIntegration = useMemo(() => buildBarangayIntegrationReadiness({
+    barangayName: topPriorityBarangayName,
+    backendMergedDataset,
+    backendForecastResult,
+    backendBarangayReadiness: barangayIntegrationSummary,
+  }), [topPriorityBarangayName, backendMergedDataset, backendForecastResult, barangayIntegrationSummary])
+  const integrationStatus = topBarangayIntegration?.status || 'Pending'
+  const integrationScore = toNumber(topBarangayIntegration?.score)
+  const integrationChecks = topBarangayIntegration?.checks || []
   const acceptedRecords = Number(
     backendForecastResult?.valid_row_count ||
       sourceStatus?.dengue?.validCount ||
       0
   )
+
+  // The upload database status is the durable source of truth after refresh/login.
+  // Merge detection + validation metadata because older/current uploads may keep
+  // parser audit fields in either JSON object. backendDengueSummary remains a
+  // fallback for an upload that has just been processed in the current session.
+  const savedDengueStatus = sourceStatus?.dengue || {}
+  const dengueSourceMetadata = {
+    ...(backendDengueSummary?.source_metadata || {}),
+    ...(savedDengueStatus?.detectionResult || {}),
+    ...(savedDengueStatus?.validationSummary || {}),
+  }
+  const annualReportedTotals = dengueSourceMetadata?.annual_reported_totals || {}
+  const officialHistoricalCases = Object.values(annualReportedTotals).reduce(
+    (sum, value) => sum + toNumber(value, 0),
+    0
+  )
+  const monthlyTotalDiscrepancies = Array.isArray(dengueSourceMetadata?.monthly_total_discrepancies)
+    ? dengueSourceMetadata.monthly_total_discrepancies
+    : []
+  const discrepancyCaseDifference = monthlyTotalDiscrepancies.reduce(
+    (sum, item) => sum + toNumber(item?.difference, 0),
+    0
+  )
+  const extractedDetailCases = officialHistoricalCases > 0
+    ? Math.max(0, officialHistoricalCases + discrepancyCaseDifference)
+    : displayStats.totalCases
+  const unknownLocationCases = Math.max(
+    0,
+    toNumber(dengueSourceMetadata?.unknown_location_case_count, 0),
+    toNumber(savedDengueStatus?.validationCounts?.unknown_location_cases, 0)
+  )
+  const unknownLocationRecords = Math.max(
+    0,
+    toNumber(dengueSourceMetadata?.unknown_location_record_count, 0),
+    toNumber(savedDengueStatus?.validationCounts?.unknown_location_records, 0)
+  )
+  const validatedCleanedCases = Math.max(0, extractedDetailCases - unknownLocationCases)
+  const displayedOfficialHistoricalCases = officialHistoricalCases || displayStats.totalCases
 
 
   function openBarangayList({ title, description, tone = 'blue', rows = [] }) {
@@ -2909,6 +3328,44 @@ export default function DashboardPage() {
           config={barangayModal}
           onClose={closeBarangayList}
           onOpenForecast={openFullForecastFromModal}
+        />
+      )}
+
+      {matchingDetailsOpen && (
+        <BarangayMatchingDetailsModal
+          details={{
+            reportedCases: displayedOfficialHistoricalCases,
+            extractedCases: extractedDetailCases,
+            cleanedCases: validatedCleanedCases,
+            matchedCases: displayStats.totalCases,
+            unknownCases: unknownLocationCases,
+            unknownRecords: unknownLocationRecords,
+            monthlyDiscrepancies: monthlyTotalDiscrepancies,
+          }}
+          onClose={() => setMatchingDetailsOpen(false)}
+          onViewBarangays={() => {
+            setMatchingDetailsOpen(false)
+            openBarangayList({
+              title: 'Barangays by recorded dengue cases',
+              description: 'Barangays are ordered from the highest historical dengue case total to the lowest.',
+              tone: 'blue',
+              rows: recordedCaseRows,
+            })
+          }}
+        />
+      )}
+
+      {integrationReviewOpen && (
+        <IntegrationReviewModal
+          barangayName={topPriority?.barangay || topPriority?.name || ''}
+          status={integrationStatus}
+          score={integrationScore}
+          checks={integrationChecks}
+          onClose={() => setIntegrationReviewOpen(false)}
+          onReviewUpload={(preferNameCheck) => {
+            setIntegrationReviewOpen(false)
+            navigate(preferNameCheck ? '/upload#barangay-name-matching' : '/upload#integration-readiness')
+          }}
         />
       )}
 
@@ -3057,10 +3514,19 @@ export default function DashboardPage() {
                   <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Risk level</p>
                   <p className="mt-1 text-sm font-black text-white">{topPriority?.risk || 'Pending'}</p>
                 </div>
-                <div className="relative overflow-hidden rounded-[18px] border border-white/[0.15] bg-gradient-to-br from-white/[0.10] to-cyan-300/[0.05] p-3 shadow-inner">
-                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Integration</p>
+                <button
+                  type="button"
+                  onClick={() => setIntegrationReviewOpen(true)}
+                  className="group/integration relative overflow-hidden rounded-[18px] border border-white/[0.15] bg-gradient-to-br from-white/[0.10] to-cyan-300/[0.05] p-3 text-left shadow-inner transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.10] focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+                  aria-label={`Review barangay integration status: ${integrationStatus}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Barangay integration</p>
+                    <ArrowRight className="h-3.5 w-3.5 text-cyan-200/70 transition group-hover/integration:translate-x-0.5" />
+                  </div>
                   <p className="mt-1 text-sm font-black text-white">{integrationStatus}</p>
-                </div>
+                  <p className="mt-1 text-[9px] font-bold text-cyan-100/65">View what needs attention</p>
+                </button>
               </div>
 
               <button
@@ -3081,20 +3547,21 @@ export default function DashboardPage() {
         className="scroll-mt-28 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
       >
         <PremiumStatCard
+          title="Historical dengue cases"
+          value={formatNumber(displayedOfficialHistoricalCases)}
+          helper="Official DOH-reported dengue cases in Butuan City, 2018–2025"
+          icon={Database}
+          tone="blue"
+        />
+
+        <PremiumStatCard
           title="Barangay-matched cases"
           value={formatNumber(displayStats.totalCases)}
-          helper="Official barangay-matched dengue cases used for modeling"
+          helper="Validated cases matched to recognized barangays for modeling"
           icon={Activity}
           tone="blue"
-          clickLabel="View barangay case totals"
-          onClick={() =>
-            openBarangayList({
-              title: 'Barangays by recorded dengue cases',
-              description: 'Barangays are ordered from the highest historical dengue case total to the lowest.',
-              tone: 'blue',
-              rows: recordedCaseRows,
-            })
-          }
+          clickLabel="Why is this lower?"
+          onClick={() => setMatchingDetailsOpen(true)}
         />
 
         <PremiumStatCard
@@ -3129,14 +3596,6 @@ export default function DashboardPage() {
               rows: projectedCaseRows,
             })
           }
-        />
-
-        <PremiumStatCard
-          title="Source valid-row rate"
-          value={`${displayStats.dataQuality}%`}
-          helper="Valid rows across the latest uploaded source files"
-          icon={CheckCircle2}
-          tone="green"
         />
       </div>
 

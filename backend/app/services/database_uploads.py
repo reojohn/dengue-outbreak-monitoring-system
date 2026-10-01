@@ -930,6 +930,13 @@ def get_latest_dataset_uploads() -> dict:
                 row["detection_result"],
                 row["original_filename"],
             ),
+            # Keep the small validation/detection metadata available to the UI.
+            # This lets the dashboard explain the CURRENT uploaded dataset
+            # (reported totals, unknown locations, discrepancies, cleaning
+            # actions) without downloading the full source file or hardcoding
+            # values for one agency/workbook.
+            "validation_summary": _json_object(row["validation_summary"]),
+            "detection_result": _json_object(row["detection_result"]),
             # Only expose the two tiny coverage values needed by the header.
             # This reuses the existing database-status request and avoids
             # downloading dengue rows just to calculate the displayed range.

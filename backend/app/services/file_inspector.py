@@ -1192,6 +1192,69 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
     ]
     invalid_preview_df = invalid_preview_df[invalid_result_columns]
 
+    # Build a source-agnostic processing audit for dashboard transparency.
+    # These values are derived from the currently uploaded dengue dataset; no
+    # agency name or fixed case total is assumed.
+    numeric_case_mask = clean_df["cases"].notna() & (clean_df["cases"] >= 0)
+    extracted_detail_cases = int(clean_df.loc[numeric_case_mask, "cases"].sum())
+    validated_clean_cases = int(valid_df["cases"].sum()) if not valid_df.empty else 0
+
+    annual_reported_totals = source_metadata.get("annual_reported_totals", {}) or {}
+    declared_case_total = sum(
+        int(value) for value in annual_reported_totals.values()
+        if value is not None
+    )
+    source_reported_cases = declared_case_total or extracted_detail_cases
+    source_total_basis = (
+        "source_declared_totals" if declared_case_total else "sum_of_extracted_case_values"
+    )
+
+    standardized_barangay_mask = (
+        clean_df["barangay_raw"].fillna("").astype(str).str.strip()
+        != clean_df["barangay"].fillna("").astype(str).str.strip()
+    ) & ~invalid_barangay
+
+    # Reason masks are exclusive so the displayed row counts do not double count
+    # a record that fails more than one validation rule.
+    reason_unknown = invalid_barangay
+    reason_time = (~reason_unknown) & invalid_time
+    reason_cases = (~reason_unknown) & (~reason_time) & invalid_cases
+    reason_deaths = (~reason_unknown) & (~reason_time) & (~reason_cases) & invalid_deaths
+
+    def _known_case_sum(mask):
+        values = clean_df.loc[mask & numeric_case_mask, "cases"]
+        return int(values.sum()) if not values.empty else 0
+
+    issue_breakdown = []
+    for code, label, action, mask in [
+        ("unknown_or_blank_barangay", "Unknown or blank barangay", "Excluded from barangay-level modeling", reason_unknown),
+        ("invalid_time", "Invalid or missing time value", "Excluded until the time value can be validated", reason_time),
+        ("invalid_cases", "Invalid case value", "Excluded until the case value can be validated", reason_cases),
+        ("invalid_deaths", "Invalid death value", "Excluded until the value can be validated", reason_deaths),
+    ]:
+        row_count = int(mask.sum())
+        if row_count:
+            issue_breakdown.append({
+                "code": code,
+                "label": label,
+                "action": action,
+                "record_count": row_count,
+                "case_count": _known_case_sum(mask),
+            })
+
+    processing_summary = {
+        "source_reported_cases": int(source_reported_cases),
+        "source_total_basis": source_total_basis,
+        "extracted_detail_cases": extracted_detail_cases,
+        "validated_clean_cases": validated_clean_cases,
+        "excluded_known_cases": max(0, extracted_detail_cases - validated_clean_cases),
+        "standardized_barangay_rows": int(standardized_barangay_mask.sum()),
+        "valid_record_count": int(len(valid_df)),
+        "invalid_record_count": int(invalid_rows.sum()),
+        "issue_breakdown": issue_breakdown,
+        "source_detail_difference": int(extracted_detail_cases - source_reported_cases),
+    }
+
     validation_summary = {
         "invalid_barangay_rows": int(invalid_barangay.sum()),
         "invalid_time_rows": int(invalid_time.sum()),
@@ -1200,6 +1263,7 @@ def prepare_clean_dengue_dataframe(df: pd.DataFrame):
         "normalized_barangay_count": int(valid_df["barangay_key"].nunique())
         if not valid_df.empty
         else 0,
+        "processing_summary": processing_summary,
     }
 
     if is_doh_monthly:

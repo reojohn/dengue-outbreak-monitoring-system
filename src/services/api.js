@@ -620,6 +620,13 @@ export async function getLatestBackendIntegrationDataset() {
 }
 
 
+export async function getBarangayIntegrationReadiness(barangay) {
+  const params = new URLSearchParams({ barangay: String(barangay || '') })
+  const response = await apiFetch(`${API_BASE_URL}/integration/barangay-readiness?${params.toString()}`)
+  return handleApiResponse(response)
+}
+
+
 export async function getBackendAlignmentReport() {
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/integration/alignment-report`,

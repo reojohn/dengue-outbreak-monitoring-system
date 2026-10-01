@@ -4041,10 +4041,12 @@ export default function ForecastPage() {
     selectedResponsePeriodPredictions.length >= forecastHorizonPeriods ||
     selectedResponseForecastStrategy === 'Direct multi-step forecasting'
   const topRiskScore = getRowRiskScore(highestRiskBarangay)
+  const topWeatherRecordCount = Number(sourceStatus?.weather?.validCount || highestRiskBarangay?.weatherRecordCount || 0)
   const topWeatherCoverage = sourceStatus?.weather?.coverageStart && sourceStatus?.weather?.coverageEnd
     ? `${sourceStatus.weather.coverageStart} to ${sourceStatus.weather.coverageEnd}`
-    : highestRiskBarangay?.weatherCoverageLabel || 'Weather data unavailable'
-  const topWeatherRecordCount = Number(sourceStatus?.weather?.validCount || highestRiskBarangay?.weatherRecordCount || 0)
+    : topWeatherRecordCount > 0
+      ? 'Weather observations available'
+      : highestRiskBarangay?.weatherCoverageLabel || 'Weather data unavailable'
 
   const selectedRiskExplanationRow =
     forecastRows.find((row) => row.barangay === selectedRiskExplanationBarangay) ||

@@ -357,6 +357,22 @@ function normalizeBackendNotification(item = {}, index = 0) {
   }
 }
 
+
+function formatCoverageMonth(value = '') {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(value || '').trim())
+  if (!match) return value || '—'
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isInteger(month) || month < 1 || month > 12) return value || '—'
+
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
 function formatNotificationTime(timestamp = '') {
   if (!timestamp) return 'Just now'
 
@@ -1085,6 +1101,8 @@ export default function AppShell({ children }) {
     backendForecastResult = null,
     backendIntegrationStatus = null,
     backendIntegrationResult = null,
+    latestModelMetrics = null,
+    loadLatestModelMetricsCached,
     addActivityLog,
     resetLocalWorkspaceSession,
   } = useData()
@@ -1098,6 +1116,8 @@ export default function AppShell({ children }) {
   const [notificationPreferenceLoaded, setNotificationPreferenceLoaded] = useState(false)
   const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [dataRangeOpen, setDataRangeOpen] = useState(false)
+  const [datasetCoverageLoading, setDatasetCoverageLoading] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [isCompactViewport, setIsCompactViewport] = useState(() =>
     typeof window !== 'undefined'
@@ -1198,6 +1218,131 @@ export default function AppShell({ children }) {
 
     return 'No data range'
   }, [dengueRecords, sourceStatus, backendForecastResult])
+
+  const datasetModelCoverage = useMemo(() => {
+    const dengueStatus = sourceStatus?.dengue || {}
+    // The detailed model-evaluation metadata is stored separately from the
+    // saved forecast result. Reuse the same cached source as ForecastPage so
+    // this global modal never invents or hardcodes train/test counts.
+    const trainingSummary =
+      latestModelMetrics?.training_summary ||
+      backendForecastResult?.training_summary ||
+      {}
+    const metricRoot = latestModelMetrics?.metrics || latestModelMetrics || {}
+    const forecastMetricRoot = backendForecastResult?.model_metrics || {}
+    const splitMetadata =
+      trainingSummary?.split_metadata ||
+      metricRoot?.split_metadata ||
+      forecastMetricRoot?.split_metadata ||
+      {}
+    const trainingSamples = Number(
+      trainingSummary?.training_row_count ??
+      metricRoot?.training_row_count ??
+      forecastMetricRoot?.training_row_count ??
+      0
+    )
+    const testingSamples = Number(
+      trainingSummary?.testing_row_count ??
+      metricRoot?.testing_row_count ??
+      forecastMetricRoot?.testing_row_count ??
+      0
+    )
+    const totalModelSamples = trainingSamples + testingSamples
+    const coverageStart = dengueStatus.coverageStart || dengueStatus.coverage_start || ''
+    const coverageEnd = dengueStatus.coverageEnd || dengueStatus.coverage_end || ''
+    const splitLabel =
+      trainingSummary?.train_test_split ||
+      metricRoot?.train_test_split ||
+      forecastMetricRoot?.train_test_split ||
+      'Not available yet'
+    const leakageGuard = Number(splitMetadata?.leakage_guard_periods || 0)
+    const embargoedRows = Number(splitMetadata?.embargoed_row_count || 0)
+    const horizon = Number(
+      backendForecastResult?.forecast_horizon_periods ||
+      trainingSummary?.forecast_horizon_periods ||
+      metricRoot?.forecast_horizon_periods ||
+      0
+    )
+    const horizonLabel = backendForecastResult?.forecast_horizon_label || ''
+
+    // Reconstruct the protected reporting periods from the saved split boundaries.
+    // The backend split metadata stores the last training period, first testing
+    // period, and the number of embargo periods. No model values are changed here.
+    const embargoPeriodCount = Number(splitMetadata?.embargo_period_count || leakageGuard || 0)
+    const deriveEmbargoPeriods = (trainEnd, testStart, expectedCount) => {
+      if (!trainEnd || !testStart || expectedCount <= 0) return []
+
+      const monthly = /^(\d{4})-(\d{2})$/.exec(trainEnd)
+      const monthlyTest = /^(\d{4})-(\d{2})$/.exec(testStart)
+      if (monthly && monthlyTest) {
+        let year = Number(monthly[1])
+        let month = Number(monthly[2])
+        const result = []
+        for (let index = 0; index < expectedCount; index += 1) {
+          month += 1
+          if (month > 12) { month = 1; year += 1 }
+          const label = `${year}-${String(month).padStart(2, '0')}`
+          if (label >= testStart) break
+          result.push(label)
+        }
+        return result
+      }
+
+      // Weekly runs already expose YYYY-W## labels. Week/year rollover is more
+      // nuanced, so avoid guessing individual weeks when the backend has not
+      // persisted them; the UI will still show the guard count and boundaries.
+      return []
+    }
+    const embargoPeriods = deriveEmbargoPeriods(
+      splitMetadata?.train_end_period || '',
+      splitMetadata?.test_start_period || '',
+      embargoPeriodCount
+    )
+    const embargoRowsPerPeriod =
+      embargoPeriodCount > 0 && embargoedRows > 0 && embargoedRows % embargoPeriodCount === 0
+        ? embargoedRows / embargoPeriodCount
+        : 0
+
+    return {
+      coverageStart,
+      coverageEnd,
+      splitLabel,
+      trainingSamples,
+      testingSamples,
+      totalModelSamples,
+      leakageGuard,
+      embargoedRows,
+      embargoPeriodCount,
+      embargoPeriods,
+      embargoRowsPerPeriod,
+      horizon,
+      horizonLabel,
+      trainStart: splitMetadata?.train_start_period || '',
+      trainEnd: splitMetadata?.train_end_period || '',
+      testStart: splitMetadata?.test_start_period || '',
+      testEnd: splitMetadata?.test_end_period || '',
+    }
+  }, [sourceStatus, backendForecastResult, latestModelMetrics])
+
+  useEffect(() => {
+    // Load the same cached model metadata used by Risk Forecast only when the
+    // user opens this modal. The cached loader deduplicates requests; this
+    // local flag is presentation-only so the modal can show a page-style
+    // skeleton instead of briefly rendering empty evaluation values.
+    if (!dataRangeOpen || latestModelMetrics) {
+      setDatasetCoverageLoading(false)
+      return
+    }
+
+    let active = true
+    setDatasetCoverageLoading(true)
+    Promise.resolve(loadLatestModelMetricsCached?.({ silent: true }))
+      .finally(() => {
+        if (active) setDatasetCoverageLoading(false)
+      })
+
+    return () => { active = false }
+  }, [dataRangeOpen, latestModelMetrics, loadLatestModelMetricsCached, backendForecastResult?.database_forecast_run_id])
 
   useEffect(() => {
     let active = true
@@ -2775,11 +2920,16 @@ export default function AppShell({ children }) {
                     )}
                   </div>
 
-                  <div
-                    role="status"
-                    className="flex min-h-11 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-slate-200 shadow-sm"
-                    aria-label={`Dataset range: ${dataRange}`}
-                    title={`Dataset range: ${dataRange}`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDataRangeOpen(true)
+                      setSettingsOpen(false)
+                      setNotificationsOpen(false)
+                    }}
+                    className="group flex min-h-11 items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 text-left text-slate-200 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/10"
+                    aria-label={`Open dataset and model coverage details. Dataset range: ${dataRange}`}
+                    title="View dataset and model coverage"
                   >
                     <CalendarDays size={16} className="shrink-0 text-cyan-200" />
 
@@ -2792,7 +2942,239 @@ export default function AppShell({ children }) {
                         {dataRange}
                       </span>
                     </span>
-                  </div>
+                  </button>
+
+                  {dataRangeOpen && typeof document !== 'undefined' && createPortal(
+                    <div
+                      className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="dataset-model-coverage-title"
+                      onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) setDataRangeOpen(false)
+                      }}
+                    >
+                      <div className="dengue-dataset-modal-scroll w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-[28px] border border-cyan-300/20 bg-[#071525] text-slate-100 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+                          <div>
+                            <span className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                              Dataset & model coverage
+                            </span>
+                            <h2 id="dataset-model-coverage-title" className="mt-3 text-2xl font-black text-white">
+                              Data range and chronological split
+                            </h2>
+                            <p className="mt-2 max-w-3xl text-base leading-7 text-slate-300">
+                              A quick view of the historical coverage and the latest saved model evaluation. Values update from the current uploaded data and model run.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setDataRangeOpen(false)}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-slate-300 transition hover:bg-white/10 hover:text-white"
+                            aria-label="Close dataset details"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+
+                        <div className="space-y-4 px-6 py-5">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.07] p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-100/70">Historical data range</p>
+                              <p className="mt-2 text-xl font-black text-white">{dataRange}</p>
+                              <p className="mt-1 text-sm leading-6 text-slate-300">
+                                {datasetModelCoverage.coverageStart && datasetModelCoverage.coverageEnd
+                                  ? `${datasetModelCoverage.coverageStart} to ${datasetModelCoverage.coverageEnd}`
+                                  : 'Coverage is based on the current dengue records.'}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.14em] text-white/55">Forecast horizon</p>
+                              <p className="mt-2 text-xl font-black text-white">
+                                {datasetModelCoverage.horizon > 0 ? `${datasetModelCoverage.horizon} periods` : 'Not available yet'}
+                              </p>
+                              <p className="mt-1 text-sm leading-6 text-slate-300">
+                                {datasetModelCoverage.horizonLabel || 'Run forecasting to populate the current forecast horizon.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {datasetCoverageLoading ? (
+                            <div className="space-y-4" aria-live="polite" aria-busy="true">
+                              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="space-y-2">
+                                    <div className="dengue-dataset-skeleton h-3 w-44 rounded-full" />
+                                    <div className="dengue-dataset-skeleton h-5 w-72 max-w-full rounded-lg" />
+                                  </div>
+                                  <div className="dengue-dataset-skeleton h-7 w-40 rounded-full" />
+                                </div>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                  {[0, 1, 2].map((item) => (
+                                    <div key={item} className="rounded-xl border border-white/10 bg-[#0b1d2d] p-4">
+                                      <div className="dengue-dataset-skeleton h-3 w-24 rounded-full" />
+                                      <div className="dengue-dataset-skeleton mt-3 h-8 w-28 rounded-lg" />
+                                      <div className="dengue-dataset-skeleton mt-4 h-4 w-36 rounded-full" />
+                                      <div className="dengue-dataset-skeleton mt-2 h-4 w-32 rounded-full" />
+                                      <div className="dengue-dataset-skeleton mt-4 h-4 w-full rounded-full" />
+                                      <div className="dengue-dataset-skeleton mt-2 h-4 w-4/5 rounded-full" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.04] p-4">
+                                <div className="dengue-dataset-skeleton h-5 w-56 rounded-lg" />
+                                <div className="dengue-dataset-skeleton mt-3 h-4 w-full rounded-full" />
+                                <div className="dengue-dataset-skeleton mt-2 h-4 w-11/12 rounded-full" />
+                                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                                  {[0, 1, 2].map((item) => (
+                                    <div key={item} className="rounded-xl border border-white/[0.07] bg-[#0b1d2d]/70 p-3">
+                                      <div className="dengue-dataset-skeleton h-3 w-24 rounded-full" />
+                                      <div className="dengue-dataset-skeleton mt-2 h-5 w-32 rounded-lg" />
+                                      <div className="dengue-dataset-skeleton mt-2 h-4 w-full rounded-full" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <p className="text-sm font-semibold text-cyan-100/80">Loading the latest saved model evaluation…</p>
+                            </div>
+                          ) : (
+                            <>
+                          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-white/55">Chronological evaluation</p>
+                                <p className="mt-1 text-base font-black text-white">{datasetModelCoverage.splitLabel}</p>
+                              </div>
+                              {datasetModelCoverage.leakageGuard > 0 && (
+                                <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-200">
+                                  {datasetModelCoverage.leakageGuard}-period leakage guard
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-[#0b1d2d]">
+                              <div className="overflow-x-auto">
+                                <table className="w-full min-w-[760px] border-collapse text-left">
+                                  <thead className="bg-white/[0.045]">
+                                    <tr className="border-b border-white/10">
+                                      <th className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Set</th>
+                                      <th className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Observations</th>
+                                      <th className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Started</th>
+                                      <th className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Ended</th>
+                                      <th className="px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Meaning</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-white/[0.07] text-sm text-slate-300">
+                                    <tr>
+                                      <td className="px-4 py-4 font-black text-white">Training Set</td>
+                                      <td className="px-4 py-4 text-lg font-black text-white">{Number(datasetModelCoverage.trainingSamples) > 0 ? Number(datasetModelCoverage.trainingSamples).toLocaleString() : '—'}</td>
+                                      <td className="px-4 py-4 font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.trainStart)}</td>
+                                      <td className="px-4 py-4 font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.trainEnd)}</td>
+                                      <td className="px-4 py-4 leading-6">Earlier model-ready observations CatBoost learns from.</td>
+                                    </tr>
+                                    {datasetModelCoverage.embargoedRows > 0 && (
+                                      <tr className="bg-amber-300/[0.035]">
+                                        <td className="px-4 py-4">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-black text-amber-100">Leakage Guard</span>
+                                            <span className="rounded-full border border-amber-200/15 bg-amber-200/[0.07] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-amber-100">Protected</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-4 py-4 text-lg font-black text-amber-100">{datasetModelCoverage.embargoedRows.toLocaleString()}</td>
+                                        <td className="px-4 py-4 font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.embargoPeriods[0] || '')}</td>
+                                        <td className="px-4 py-4 font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.embargoPeriods[datasetModelCoverage.embargoPeriods.length - 1] || '')}</td>
+                                        <td className="px-4 py-4 leading-6">Protected forecast-origin observations kept between training and testing to prevent future-target leakage.</td>
+                                      </tr>
+                                    )}
+                                    <tr>
+                                      <td className="px-4 py-4 font-black text-white">Testing Set</td>
+                                      <td className="px-4 py-4 text-lg font-black text-white">{Number(datasetModelCoverage.testingSamples) > 0 ? Number(datasetModelCoverage.testingSamples).toLocaleString() : '—'}</td>
+                                      <td className="px-4 py-4 font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.testStart)}</td>
+                                      <td className="px-4 py-4 font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.testEnd)}</td>
+                                      <td className="px-4 py-4 leading-6">Later unseen observations used to evaluate CatBoost.</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-col gap-1 rounded-xl border border-cyan-200/10 bg-cyan-200/[0.035] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-100/70">Train + Test model-ready samples</p>
+                                <p className="mt-1 text-2xl font-black text-white">{Number(datasetModelCoverage.totalModelSamples) > 0 ? Number(datasetModelCoverage.totalModelSamples).toLocaleString() : '—'}</p>
+                              </div>
+                              <p className="max-w-md text-sm leading-6 text-slate-300">
+                                {Number(datasetModelCoverage.trainingSamples) > 0 && Number(datasetModelCoverage.testingSamples) > 0
+                                  ? `${Number(datasetModelCoverage.trainingSamples).toLocaleString()} training + ${Number(datasetModelCoverage.testingSamples).toLocaleString()} testing. The leakage-guard observations are intentionally excluded from this total.`
+                                  : 'Training + testing samples. Leakage-guard observations are not included in this total.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {datasetModelCoverage.embargoedRows > 0 && (
+                            <div className="flex gap-3 rounded-2xl border border-amber-300/15 bg-amber-300/[0.06] p-4">
+                              <Info size={18} className="mt-0.5 shrink-0 text-amber-200" />
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-base font-black text-amber-100">Why the leakage guard is needed</p>
+                                  <span className="rounded-full border border-amber-200/15 bg-amber-200/[0.07] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100">
+                                    {datasetModelCoverage.embargoedRows.toLocaleString()} observations excluded
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-sm leading-6 text-slate-300">
+                                  These are model-ready forecast-origin observations intentionally placed between training and testing. They are not deleted source records and are not dengue-case counts. They are excluded only from unbiased model evaluation so their future targets cannot overlap the held-out test era.
+                                </p>
+
+
+
+                                {datasetModelCoverage.embargoPeriods.length > 0 && (
+                                  <div className="mt-3 rounded-xl border border-white/[0.07] bg-black/10 p-3">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Periods kept out of evaluation</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {datasetModelCoverage.embargoPeriods.map((period) => (
+                                        <span key={period} className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-slate-300">
+                                          {formatCoverageMonth(period)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <p className="mt-3 text-sm leading-6 text-slate-400">
+                                  Training ends at <span className="font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.trainEnd)}</span>; testing starts at <span className="font-bold text-slate-200">{formatCoverageMonth(datasetModelCoverage.testStart)}</span>. The protected periods sit between them because each forecast origin predicts up to four periods ahead.
+                                </p>
+                                {datasetModelCoverage.testEnd && datasetModelCoverage.coverageEnd && (
+                                  <div className="mt-3 rounded-xl border border-cyan-200/10 bg-cyan-200/[0.04] p-3 text-sm leading-6 text-slate-300">
+                                    <span className="font-black text-cyan-100">Why testing ends at {formatCoverageMonth(datasetModelCoverage.testEnd)}:</span>{' '}
+                                    the model evaluates a {datasetModelCoverage.horizon || 4}-period forecast from each test origin. Later historical periods are therefore used as the future actual values needed to evaluate M1–M{datasetModelCoverage.horizon || 4}, up to the dataset end at {formatCoverageMonth(datasetModelCoverage.coverageEnd)}.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                            </>
+                          )}
+
+                          <p className="text-sm leading-6 text-slate-400">
+                            Model metrics such as MAE, RMSE, R², accuracy, precision, recall, and F1 remain in Risk Forecast → View AI and model details.
+                          </p>
+                        </div>
+
+                        <div className="flex justify-end border-t border-white/10 px-6 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setDataRangeOpen(false)}
+                            className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-white transition hover:bg-white/10"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body
+                  )}
 
                   <button
                     type="button"
