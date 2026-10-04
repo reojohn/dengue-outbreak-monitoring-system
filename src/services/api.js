@@ -1207,3 +1207,29 @@ export async function resetRiskThresholdConfiguration() {
   clearReadResponseCache('forecast:')
   return result
 }
+
+export function getRecommendedResponseConfiguration({ force = false } = {}) {
+  return cachedJsonGet(
+    'configuration:recommended-responses',
+    `${API_BASE_URL}/configuration/recommended-responses`,
+    { ttlMs: 10 * 60_000, force }
+  )
+}
+
+export async function updateRecommendedResponseConfiguration(templates) {
+  const result = await apiFetch(`${API_BASE_URL}/configuration/recommended-responses`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ templates }),
+  }).then(handleApiResponse)
+  clearReadResponseCache('configuration:recommended-responses')
+  clearReadResponseCache('forecast:')
+  return result
+}
+
+export async function resetRecommendedResponseConfiguration() {
+  const result = await apiFetch(`${API_BASE_URL}/configuration/recommended-responses/reset`, { method: 'POST' }).then(handleApiResponse)
+  clearReadResponseCache('configuration:recommended-responses')
+  clearReadResponseCache('forecast:')
+  return result
+}

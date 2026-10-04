@@ -2052,9 +2052,7 @@ function getOfficialMetadataRows(metadata = {}) {
     ['Model version', metadata.modelVersion || 'Not recorded'],
     ['Selected model', metadata.selectedModel || 'Not recorded'],
     ['Train/test split', metadata.trainTestSplit || 'Chronological 80/20 origin split + 4-period leakage guard'],
-    ['Random state', metadata.randomState || '42'],
     ['Models evaluated', metadata.modelsEvaluated || 'Not recorded'],
-    ['Model selection strength', metadata.aiConfidence || 'Not available yet'],
     ['Top feature importance', metadata.featureImportanceSummary || 'Not available yet'],
     ['Selected model metrics', metadata.selectedModelMetrics || 'Not recorded'],
     ['Model ranking summary', metadata.modelComparisonSummary || 'Not recorded'],
@@ -2085,19 +2083,22 @@ function getOperationalMetadataRows(metadata = {}) {
   ]
 }
 
-function getTechnicalModelMetadataRows(metadata = {}) {
-  return [
+function getTechnicalModelMetadataRows(metadata = {}, { operationalOnly = false } = {}) {
+  const rows = [
     ['Model version', metadata.modelVersion || 'Not recorded'],
     ['Selected model', metadata.selectedModel || 'Not recorded'],
     ['Train/test split', metadata.trainTestSplit || 'Chronological 80/20 origin split + 4-period leakage guard'],
-    ['Random state', metadata.randomState || '42'],
     ['Models evaluated', metadata.modelsEvaluated || 'Not recorded'],
-    ['Model selection strength', metadata.aiConfidence || 'Not available yet'],
     ['Top feature importance', metadata.featureImportanceSummary || 'Not available yet'],
     ['Selected model metrics', metadata.selectedModelMetrics || 'Not recorded'],
     ['Model ranking summary', metadata.modelComparisonSummary || 'Not recorded'],
     ['Model selection explanation', metadata.selectionExplanation || 'Not recorded'],
   ]
+
+  // Keep exported technical review focused on reproducible methodology and
+  // actual model-performance evidence. Implementation-only random-state and
+  // heuristic selection-strength displays are intentionally omitted.
+  return rows
 }
 
 function getStatusStyle(badge = '') {
@@ -2526,15 +2527,12 @@ function buildBackendRiskRows(backendForecastResult = null, context = {}) {
         recommendation: backendRecommendation || computedDecisionSupport.primaryAction,
       })
 
-      const actionPlan = Array.from(
-        new Set([
-          backendRecommendation,
-          ...(Array.isArray(computedDecisionSupport.actions)
-            ? computedDecisionSupport.actions
-            : []),
-          ...fallbackActionPlan,
-        ].filter(Boolean))
-      ).slice(0, 8)
+      // Response Priority is computed from the full decision-support context first.
+      // CHO/Admin guidance is then applied by computeDecisionSupport for that priority.
+      const priorityConfiguredPlan = Array.isArray(computedDecisionSupport.actions) ? computedDecisionSupport.actions.filter(Boolean) : []
+      const actionPlan = priorityConfiguredPlan.length
+        ? Array.from(new Set(priorityConfiguredPlan)).slice(0, 12)
+        : Array.from(new Set([backendRecommendation, ...fallbackActionPlan].filter(Boolean))).slice(0, 8)
 
       const backendRationale = buildBackendRationale({
         barangay,
@@ -2561,8 +2559,8 @@ function buildBackendRiskRows(backendForecastResult = null, context = {}) {
       const decisionSupport = {
         ...computedDecisionSupport,
         summary:
-          backendRecommendation ||
           computedDecisionSupport.summary ||
+          backendRecommendation ||
           getGenericRecommendedAction(backendRisk),
         priority:
           computedDecisionSupport.priority ||
@@ -2765,14 +2763,13 @@ function getBarangayOperationalRationale({ row = null, decision = {}, actualSurv
   const periods = getForecastPeriodDetails(row || {})
   const nextPeriodCases = Number(periods?.[0]?.predictedCases || 0)
   const movement = String(actualSurveillance?.trendDirection || 'No comparison')
-  const changeLabel = String(actualSurveillance?.changeLabel || '').trim()
   const modelTrend = String(decision?.trendDirection || 'Trend unavailable')
 
   return [
     `Forecast risk: ${row?.risk || 'Unknown'}.`,
     `Projected four-period cases: ${formatNumber(row?.forecast || 0)}.`,
     `${formatNumber(nextPeriodCases)} ${Number(nextPeriodCases || 0) === 1 ? 'case' : 'cases'} forecast for the next period.`,
-    `Latest monthly movement: ${movement}${changeLabel ? ` · ${changeLabel}` : ''}.`,
+    `Latest monthly movement: ${movement}.`,
     `Model recent trend signal: ${modelTrend}.`,
     `Historical cases used for model analysis: ${formatNumber(dashboardStats?.totalCases || 0)}.`,
   ]
@@ -2834,7 +2831,7 @@ function openPrintableReport({ dashboardStats = {}, riskRows, sourceStatus, gene
     `)
     .join('')
 
-  const technicalModelHtml = getTechnicalModelMetadataRows(officialMetadata)
+  const technicalModelHtml = getTechnicalModelMetadataRows(officialMetadata, { operationalOnly: reportScopeConfig.isBarangayScoped })
     .map(([label, value]) => `
       <tr>
         <td>${escapeHtml(label)}</td>
@@ -3609,6 +3606,8 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     hotspotRows,
     decisionActionResult,
     dashboardStats,
+    isBarangayScoped: reportScopeConfig.isBarangayScoped,
+    assignedBarangay: barangayLabel,
   })
 
   const doc = new jsPDF({
@@ -3652,7 +3651,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       ['Hotspot results not checked', formatNumber(hotspotCounts.notChecked)],
       [reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for', formatNumber(getHotspotCountTotal(hotspotCounts))],
       ['Report data source', dataSourceLabel],
-      ['Citywide four-period forecast total', formatNumber(dashboardStats.fourWeekForecast)],
+      [reportScopeConfig.isBarangayScoped ? 'Assigned barangay four-period forecast total' : 'Citywide four-period forecast total', formatNumber(reportScopeConfig.isBarangayScoped ? analyticsSnapshot.forecastTotal : dashboardStats.fourWeekForecast)],
       ['Source valid-row rate', `${dashboardStats.dataQuality}%`],
       ...(reportScopeConfig.isBarangayScoped
         ? [['Current response priority', topDecision.priority || 'No data']]
@@ -3727,7 +3726,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       ['Actual recorded cases', formatNumber(actualSurveillance.totalCases)],
       ['Highest month', actualSurveillance.highestMonth ? `${actualSurveillance.highestMonth.month_label} · ${formatNumber(actualSurveillance.highestMonth.cases)} cases` : 'No data'],
       ['Lowest month', actualSurveillance.lowestMonth ? `${actualSurveillance.lowestMonth.month_label} · ${formatNumber(actualSurveillance.lowestMonth.cases)} cases` : 'No data'],
-      [reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement', `${actualSurveillance.trendDirection} · ${actualSurveillance.changeLabel}`],
+      [reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement', actualSurveillance.trendDirection],
       ['Usual peak month', actualSurveillance.usualPeakMonth === 'Not available' ? 'Not available' : `${actualSurveillance.usualPeakMonth}${actualSurveillance.usualPeakAverage > 0 ? ` · historical average ${actualSurveillance.usualPeakAverage.toFixed(1)} cases` : ''}`],
     ],
     theme: 'grid',
@@ -3883,7 +3882,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
       body: [
         ['Recorded cases in selected period', formatNumber(analyticsSnapshot.totalActualCases)],
         ['Barangays with recorded cases', formatNumber(analyticsSnapshot.affectedBarangays)],
-        ['Current movement', `${analyticsSnapshot.movement} · ${analyticsSnapshot.movementChange}`],
+        ['Current movement', analyticsSnapshot.movement],
         ['Top 10 share of cases', `${analyticsSnapshot.topTenContribution.toFixed(1)}%`],
       ],
       theme: 'grid',
@@ -4136,13 +4135,118 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
     })
   }
 
-  if (!reportScopeConfig.isBarangayScoped) {
+  if (reportScopeConfig.isBarangayScoped) {
+    // BHW export analytics: keep every visual strictly limited to the assigned barangay.
     doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(23, 32, 51)
+    doc.text(`${barangayLabel} Forecast and Spatial Analytics`, margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Barangay-only decision-support visuals from the same data shown in the BHW Reports workspace.', margin, 58)
+
+    drawPdfHorizontalBars(doc, {
+      items: analyticsSnapshot.forecastPeriods.map((row) => ({ label: row.label, cases: row.cases })),
+      x: margin,
+      y: 78,
+      width: 360,
+      height: 230,
+      labelKey: 'label',
+      valueKey: 'cases',
+      title: 'Four-period forecast outlook',
+      subtitle: `${barangayLabel} · ${formatNumber(analyticsSnapshot.forecastTotal)} projected cases total`,
+      barColor: '#7c3aed',
+      maxItems: 4,
+    })
+
+    drawPdfDistributionBars(doc, {
+      items: analyticsSnapshot.hotspotDistribution,
+      x: 438,
+      y: 78,
+      width: 330,
+      title: 'Spatial hotspot status',
+      subtitle: `${barangayLabel} only`,
+    })
+
+    const scopedHotspot = getHotspotForBarangay(topBarangay, hotspotRows)
+    autoTable(doc, {
+      startY: 330,
+      head: [['Assigned barangay indicator', 'Current value']],
+      body: [
+        ['Forecast risk', topBarangay?.risk || 'Unknown'],
+        ['Four-period forecast', `${formatNumber(topBarangay?.forecast || analyticsSnapshot.forecastTotal)} cases`],
+        ['Combined priority score', `${formatNumber(getCanonicalCombinedRiskScore(topBarangay))}/100`],
+        ['Hotspot level', getHotspotLevelLabel(scopedHotspot?.hotspot_level)],
+        ['Hotspot score', formatHotspotScore(scopedHotspot?.hotspot_score)],
+        ['Response priority', topDecision?.priority || 'Decision pending'],
+      ],
+      theme: 'grid',
+      styles: { fontSize: 8.2, cellPadding: 5 },
+      headStyles: { fillColor: [37, 95, 143], textColor: [255, 255, 255] },
+      margin: { left: margin, right: margin },
+    })
+
+    doc.addPage()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(23, 32, 51)
+    doc.text(`${barangayLabel} Response Coordination and Map`, margin, 42)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Tracked field-response progress and the assigned barangay spatial snapshot.', margin, 58)
+
+    const responseRows = [
+      { label: 'Completed', value: analyticsSnapshot.response.completed },
+      { label: 'In progress', value: analyticsSnapshot.response.inProgress },
+      { label: 'Pending', value: analyticsSnapshot.response.pending },
+    ]
+    drawPdfHorizontalBars(doc, {
+      items: responseRows,
+      x: margin,
+      y: 78,
+      width: 350,
+      height: 205,
+      labelKey: 'label',
+      valueKey: 'value',
+      title: 'Response coordination',
+      subtitle: `${formatNumber(analyticsSnapshot.response.total)} tracked action${Number(analyticsSnapshot.response.total) === 1 ? '' : 's'} · ${analyticsSnapshot.response.completionRate}% completed`,
+      barColor: '#047857',
+      maxItems: 3,
+    })
+
+    drawPdfHotspotMap(doc, {
+      boundaryGeoJson,
+      hotspotRows,
+      x: 420,
+      y: 82,
+      width: 350,
+      height: 220,
+    })
+
+    autoTable(doc, {
+      startY: 330,
+      head: [['Response indicator', 'Value']],
+      body: [
+        ['Tracked actions', formatNumber(analyticsSnapshot.response.total)],
+        ['Completed', formatNumber(analyticsSnapshot.response.completed)],
+        ['In progress', formatNumber(analyticsSnapshot.response.inProgress)],
+        ['Pending', formatNumber(analyticsSnapshot.response.pending)],
+        ['Completion rate', `${analyticsSnapshot.response.completionRate}%`],
+        ['Primary field action', topDecision?.primaryAction || 'No action guidance available'],
+      ],
+      theme: 'grid',
+      styles: { fontSize: 8.2, cellPadding: 5, overflow: 'linebreak' },
+      headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+      margin: { left: margin, right: margin },
+    })
   }
 
-  const forecastSectionY = reportScopeConfig.isBarangayScoped
-    ? (doc.lastAutoTable?.finalY || rankingStartY + 80) + 28
-    : 42
+  // Start the forecast detail on a clean page for both CHO and barangay-scoped exports.
+  doc.addPage()
+  const forecastSectionY = 42
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
@@ -4466,7 +4570,7 @@ function downloadPdfReport({ dashboardStats = {}, riskRows, sourceStatus, genera
   autoTable(doc, {
     startY: 74,
     head: [['Technical field', 'Current model information']],
-    body: getTechnicalModelMetadataRows(officialMetadata),
+    body: getTechnicalModelMetadataRows(officialMetadata, { operationalOnly: reportScopeConfig.isBarangayScoped }),
     theme: 'grid',
     styles: {
       fontSize: 8,
@@ -4615,6 +4719,8 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     hotspotRows,
     decisionActionResult,
     dashboardStats,
+    isBarangayScoped: reportScopeConfig.isBarangayScoped,
+    assignedBarangay: barangayLabel,
   })
 
   const workbook = XLSX.utils.book_new()
@@ -4634,9 +4740,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
           ['Model version', officialMetadata.modelVersion],
           ['Selected model', officialMetadata.selectedModel],
           ['Train/test split', officialMetadata.trainTestSplit],
-          ['Random state', officialMetadata.randomState],
           ['Models evaluated', officialMetadata.modelsEvaluated],
-          ['Model selection strength', officialMetadata.aiConfidence],
           ['Top feature importance', officialMetadata.featureImportanceSummary],
           ['Selected model metrics', officialMetadata.selectedModelMetrics],
           ['Model ranking summary', officialMetadata.modelComparisonSummary],
@@ -4661,7 +4765,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     [reportScopeConfig.isBarangayScoped ? 'Assigned barangay hotspot records' : 'Official barangays accounted for', getHotspotCountTotal(hotspotCounts)],
     [reportScopeConfig.isBarangayScoped ? 'Barangay hotspot status' : 'Top hotspot barangay', reportScopeConfig.isBarangayScoped ? getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level) : (topHotspot?.barangay || 'Not checked')],
     ['Report data source', dataSourceLabel],
-    ['Citywide four-period forecast total', Number(dashboardStats.fourWeekForecast || 0)],
+    [reportScopeConfig.isBarangayScoped ? 'Assigned barangay four-period forecast total' : 'Citywide four-period forecast total', Number(reportScopeConfig.isBarangayScoped ? analyticsSnapshot.forecastTotal : (dashboardStats.fourWeekForecast || 0))],
     ['Source valid-row rate', `${dashboardStats.dataQuality}%`],
     ...(reportScopeConfig.isBarangayScoped
       ? [
@@ -4700,7 +4804,6 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
     ['Lowest month', actualSurveillance.lowestMonth?.month_label || 'No data'],
     ['Lowest month cases', actualSurveillance.lowestMonth?.cases ?? 'N/A'],
     [reportScopeConfig.isBarangayScoped ? 'Latest monthly movement' : 'Current movement', actualSurveillance.trendDirection],
-    ['Month-to-month change', actualSurveillance.changeLabel],
     ['Usual peak month', actualSurveillance.usualPeakMonth],
     ['Usual peak historical average', actualSurveillance.usualPeakAverage || 'N/A'],
     ['Simple interpretation', actualSurveillance.interpretation],
@@ -4759,7 +4862,7 @@ function downloadExcelWorkbook({ dashboardStats = {}, riskRows, sourceStatus, ge
   if (reportScopeConfig.isBarangayScoped) {
     const technicalModelSheet = XLSX.utils.aoa_to_sheet([
       ['Technical Appendix: Model Review', 'Current model information'],
-      ...getTechnicalModelMetadataRows(officialMetadata),
+      ...getTechnicalModelMetadataRows(officialMetadata, { operationalOnly: true }),
     ])
     technicalModelSheet['!cols'] = [{ wch: 34 }, { wch: 120 }]
     XLSX.utils.book_append_sheet(workbook, technicalModelSheet, 'Technical Model')
@@ -5133,6 +5236,8 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     hotspotRows,
     decisionActionResult,
     dashboardStats,
+    isBarangayScoped: reportScopeConfig.isBarangayScoped,
+    assignedBarangay: barangayLabel,
   })
   const pptMetadataRows = reportScopeConfig.isBarangayScoped
     ? getOperationalMetadataRows(officialMetadata)
@@ -5541,11 +5646,6 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
         fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
       }
     )
-    analyticsCaseSlide.addText(`Movement comparison: ${analyticsSnapshot.movementChange}`, {
-      x: 8.78, y: 5.32, w: 3.85, h: 0.62, fontSize: 10.5, bold: true, color: COLORS.blueDark, margin: 0.12,
-      fill: { color: COLORS.white }, line: { color: COLORS.line }, fit: 'shrink',
-    })
-
     const analyticsRiskSlide = pptx.addSlide()
     addSlideTitle(
       analyticsRiskSlide,
@@ -5858,6 +5958,113 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
   }
 
   if (reportScopeConfig.isBarangayScoped) {
+    // BHW PowerPoint analytics: mirror the assigned-barangay analytics shown on the Reports page.
+    const bhwForecastSlide = pptx.addSlide()
+    addSlideTitle(
+      bhwForecastSlide,
+      `${barangayLabel} Forecast and Spatial Analytics`,
+      'Barangay-only forecast and hotspot visuals from the current BHW report scope.'
+    )
+    addMetricCard(bhwForecastSlide, 'Forecast risk', topBarangay?.risk || 'Unknown', 0.7, 1.32, COLORS.lightBlue, COLORS.blue)
+    addMetricCard(bhwForecastSlide, '4-period forecast', `${formatNumber(analyticsSnapshot.forecastTotal)} cases`, 3.5, 1.32, COLORS.yellow, COLORS.amber)
+    addMetricCard(bhwForecastSlide, 'Combined priority', `${formatNumber(getCanonicalCombinedRiskScore(topBarangay))}/100`, 6.3, 1.32, COLORS.lightBlue, COLORS.blueDark)
+    addMetricCard(bhwForecastSlide, 'Hotspot status', getHotspotLevelLabel(getHotspotForBarangay(topBarangay, hotspotRows)?.hotspot_level), 9.1, 1.32, COLORS.emerald, COLORS.green)
+
+    bhwForecastSlide.addText('Four-period outlook', {
+      x: 0.7, y: 2.78, w: 5.75, h: 0.28, fontSize: 13, bold: true, color: COLORS.navy, margin: 0,
+    })
+    if (analyticsSnapshot.forecastPeriods.length) {
+      bhwForecastSlide.addChart(
+        pptx.ChartType.column,
+        [{
+          name: 'Forecast cases',
+          labels: analyticsSnapshot.forecastPeriods.map((row) => row.label),
+          values: analyticsSnapshot.forecastPeriods.map((row) => Number(row.cases || 0)),
+        }],
+        {
+          x: 0.7, y: 3.08, w: 5.75, h: 2.05,
+          showLegend: false, showTitle: false, showValue: true,
+          chartColors: ['7C3AED'], catAxisLabelFontSize: 9, valAxisLabelFontSize: 8,
+          valGridLine: { color: COLORS.line, pt: 1 },
+          showCatName: true,
+        }
+      )
+      // Keep the four values visible even in PowerPoint viewers that fail to
+      // render the embedded chart object correctly.
+      bhwForecastSlide.addTable([
+        analyticsSnapshot.forecastPeriods.map((row) => row.label),
+        analyticsSnapshot.forecastPeriods.map((row) => `${formatNumber(row.cases)} cases`),
+      ], {
+        x: 0.7, y: 5.22, w: 5.75, h: 0.72, fontSize: 8.5, color: COLORS.navy,
+        bold: true, align: 'center', valign: 'mid', margin: 0.04,
+        border: { color: COLORS.line, pt: 1 }, fill: { color: COLORS.white },
+      })
+    } else {
+      bhwForecastSlide.addText('Four-period forecast values are not available yet.', {
+        x: 0.7, y: 3.3, w: 5.75, h: 0.5, fontSize: 11, color: COLORS.slate, margin: 0.05,
+      })
+    }
+
+    bhwForecastSlide.addText('Spatial hotspot status', {
+      x: 6.8, y: 2.78, w: 5.65, h: 0.28, fontSize: 13, bold: true, color: COLORS.navy, margin: 0,
+    })
+    bhwForecastSlide.addChart(
+      pptx.ChartType.bar,
+      [{
+        name: 'Assigned barangay',
+        labels: analyticsSnapshot.hotspotDistribution.map((item) => item.label),
+        values: analyticsSnapshot.hotspotDistribution.map((item) => Number(item.value || 0)),
+      }],
+      {
+        x: 6.8, y: 3.08, w: 5.65, h: 2.75,
+        showLegend: false, showTitle: false, showValue: true,
+        chartColors: [COLORS.green], catAxisLabelFontSize: 9, valAxisLabelFontSize: 8,
+        valGridLine: { color: COLORS.line, pt: 1 },
+      }
+    )
+
+    const bhwResponseSlide = pptx.addSlide()
+    addSlideTitle(
+      bhwResponseSlide,
+      `${barangayLabel} Response Coordination`,
+      'Tracked response progress and assigned-barangay spatial context for BHW monitoring.'
+    )
+    addMetricCard(bhwResponseSlide, 'Tracked actions', formatNumber(analyticsSnapshot.response.total), 0.7, 1.32, COLORS.lightBlue, COLORS.blue)
+    addMetricCard(bhwResponseSlide, 'Completed', formatNumber(analyticsSnapshot.response.completed), 3.5, 1.32, COLORS.emerald, COLORS.green)
+    addMetricCard(bhwResponseSlide, 'In progress', formatNumber(analyticsSnapshot.response.inProgress), 6.3, 1.32, COLORS.lightBlue, COLORS.blueDark)
+    addMetricCard(bhwResponseSlide, 'Pending', formatNumber(analyticsSnapshot.response.pending), 9.1, 1.32, COLORS.yellow, COLORS.amber)
+
+    const bhwResponseRows = [
+      { label: 'Completed', value: analyticsSnapshot.response.completed },
+      { label: 'In Progress', value: analyticsSnapshot.response.inProgress },
+      { label: 'Pending', value: analyticsSnapshot.response.pending },
+    ]
+    bhwResponseSlide.addChart(
+      pptx.ChartType.bar,
+      [{ name: 'Tracked actions', labels: bhwResponseRows.map((row) => row.label), values: bhwResponseRows.map((row) => Number(row.value || 0)) }],
+      {
+        x: 0.7, y: 3.05, w: 5.7, h: 2.75,
+        showLegend: false, showTitle: false, showValue: true,
+        chartColors: [COLORS.green], catAxisLabelFontSize: 10, valAxisLabelFontSize: 8,
+        valGridLine: { color: COLORS.line, pt: 1 },
+      }
+    )
+
+    const bhwMapSvg = buildHotspotMapSvg(boundaryGeoJson, hotspotRows, 1100, 680)
+    const bhwMapDataUri = boundaryGeoJson?.features?.length ? svgToBase64DataUri(bhwMapSvg) : ''
+    if (bhwMapDataUri) {
+      bhwResponseSlide.addImage({ data: bhwMapDataUri, x: 6.75, y: 3.05, w: 5.75, h: 2.75 })
+    } else {
+      bhwResponseSlide.addText('Barangay boundary data is not available for the map snapshot.', {
+        x: 6.75, y: 3.05, w: 5.75, h: 2.75, fontSize: 12, color: COLORS.slate, align: 'center', valign: 'mid',
+        fill: { color: COLORS.white }, line: { color: COLORS.line }, margin: 0.1,
+      })
+    }
+    bhwResponseSlide.addText(topDecision?.primaryAction || 'No action guidance available.', {
+      x: 0.72, y: 6.05, w: 11.75, h: 0.55, fontSize: 10.5, color: COLORS.navy, margin: 0.12,
+      fill: { color: COLORS.lightBlue }, line: { color: COLORS.paleBlue }, fit: 'shrink',
+    })
+
   const summarySlide = pptx.addSlide()
     addSlideTitle(
       summarySlide,
@@ -6603,7 +6810,6 @@ async function downloadPowerPointDeck({ dashboardStats = {}, riskRows, sourceSta
     ['Technical field', 'Current model information'],
     ['Selected model', officialMetadata.selectedModel || 'Not recorded'],
     ['Models evaluated', String(officialMetadata.modelsEvaluated || 'Not recorded')],
-    ['Model selection strength', officialMetadata.aiConfidence || 'Not available yet'],
     ['Selected model metrics', officialMetadata.selectedModelMetrics || 'Not recorded'],
     ['Top feature importance', officialMetadata.featureImportanceSummary || 'Not available yet'],
   ], {
@@ -7086,6 +7292,9 @@ function MetadataDetailList({
 }
 
 function getReportCaseBreakdown(cityTrendAnalytics = null, sortedRiskRows = []) {
+  // Citywide trend responses intentionally use `barangay: "Butuan City"` as the
+  // aggregate scope label. Do not treat that label as a single barangay before
+  // checking the real barangay_breakdown requested for CHO analytics/exports.
   const directRows = Array.isArray(cityTrendAnalytics?.barangay_breakdown)
     ? cityTrendAnalytics.barangay_breakdown
     : []
@@ -7099,6 +7308,18 @@ function getReportCaseBreakdown(cityTrendAnalytics = null, sortedRiskRows = []) 
     .filter((row) => row.barangay)
 
   if (normalized.length) return normalized
+
+  // A barangay-scoped/BHW trend has no citywide breakdown, so its own summary
+  // is the correct one-row concentration view. For citywide CHO responses,
+  // `Butuan City` is only an aggregate label and must never become a fake
+  // barangay row.
+  const analyticsScope = String(cityTrendAnalytics?.scope || '').trim().toLowerCase()
+  const scopedBarangay = String(cityTrendAnalytics?.barangay || '').trim()
+  const scopedTotalCases = Number(cityTrendAnalytics?.summary?.total_cases)
+  const isCitywideAggregate = analyticsScope === 'citywide' || scopedBarangay.toLowerCase() === 'butuan city'
+  if (!isCitywideAggregate && scopedBarangay && Number.isFinite(scopedTotalCases)) {
+    return [{ barangay: scopedBarangay, cases: Math.max(0, scopedTotalCases), sharePercent: scopedTotalCases > 0 ? 100 : 0 }]
+  }
 
   const fallback = (Array.isArray(sortedRiskRows) ? sortedRiskRows : [])
     .map((row) => ({
@@ -7145,6 +7366,8 @@ function buildChoAnalyticsSnapshot({
   hotspotRows = [],
   decisionActionResult = null,
   dashboardStats = {},
+  isBarangayScoped = false,
+  assignedBarangay = '',
 } = {}) {
   const caseBreakdown = getReportCaseBreakdown(cityTrendAnalytics, sortedRiskRows)
   const topCaseRows = [...caseBreakdown]
@@ -7257,16 +7480,18 @@ function buildChoAnalyticsSnapshot({
       ? `${topCase.barangay} has the highest recorded case burden in the selected report period with ${formatNumber(topCase.cases)} cases.`
       : 'No barangay case ranking is available for the selected period.',
     totalActualCases > 0
-      ? `The top 10 barangays account for ${topTenContribution.toFixed(1)}% of recorded cases in the selected period.`
+      ? (isBarangayScoped
+          ? `${assignedBarangay || topCase?.barangay || 'The assigned barangay'} has ${formatNumber(totalActualCases)} recorded cases in the selected period.`
+          : `The top 10 barangays account for ${topTenContribution.toFixed(1)}% of recorded cases in the selected period.`)
       : 'Case concentration cannot be calculated until recorded barangay cases are available.',
     highForecastRiskCount === 0
-      ? 'No barangays are currently classified as high forecast risk using the per-barangay four-period thresholds.'
-      : `${formatCountLabel(highForecastRiskCount, 'barangay')} ${highForecastRiskCount === 1 ? 'is' : 'are'} currently classified as high forecast risk using the per-barangay four-period thresholds.`,
+      ? (isBarangayScoped ? `${assignedBarangay || 'The assigned barangay'} is not currently classified as High forecast risk.` : 'No barangays are currently classified as high forecast risk using the per-barangay four-period thresholds.')
+      : (isBarangayScoped ? `${assignedBarangay || 'The assigned barangay'} is currently classified as High forecast risk.` : `${formatCountLabel(highForecastRiskCount, 'barangay')} ${highForecastRiskCount === 1 ? 'is' : 'are'} currently classified as high forecast risk using the per-barangay four-period thresholds.`),
     forecastPeak
-      ? `Forecast pressure is highest in ${forecastPeak.label}, with about ${formatNumber(forecastPeak.cases)} projected cases citywide for that forecast period.`
+      ? `Forecast pressure is highest in ${forecastPeak.label}, with about ${formatNumber(forecastPeak.cases)} projected cases${isBarangayScoped ? ` for ${assignedBarangay || 'the assigned barangay'}` : ' citywide'} for that forecast period.`
       : 'The four-period forecast outlook is not available yet.',
     topHotspot
-      ? `${topHotspot.barangay} currently has the highest spatial hotspot score among mapped barangays and is classified as ${topHotspot.level}.`
+      ? (isBarangayScoped ? `${topHotspot.barangay} is currently classified as ${topHotspot.level} with a hotspot score of ${formatNumber(topHotspot.score)}/100.` : `${topHotspot.barangay} currently has the highest spatial hotspot score among mapped barangays and is classified as ${topHotspot.level}.`)
       : 'No ranked spatial hotspot result is available yet.',
     response.total > 0
       ? (unresolvedResponseActions === 0
@@ -7279,19 +7504,21 @@ function buildChoAnalyticsSnapshot({
 
   const recommendations = [
     topPriority
-      ? (priorityLeaderRows.length > 1
+      ? (isBarangayScoped
+          ? `Review the current risk, forecast, hotspot status, and response guidance for ${assignedBarangay || topPriority.barangay}.`
+          : (priorityLeaderRows.length > 1
           ? (priorityLeaderRows.length <= 5
               ? `Review the highest-scoring group first: ${priorityLeaderNames.join(', ')} (${formatNumber(topPriorityScore)}/100).`
               : `Review the ${priorityLeaderRows.length} barangays tied for the highest combined priority score of ${formatNumber(topPriorityScore)}/100.`)
-          : `Prioritize CHO review and barangay coordination for ${topPriority.barangay}, which currently leads the combined response-priority list.`)
+          : `Prioritize CHO review and barangay coordination for ${topPriority.barangay}, which currently leads the combined response-priority list.`))
       : 'Review the highest-ranked barangays once a response-priority list is available.',
     topCase
-      ? `Maintain close surveillance in ${topCase.barangay} because it currently carries the largest recorded case burden in the selected period.`
+      ? (isBarangayScoped ? `Maintain surveillance in ${topCase.barangay} based on its recorded dengue pattern in the selected period.` : `Maintain close surveillance in ${topCase.barangay} because it currently carries the largest recorded case burden in the selected period.`)
       : 'Continue validating actual barangay case reports to identify case concentration.',
     hotspotCounts.confirmed + hotspotCounts.emerging > 0
-      ? `Coordinate surveillance across ${formatCountLabel(hotspotCounts.confirmed + hotspotCounts.emerging, 'confirmed or emerging hotspot barangay')} instead of treating each barangay in isolation.`
+      ? (isBarangayScoped ? `Review ${assignedBarangay || 'the assigned barangay'} closely because its current spatial result is confirmed or emerging.` : `Coordinate surveillance across ${formatCountLabel(hotspotCounts.confirmed + hotspotCounts.emerging, 'confirmed or emerging hotspot barangay')} instead of treating each barangay in isolation.`)
       : (hotspotCounts.watch > 0
-          ? `Continue close spatial monitoring of ${formatCountLabel(hotspotCounts.watch, 'Watch barangay')}, especially where neighboring Watch areas cluster.`
+          ? (isBarangayScoped ? `Continue close spatial monitoring of ${assignedBarangay || 'the assigned barangay'} because its current hotspot classification is Watch.` : `Continue close spatial monitoring of ${formatCountLabel(hotspotCounts.watch, 'Watch barangay')}, especially where neighboring Watch areas cluster.`)
           : 'Continue spatial monitoring for emerging neighboring risk clusters.'),
     response.pending + response.inProgress > 0
       ? `Follow up ${response.pending + response.inProgress} pending or in-progress response action${response.pending + response.inProgress === 1 ? '' : 's'} and review overdue items before the next reporting cycle.`
@@ -7606,7 +7833,7 @@ function ActualForecastAnalyticsChart({ items = [] }) {
   )
 }
 
-function ChoReportAnalytics({ analytics, boundaryGeoJson = null, hotspotRows = [] }) {
+function ChoReportAnalytics({ analytics, boundaryGeoJson = null, hotspotRows = [], isBarangayScoped = false, barangayLabel = '' }) {
   const mapSnapshot = useMemo(() => buildHotspotMapGeometry(boundaryGeoJson, hotspotRows, 800, 500), [boundaryGeoJson, hotspotRows])
   const responseItems = [
     { label: 'Completed', value: analytics.response.completed, color: '#059669' },
@@ -7622,10 +7849,10 @@ function ChoReportAnalytics({ analytics, boundaryGeoJson = null, hotspotRows = [
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
             <BarChart3 className="h-3.5 w-3.5" />
-            CHO decision analytics
+            {isBarangayScoped ? 'Barangay report analytics' : 'CHO decision analytics'}
           </div>
-          <h2 className="mt-3 text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">Report analytics and decision insights</h2>
-          <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400 sm:text-sm sm:leading-6">These citywide analytics are also included in the generated PDF and PowerPoint so CHO can quickly see case concentration, forecast pressure, risk distribution, spatial concern, and response progress.</p>
+          <h2 className="mt-3 text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">{isBarangayScoped ? `${barangayLabel || 'Assigned barangay'} analytics and report insights` : 'Report analytics and decision insights'}</h2>
+          <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400 sm:text-sm sm:leading-6">{isBarangayScoped ? `These analytics are limited to ${barangayLabel || 'the assigned barangay'} and summarize its recorded cases, forecast, risk, hotspot status, and response progress.` : 'These citywide analytics are also included in the generated PDF and PowerPoint so CHO can quickly see case concentration, forecast pressure, risk distribution, spatial concern, and response progress.'}</p>
         </div>
         <div className="w-full rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-sm dark:border-white/5 dark:bg-white/5 lg:w-auto">
           <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Analytics period</p>
@@ -7634,17 +7861,17 @@ function ChoReportAnalytics({ analytics, boundaryGeoJson = null, hotspotRows = [
       </div>
 
       <div className="relative mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:gap-2.5">
-        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 dark:border-blue-400/20 dark:bg-white/5 dark:text-blue-200">Top case burden <strong className="text-slate-900 dark:text-white">{analytics.topCaseRows?.[0]?.barangay || 'Not available'}</strong></span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-violet-700 dark:border-violet-400/20 dark:bg-white/5 dark:text-violet-200">Highest priority <strong className="text-slate-900 dark:text-white">{analytics.priorityRows?.[0]?.barangay || 'Not available'}</strong></span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 dark:border-blue-400/20 dark:bg-white/5 dark:text-blue-200">{isBarangayScoped ? 'Recorded area' : 'Top case burden'} <strong className="text-slate-900 dark:text-white">{analytics.topCaseRows?.[0]?.barangay || 'Not available'}</strong></span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-violet-700 dark:border-violet-400/20 dark:bg-white/5 dark:text-violet-200">{isBarangayScoped ? 'Priority score' : 'Highest priority'} <strong className="text-slate-900 dark:text-white">{analytics.priorityRows?.[0]?.barangay || 'Not available'}</strong></span>
         <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 dark:border-amber-400/20 dark:bg-white/5 dark:text-amber-200">Forecast peak <strong className="text-slate-900 dark:text-white">{analytics.forecastPeak ? `${analytics.forecastPeak.label} · ${formatNumber(analytics.forecastPeak.cases)}` : 'Not available'}</strong></span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-400/20 dark:bg-white/5 dark:text-emerald-200">Watch barangays <strong className="text-slate-900 dark:text-white">{formatNumber(watchCount)}</strong></span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-400/20 dark:bg-white/5 dark:text-emerald-200">{isBarangayScoped ? 'Hotspot status' : 'Watch barangays'} <strong className="text-slate-900 dark:text-white">{formatNumber(watchCount)}</strong></span>
       </div>
 
       <div className="relative mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-3">
         {[
           ['Recorded cases', analytics.totalActualCases, 'Selected period'],
-          ['Affected barangays', analytics.affectedBarangays, 'Barangays with recorded cases'],
-          ['Top 10 contribution', `${analytics.topTenContribution.toFixed(1)}%`, 'Share of recorded cases'],
+          [isBarangayScoped ? 'Assigned barangay' : 'Affected barangays', isBarangayScoped ? (barangayLabel || 'Assigned') : analytics.affectedBarangays, isBarangayScoped ? 'BHW report scope' : 'Barangays with recorded cases'],
+          [isBarangayScoped ? 'Forecast total' : 'Top 10 contribution', isBarangayScoped ? analytics.forecastTotal : `${analytics.topTenContribution.toFixed(1)}%`, isBarangayScoped ? 'Four forecast periods' : 'Share of recorded cases'],
           ['Response completion', `${analytics.response.completionRate}%`, `${analytics.response.completed}/${analytics.response.total || 0} tracked actions`],
         ].map(([label, value, note]) => (
           <div key={label} className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/85">
@@ -7655,44 +7882,52 @@ function ChoReportAnalytics({ analytics, boundaryGeoJson = null, hotspotRows = [
         ))}
       </div>
 
-      <div className="relative mt-4 grid items-start gap-3 sm:gap-4 xl:grid-cols-2">
-        <div className="min-w-0 space-y-3 sm:space-y-4">
+      <div className={`relative mt-4 grid items-start gap-3 sm:gap-4 ${isBarangayScoped ? 'xl:grid-cols-1' : 'xl:grid-cols-2'}`}>
+        <div className={`min-w-0 ${isBarangayScoped ? 'grid gap-3 sm:gap-4 xl:grid-cols-2' : 'space-y-3 sm:space-y-4'}`}>
           <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-600 dark:text-blue-300">Case concentration</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Top 10 barangays by recorded cases</h3></div><span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-black text-blue-700 dark:bg-blue-500/10 dark:text-blue-200 sm:px-3 sm:text-[10px]">Actual cases</span></div>
+            <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4"><div><p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-600 dark:text-blue-300">Case concentration</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">{isBarangayScoped ? `${barangayLabel || 'Assigned barangay'} recorded cases` : 'Top 10 barangays by recorded cases'}</h3></div><span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-black text-blue-700 dark:bg-blue-500/10 dark:text-blue-200 sm:px-3 sm:text-[10px]">Actual cases</span></div>
             <AnalyticsHorizontalBars items={analytics.topCaseRows} valueKey="cases" labelKey="barangay" tone="blue" emptyLabel="No barangay case breakdown is available yet." />
           </div>
 
           <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
-            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-violet-600 dark:text-violet-300">Priority ranking</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Top combined priority scores</h3></div>
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-violet-600 dark:text-violet-300">Priority ranking</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">{isBarangayScoped ? 'Combined priority score' : 'Top combined priority scores'}</h3></div>
             <AnalyticsHorizontalBars items={analytics.priorityRows} valueKey="score" labelKey="barangay" tone="violet" valueSuffix="/100" emptyLabel="No priority ranking is available yet." />
           </div>
         </div>
 
-        <div className="min-w-0 space-y-3 sm:space-y-4">
+        <div className={`min-w-0 ${isBarangayScoped ? 'grid gap-3 sm:gap-4 xl:grid-cols-2' : 'space-y-3 sm:space-y-4'}`}>
           <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
-            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-600 dark:text-rose-300">Forecast risk distribution</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Citywide risk levels</h3></div>
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-600 dark:text-rose-300">Forecast risk distribution</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">{isBarangayScoped ? `${barangayLabel || 'Assigned barangay'} risk level` : 'Citywide risk levels'}</h3></div>
             <AnalyticsDonut items={analytics.riskDistribution} centerValue={formatNumber(analytics.riskDistribution.reduce((sumValue, item) => sumValue + item.value, 0))} centerLabel="Barangays" />
             <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-semibold leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 sm:mt-4"><span className="font-black text-slate-800 dark:text-slate-100">Interpretation:</span> Forecast risk, spatial hotspot level, and response priority are separate indicators. A barangay can remain Low forecast risk while still requiring monitoring because of recent case movement, spatial conditions, or other response factors.</p>
           </div>
 
           <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
-            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-600 dark:text-amber-300">Four-period outlook</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Citywide forecast pressure</h3></div>
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-600 dark:text-amber-300">Four-period outlook</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">{isBarangayScoped ? `${barangayLabel || 'Assigned barangay'} forecast pressure` : 'Citywide forecast pressure'}</h3></div>
             <ActualForecastAnalyticsChart items={analytics.actualForecastTimeline} />
             <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
               <p className="mb-3 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Forecast periods only</p>
               <AnalyticsHorizontalBars items={analytics.forecastPeriods} valueKey="cases" labelKey="label" tone="emerald" showRank={false} emptyLabel="No forecast period totals are available yet." />
             </div>
-            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 sm:text-xs">Citywide four-period forecast total: {formatNumber(analytics.forecastTotal)} cases. Risk levels are classified per barangay, so the citywide total does not determine whether an individual barangay is High, Moderate, or Low risk. {analytics.forecastPeak ? `Highest pressure: ${analytics.forecastPeak.label} (${formatNumber(analytics.forecastPeak.cases)} cases).` : 'Forecast peak is not available yet.'}</p>
+            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 sm:text-xs">{isBarangayScoped ? `${barangayLabel || 'Assigned barangay'} four-period forecast total` : 'Citywide four-period forecast total'}: {formatNumber(analytics.forecastTotal)} cases. Risk levels are classified per barangay, so the citywide total does not determine whether an individual barangay is High, Moderate, or Low risk. {analytics.forecastPeak ? `Highest pressure: ${analytics.forecastPeak.label} (${formatNumber(analytics.forecastPeak.cases)} cases).` : 'Forecast peak is not available yet.'}</p>
           </div>
+          {!isBarangayScoped && (
           <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
-            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-orange-600 dark:text-orange-300">Spatial hotspot analytics</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">Barangay hotspot distribution</h3></div>
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-orange-600 dark:text-orange-300">Spatial hotspot analytics</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">{isBarangayScoped ? `${barangayLabel || 'Assigned barangay'} hotspot status` : 'Barangay hotspot distribution'}</h3></div>
             <AnalyticsDonut items={analytics.hotspotDistribution} centerValue={formatNumber(analytics.hotspotDistribution.reduce((sumValue, item) => sumValue + item.value, 0))} centerLabel="Mapped" />
           </div>
+          )}
         </div>
       </div>
 
-      <div className="relative mt-3 min-w-0 sm:mt-4">
-        <div className="rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+      <div className={`relative mt-3 min-w-0 sm:mt-4 ${isBarangayScoped ? 'grid gap-3 sm:gap-4 xl:grid-cols-2 xl:items-stretch' : ''}`}>
+        {isBarangayScoped && (
+          <div className="h-full rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
+            <div className="mb-3 sm:mb-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-orange-600 dark:text-orange-300">Spatial hotspot analytics</p><h3 className="mt-1 text-base font-black text-slate-950 dark:text-white sm:text-lg">{`${barangayLabel || 'Assigned barangay'} hotspot status`}</h3></div>
+            <AnalyticsDonut items={analytics.hotspotDistribution} centerValue={formatNumber(analytics.hotspotDistribution.reduce((sumValue, item) => sumValue + item.value, 0))} centerLabel="Mapped" />
+          </div>
+        )}
+        <div className="h-full rounded-[22px] border border-slate-200 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:rounded-[26px] sm:p-5">
           <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-600 dark:text-emerald-300">Response coordination</p>
@@ -8091,6 +8326,17 @@ export default function ReportsPage() {
     return getBoundaryGeoJson(boundaryRecords)
   }, [boundaryRecords])
 
+  const reportBoundaryGeoJson = useMemo(() => {
+    if (!isBhwReport || !assignedBarangay || !Array.isArray(boundaryGeoJson?.features)) return boundaryGeoJson
+
+    const features = boundaryGeoJson.features.filter((feature) => {
+      const properties = feature?.properties || {}
+      return Object.values(properties).some((value) => typeof value === 'string' && namesMatch(value, assignedBarangay))
+    })
+
+    return { ...boundaryGeoJson, features }
+  }, [boundaryGeoJson, isBhwReport, assignedBarangay])
+
   const boundaryFeatures = useMemo(() => {
     return boundaryGeoJson?.features || []
   }, [boundaryGeoJson])
@@ -8340,7 +8586,9 @@ export default function ReportsPage() {
     hotspotRows,
     decisionActionResult: reportDecisionActionResult,
     dashboardStats: reportDashboardStats,
-  }), [sortedRiskRows, reportCityTrendAnalytics, hotspotRows, reportDecisionActionResult, reportDashboardStats])
+    isBarangayScoped: isBhwReport,
+    assignedBarangay,
+  }), [sortedRiskRows, reportCityTrendAnalytics, hotspotRows, reportDecisionActionResult, reportDashboardStats, isBhwReport, assignedBarangay])
 
   const selectedExport = exportFormats.find((item) => item.id === format) || exportFormats[0]
   const SelectedExportIcon = selectedExport.icon
@@ -10175,32 +10423,38 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      {isBhwReport ? (
+      {isBhwReport && (
         <div className="relative z-0 rounded-[24px] border border-cyan-200/80 bg-cyan-50/80 px-4 py-3 text-sm font-semibold leading-6 text-slate-700 shadow-sm dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-slate-200">
           <span className="font-black text-cyan-800 dark:text-cyan-200">Barangay-specific report:</span>{' '}
-          PDF, Excel, PowerPoint, and print exports are limited to <strong>{assignedBarangay || 'your assigned barangay'}</strong>, including its recorded trend, forecast, hotspot status, recommended response, and your field monitoring summary.
+          Analytics and exports are limited to <strong>{assignedBarangay || 'your assigned barangay'}</strong>. Citywide rankings and other barangays are not included.
         </div>
-      ) : (
-        <CityTrendAnalyticsPanel context="reports" onAnalyticsChange={setReportCityTrendAnalytics} />
       )}
 
-      {!isBhwReport && (
+      <CityTrendAnalyticsPanel
+        context="reports"
+        barangay={isBhwReport ? assignedBarangay : ''}
+        onAnalyticsChange={setReportCityTrendAnalytics}
+      />
+
+      {(
         <>
           <DisclosureCard
             id="cho-report-analytics"
             open={isChoAnalyticsOpen}
             onToggle={() => setIsChoAnalyticsOpen((current) => !current)}
             icon={BarChart3}
-            title="CHO report analytics and decision insights"
-            description="Open this section to review the improved charts, map snapshot, and automated decision-support interpretation before generating the report."
-            summary={`${choAnalytics.scopeLabel} · ${formatNumber(choAnalytics.totalActualCases)} recorded cases · ${formatNumber(choAnalytics.affectedBarangays)} affected barangays`}
+            title={isBhwReport ? `${assignedBarangay || 'Assigned barangay'} analytics and report insights` : "CHO report analytics and decision insights"}
+            description={isBhwReport ? "Review the assigned barangay charts, forecast, risk, hotspot status, and response interpretation before generating the report." : "Open this section to review the improved charts, map snapshot, and automated decision-support interpretation before generating the report."}
+            summary={isBhwReport ? `${choAnalytics.scopeLabel} · ${formatNumber(choAnalytics.totalActualCases)} recorded cases · assigned barangay only` : `${choAnalytics.scopeLabel} · ${formatNumber(choAnalytics.totalActualCases)} recorded cases · ${formatNumber(choAnalytics.affectedBarangays)} affected barangays`}
             tone="blue"
           />
           {isChoAnalyticsOpen && (
             <ChoReportAnalytics
               analytics={choAnalytics}
-              boundaryGeoJson={boundaryGeoJson}
+              boundaryGeoJson={reportBoundaryGeoJson}
               hotspotRows={hotspotRows}
+              isBarangayScoped={isBhwReport}
+              barangayLabel={assignedBarangay}
             />
           )}
         </>

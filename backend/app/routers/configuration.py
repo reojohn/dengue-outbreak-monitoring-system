@@ -7,6 +7,9 @@ from app.services.hotspot_configuration import (
     reset_hotspot_configuration,
     save_hotspot_configuration,
 )
+from app.services.response_configuration import (
+    public_response_configuration, reset_response_configuration, save_response_configuration,
+)
 from app.services.risk_configuration import (
     public_risk_configuration,
     reset_risk_configuration,
@@ -90,3 +93,31 @@ def reset_hotspot_analysis_configuration(current_user=Depends(get_current_user))
     if role not in {"cho", "admin"}:
         raise HTTPException(status_code=403, detail="Only CHO/Admin can reset hotspot settings.")
     return reset_hotspot_configuration(_actor(current_user))
+
+
+class RecommendedResponseUpdate(BaseModel):
+    templates: dict
+
+
+@router.get("/recommended-responses")
+def get_recommended_response_configuration(current_user=Depends(get_current_user)):
+    return public_response_configuration()
+
+
+@router.put("/recommended-responses")
+def update_recommended_response_configuration(payload: RecommendedResponseUpdate, current_user=Depends(get_current_user)):
+    role = str(current_user.get("role") or "").lower()
+    if role not in {"cho", "admin"}:
+        raise HTTPException(status_code=403, detail="Only CHO/Admin can change recommended responses.")
+    try:
+        return save_response_configuration(payload.templates, _actor(current_user))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/recommended-responses/reset")
+def reset_recommended_response_configuration(current_user=Depends(get_current_user)):
+    role = str(current_user.get("role") or "").lower()
+    if role not in {"cho", "admin"}:
+        raise HTTPException(status_code=403, detail="Only CHO/Admin can reset recommended responses.")
+    return reset_response_configuration(_actor(current_user))

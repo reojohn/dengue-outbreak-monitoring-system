@@ -4259,3 +4259,50 @@ html:not(.dark) .leaflet-popup-tip {
     animation: none;
   }
 }
+
+
+/* Map selected-area hero score: keep the metric label on one clean line. */
+.map-selected-score-ring.dengue-hero-score-ring {
+  width: 7rem !important;
+  height: 7rem !important;
+  flex: 0 0 7rem !important;
+  padding: 0.45rem !important;
+}
+
+.map-selected-score-ring .map-selected-score-value {
+  font-size: 1.35rem !important;
+  letter-spacing: -0.045em !important;
+}
+
+.map-selected-score-ring .map-selected-score-label {
+  display: block !important;
+  width: auto !important;
+  max-width: none !important;
+  margin-top: 0.42rem !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+  letter-spacing: 0.035em !important;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+@media (max-width: 640px) {
+  #root .dengue-scaled-content .map-selected-score-ring.dengue-hero-score-ring {
+    width: 5.5rem !important;
+    height: 5.5rem !important;
+    flex-basis: 5.5rem !important;
+    padding: 0.36rem !important;
+  }
+
+  #root .dengue-scaled-content .map-selected-score-ring .map-selected-score-value {
+    font-size: 1.05rem !important;
+  }
+
+  #root .dengue-scaled-content .map-selected-score-ring .map-selected-score-label {
+    max-width: none !important;
+    font-size: 0.47rem !important;
+    letter-spacing: 0.015em !important;
+    white-space: nowrap !important;
+  }
+}

@@ -52,6 +52,28 @@ export const decisionPriorityLevels = {
   PENDING: 'Pending Dataset',
 }
 
+const recommendedResponseTemplates = {}
+
+export function configureRecommendedResponses(config = {}) {
+  const templates = config?.templates && typeof config.templates === 'object' ? config.templates : config
+  Object.keys(recommendedResponseTemplates).forEach((key) => delete recommendedResponseTemplates[key])
+  if (templates && typeof templates === 'object') Object.assign(recommendedResponseTemplates, templates)
+  return { ...recommendedResponseTemplates }
+}
+
+function responseTemplateForPriority(priority) {
+  const keyByPriority = {
+    [decisionPriorityLevels.IMMEDIATE]: 'immediate_response',
+    [decisionPriorityLevels.HIGH]: 'high_priority_response',
+    [decisionPriorityLevels.ESCALATED]: 'escalated_watch',
+    [decisionPriorityLevels.PREVENTIVE]: 'preventive_intensification',
+    [decisionPriorityLevels.MONITORING]: 'close_monitoring',
+    [decisionPriorityLevels.EARLY]: 'early_warning_watch',
+    [decisionPriorityLevels.ROUTINE]: 'routine_monitoring',
+  }
+  return recommendedResponseTemplates[keyByPriority[priority]] || null
+}
+
 export const riskStyles = {
   High: 'bg-rose-50 text-rose-600 border-rose-100',
   Moderate: 'bg-amber-50 text-amber-600 border-amber-100',
@@ -1117,7 +1139,7 @@ export function computeDecisionSupport(input = {}) {
     multiSourceRiskScore: multiSourceRisk.score,
   })
 
-  const summary = buildDecisionSummary({
+  const systemSummary = buildDecisionSummary({
     priority,
     risk,
     trendDirection,
@@ -1125,8 +1147,10 @@ export function computeDecisionSupport(input = {}) {
     forecast,
     environmentalSuitability,
   })
+  const configuredTemplate = responseTemplateForPriority(priority)
+  const summary = String(configuredTemplate?.recommendation || systemSummary).trim() || systemSummary
 
-  const actions = buildActions({
+  const systemActions = buildActions({
     priority,
     risk,
     trendDirection,
@@ -1137,6 +1161,10 @@ export function computeDecisionSupport(input = {}) {
     populationExposure,
     environmentalSuitability,
   })
+  const configuredActions = Array.isArray(configuredTemplate?.response_plan)
+    ? configuredTemplate.response_plan.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const actions = configuredActions.length ? configuredActions.slice(0, 12) : systemActions
 
   const rationale = buildRationale({
     risk,

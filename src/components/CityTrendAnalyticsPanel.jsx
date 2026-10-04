@@ -5,7 +5,7 @@ import InformationTypeBadge from './InformationTypeBadge'
 import { TrendPanelSkeleton } from './SystemSkeleton'
 import TrendFilterDropdown from './TrendFilterDropdown'
 import TrendMetricCard from './TrendMetricCard'
-import { getCityTrendAnalytics } from '../services/api'
+import { getBarangayTrendAnalytics, getCityTrendAnalytics } from '../services/api'
 import { getUserRole } from '../utils/auth'
 
 const PERIOD_OPTIONS = [
@@ -52,9 +52,11 @@ function movementTone(direction = '') {
   return { tone: 'slate', Icon: Activity }
 }
 
-export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnalyticsChange = null }) {
+export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnalyticsChange = null, barangay = '' }) {
   const role = getUserRole()
-  const canViewCitywide = ['cho', 'admin', 'supervisor', 'viewer'].includes(role)
+  const scopedBarangay = String(barangay || '').trim()
+  const isBarangayScoped = Boolean(scopedBarangay)
+  const canViewAnalytics = isBarangayScoped || ['cho', 'admin', 'supervisor', 'viewer'].includes(role)
   const [analytics, setAnalytics] = useState(null)
   const [year, setYear] = useState('')
   const [period, setPeriod] = useState('all')
@@ -65,7 +67,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
   const periodParams = useMemo(() => parsePeriod(period), [period])
 
   useEffect(() => {
-    if (!canViewCitywide) return undefined
+    if (!canViewAnalytics) return undefined
 
     let active = true
 
@@ -74,11 +76,18 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
       setError('')
 
       try {
-        const result = await getCityTrendAnalytics({
-          year: year ? Number(year) : undefined,
-          quarter: periodParams.quarter,
-          month: periodParams.month,
-        })
+        const result = isBarangayScoped
+          ? await getBarangayTrendAnalytics({
+              barangay: scopedBarangay,
+              year: year ? Number(year) : undefined,
+              quarter: periodParams.quarter,
+              month: periodParams.month,
+            })
+          : await getCityTrendAnalytics({
+              year: year ? Number(year) : undefined,
+              quarter: periodParams.quarter,
+              month: periodParams.month,
+            })
 
         if (!active) return
         setAnalytics(result || null)
@@ -93,10 +102,10 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
         onAnalyticsChange?.(null)
         setError(
           message.includes('authentication') || message.includes('token')
-            ? 'Your session has expired. Please sign in again to refresh the recorded citywide trend.'
+            ? `Your session has expired. Please sign in again to refresh the recorded ${isBarangayScoped ? scopedBarangay : 'citywide'} trend.`
             : message.includes('fetch') || message.includes('network') || message.includes('backend')
-              ? 'The recorded citywide trend could not be reached. Check that the backend is running, then try again.'
-              : 'The recorded citywide trend could not be loaded. Please try again.'
+              ? `The recorded ${isBarangayScoped ? scopedBarangay : 'citywide'} trend could not be reached. Check that the backend is running, then try again.`
+              : `The recorded ${isBarangayScoped ? scopedBarangay : 'citywide'} trend could not be loaded. Please try again.`
         )
       } finally {
         if (active) setLoading(false)
@@ -107,9 +116,9 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
     return () => {
       active = false
     }
-  }, [canViewCitywide, onAnalyticsChange, periodParams.month, periodParams.quarter, year])
+  }, [canViewAnalytics, isBarangayScoped, scopedBarangay, onAnalyticsChange, periodParams.month, periodParams.quarter, year])
 
-  if (!canViewCitywide) return null
+  if (!canViewAnalytics) return null
   if (loading && !analytics) return <TrendPanelSkeleton />
 
   const availableYears = Array.isArray(analytics?.filters?.available_years)
@@ -118,7 +127,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
   const yearOptions = availableYears.map((availableYear) => ({
     value: String(availableYear),
     label: String(availableYear),
-    note: `Recorded citywide cases for ${availableYear}`,
+    note: `Recorded ${isBarangayScoped ? scopedBarangay : 'citywide'} cases for ${availableYear}`,
   }))
   const summary = analytics?.summary || {}
   const monthly = Array.isArray(analytics?.monthly) ? analytics.monthly : []
@@ -134,10 +143,28 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
   const direction = summary?.trend_direction || 'No comparison'
   const movement = movementTone(direction)
   const MovementIcon = movement.Icon
-  const panelTitle = context === 'reports' ? 'Historical dengue trend snapshot' : 'Citywide historical dengue trend'
-  const panelDescription = context === 'reports'
-    ? 'Recorded citywide cases, highest months, and recent movement for report review. Forecast values are shown separately.'
-    : 'Review what actually happened across Butuan City before reading the forecast for future periods below.'
+  const currentCases = Number(summary?.latest_cases)
+  const previousCases = Number(summary?.previous_cases)
+  const currentPeriod = summary?.latest_period || ''
+  const previousPeriod = summary?.previous_period || ''
+  const hasMovementComparison = Number.isFinite(currentCases) && Number.isFinite(previousCases) && previousPeriod
+  const movementHelper = hasMovementComparison
+    ? direction === 'Increasing'
+      ? `${formatNumber(currentCases)} cases in ${currentPeriod}, up from ${formatNumber(previousCases)} in ${previousPeriod}`
+      : direction === 'Decreasing'
+        ? `${formatNumber(currentCases)} cases in ${currentPeriod}, down from ${formatNumber(previousCases)} in ${previousPeriod}`
+        : `${formatNumber(currentCases)} cases in ${currentPeriod}, same as ${previousPeriod}`
+    : currentPeriod && Number.isFinite(currentCases)
+      ? `${formatNumber(currentCases)} recorded cases in ${currentPeriod}`
+      : 'No previous month available'
+  const panelTitle = context === 'reports'
+    ? (isBarangayScoped ? `${scopedBarangay} historical dengue trend` : 'Historical dengue trend snapshot')
+    : (isBarangayScoped ? `${scopedBarangay} historical dengue trend` : 'Citywide historical dengue trend')
+  const panelDescription = isBarangayScoped
+    ? `Recorded dengue cases, highest months, and recent movement for ${scopedBarangay}. Forecast values are shown separately.`
+    : context === 'reports'
+      ? 'Recorded citywide cases, highest months, and recent movement for report review. Forecast values are shown separately.'
+      : 'Review what actually happened across Butuan City before reading the forecast for future periods below.'
 
   return (
     <section className="relative overflow-hidden rounded-[28px] border border-sky-200/70 bg-white/85 p-4 shadow-[0_20px_55px_rgba(15,23,42,0.08)] ring-1 ring-white/80 dark:border-sky-400/15 dark:bg-slate-950/65 dark:ring-white/5 sm:rounded-[34px] sm:p-6">
@@ -214,7 +241,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
         <TrendMetricCard
           label="Current movement"
           value={loading ? '…' : direction}
-          helper={summary?.change_label || 'No previous month available'}
+          helper={loading ? 'Loading recorded movement…' : movementHelper}
           icon={MovementIcon}
           tone={movement.tone}
           badge="Trend"
@@ -225,7 +252,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
         <div className="mb-3 flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between sm:px-0">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">Recorded citywide trend</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300/80">{`Recorded ${isBarangayScoped ? scopedBarangay : 'citywide'} trend`}</p>
               <InformationTypeBadge type="recorded" className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100 dark:border-cyan-300/20 dark:bg-cyan-300/10 dark:text-cyan-100" />
             </div>
             <p className="mt-1 text-xs text-slate-400">Actual recorded cases only. Predictions are shown in forecast sections.</p>
@@ -272,9 +299,9 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
           <SparkChart
             values={chartValues}
             labels={chartLabels}
-            title="Butuan City actual dengue cases"
+            title={isBarangayScoped ? `${scopedBarangay} actual dengue cases` : "Butuan City actual dengue cases"}
             subtitle={`Recorded monthly dengue cases · ${scopeLabel}`}
-            emptyLabel="No citywide monthly dengue records for this period"
+            emptyLabel={isBarangayScoped ? `No monthly dengue records for ${scopedBarangay} in this period` : 'No citywide monthly dengue records for this period'}
             loading={loading}
             mode={chartType}
           />
@@ -288,7 +315,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 dark:text-blue-300">Simple interpretation</p>
           </div>
           <p className="mt-3 text-sm font-semibold leading-7 text-slate-800 dark:text-slate-200">
-            {loading ? 'Reading the actual citywide dengue pattern…' : (analytics?.interpretation || 'No trend interpretation is available yet.')}
+            {loading ? `Reading the actual ${isBarangayScoped ? scopedBarangay : 'citywide'} dengue pattern…` : (analytics?.interpretation || 'No trend interpretation is available yet.')}
           </p>
         </div>
 
@@ -301,7 +328,7 @@ export default function CityTrendAnalyticsPanel({ context = 'dashboard', onAnaly
             <>
               <p className="mt-2 text-xl font-black text-slate-950 dark:text-white">{historicalPeak.month_label}</p>
               <p className="mt-2 text-sm font-semibold leading-6 text-slate-500 dark:text-slate-400">
-                Based on past records, citywide dengue cases are usually highest in {historicalPeak.month_label}.
+                Based on past records, {isBarangayScoped ? `${scopedBarangay} dengue cases` : 'citywide dengue cases'} are usually highest in {historicalPeak.month_label}.
                 <span className="mt-1 block text-xs font-bold text-amber-700/80 dark:text-amber-200/70">Historical monthly average: {historicalPeak.average_cases} cases.</span>
               </p>
             </>

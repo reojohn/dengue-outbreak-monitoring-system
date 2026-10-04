@@ -1181,6 +1181,7 @@ def _prepare_doh_monthly_time_series(dengue_records, barangay_reference):
             "doh_zero_filled_row_count": 0,
             "doh_aggregated_duplicate_row_count": 0,
             "doh_unresolved_row_count": len(unresolved_records),
+            "doh_unresolved_rows_excluded_from_model": len(unresolved_records),
         }
 
     # The cleaned upload intentionally excludes unknown-location rows. A month
@@ -1239,7 +1240,15 @@ def _prepare_doh_monthly_time_series(dengue_records, barangay_reference):
             zero_filled_count += 1
 
     non_doh_records = [record for record in records if not _is_doh_monthly_record(record)]
-    expanded_records = list(grouped.values()) + unresolved_records + non_doh_records
+
+    # Unresolved DOH locations remain preserved in the uploaded-source audit, but
+    # they must not enter the barangay-level model-ready dataset. Including them
+    # here creates rows that have no authoritative barangay assignment and makes
+    # the combined row count larger than the official barangay × month grid.
+    # For the current 86-barangay, 2018-2025 monthly dataset this keeps the
+    # modeling grid at 86 × 96 = 8,256 rows while unresolved source records stay
+    # visible for review in the upload diagnostics.
+    expanded_records = list(grouped.values()) + non_doh_records
     expanded_records.sort(
         key=lambda record: (
             _to_int_or_none(_read_value(record, ["year"])) or 0,
@@ -1258,6 +1267,7 @@ def _prepare_doh_monthly_time_series(dengue_records, barangay_reference):
         "doh_zero_filled_row_count": zero_filled_count,
         "doh_aggregated_duplicate_row_count": duplicate_rows_aggregated,
         "doh_unresolved_row_count": len(unresolved_records),
+        "doh_unresolved_rows_excluded_from_model": len(unresolved_records),
         "doh_zero_fill_note": (
             "Zero rows were derived only for official boundary-matched barangays absent from a complete DOH monthly summary. "
             "Uncertain locations were retained separately for review and were not assigned to a barangay."

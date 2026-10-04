@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, RotateCcw, Save, Settings2, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, RotateCcw, Save, Settings2, ShieldCheck, ClipboardList } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import {
   getHotspotConfiguration, getRiskThresholdConfiguration,
   resetHotspotConfiguration, resetRiskThresholdConfiguration,
   updateHotspotConfiguration, updateRiskThresholdConfiguration,
+  getRecommendedResponseConfiguration, updateRecommendedResponseConfiguration, resetRecommendedResponseConfiguration,
 } from '../services/api'
 import { configureRiskThresholds } from '../utils/analytics'
 
 const RISK_DEFAULTS = { moderate_threshold: 25, high_threshold: 60 }
+const RESPONSE_KEYS = ['immediate_response','high_priority_response','escalated_watch','preventive_intensification','close_monitoring','early_warning_watch','routine_monitoring']
 const HOTSPOT_DEFAULTS = { local_weight: 60, nearby_weight: 25, spatial_weight: 15, radius_km: 3, watch_threshold: 45, emerging_threshold: 60, confirmed_threshold: 75 }
 
 const Field = ({ label, value, onChange, suffix, min = 0, max, step = 1 }) => (
@@ -21,17 +23,18 @@ const Field = ({ label, value, onChange, suffix, min = 0, max, step = 1 }) => (
 )
 
 export default function ConfigurationPage() {
-  const { riskConfiguration, setRiskConfiguration, refreshAuthenticatedWorkspace } = useData()
+  const { riskConfiguration, setRiskConfiguration, setRecommendedResponseConfiguration, refreshAuthenticatedWorkspace } = useData()
   const [risk, setRisk] = useState({ ...RISK_DEFAULTS, ...riskConfiguration })
   const [hotspot, setHotspot] = useState(HOTSPOT_DEFAULTS)
+  const [responses, setResponses] = useState({ templates: {} })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState('')
   const [notice, setNotice] = useState({ type: '', text: '' })
   const [resetTarget, setResetTarget] = useState('')
 
   useEffect(() => {
-    Promise.all([getRiskThresholdConfiguration({ force: true }), getHotspotConfiguration({ force: true })])
-      .then(([r, h]) => { setRiskConfiguration(r); configureRiskThresholds(r); setRisk(r); setHotspot(h) })
+    Promise.all([getRiskThresholdConfiguration({ force: true }), getHotspotConfiguration({ force: true }), getRecommendedResponseConfiguration({ force: true })])
+      .then(([r, h, rr]) => { setRiskConfiguration(r); configureRiskThresholds(r); setRisk(r); setHotspot(h); setResponses(rr) })
       .catch((e) => setNotice({ type: 'error', text: e?.message || 'Configuration could not be loaded.' }))
       .finally(() => setLoading(false))
   }, [])
@@ -54,7 +57,10 @@ export default function ConfigurationPage() {
 
   const saveRisk = async () => { if(riskError)return; setSaving('risk'); setNotice({type:'',text:''}); try { const r=await updateRiskThresholdConfiguration({moderateThreshold:risk.moderate_threshold,highThreshold:risk.high_threshold}); setRisk(r); setRiskConfiguration(r); configureRiskThresholds(r); await refreshAuthenticatedWorkspace?.({silent:true,force:true}).catch(()=>{}); setNotice({type:'ok',text:'Risk classification thresholds saved.'}) } catch(e){setNotice({type:'error',text:e?.message||'Risk thresholds could not be saved.'})} finally{setSaving('')} }
   const saveHotspot = async () => { if(hotspotError)return; setSaving('hotspot'); setNotice({type:'',text:''}); try { const h=await updateHotspotConfiguration({local_weight:Number(hotspot.local_weight),nearby_weight:Number(hotspot.nearby_weight),spatial_weight:Number(hotspot.spatial_weight),radius_km:Number(hotspot.radius_km),watch_threshold:Number(hotspot.watch_threshold),emerging_threshold:Number(hotspot.emerging_threshold),confirmed_threshold:Number(hotspot.confirmed_threshold)}); setHotspot(h); setNotice({type:'ok',text:'Hotspot settings saved. The previous derived hotspot cache was cleared. Run Hotspot Check on the Map page once to calculate results with the new settings.'}) } catch(e){setNotice({type:'error',text:e?.message||'Hotspot settings could not be saved.'})} finally{setSaving('')} }
-  const doReset = async () => { setSaving(resetTarget); try { if(resetTarget==='risk'){const r=await resetRiskThresholdConfiguration();setRisk(r);setRiskConfiguration(r);configureRiskThresholds(r);await refreshAuthenticatedWorkspace?.({silent:true,force:true}).catch(()=>{});setNotice({type:'ok',text:'Risk thresholds reset to 25 / 60.'})} else {const h=await resetHotspotConfiguration();setHotspot(h);setNotice({type:'ok',text:'Hotspot settings reset to 60 / 25 / 15, 3 km, and 45 / 60 / 75. Run Hotspot Check once to rebuild the saved result.'})} setResetTarget('') } catch(e){setNotice({type:'error',text:e?.message||'Configuration could not be reset.'})} finally{setSaving('')} }
+  const saveResponses = async () => { setSaving('responses'); setNotice({type:'',text:''}); try { const r=await updateRecommendedResponseConfiguration(responses.templates); setResponses(r); setRecommendedResponseConfiguration?.(r); await refreshAuthenticatedWorkspace?.({silent:true,force:true}).catch(()=>{}); setNotice({type:'ok',text:'Recommended responses and response plans saved. Forecast values and risk calculations were not changed.'}) } catch(e){setNotice({type:'error',text:e?.message||'Recommended responses could not be saved.'})} finally{setSaving('')} }
+  const updateResponseTemplate = (key, field, value) => setResponses(prev => ({...prev, templates:{...prev.templates, [key]:{...prev.templates?.[key], [field]: field==='response_plan' ? value.split('\n').map(x=>x.trim()).filter(Boolean) : value}}}))
+
+  const doReset = async () => { setSaving(resetTarget); try { if(resetTarget==='responses'){const r=await resetRecommendedResponseConfiguration();setResponses(r);setRecommendedResponseConfiguration?.(r);await refreshAuthenticatedWorkspace?.({silent:true,force:true}).catch(()=>{});setNotice({type:'ok',text:'Recommended responses reset to system defaults.'})} else if(resetTarget==='risk'){const r=await resetRiskThresholdConfiguration();setRisk(r);setRiskConfiguration(r);configureRiskThresholds(r);await refreshAuthenticatedWorkspace?.({silent:true,force:true}).catch(()=>{});setNotice({type:'ok',text:'Risk thresholds reset to 25 / 60.'})} else {const h=await resetHotspotConfiguration();setHotspot(h);setNotice({type:'ok',text:'Hotspot settings reset to 60 / 25 / 15, 3 km, and 45 / 60 / 75. Run Hotspot Check once to rebuild the saved result.'})} setResetTarget('') } catch(e){setNotice({type:'error',text:e?.message||'Configuration could not be reset.'})} finally{setSaving('')} }
 
   const card='overflow-hidden rounded-[20px] sm:rounded-[30px] border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950'
   const panel='rounded-[18px] border border-slate-200 bg-slate-50/80 p-3.5 sm:rounded-[24px] sm:p-5 dark:border-slate-800 dark:bg-slate-900/60'
@@ -78,8 +84,17 @@ export default function ConfigurationPage() {
       </div>
     </section>
 
+    <section className={card}>
+      <div className="bg-gradient-to-r from-amber-950 via-orange-900 to-amber-600 px-4 py-5 text-white sm:px-8 sm:py-7"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10 sm:h-12 sm:w-12 sm:rounded-2xl"><ClipboardList/></div><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-100 sm:text-xs sm:tracking-[0.2em]">Operational Guidance</p><h2 className="mt-1.5 text-xl font-black sm:text-2xl">Recommended Response Configuration</h2><p className="mt-2 text-xs font-semibold leading-5 text-amber-50 sm:text-sm">CHO/Admin can write the response guidance shown for each system-generated Response Priority. This does not change CatBoost forecasts, risk levels, hotspot scores, or CRS.</p></div></div></div>
+      <div className="space-y-4 p-3.5 sm:p-8">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-950 sm:rounded-2xl sm:p-4 sm:text-sm"><b>How it works:</b> the system first calculates the Response Priority from forecast risk, trend, rainfall, temperature, humidity, population, and density. CHO/Admin only edits the recommendation and response-plan wording attached to that priority; the analytical result is not changed.</div>
+        {RESPONSE_KEYS.map((key) => { const t=responses.templates?.[key]; if(!t)return null; return <div key={key} className={panel}><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-black">{t.label}</h3><span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800">Editable guidance</span></div><label className="block"><span className="text-xs font-black text-slate-700 dark:text-slate-200">Recommended response</span><textarea value={t.recommendation||''} onChange={e=>updateResponseTemplate(key,'recommendation',e.target.value)} maxLength={1200} rows={3} className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm font-semibold leading-6 outline-none focus:border-amber-500 dark:border-slate-700 dark:bg-slate-950"/></label><label className="mt-4 block"><span className="text-xs font-black text-slate-700 dark:text-slate-200">Response plan <span className="font-semibold text-slate-400">(one action per line)</span></span><textarea value={(t.response_plan||[]).join('\n')} onChange={e=>updateResponseTemplate(key,'response_plan',e.target.value)} rows={Math.max(4,Math.min(8,(t.response_plan||[]).length+1))} className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm font-semibold leading-6 outline-none focus:border-amber-500 dark:border-slate-700 dark:bg-slate-950"/></label></div>})}
+        <div className="grid gap-2.5 sm:flex sm:flex-wrap sm:gap-3"><button disabled={loading||saving||!RESPONSE_KEYS.every(k=>responses.templates?.[k]?.recommendation?.trim())} onClick={saveResponses} className="w-full rounded-xl bg-amber-600 px-4 py-3 text-xs font-black text-white sm:w-auto sm:rounded-2xl sm:px-5 sm:text-sm"><Save size={17} className="mr-2 inline"/>Save Recommended Responses</button><button disabled={saving} onClick={()=>setResetTarget('responses')} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-xs font-black sm:w-auto sm:rounded-2xl sm:px-5 sm:text-sm"><RotateCcw size={17} className="mr-2 inline"/>Reset Response Defaults</button></div>
+      </div>
+    </section>
+
     <section className={card}><div className="p-4 sm:p-8"><p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-700">Transparency only</p><h2 className="mt-1 text-lg font-black sm:mt-2 sm:text-xl">Combined Priority Score (CRS)</h2><p className="mt-2 text-xs font-semibold leading-5 sm:text-sm sm:leading-6 text-slate-600 dark:text-slate-300">CRS remains read-only in this version. Its factor scores and thresholds stay visible in the Risk Explanation panels, but CHO/Admin cannot change the scoring model here. This prevents accidental changes to barangay ranking and response priority until an official CRS weighting policy is established.</p></div></section>
 
-    {resetTarget&&<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"><div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl dark:bg-slate-950"><h3 className="text-xl font-black">Reset {resetTarget==='risk'?'risk thresholds':'hotspot settings'}?</h3><p className="mt-3 text-sm font-semibold text-slate-600">This restores the original system defaults. It does not delete uploaded data or retrain the forecasting model.</p><div className="mt-6 grid gap-2.5 sm:flex sm:justify-end sm:gap-3"><button onClick={()=>setResetTarget('')} className="rounded-2xl border px-4 py-2.5 text-sm font-black">Cancel</button><button onClick={doReset} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-black text-white">Reset to Default</button></div></div></div>}
+    {resetTarget&&<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"><div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl dark:bg-slate-950"><h3 className="text-xl font-black">Reset {resetTarget==='risk'?'risk thresholds':resetTarget==='hotspot'?'hotspot settings':'recommended responses'}?</h3><p className="mt-3 text-sm font-semibold text-slate-600">This restores the original system defaults. It does not delete uploaded data or retrain the forecasting model.</p><div className="mt-6 grid gap-2.5 sm:flex sm:justify-end sm:gap-3"><button onClick={()=>setResetTarget('')} className="rounded-2xl border px-4 py-2.5 text-sm font-black">Cancel</button><button onClick={doReset} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-black text-white">Reset to Default</button></div></div></div>}
   </div>
 }

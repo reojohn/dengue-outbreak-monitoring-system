@@ -3803,6 +3803,7 @@ export default function ForecastPage() {
   const [selectedRiskExplanationBarangay, setSelectedRiskExplanationBarangay] = useState('')
   const [expandedRiskFactor, setExpandedRiskFactor] = useState('')
   const [summaryListType, setSummaryListType] = useState(null)
+  const [showTopForecastPeriods, setShowTopForecastPeriods] = useState(false)
   const [isReevaluatingModel, setIsReevaluatingModel] = useState(false)
   const [modelReevaluationNotice, setModelReevaluationNotice] = useState({ type: '', text: '' })
   const [modelReevaluationProcessing, setModelReevaluationProcessing] = useState({
@@ -4479,9 +4480,6 @@ const modelReliabilityParts = [
   hasMetricValue(activeModelMetrics?.f1_score)
     ? `a risk-class F1 of ${formatMetricPercent(activeModelMetrics.f1_score)}`
     : '',
-  Number(activeSelectionConfidence?.score || 0) > 0
-    ? `a model-selection strength of ${formatNumber(activeSelectionConfidence.score)}/100`
-    : '',
 ].filter(Boolean)
 
 const forecastFindingMessages = forecastRows.length
@@ -4876,38 +4874,7 @@ const activeModelComparison = (() => {
             <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-16 -left-12 h-36 w-36 rounded-full bg-blue-500/10 blur-3xl" />
 
-            <div className="relative rounded-[22px] border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.10),rgba(15,23,42,0.30)_48%,rgba(59,130,246,0.08))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-              <div className="flex items-center justify-between gap-3">
-                <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.19em] text-cyan-100/70">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-[11px] border border-cyan-300/20 bg-cyan-300/10 text-cyan-200 shadow-[0_8px_24px_rgba(34,211,238,0.08)]">
-                    <Sparkles className="h-3.5 w-3.5" />
-                  </span>
-                  Forecast output
-                </div>
-                <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-100">
-                  Model output
-                </span>
-              </div>
-
-              <h2 className="mt-4 text-[1.7rem] font-black leading-none tracking-[-0.035em] text-white sm:text-[1.85rem]">
-                Expected forecast
-              </h2>
-              <p className="mt-2 max-w-[30rem] text-[11px] leading-[1.65] text-slate-300/80">
-                The original prediction produced by the selected forecasting model, shown without hypothetical adjustments.
-              </p>
-
-              <div className="mt-4 flex items-center gap-2.5 rounded-[14px] border border-emerald-300/15 bg-emerald-300/[0.07] px-3 py-2.5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-emerald-300/10 text-emerald-200 ring-1 ring-emerald-300/15">
-                  <Activity className="h-3.5 w-3.5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black text-white/90">Direct model prediction</p>
-                  <p className="mt-0.5 text-[9px] leading-4 text-white/45">No scenario multiplier or manual adjustment applied.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative mt-4 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+            <div className="relative overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.055] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
               <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full bg-cyan-300/5 blur-2xl" />
               <div className="relative flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -4944,18 +4911,51 @@ const activeModelComparison = (() => {
                   </div>
                   <p className="mt-1.5 text-sm font-black text-white">{highestRiskBarangay?.risk || 'Pending'}</p>
                 </div>
-                <div className="rounded-[16px] border border-white/10 bg-slate-950/40 px-3 py-3">
+                <button type="button" onClick={() => setShowTopForecastPeriods(true)} disabled={!highestRiskBarangay} className="group/forecast rounded-[16px] border border-white/10 bg-slate-950/40 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-cyan-300/[0.08] focus:outline-none focus:ring-2 focus:ring-cyan-300/60 disabled:cursor-default disabled:opacity-60" aria-label={`View the ${forecastHorizonPeriods}-period forecast for ${highestRiskBarangay?.barangay || 'the top priority barangay'}`}>
                   <div className="flex items-center gap-2">
                     <LineChart className="h-3 w-3 text-cyan-300/80" />
                     <p className="text-[8px] font-black uppercase tracking-[0.15em] text-white/40">Forecast cases</p>
+                    <ArrowUpRight className="ml-auto h-3 w-3 text-cyan-200/55 transition group-hover/forecast:text-cyan-200" />
                   </div>
                   <p className="mt-1.5 text-sm font-black text-white">{formatNumber(highestRiskBarangay?.forecast || 0)} cases</p>
-                </div>
+                  <p className="mt-1 text-[8px] font-bold text-cyan-100/55">View {forecastHorizonPeriods}-period forecast</p>
+                </button>
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      {showTopForecastPeriods && highestRiskBarangay && (
+        <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-md sm:p-5" role="dialog" aria-modal="true" aria-labelledby="top-priority-forecast-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTopForecastPeriods(false) }}>
+          <div className="relative max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-[30px] border border-white/70 bg-white p-5 shadow-[0_36px_110px_rgba(2,6,23,0.48)] ring-1 ring-slate-200/70 dark:border-slate-700 dark:bg-slate-950 dark:ring-white/10 sm:p-6">
+            <button type="button" onClick={() => setShowTopForecastPeriods(false)} className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Close forecast period details"><X className="h-4 w-4" /></button>
+            <div className="pr-12">
+              <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200">Forecast transparency</span>
+              <h2 id="top-priority-forecast-title" className="mt-3 text-2xl font-black tracking-[-0.035em] text-slate-950 dark:text-white">{highestRiskBarangay.barangay} {forecastHorizonPeriods}-period forecast</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Saved direct multi-step predictions that make up this barangay&apos;s cumulative forecast.</p>
+            </div>
+            {topBarangayPeriodPredictions.length > 0 ? (
+              <div className="mt-5 space-y-3">
+                {topBarangayPeriodPredictions.slice(0, forecastHorizonPeriods).map((item, index) => (
+                  <div key={`${highestRiskBarangay.barangay}-hero-period-${item?.horizon || index + 1}`} className="rounded-[20px] border border-sky-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-4 py-4 shadow-sm dark:border-white/10 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-500/10">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white">{index + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-black text-slate-950 dark:text-white">{item?.period || `${forecastPeriodDisplay.adjective} ${index + 1}`}</p><p className="font-black text-slate-950 dark:text-white">{formatNumber(item?.predictedCases || 0)} cases</p></div>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.13em] text-blue-500">Period {index + 1} · Horizon {item?.horizon || index + 1} · Direct multi-step</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-400/20 dark:bg-emerald-500/10"><div className="flex items-center justify-between gap-4"><span className="text-xs font-black uppercase tracking-[0.13em] text-emerald-700 dark:text-emerald-300">Cumulative forecast</span><span className="text-lg font-black text-slate-950 dark:text-white">{formatNumber(highestRiskBarangay?.forecast || 0)} cases</span></div></div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">Separate horizon predictions are not available in the current saved forecast response. The cumulative forecast remains {formatNumber(highestRiskBarangay?.forecast || 0)} cases.</div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mobile-field-grid-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -5155,14 +5155,12 @@ const activeModelComparison = (() => {
     </div>
   )}
 
-  <div className="mobile-field-grid-6 mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+  <div className="mobile-field-grid-6 mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
     {[
       ['Selected model', activeModelMetrics?.model_name || latestModelMetrics?.best_model_name || selectedModelName, 'Best evaluated algorithm'],
       ['Models compared', activeTrainingSummary?.models_evaluated || activeModelComparison.filter((model) => model.is_available !== false).length, 'Candidate models evaluated'],
       ['Train/test split', activeTrainingSummary?.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard', 'Documented methodology'],
-      ['Random state', activeTrainingSummary?.random_state ?? backendForecastResult?.random_state ?? latestModelMetrics?.random_state ?? 42, 'Reproducible results'],
       ['Best RMSE', activeModelMetrics?.rmse ? formatDecimal(activeModelMetrics.rmse) : 'N/A', 'Lower error is better'],
-      ['Model selection strength', activeSelectionConfidence?.score ? `${activeSelectionConfidence.score}/100` : 'N/A', activeSelectionConfidence?.label || 'Selection strength'],
     ].map(([label, value, helper], index) => (
       <div
         key={label}
@@ -5172,7 +5170,7 @@ const activeModelComparison = (() => {
         <p className="relative text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">
           {label}
         </p>
-        <p className="relative mt-2 truncate text-xl font-black text-brand-text dark:text-slate-100">
+        <p className="relative mt-2 break-words text-lg font-black leading-6 text-brand-text dark:text-slate-100">
           {value || 'N/A'}
         </p>
         <p className="relative mt-1 text-xs leading-5 text-brand-muted dark:text-slate-400">
@@ -5190,7 +5188,7 @@ const activeModelComparison = (() => {
       <div className="pointer-events-none absolute right-8 top-8 h-28 w-28 rounded-full border border-white/5" />
       <div className="pointer-events-none absolute right-14 top-14 h-16 w-16 rounded-full border border-white/5" />
 
-      <div className="forecast-selected-model-hero relative grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)_220px] lg:items-center">
+      <div className="forecast-selected-model-hero relative grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)_300px] lg:items-center">
         <div className="relative mx-auto flex h-[168px] w-[168px] items-center justify-center lg:mx-0">
           <div className="absolute inset-0 rounded-full border border-cyan-200/15" />
           <div className="absolute inset-4 rounded-full border border-emerald-200/15" />
@@ -5262,7 +5260,7 @@ const activeModelComparison = (() => {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
           {[
             [
               'RMSE',
@@ -5273,18 +5271,26 @@ const activeModelComparison = (() => {
               'from-cyan-300 to-sky-400',
             ],
             [
+              'MAE',
+              activeModelMetrics?.mae != null
+                ? formatDecimal(activeModelMetrics.mae)
+                : 'N/A',
+              'Average absolute forecast error',
+              'from-blue-300 to-cyan-300',
+            ],
+            [
+              'R²',
+              activeModelMetrics?.r2 != null
+                ? Number(activeModelMetrics.r2).toFixed(2)
+                : 'N/A',
+              'Explained variation in case counts',
+              'from-violet-300 to-blue-300',
+            ],
+            [
               'Risk-class F1',
               formatMetricPercent(activeModelMetrics?.f1_score),
               'Balanced classification performance',
               'from-emerald-300 to-cyan-300',
-            ],
-            [
-              'Model selection strength',
-              activeSelectionConfidence?.score
-                ? `${activeSelectionConfidence.score}%`
-                : 'N/A',
-              activeSelectionConfidence?.label || 'Selection strength',
-              'from-violet-300 to-cyan-300',
             ],
           ].map(([label, value, helper, accent]) => (
             <div
@@ -5389,17 +5395,8 @@ const activeModelComparison = (() => {
         </div>
       </div>
 
-      <div className="forecast-ai-control-metrics relative mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="forecast-ai-control-metrics relative mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {[
-          [
-            'Random state',
-            activeTrainingSummary?.random_state ??
-              backendForecastResult?.random_state ??
-              latestModelMetrics?.random_state ??
-              42,
-            'Reproducible training',
-            Activity,
-          ],
           [
             'Feature importance',
             activeFeatureImportance?.length ? 'Available' : 'Pending',
@@ -5415,14 +5412,6 @@ const activeModelComparison = (() => {
             }).length,
             'Ranked by RMSE and MAE',
             Gauge,
-          ],
-          [
-            'Selection strength',
-            activeSelectionConfidence?.score
-              ? `${formatNumber(activeSelectionConfidence.score)}/100`
-              : 'N/A',
-            activeSelectionConfidence?.label || 'Model-selection confidence',
-            CheckCircle2,
           ],
         ].map(([label, value, helper, Icon]) => (
           <div
@@ -5636,7 +5625,6 @@ const activeModelComparison = (() => {
                         <div className="grid gap-3 sm:grid-cols-2">
                           {[
                             ['Train/Test', model.train_test_split || 'Chronological 80/20 origin split + 4-period leakage guard'],
-                            ['Random State', model.random_state ?? 'N/A'],
                             ['Training Samples', formatNumber(model.training_row_count)],
                             ['Testing Samples', formatNumber(model.testing_row_count)],
                             ['Training Time', formatSeconds(model.training_duration_seconds)],
@@ -6610,11 +6598,7 @@ const activeModelComparison = (() => {
                             Supporting details
                           </p>
 
-                          <div className="mobile-field-grid-4 mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                            <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
-                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">Priority score</p>
-                              <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{formatNumber(row.decisionScore)} points</p>
-                            </div>
+                          <div className="mobile-field-grid-4 mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                             <div className={`rounded-[18px] border px-3 py-2.5 shadow-sm ${cardStyle.metric}`}>
                               <p className="text-[10px] font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-500">Risk score</p>
                               <p className="mt-1 text-sm font-black text-brand-text dark:text-slate-100">{formatNumber(getRowRiskScore(row))}/100</p>
@@ -7663,7 +7647,7 @@ const activeModelComparison = (() => {
 
           .forecast-premium-hero .mt-9.grid {
             margin-top: 0.75rem !important;
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             gap: 0.45rem !important;
           }
 
@@ -9115,26 +9099,25 @@ const activeModelComparison = (() => {
             overflow-wrap: break-word !important;
           }
 
-          /* RMSE / F1 / selection strength use a compact 3-column strip now
-             that the parent is wider. */
-          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 {
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          /* Model performance metrics use a compact 2-column grid on mobile. */
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             gap: 0.32rem !important;
           }
 
-          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 > div {
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-2 > div {
             min-width: 0 !important;
             min-height: 92px !important;
             padding: 0.5rem !important;
             border-radius: 13px !important;
           }
 
-          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 p:nth-child(2) {
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-2 p:nth-child(2) {
             font-size: 0.95rem !important;
             line-height: 1.05 !important;
           }
 
-          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 p:last-child {
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-2 p:last-child {
             font-size: 0.8125rem !important;
             line-height: 1.2 !important;
           }
@@ -9347,11 +9330,11 @@ const activeModelComparison = (() => {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
 
-          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 {
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-2 {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
 
-          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-3.lg\:grid-cols-1 > div:last-child {
+          .forecast-mobile-compact .forecast-selected-model-hero > .grid.gap-3.sm\:grid-cols-2.lg\:grid-cols-2 > div:last-child {
             grid-column: 1 / -1 !important;
           }
 

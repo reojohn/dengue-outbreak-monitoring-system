@@ -6,7 +6,7 @@ from app.auth_security import get_current_user
 from app.services.barangay_normalizer import normalize_barangay_key
 from app.services.database_forecasts import get_latest_forecast_result_from_database
 from app.services.database_uploads import get_latest_dataset_uploads
-from app.services.baseline_forecast import classify_forecast_risk, get_recommendation
+from app.services.baseline_forecast import classify_forecast_risk, get_recommendation, get_response_plan
 from app.services.risk_configuration import public_risk_configuration
 
 router = APIRouter(
@@ -31,7 +31,9 @@ def _apply_active_risk_thresholds(result: dict) -> dict:
         risk = classify_forecast_risk(forecast)
         row["risk_level"] = risk
         row["risk"] = risk
-        row["recommendation"] = get_recommendation(risk, row.get("trend_direction") or row.get("trend") or "Stable")
+        trend = row.get("trend_direction") or row.get("trend") or "Stable"
+        row["recommendation"] = get_recommendation(risk, trend)
+        row["response_plan"] = get_response_plan(risk, trend)
         counts[risk] += 1
     updated["forecast_results"] = rows
     updated["risk_counts"] = counts

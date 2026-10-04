@@ -1732,15 +1732,12 @@ function buildBackendRiskRows(backendForecastResult = null, context = {}) {
         recommendation: backendRecommendation || computedDecisionSupport.primaryAction,
       })
 
-      const actionPlan = Array.from(
-        new Set([
-          backendRecommendation,
-          ...(Array.isArray(computedDecisionSupport.actions)
-            ? computedDecisionSupport.actions
-            : []),
-          ...fallbackActionPlan,
-        ].filter(Boolean))
-      ).slice(0, 8)
+      // Response Priority is computed from the full decision-support context first.
+      // CHO/Admin guidance is then applied by computeDecisionSupport for that priority.
+      const priorityConfiguredPlan = Array.isArray(computedDecisionSupport.actions) ? computedDecisionSupport.actions.filter(Boolean) : []
+      const actionPlan = priorityConfiguredPlan.length
+        ? Array.from(new Set(priorityConfiguredPlan)).slice(0, 12)
+        : Array.from(new Set([backendRecommendation, ...fallbackActionPlan].filter(Boolean))).slice(0, 8)
 
       const backendRationale = buildBackendRationale({
         barangay,
@@ -1766,9 +1763,12 @@ function buildBackendRiskRows(backendForecastResult = null, context = {}) {
 
       const decisionSupport = {
         ...computedDecisionSupport,
+        // Keep the rule-based response score explicit so the UI can explain
+        // the same decision logic that produced the response priority.
+        responseLogicScore: Number(computedDecisionSupport.score || 0),
         summary:
-          backendRecommendation ||
           computedDecisionSupport.summary ||
+          backendRecommendation ||
           getGenericRecommendedAction(backendRisk),
         priority:
           computedDecisionSupport.priority ||
@@ -2091,6 +2091,18 @@ export default function MapPage() {
   const [focusSelectedBarangay, setFocusSelectedBarangay] = useState(false)
   const [selectedPanelOpen, setSelectedPanelOpen] = useState(false)
   const [selectedPanelView, setSelectedPanelView] = useState('overview')
+  const [responseScoreBreakdownOpen, setResponseScoreBreakdownOpen] = useState(false)
+  const [responseTransparencyOpen, setResponseTransparencyOpen] = useState(false)
+  const [hotspotCalculationOpen, setHotspotCalculationOpen] = useState('')
+
+  useEffect(() => {
+    if ((!responseScoreBreakdownOpen && !responseTransparencyOpen && !hotspotCalculationOpen) || typeof document === 'undefined') return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [responseScoreBreakdownOpen, responseTransparencyOpen, hotspotCalculationOpen])
   const [selectedPanelPosition, setSelectedPanelPosition] = useState(() => getDefaultPanelPosition())
   const [dragState, setDragState] = useState(null)
   const [legendOpen, setLegendOpen] = useState(true)
@@ -2538,9 +2550,95 @@ export default function MapPage() {
     (details ? 'Standard response' : 'Waiting for data')
 
   const selectedDecisionScore =
-    details?.decisionScore ??
+    selectedDecisionSupport?.responseLogicScore ??
     selectedDecisionSupport?.score ??
+    details?.decisionScore ??
     0
+
+  const responseScoreBreakdown = useMemo(() => {
+    if (!details || !selectedDecisionSupport) return null
+    const risk = String(details?.risk || selectedDecisionSupport?.risk || '').toLowerCase()
+    const riskPoints = risk === 'high' ? 4 : risk === 'moderate' ? 2 : risk === 'low' ? 1 : 0
+    const forecast = Number(details?.forecast || details?.forecastedCases || details?.predictedCases || 0)
+    const forecastPoints = forecast >= 90 ? 4 : forecast >= 60 ? 3 : forecast >= 25 ? 2 : forecast > 0 ? 1 : 0
+    const trend = String(selectedDecisionSupport?.trendDirection || selectedTrend || '').toLowerCase()
+    const trendPoints = trend.includes('increas') ? 2 : trend.includes('stable') ? 1 : trend.includes('decreas') ? -1 : 0
+    const densityLevel = String(selectedDecisionSupport?.densityLevel || '').toLowerCase()
+    const densityPoints = densityLevel.includes('very high') ? 3 : densityLevel === 'high' || densityLevel.includes('high density') ? 2 : densityLevel.includes('moderate') ? 1 : 0
+    const populationLabel = String(selectedDecisionSupport?.populationExposure || '').toLowerCase()
+    const populationPoints = populationLabel.includes('high') ? 3 : populationLabel.includes('moderate') ? 2 : populationLabel && !populationLabel.includes('unavailable') ? 1 : 0
+    const environmentLabel = String(selectedDecisionSupport?.environmentalSuitability || '').toLowerCase()
+    const environmentPoints = environmentLabel.includes('high') ? 3 : environmentLabel.includes('moderate') ? 2 : environmentLabel && !environmentLabel.includes('unavailable') ? 1 : 0
+    const multiSourceScore = Number(selectedDecisionSupport?.multiSourceRiskScore || selectedDecisionSupport?.riskScore || 0)
+    const multiSourcePoints = Math.round(multiSourceScore / 25)
+    const items = [
+      {
+        label: 'Risk level', value: details?.risk || 'Unavailable', points: riskPoints,
+        why: risk === 'low' ? 'The current risk level is Low, so it contributes 1 point.' : risk === 'moderate' ? 'The current risk level is Moderate, so it contributes 2 points.' : risk === 'high' ? 'The current risk level is High, so it contributes 4 points.' : 'No recognized risk level is available, so no points are added.',
+        guideRows: [
+          { range: 'Low', points: 1, current: risk === 'low' },
+          { range: 'Moderate', points: 2, current: risk === 'moderate' },
+          { range: 'High', points: 4, current: risk === 'high' },
+        ],
+      },
+      {
+        label: 'Forecast pressure', value: `${formatNumber(forecast)} forecast cases`, points: forecastPoints,
+        why: forecast <= 0 ? 'There are no forecast cases, so this factor adds 0 points.' : forecast < 25 ? `${formatNumber(forecast)} cases falls within the 1–24 case range, so it contributes 1 point.` : forecast < 60 ? `${formatNumber(forecast)} cases falls within the 25–59 case range, so it contributes 2 points.` : forecast < 90 ? `${formatNumber(forecast)} cases falls within the 60–89 case range, so it contributes 3 points.` : `${formatNumber(forecast)} cases is 90 or higher, so it contributes 4 points.`,
+        guideRows: [
+          { range: 'No forecast cases', points: 0, current: forecast <= 0 },
+          { range: '1–24 cases', points: 1, current: forecast > 0 && forecast < 25 },
+          { range: '25–59 cases', points: 2, current: forecast >= 25 && forecast < 60 },
+          { range: '60–89 cases', points: 3, current: forecast >= 60 && forecast < 90 },
+          { range: '90+ cases', points: 4, current: forecast >= 90 },
+        ],
+      },
+      {
+        label: 'Historical trend', value: selectedDecisionSupport?.trendDirection || selectedTrend || 'Unavailable', points: trendPoints,
+        why: trend.includes('increas') ? 'The trend is Increasing, so it contributes 2 points and signals closer monitoring.' : trend.includes('stable') ? 'The trend is Stable, so it contributes 1 point.' : trend.includes('decreas') ? 'The trend is Decreasing, so 1 point is subtracted.' : 'No recognized trend is available, so no points are added.',
+        guideRows: [
+          { range: 'Decreasing', points: -1, current: trend.includes('decreas') },
+          { range: 'Stable', points: 1, current: trend.includes('stable') },
+          { range: 'Increasing', points: 2, current: trend.includes('increas') },
+        ],
+      },
+      {
+        label: 'Population density', value: selectedDensity > 0 ? `${formatNumber(selectedDensity, 2)} people/sq km` : 'Unavailable', points: densityPoints,
+        why: selectedDensity <= 0 ? 'Population density is unavailable, so no points are added.' : selectedDensity < 500 ? `${formatNumber(selectedDensity, 2)} people/sq km is below 500, so it adds 0 points.` : selectedDensity < 1500 ? `${formatNumber(selectedDensity, 2)} people/sq km falls within 500–1,499, so it contributes 1 point.` : selectedDensity < 5000 ? `${formatNumber(selectedDensity, 2)} people/sq km falls within 1,500–4,999, so it contributes 2 points.` : `${formatNumber(selectedDensity, 2)} people/sq km is 5,000 or higher, so it contributes 3 points.`,
+        guideRows: [
+          { range: 'Below 500 people/sq km', points: 0, current: selectedDensity > 0 && selectedDensity < 500 },
+          { range: '500–1,499 people/sq km', points: 1, current: selectedDensity >= 500 && selectedDensity < 1500 },
+          { range: '1,500–4,999 people/sq km', points: 2, current: selectedDensity >= 1500 && selectedDensity < 5000 },
+          { range: '5,000+ people/sq km', points: 3, current: selectedDensity >= 5000 },
+        ],
+      },
+      {
+        label: 'Population exposure', value: selectedPopulation > 0 ? `${formatNumber(selectedPopulation)} people` : 'Unavailable', points: populationPoints,
+        why: selectedPopulation <= 0 ? 'Population is unavailable, so no points are added.' : selectedPopulation < 8000 ? `${formatNumber(selectedPopulation)} people is below 8,000, so it contributes 1 point.` : selectedPopulation < 15000 ? `${formatNumber(selectedPopulation)} people falls within 8,000–14,999, so it contributes 2 points.` : `${formatNumber(selectedPopulation)} people is 15,000 or higher, so it contributes 3 points.`,
+        guideRows: [
+          { range: 'Below 8,000 people', points: 1, current: selectedPopulation > 0 && selectedPopulation < 8000 },
+          { range: '8,000–14,999 people', points: 2, current: selectedPopulation >= 8000 && selectedPopulation < 15000 },
+          { range: '15,000+ people', points: 3, current: selectedPopulation >= 15000 },
+        ],
+      },
+      {
+        label: 'Environmental suitability', value: selectedDecisionSupport?.environmentalSuitability || 'Unavailable', points: environmentPoints,
+        why: environmentLabel.includes('high') ? 'Environmental suitability is High, so it contributes 3 points.' : environmentLabel.includes('moderate') ? 'Environmental suitability is Moderate, so it contributes 2 points.' : environmentLabel && !environmentLabel.includes('unavailable') ? 'Environmental suitability is Low, so it contributes 1 point.' : 'Environmental suitability is unavailable, so no points are added.',
+        guideRows: [
+          { range: 'Low suitability', points: 1, current: !!environmentLabel && !environmentLabel.includes('unavailable') && !environmentLabel.includes('moderate') && !environmentLabel.includes('high') },
+          { range: 'Moderate suitability', points: 2, current: environmentLabel.includes('moderate') },
+          { range: 'High suitability', points: 3, current: environmentLabel.includes('high') },
+        ],
+      },
+      {
+        label: 'Combined priority contribution', value: `${formatNumber(multiSourceScore)}/100`, points: multiSourcePoints,
+        why: `The combined priority score is ${formatNumber(multiSourceScore)}/100. The response logic divides it by 25 and rounds the result: ${formatNumber(multiSourceScore)} ÷ 25 = ${(multiSourceScore / 25).toFixed(2)}, rounded to ${multiSourcePoints} point${multiSourcePoints === 1 ? '' : 's'}.`,
+        guideRows: [
+          { range: `Current: ${formatNumber(multiSourceScore)} ÷ 25 = ${(multiSourceScore / 25).toFixed(2)} → rounded`, points: multiSourcePoints, current: true },
+        ],
+      },
+    ]
+    return { items, total: items.reduce((sum, item) => sum + Number(item.points || 0), 0) }
+  }, [details, selectedDecisionSupport, selectedDensity, selectedPopulation, selectedTrend])
 
   const selectedActionPlan = useMemo(() => {
     let actions = Array.isArray(selectedDecisionSupport?.actions)
@@ -2611,6 +2709,49 @@ export default function MapPage() {
       recordCount: Number(details.recordCount || 0),
     })
   }, [details, selectedDecisionSupport, selectedLabel])
+
+  const responseTransparency = useMemo(() => {
+    if (!details) return null
+
+    const risk = String(details?.risk || selectedDecisionSupport?.risk || 'Unavailable')
+    const trend = String(selectedDecisionSupport?.trendDirection || selectedTrend || 'Unavailable')
+    const forecast = Number(details?.forecast || details?.forecastedCases || details?.predictedCases || 0)
+    const environment = String(selectedDecisionSupport?.environmentalSuitability || 'Unavailable')
+    const riskKey = risk.toLowerCase()
+    const trendKey = trend.toLowerCase()
+    const environmentKey = environment.toLowerCase()
+
+    let trigger = 'The response priority is selected from the current decision-support rules using the barangay indicators shown below.'
+    if (riskKey === 'low' && trendKey.includes('increas')) {
+      trigger = `${selectedLabel} is currently Low Risk, but its historical trend is Increasing. This early signal triggers closer monitoring under the Early Warning Watch rule.`
+    } else if (riskKey === 'low' && environmentKey.includes('high')) {
+      trigger = `${selectedLabel} is currently Low Risk, but environmental suitability is High. This early environmental signal triggers closer monitoring under the Early Warning Watch rule.`
+    }
+
+    const signals = [
+      { label: 'Risk level', value: risk, role: riskKey === 'low' ? 'Current forecast risk remains low.' : 'Used directly by the response-priority rules.' },
+      { label: 'Historical trend', value: trend, role: trendKey.includes('increas') ? 'Increasing activity is an early-warning signal.' : 'Shows whether recent dengue activity is rising, stable, or decreasing.' },
+      { label: 'Forecast', value: `${formatNumber(forecast)} cases`, role: 'Adds forward-looking case pressure to the decision context.' },
+      { label: 'Environment', value: environment, role: 'Summarizes rainfall, temperature, and humidity suitability.' },
+      { label: 'Population', value: selectedPopulation > 0 ? `${formatNumber(selectedPopulation)} people` : 'Unavailable', role: 'Shows how many people may be exposed.' },
+      { label: 'Density', value: selectedDensity > 0 ? `${formatNumber(selectedDensity, 2)} people/sq km` : 'Unavailable', role: 'Adds context about close residential exposure.' },
+    ]
+
+    const actionReasons = selectedActionPlan.map((action) => {
+      const text = String(action).toLowerCase()
+      let reason = 'Included by the current response-plan rules for this barangay.'
+      if (text.includes('monitor closely') || text.includes('upward') || text.includes('reporting-period')) reason = 'The recent trend is increasing, so closer surveillance is recommended before escalation.'
+      else if (text.includes('early warning')) reason = 'An early-warning condition is present even though the current risk level is not yet high.'
+      else if (text.includes('nearby')) reason = 'Nearby activity is checked as supporting spatial context for possible spread or clustering.'
+      else if (text.includes('cluster') || text.includes('purok') || text.includes('household group')) reason = 'Checking where cases are concentrated helps determine whether field action should be targeted.'
+      else if (text.includes('densely populated') || text.includes('residential spacing')) reason = 'Population density is elevated, so densely populated areas receive additional attention.'
+      else if (text.includes('preventive') || text.includes('reminder') || text.includes('communication')) reason = 'Preventive communication is appropriate while the barangay is being watched for change.'
+      else if (text.includes('next reporting period')) reason = 'The next reporting period provides new evidence for deciding whether the response should be escalated.'
+      return { action, reason }
+    })
+
+    return { trigger, signals, actionReasons }
+  }, [details, selectedActionPlan, selectedDecisionSupport, selectedDensity, selectedLabel, selectedPopulation, selectedTrend])
 
   const summary = showingHotspotLayer
     ? rankedHotspotRows.slice(0, 5)
@@ -2810,7 +2951,10 @@ export default function MapPage() {
     )
   )
 
-  const selectedHeroScoreLabel = showingHotspotLayer ? 'Hotspot' : 'Risk'
+  // In Forecast view this value is the Combined Priority Score (CRS), not the
+  // Low/Moderate/High forecast-risk classification. Label it explicitly so a
+  // Low-risk barangay with a CRS such as 52/100 does not look contradictory.
+  const selectedHeroScoreLabel = showingHotspotLayer ? 'Hotspot score' : 'Priority score'
 
   const selectedMetrics = [
     {
@@ -2874,10 +3018,12 @@ export default function MapPage() {
       tone: 'text-orange-500 bg-orange-50 border-orange-100 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20',
     },
     {
-      label: 'Response score',
+      label: 'Response logic score',
       value: details ? `${formatNumber(selectedDecisionScore)} points` : 'Waiting for data',
       icon: Gauge,
       tone: 'text-indigo-500 bg-indigo-50 border-indigo-100 dark:text-indigo-300 dark:bg-indigo-500/10 dark:border-indigo-500/20',
+      onClick: details ? () => setResponseScoreBreakdownOpen(true) : null,
+      helper: details ? 'View calculation' : '',
     },
     {
       label: 'Combined priority score',
@@ -3119,6 +3265,254 @@ export default function MapPage() {
     <div className="map-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[38px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.09),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.08),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.78),rgba(248,250,252,0))] pb-10 sm:space-y-8 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.10),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.42),rgba(15,23,42,0))]">
       <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
 
+      {hotspotCalculationOpen && selectedHotspot && typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) setHotspotCalculationOpen('') }}
+          >
+            <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[26px] border border-cyan-300/20 bg-slate-950 text-white shadow-[0_35px_120px_rgba(2,6,23,0.75)]">
+              <div className="shrink-0 border-b border-slate-800 px-5 py-5 sm:px-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Hotspot transparency</span>
+                    <h3 className="mt-3 text-xl font-black sm:text-2xl">
+                      {hotspotCalculationOpen === 'local' && `How ${selectedLabel} gets its Local Risk`}
+                      {hotspotCalculationOpen === 'nearby' && `How ${selectedLabel} gets its Nearby Influence`}
+                      {hotspotCalculationOpen === 'spatial' && `How ${selectedLabel} gets its Spatial Concentration`}
+                      {hotspotCalculationOpen === 'final' && `How ${selectedLabel} gets its Final Hotspot Score`}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">This uses the same values returned by the current hotspot check. Nothing here changes the calculation.</p>
+                  </div>
+                  <button type="button" onClick={() => setHotspotCalculationOpen('')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 font-black text-slate-300 hover:text-white">×</button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7" style={{ scrollbarGutter: 'stable' }}>
+                {hotspotCalculationOpen === 'local' && (() => {
+                  const b = selectedHotspot.base_score_breakdown || {}
+                  const factors = [
+                    ['Dengue cases', selectedHotspot.total_cases, b.case_pressure, 35, 'cases'],
+                    ['Rainfall', selectedHotspot.average_rainfall, b.rainfall_pressure, 20, 'mm'],
+                    ['Temperature', selectedHotspot.average_temperature, b.temperature_suitability, 15, '°C'],
+                    ['Humidity', selectedHotspot.average_humidity, b.humidity_pressure, 10, '%'],
+                    ['Population density', selectedHotspot.density, b.population_density_pressure, 20, 'people/km²'],
+                  ]
+                  const total = factors.reduce((sum, row) => sum + Number(row[2] || 0) * row[3] / 100, 0)
+                  const maxCases = Math.max(...rawHotspotRows.map((row) => Number(row?.total_cases || 0)), 1)
+                  const maxDensity = Math.max(...rawHotspotRows.map((row) => Number(row?.density || 0)), 1)
+                  return <>
+                    <div className="rounded-[20px] border border-cyan-300/20 bg-cyan-300/[0.07] p-4"><p className="text-sm font-black text-cyan-200">Local Risk = five local factors</p><p className="mt-2 text-sm leading-6 text-slate-300">Each raw barangay value is converted to a 0–100 pressure/suitability score by the hotspot engine, then multiplied by its fixed local-factor weight.</p></div>
+                    <div className="mt-4 overflow-hidden rounded-[18px] border border-slate-700"><div className="grid grid-cols-[1.3fr_.8fr_.65fr_.65fr] gap-2 bg-slate-800 px-3 py-3 text-[10px] font-black uppercase text-slate-300"><span>Factor</span><span>Raw value</span><span>Score</span><span>Contribution</span></div>{factors.map(([label, raw, score, weight, unit]) => <div key={label} className="grid grid-cols-[1.3fr_.8fr_.65fr_.65fr] gap-2 border-t border-slate-800 px-3 py-3 text-xs sm:text-sm"><span className="font-bold">{label} <span className="text-slate-500">({weight}%)</span></span><span className="text-slate-300">{Number(raw || 0).toLocaleString(undefined,{maximumFractionDigits:2})} {unit}</span><span className="font-bold text-cyan-200">{Number(score || 0).toFixed(2)}</span><span className="font-bold text-emerald-300">{(Number(score || 0)*weight/100).toFixed(2)}</span></div>)}</div>
+                    <div className="mt-4 rounded-[18px] border border-slate-700 bg-slate-900/60 p-4"><p className="font-black text-white">How the 0–100 factor scores are produced</p><div className="mt-3 space-y-2 text-sm leading-6 text-slate-300"><p><strong className="text-cyan-200">Cases:</strong> ({Number(selectedHotspot.total_cases||0).toFixed(2)} ÷ city maximum {maxCases.toFixed(2)}) × 100 = {Number(b.case_pressure||0).toFixed(2)}.</p><p><strong className="text-cyan-200">Rainfall:</strong> ({Number(selectedHotspot.average_rainfall||0).toFixed(2)} ÷ 30) × 100, capped at 100 = {Number(b.rainfall_pressure||0).toFixed(2)}.</p><p><strong className="text-cyan-200">Temperature:</strong> the current average {Number(selectedHotspot.average_temperature||0).toFixed(2)}°C is assigned to the backend temperature-suitability band = {Number(b.temperature_suitability||0).toFixed(2)}.</p><p><strong className="text-cyan-200">Humidity:</strong> the current average {Number(selectedHotspot.average_humidity||0).toFixed(2)}% is assigned to the backend humidity-pressure band = {Number(b.humidity_pressure||0).toFixed(2)}.</p><p><strong className="text-cyan-200">Density:</strong> ({Number(selectedHotspot.density||0).toFixed(2)} ÷ city maximum {maxDensity.toFixed(2)}) × 100 = {Number(b.population_density_pressure||0).toFixed(2)}.</p></div></div>
+                    <div className="mt-4 rounded-[18px] border border-emerald-300/20 bg-emerald-300/[0.07] p-4"><p className="font-black text-emerald-200">Final local calculation</p><p className="mt-2 break-words text-sm leading-7 text-slate-200">{factors.map((r) => `${Number(r[2]||0).toFixed(2)}×${r[3]}%`).join(' + ')} = <strong>{total.toFixed(2)}</strong> → <strong>{formatHotspotScore(selectedHotspot.base_risk_score)}</strong></p></div>
+                  </>
+                })()}
+
+                {hotspotCalculationOpen === 'nearby' && (() => {
+                  const neighbors = Array.isArray(selectedHotspot.spatial_influence_barangays) ? selectedHotspot.spatial_influence_barangays : []
+                  const rows = neighbors.map((n) => { const d=Math.max(Number(n.distance_km||0),0.1); const w=1/d; return {...n,_d:d,_w:w,_weighted:Number(n.base_risk_score||0)*w} })
+                  const tw=rows.reduce((a,n)=>a+n._w,0), ts=rows.reduce((a,n)=>a+n._weighted,0)
+                  return <>
+                    <div className="rounded-[20px] border border-cyan-300/20 bg-cyan-300/[0.07] p-4"><p className="text-sm font-black text-cyan-200">Nearby Influence = distance-weighted neighbor risk</p><p className="mt-2 text-sm leading-6 text-slate-300">Barangays within {Number(hotspotConfig.radius_km || 3).toLocaleString(undefined,{maximumFractionDigits:2})} km are used. Closer barangays receive more influence because weight = 1 ÷ distance.</p></div>
+                    <div className="mt-4 space-y-2">{rows.length ? rows.map((n)=><div key={`${n.barangay}-${n.distance_km}`} className="rounded-[16px] border border-slate-700 bg-slate-900/60 p-3 text-sm"><div className="flex justify-between gap-3"><strong>{n.barangay}</strong><span className="text-cyan-200">{n._d.toFixed(2)} km</span></div><p className="mt-1 text-slate-300">Local risk {Number(n.base_risk_score||0).toFixed(2)} · weight 1/{n._d.toFixed(2)} = {n._w.toFixed(3)} · weighted risk = {n._weighted.toFixed(2)}</p></div>) : <p className="text-slate-300">No spatial influence rows were returned.</p>}</div>
+                    <div className="mt-4 rounded-[18px] border border-emerald-300/20 bg-emerald-300/[0.07] p-4"><p className="font-black text-emerald-200">Final nearby calculation</p><p className="mt-2 text-sm leading-7 text-slate-200">Weighted risk total {ts.toFixed(2)} ÷ weight total {tw.toFixed(3)} = <strong>{tw ? (ts/tw).toFixed(2) : '0.00'}</strong> → <strong>{formatHotspotScore(selectedHotspot.neighbor_influence_score)}</strong></p></div>
+                  </>
+                })()}
+
+                {hotspotCalculationOpen === 'spatial' && (() => {
+                  const neighbors = Array.isArray(selectedHotspot.spatial_influence_barangays) ? selectedHotspot.spatial_influence_barangays : []
+                  const high = neighbors.filter((n)=>Number(n.base_risk_score||0)>=60).length
+                  const ratio = neighbors.length ? high/neighbors.length : 0
+                  const clusterPart=ratio*60, nearbyPart=Number(selectedHotspot.neighbor_influence_score||0)*0.40
+                  return <>
+                    <div className="rounded-[20px] border border-cyan-300/20 bg-cyan-300/[0.07] p-4"><p className="text-sm font-black text-cyan-200">Spatial Concentration checks whether high local risk is clustered nearby</p><p className="mt-2 text-sm leading-6 text-slate-300">The engine treats a nearby barangay with Local Risk ≥ 60 as high local risk for this concentration calculation.</p></div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-[18px] border border-slate-700 bg-slate-900/60 p-4"><p className="text-xs font-black uppercase text-slate-400">High-risk neighbor ratio</p><p className="mt-2 text-xl font-black">{high}/{neighbors.length}</p><p className="mt-2 text-sm text-slate-300">({ratio.toFixed(3)} × 60) = <strong className="text-cyan-200">{clusterPart.toFixed(2)}</strong></p></div><div className="rounded-[18px] border border-slate-700 bg-slate-900/60 p-4"><p className="text-xs font-black uppercase text-slate-400">Nearby influence share</p><p className="mt-2 text-xl font-black">{formatHotspotScore(selectedHotspot.neighbor_influence_score)}</p><p className="mt-2 text-sm text-slate-300">({Number(selectedHotspot.neighbor_influence_score||0).toFixed(2)} × 40%) = <strong className="text-cyan-200">{nearbyPart.toFixed(2)}</strong></p></div></div>
+                    <div className="mt-4 rounded-[18px] border border-emerald-300/20 bg-emerald-300/[0.07] p-4"><p className="font-black text-emerald-200">Final spatial calculation</p><p className="mt-2 text-sm leading-7 text-slate-200">{clusterPart.toFixed(2)} + {nearbyPart.toFixed(2)} = <strong>{(clusterPart+nearbyPart).toFixed(2)}</strong> → <strong>{formatHotspotScore(selectedHotspot.spatial_concentration_score)}</strong></p></div>
+                  </>
+                })()}
+
+                {hotspotCalculationOpen === 'final' && (() => {
+                  const local=Number(selectedHotspot.base_risk_score||0)*Number(hotspotConfig.local_weight||0)/100
+                  const nearby=Number(selectedHotspot.neighbor_influence_score||0)*Number(hotspotConfig.nearby_weight||0)/100
+                  const spatial=Number(selectedHotspot.spatial_concentration_score||0)*Number(hotspotConfig.spatial_weight||0)/100
+                  return <>
+                    <div className="rounded-[20px] border border-violet-300/20 bg-violet-300/[0.08] p-4"><p className="text-sm font-black text-violet-200">Final Hotspot Score combines the three spatial indicators</p><p className="mt-2 text-sm leading-6 text-slate-300">These weights come from the current Hotspot Configuration.</p></div>
+                    <div className="mt-4 space-y-2 text-sm">{[['Local Risk',selectedHotspot.base_risk_score,hotspotConfig.local_weight,local],['Nearby Influence',selectedHotspot.neighbor_influence_score,hotspotConfig.nearby_weight,nearby],['Spatial Concentration',selectedHotspot.spatial_concentration_score,hotspotConfig.spatial_weight,spatial]].map(([l,v,w,c])=><div key={l} className="flex items-center justify-between gap-4 rounded-[16px] border border-slate-700 bg-slate-900/60 p-4"><span className="font-bold">{l}: {Number(v||0).toFixed(2)} × {w}%</span><strong className="text-cyan-200">{Number(c).toFixed(2)}</strong></div>)}</div>
+                    <div className="mt-4 rounded-[18px] border border-emerald-300/20 bg-emerald-300/[0.07] p-4"><p className="font-black text-emerald-200">Final calculation</p><p className="mt-2 text-base leading-7 text-slate-100">{local.toFixed(2)} + {nearby.toFixed(2)} + {spatial.toFixed(2)} = <strong>{(local+nearby+spatial).toFixed(2)}</strong> → <strong>{formatHotspotScore(selectedHotspot.hotspot_score)}</strong></p></div>
+                    <div className="mt-4 rounded-[18px] border border-amber-300/20 bg-amber-300/[0.07] p-4 text-sm leading-7 text-slate-200"><strong className="text-amber-200">Classification:</strong> Low Spatial Concern &lt; {hotspotConfig.watch_threshold}; Watch Area {hotspotConfig.watch_threshold}–{Number(hotspotConfig.emerging_threshold)-0.01}; Emerging {hotspotConfig.emerging_threshold}–{Number(hotspotConfig.confirmed_threshold)-0.01}; Confirmed ≥ {hotspotConfig.confirmed_threshold}. Current result: <strong>{getHotspotLevelLabel(selectedHotspot.hotspot_level)}</strong>.</div>
+                  </>
+                })()}
+              </div>
+              <div className="shrink-0 border-t border-slate-800 px-5 py-4 sm:px-7"><div className="flex items-center justify-between gap-3"><p className="text-xs text-slate-500">Transparency only · no data or model values are changed.</p><button type="button" onClick={() => setHotspotCalculationOpen('')} className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-black hover:border-cyan-400/40">Close</button></div></div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {responseTransparencyOpen && responseTransparency && typeof document !== 'undefined' &&
+        createPortal(
+          <>
+          <style>{`
+            .response-transparency-scroll { scrollbar-width: auto; scrollbar-color: #22d3ee #0f172a; scrollbar-gutter: stable; overscroll-behavior: contain; }
+            .response-transparency-scroll::-webkit-scrollbar { width: 12px; }
+            .response-transparency-scroll::-webkit-scrollbar-track { background: #0f172a; border-radius: 999px; margin: 10px 0; box-shadow: inset 0 0 0 1px rgba(148,163,184,.12); }
+            .response-transparency-scroll::-webkit-scrollbar-thumb { background: linear-gradient(180deg,#22d3ee,#0284c7); border: 3px solid #0f172a; border-radius: 999px; min-height: 54px; }
+            .response-transparency-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg,#67e8f9,#38bdf8); }
+            @media (max-width: 640px) {
+              .response-transparency-shell { width: calc(100vw - 16px) !important; max-height: calc(100dvh - 16px) !important; border-radius: 22px !important; }
+              .response-transparency-header { padding: 14px 16px !important; }
+              .response-transparency-header h3 { margin-top: 8px !important; font-size: 18px !important; line-height: 1.25 !important; }
+              .response-transparency-header p { margin-top: 6px !important; font-size: 14px !important; line-height: 1.55 !important; }
+              .response-transparency-scroll { padding: 14px 12px 14px 16px !important; scrollbar-width: thin; }
+              .response-transparency-scroll::-webkit-scrollbar { width: 7px; }
+              .response-transparency-scroll::-webkit-scrollbar-thumb { border-width: 1px; min-height: 42px; }
+              .response-transparency-scroll::-webkit-scrollbar-track { margin: 6px 0; }
+              .response-transparency-footer { padding: 10px 16px !important; }
+              .response-transparency-footer button { padding: 8px 16px !important; }
+              .response-action-card { padding: 12px !important; border-radius: 15px !important; }
+              .response-action-list { gap: 9px !important; }
+            }
+          `}</style>
+          <div
+            className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-950/72 p-3 backdrop-blur-sm sm:p-6"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) setResponseTransparencyOpen(false) }}
+          >
+            <div className="response-transparency-shell flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-cyan-300/20 bg-slate-950 text-white shadow-[0_35px_120px_rgba(2,6,23,0.72)]">
+              <div className="response-transparency-header shrink-0 border-b border-slate-800 bg-slate-950/98 px-5 py-5 sm:px-7">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Response transparency</span>
+                    <h3 className="mt-3 text-xl font-black leading-tight sm:text-2xl">Why {selectedLabel} gets “{selectedPriority}”</h3>
+                    <p className="mt-2 max-w-2xl text-base leading-7 text-slate-300">See the rule that triggered the response, the supporting barangay conditions, and why each recommended action appears.</p>
+                  </div>
+                  <button type="button" onClick={() => setResponseTransparencyOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-lg font-black text-slate-300 transition hover:border-cyan-400/40 hover:bg-slate-800 hover:text-white" aria-label="Close response transparency">×</button>
+                </div>
+              </div>
+
+              <div className="response-transparency-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7" style={{ scrollbarGutter: 'stable' }}>
+                <div className="rounded-[22px] border border-amber-300/25 bg-amber-300/10 p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-black uppercase tracking-[0.12em] text-amber-200">Rule that triggered this response</p><span className={`rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(selectedPriority)}`}>{selectedPriority}</span></div>
+                  <p className="mt-3 text-base font-semibold leading-7 text-slate-100 sm:text-[17px]">{responseTransparency.trigger}</p>
+                  <p className="mt-3 rounded-xl border border-white/10 bg-slate-950/35 px-4 py-3.5 text-sm leading-6 text-slate-300"><strong className="text-white">Important:</strong> the Response Logic Score summarizes contributing conditions. The response label itself is assigned by the decision rules.</p>
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-3"><p className="text-base font-black text-white">Conditions used for this barangay</p><p className="mt-1 text-sm leading-6 text-slate-400">These values provide the evidence and context used by the response logic.</p></div>
+                  <div className="overflow-hidden rounded-[20px] border border-slate-700/80 bg-slate-900/55">
+                    <div className="hidden grid-cols-[0.8fr_0.8fr_1.4fr] border-b border-slate-700/80 bg-slate-800/80 px-4 py-3 text-xs font-black uppercase tracking-[0.10em] text-slate-300 sm:grid"><span>Condition</span><span>Current value</span><span>How it is used</span></div>
+                    <div className="divide-y divide-slate-800">{responseTransparency.signals.map((signal) => (<div key={signal.label} className="grid gap-1.5 px-4 py-4 text-base sm:grid-cols-[0.8fr_0.8fr_1.4fr] sm:gap-5"><span className="font-black text-slate-100">{signal.label}</span><span className="font-bold text-cyan-200">{signal.value}</span><span className="leading-6 text-slate-300">{signal.role}</span></div>))}</div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-3"><p className="text-base font-black text-white">Why these actions were included</p><p className="mt-1 text-sm leading-6 text-slate-400">Each action is paired with the condition or operational reason that supports it.</p></div>
+                  <div className="response-action-list space-y-3">{responseTransparency.actionReasons.map((row, index) => (<div key={`${row.action}-${index}`} className="response-action-card rounded-[18px] border border-slate-700/80 bg-slate-900/55 p-4"><div className="flex items-start gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-amber-300/25 bg-amber-300/10 text-xs font-black text-amber-200">{index + 1}</span><div className="min-w-0"><p className="text-base font-bold leading-7 text-white">{row.action}</p><p className="mt-1.5 text-sm leading-6 text-slate-400"><strong className="text-slate-300">Why:</strong> {row.reason}</p></div></div></div>))}</div>
+                </div>
+
+                {selectedRationale.length > 0 && <div className="mt-5 rounded-[20px] border border-cyan-300/15 bg-cyan-300/[0.06] p-4"><p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-200">Additional system rationale</p><ul className="mt-3 space-y-2.5 text-sm leading-6 text-slate-300">{selectedRationale.slice(0, 5).map((item, index) => <li key={`${item}-${index}`} className="flex gap-2"><span className="font-black text-cyan-300">•</span><span>{item}</span></li>)}</ul></div>}
+              </div>
+
+              <div className="response-transparency-footer shrink-0 border-t border-slate-800 bg-slate-950/98 px-5 py-4 sm:px-7"><div className="flex justify-end"><button type="button" onClick={() => setResponseTransparencyOpen(false)} className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-black text-white transition hover:border-cyan-400/40 hover:bg-slate-800">Close</button></div></div>
+            </div>
+          </div>
+          </>,
+          document.body
+        )}
+
+      {responseScoreBreakdownOpen && responseScoreBreakdown &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[200000] flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-md sm:p-5"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) setResponseScoreBreakdownOpen(false) }}
+          >
+            <style>{`
+              .response-score-scroll { scrollbar-width: thin; scrollbar-color: #22d3ee #0f172a; scrollbar-gutter: stable; overscroll-behavior: contain; }
+              .response-score-scroll::-webkit-scrollbar { width: 9px; }
+              .response-score-scroll::-webkit-scrollbar-track { background: #0f172a; border-radius: 999px; margin: 8px 0; }
+              .response-score-scroll::-webkit-scrollbar-thumb { background: linear-gradient(180deg,#22d3ee,#0ea5e9); border: 2px solid #0f172a; border-radius: 999px; }
+              .response-score-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg,#67e8f9,#38bdf8); }
+              @media (max-width: 640px) {
+                .response-score-shell { width: calc(100vw - 16px) !important; max-height: calc(100dvh - 16px) !important; border-radius: 22px !important; }
+                .response-score-header { padding: 14px 16px !important; }
+                .response-score-header h3 { margin-top: 8px !important; font-size: 18px !important; line-height: 1.25 !important; }
+                .response-score-header > div > div > p { line-height: 1.5 !important; }
+                .response-score-summary { margin-top: 12px !important; padding: 12px !important; border-radius: 16px !important; }
+                .response-score-summary .text-4xl { font-size: 30px !important; line-height: 1 !important; }
+                .response-score-scroll { padding: 12px 10px 12px 16px !important; scrollbar-width: thin; }
+                .response-score-scroll::-webkit-scrollbar { width: 7px; }
+                .response-score-scroll::-webkit-scrollbar-thumb { border-width: 1px; min-height: 42px; }
+                .response-score-scroll::-webkit-scrollbar-track { margin: 6px 0; }
+                .response-score-card { padding: 12px !important; border-radius: 16px !important; }
+                .response-score-list { gap: 9px !important; }
+                .response-score-card .mt-3 { margin-top: 8px !important; }
+                .response-score-footer { padding: 10px 16px !important; }
+                .response-score-footer button { padding: 8px 16px !important; }
+              }
+            `}</style>
+            <div className="response-score-shell flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[30px] border border-cyan-300/20 bg-slate-950 text-white shadow-[0_36px_120px_rgba(2,6,23,0.75)]">
+              <div className="response-score-header shrink-0 border-b border-slate-800 bg-slate-950/95 px-5 py-5 sm:px-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <span className="inline-flex rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Response transparency</span>
+                    <h3 className="mt-3 text-xl font-black sm:text-2xl">How {selectedLabel} gets its response logic score</h3>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-300">Each factor below shows the barangay's current value, why it receives those points, and the other possible ranges.</p>
+                  </div>
+                  <button type="button" onClick={() => setResponseScoreBreakdownOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-lg font-black text-slate-300 transition hover:border-cyan-400/40 hover:bg-slate-800 hover:text-white" aria-label="Close response score calculation">×</button>
+                </div>
+                <div className="response-score-summary mt-4 rounded-[20px] border border-cyan-400/20 bg-gradient-to-r from-cyan-400/10 to-indigo-400/10 p-4">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-cyan-200">Response logic score</p><div className="mt-1 flex items-end gap-2"><span className="text-4xl font-black">{formatNumber(responseScoreBreakdown.total)}</span><span className="pb-1 text-sm font-bold text-slate-300">points</span></div></div>
+                    <span className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1.5 text-xs font-bold text-slate-300">{selectedPriority}</span>
+                  </div>
+                  <p className="mt-3 text-sm font-semibold leading-6 text-slate-200">{responseScoreBreakdown.items.map((item) => `${item.points >= 0 ? '+' : ''}${item.points} ${item.label.replace('Combined priority contribution', 'Priority')}`).join('  +  ').replaceAll('+ -', '− ')} = {formatNumber(responseScoreBreakdown.total)}</p>
+                </div>
+              </div>
+
+              <div className="response-score-scroll min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+                <div className="response-score-list space-y-3">
+                  {responseScoreBreakdown.items.map((item, index) => (
+                    <div key={item.label} className="response-score-card rounded-[20px] border border-slate-800 bg-slate-900/75 p-4 sm:p-5">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 text-xs font-black text-cyan-200">{index + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-base font-black text-white">{item.label}</p><p className="mt-1 text-sm font-semibold text-slate-300">Current value: <span className="text-white">{item.value}</span></p></div><span className="shrink-0 rounded-full border border-cyan-400/25 bg-cyan-400/10 px-3 py-1 text-sm font-black text-cyan-100">{item.points >= 0 ? '+' : ''}{item.points} {Math.abs(item.points) === 1 ? 'point' : 'points'}</span></div>
+                          <div className="mt-3 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.07] px-3.5 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300">Why this score?</p><p className="mt-1 text-sm leading-6 text-slate-200">{item.why}</p></div>
+                          <div className="mt-3 overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/35">
+                            <div className="grid grid-cols-[1fr_auto] border-b border-slate-700/80 bg-slate-800/70 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                              <span>Scoring guide</span><span className="pl-4 text-right">Points</span>
+                            </div>
+                            <div className="divide-y divide-slate-800">
+                              {(item.guideRows || []).map((row, rowIndex) => (
+                                <div key={`${item.label}-guide-${rowIndex}`} className={`grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-xs sm:text-sm ${row.current ? 'bg-cyan-400/10 text-cyan-50' : 'text-slate-300'}`}>
+                                  <span className="min-w-0 font-semibold">{row.range}{row.current && <span className="ml-2 inline-flex rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-cyan-200">Current</span>}</span>
+                                  <span className={`min-w-[54px] text-right font-black ${row.current ? 'text-cyan-200' : 'text-slate-200'}`}>{row.points > 0 ? '+' : ''}{row.points}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-[20px] border border-amber-400/20 bg-amber-400/10 p-4 sm:p-5">
+                  <p className="text-sm font-black text-amber-200">Why the response is “{selectedPriority}”</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-200">The <strong>{formatNumber(responseScoreBreakdown.total)}-point score</strong> summarizes the conditions above. The response label is also determined by the system's decision rules, so the point total alone does not assign “{selectedPriority}”.</p>
+                  {String(details?.risk || '').toLowerCase() === 'low' && String(selectedDecisionSupport?.trendDirection || selectedTrend || '').toLowerCase().includes('increas') && (
+                    <p className="mt-2 rounded-xl border border-amber-300/15 bg-slate-950/30 px-3.5 py-3 text-sm leading-6 text-slate-200"><strong className="text-white">For {selectedLabel}:</strong> the current risk is <strong>Low</strong>, but the historical trend is <strong>Increasing</strong>. That condition triggers closer monitoring under the current Early Warning Watch rule.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="response-score-footer shrink-0 border-t border-slate-800 bg-slate-950/95 px-5 py-4 sm:px-6"><div className="flex justify-end"><button type="button" onClick={() => setResponseScoreBreakdownOpen(false)} className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-black text-white transition hover:border-cyan-400/40 hover:bg-slate-800">Close</button></div></div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+
       {selectedPanelOpen &&
         typeof document !== 'undefined' &&
         createPortal(
@@ -3225,7 +3619,11 @@ export default function MapPage() {
                 return (
                   <div
                     key={metric.label}
-                    className="group relative min-h-[144px] overflow-hidden rounded-[26px] border border-white/[0.80] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_42%),linear-gradient(145deg,#ffffff,#f8fafc_68%,#eff6ff)] p-4 shadow-[0_14px_38px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/60 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_42%),linear-gradient(145deg,#0f172a,#020617_70%,#082f49)] dark:ring-white/5"
+                    role={metric.onClick ? 'button' : undefined}
+                    tabIndex={metric.onClick ? 0 : undefined}
+                    onClick={metric.onClick || undefined}
+                    onKeyDown={metric.onClick ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); metric.onClick() } } : undefined}
+                    className={`group relative min-h-[144px] overflow-hidden rounded-[26px] border border-white/[0.80] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_42%),linear-gradient(145deg,#ffffff,#f8fafc_68%,#eff6ff)] p-4 shadow-[0_14px_38px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/60 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(15,23,42,0.12)] dark:border-slate-800/80 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_42%),linear-gradient(145deg,#0f172a,#020617_70%,#082f49)] dark:ring-white/5 ${metric.onClick ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-400/70' : ''}`}
                   >
                     <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/10 blur-3xl transition group-hover:scale-125" />
                     <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-cyan-500 via-blue-500 to-transparent" />
@@ -3242,6 +3640,7 @@ export default function MapPage() {
                     <p className="mt-2 text-base font-black leading-7 text-brand-text dark:text-slate-100">
                       {metric.value}
                     </p>
+                    {metric.helper && <p className="mt-2 text-[11px] font-bold text-indigo-600 dark:text-indigo-300">{metric.helper} →</p>}
                   </div>
                 )
               })}
@@ -3253,14 +3652,34 @@ export default function MapPage() {
                   <p className="text-sm font-black uppercase tracking-[0.14em] text-brand-orange dark:text-amber-300">Recommended response</p>
                   <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted dark:text-slate-400">Based on forecast, trend, risk level, rainfall, temperature, humidity, population count, and density.</p>
                 </div>
-                <span className={`w-fit rounded-full border px-3 py-1 text-[11px] font-black ${getPriorityBadgeStyle(selectedPriority)}`}>{selectedPriority}</span>
+                <button
+                  type="button"
+                  onClick={() => setResponseTransparencyOpen(true)}
+                  className="group w-full rounded-[18px] border border-amber-200/90 bg-white/75 px-3.5 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-white hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-300/70 sm:w-[178px] dark:border-amber-400/20 dark:bg-amber-400/[0.07] dark:hover:border-amber-400/35 dark:hover:bg-amber-400/[0.11]"
+                  aria-label={`View why ${selectedLabel} is classified as ${selectedPriority}`}
+                >
+                  <span className="block text-[9px] font-black uppercase tracking-[0.16em] text-amber-600/80 dark:text-amber-300/70">Response priority</span>
+                  <span className={`mt-1.5 inline-flex w-fit rounded-full border px-2.5 py-1 text-[10px] font-black leading-4 ${getPriorityBadgeStyle(selectedPriority)}`}>{selectedPriority}</span>
+                  <span className="mt-2 flex items-center justify-between gap-2 border-t border-amber-200/70 pt-2 text-[11px] font-black text-amber-700 dark:border-amber-400/15 dark:text-amber-200">
+                    <span>Why this response?</span>
+                    <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">→</span>
+                  </span>
+                </button>
               </div>
               <p className="mt-3 text-base font-semibold leading-7 text-brand-text dark:text-slate-200">{selectedRecommendation}</p>
               {selectedActionPlan.length > 0 && (
-                <div className="mt-4 rounded-[20px] border border-white/[0.80] bg-white/[0.80] p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">Response plan</p>
-                  <ul className="mt-2 space-y-2 text-sm font-semibold leading-6 text-brand-text dark:text-slate-200">
-                    {selectedActionPlan.map((item, index) => (<li key={`${item}-${index}`} className="flex gap-2"><span className="font-black text-brand-orange">{index + 1}.</span><span>{item}</span></li>))}
+                <div className="mt-5 rounded-[22px] border border-white/[0.85] bg-white/[0.82] p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950/70">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-muted dark:text-slate-400">Response plan</p>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black text-amber-700 dark:bg-amber-400/10 dark:text-amber-200">{selectedActionPlan.length} actions</span>
+                  </div>
+                  <ul className="mt-3 space-y-2.5 text-sm font-semibold leading-6 text-brand-text dark:text-slate-200">
+                    {selectedActionPlan.map((item, index) => (
+                      <li key={`${item}-${index}`} className="flex gap-3 rounded-2xl border border-slate-200/80 bg-white/70 px-3.5 py-3 dark:border-slate-800 dark:bg-slate-900/55">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-black text-brand-orange dark:bg-amber-400/10 dark:text-amber-200">{index + 1}</span>
+                        <span className="min-w-0 pt-0.5">{item}</span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -3357,46 +3776,31 @@ export default function MapPage() {
                 ) : (
                   <>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
-                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
-                          Local barangay risk · {hotspotConfig.local_weight}%
-                        </p>
-                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
-                          {formatHotspotScore(selectedHotspot.base_risk_score)}
-                        </p>
-                      </div>
-
-                      <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
-                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
-                          Nearby barangay influence · {hotspotConfig.nearby_weight}%
-                        </p>
-                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
-                          {formatHotspotScore(selectedHotspot.neighbor_influence_score)}
-                        </p>
-                      </div>
-
-                      <div className="rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
-                        <p className="text-xs font-black uppercase tracking-[0.12em] text-brand-muted dark:text-slate-400">
-                          Spatial concentration · {hotspotConfig.spatial_weight}%
-                        </p>
-                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
-                          {formatHotspotScore(selectedHotspot.spatial_concentration_score)}
-                        </p>
-                      </div>
-
-                      <div className="rounded-[20px] border border-violet-200 bg-violet-50/90 p-4 dark:border-violet-500/25 dark:bg-violet-500/10">
-                        <p className="text-xs font-black uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">
-                          Final hotspot score
-                        </p>
-                        <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">
-                          {formatHotspotScore(selectedHotspot.hotspot_score)}
-                        </p>
-                      </div>
+                      {[
+                        { key: 'local', label: 'Local barangay risk', weight: hotspotConfig.local_weight, score: selectedHotspot.base_risk_score, violet: false },
+                        { key: 'nearby', label: 'Nearby barangay influence', weight: hotspotConfig.nearby_weight, score: selectedHotspot.neighbor_influence_score, violet: false },
+                        { key: 'spatial', label: 'Spatial concentration', weight: hotspotConfig.spatial_weight, score: selectedHotspot.spatial_concentration_score, violet: false },
+                        { key: 'final', label: 'Final hotspot score', weight: null, score: selectedHotspot.hotspot_score, violet: true },
+                      ].map((card) => (
+                        <button
+                          key={card.key}
+                          type="button"
+                          onClick={() => setHotspotCalculationOpen(card.key)}
+                          className={`group rounded-[20px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${card.violet ? 'border-violet-200 bg-violet-50/90 dark:border-violet-500/25 dark:bg-violet-500/10' : 'border-white/[0.80] bg-white/[0.85] dark:border-slate-700 dark:bg-slate-950/70'}`}
+                          aria-label={`View ${card.label} calculation`}
+                        >
+                          <p className={`text-xs font-black uppercase tracking-[0.12em] ${card.violet ? 'text-violet-700 dark:text-violet-300' : 'text-brand-muted dark:text-slate-400'}`}>
+                            {card.label}{card.weight != null ? ` · ${card.weight}%` : ''}
+                          </p>
+                          <p className="mt-2 text-2xl font-black text-brand-text dark:text-slate-100">{formatHotspotScore(card.score)}</p>
+                          <p className={`mt-2 text-[11px] font-black uppercase tracking-[0.10em] ${card.violet ? 'text-violet-600 dark:text-violet-300' : 'text-cyan-700 dark:text-cyan-300'}`}>View calculation →</p>
+                        </button>
+                      ))}
                     </div>
 
                     <div className="mt-3 rounded-[20px] border border-violet-100 bg-violet-50/70 p-4 text-sm font-semibold leading-6 text-brand-muted dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-slate-300">
-                      <span className="font-black text-violet-700 dark:text-violet-300">Calculation:</span>{' '}
-                      ({formatHotspotScore(selectedHotspot.base_risk_score)} × {hotspotConfig.local_weight}%) + ({formatHotspotScore(selectedHotspot.neighbor_influence_score)} × {hotspotConfig.nearby_weight}%) + ({formatHotspotScore(selectedHotspot.spatial_concentration_score)} × {hotspotConfig.spatial_weight}%) = {formatHotspotScore(selectedHotspot.hotspot_score)}
+                      <span className="font-black text-violet-700 dark:text-violet-300">What this means:</span>{' '}
+                      The three spatial indicators above are combined into the final hotspot score. {selectedLabel} is currently classified as {getHotspotLevelLabel(selectedHotspot.hotspot_level)}. Detailed weights and thresholds remain available in Configurations for CHO/Admin review.
                     </div>
 
                     <div className="mt-3 rounded-[20px] border border-white/[0.80] bg-white/[0.85] p-4 dark:border-slate-700 dark:bg-slate-950/70">
@@ -3573,15 +3977,19 @@ export default function MapPage() {
                   <p className="mt-1 text-xs font-semibold text-slate-400">Current view: {activeMapStyle.label}</p>
                 </div>
 
-                <div
-                  className="dengue-hero-score-ring relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full p-[6px] shadow-[0_0_38px_rgba(56,189,248,0.20)]"
-                  style={{
-                    background: `conic-gradient(#22d3ee ${selectedHeroScore * 3.6}deg, rgba(255,255,255,0.10) 0deg)`,
-                  }}
-                >
-                  <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-white/10 bg-[#071525]">
-                    <span className="dengue-hero-score-value text-xl font-black leading-none">{formatNumber(selectedHeroScore)}</span>
-                    <span className="dengue-hero-score-label mt-1 text-[8px] font-black uppercase tracking-[0.14em] text-cyan-100/70">{selectedHeroScoreLabel}</span>
+                <div className="map-hero-score-card w-[118px] shrink-0 rounded-[20px] border border-white/15 bg-white/[0.07] px-3.5 py-3 text-center shadow-[0_14px_32px_rgba(2,6,23,0.22)] backdrop-blur-xl sm:w-[132px] sm:px-4 sm:py-3.5">
+                  <span className="block whitespace-nowrap text-[20px] font-black leading-none tracking-[-0.04em] text-white sm:text-[22px]">
+                    {formatNumber(selectedHeroScore)}/100
+                  </span>
+                  <span className="mt-2 block text-[9px] font-black uppercase leading-[1.15] tracking-[0.11em] text-cyan-100/75 sm:text-[10px]">
+                    <span className="block">{showingHotspotLayer ? 'Hotspot' : 'Priority'}</span>
+                    <span className="mt-0.5 block">Score</span>
+                  </span>
+                  <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
+                    <div
+                      className="h-full rounded-full bg-cyan-300 transition-[width] duration-300"
+                      style={{ width: `${Math.max(0, Math.min(100, Number(selectedHeroScore) || 0))}%` }}
+                    />
                   </div>
                 </div>
               </div>

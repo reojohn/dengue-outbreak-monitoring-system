@@ -2992,6 +2992,8 @@ export default function DashboardPage() {
     integrationReadiness = null,
     weatherRecords = [],
     resetSampleData,
+    initialDataLoading = false,
+    initialDataReady = true,
   } = useData()
 
   const usingBackendForecast = hasBackendForecastData(backendForecastResult)
@@ -3183,10 +3185,18 @@ export default function DashboardPage() {
     ...(savedDengueStatus?.validationSummary || {}),
   }
   const annualReportedTotals = dengueSourceMetadata?.annual_reported_totals || {}
-  const officialHistoricalCases = Object.values(annualReportedTotals).reduce(
+  const processingSummary = dengueSourceMetadata?.processing_summary || {}
+  const annualReportedCases = Object.values(annualReportedTotals).reduce(
     (sum, value) => sum + toNumber(value, 0),
     0
   )
+  // Prefer the parser's explicit source-reported total. This prevents the
+  // historical card from temporarily borrowing the barangay-matched modeling
+  // total while saved upload metadata is still hydrating after login/refresh.
+  const officialHistoricalCases = toNumber(
+    processingSummary?.source_reported_cases,
+    annualReportedCases
+  ) || annualReportedCases
   const monthlyTotalDiscrepancies = Array.isArray(dengueSourceMetadata?.monthly_total_discrepancies)
     ? dengueSourceMetadata.monthly_total_discrepancies
     : []
@@ -3208,7 +3218,20 @@ export default function DashboardPage() {
     toNumber(savedDengueStatus?.validationCounts?.unknown_location_records, 0)
   )
   const validatedCleanedCases = Math.max(0, extractedDetailCases - unknownLocationCases)
-  const displayedOfficialHistoricalCases = officialHistoricalCases || displayStats.totalCases
+  const historicalSourceMetadataReady = Boolean(
+    processingSummary?.source_reported_cases ||
+    annualReportedCases > 0 ||
+    backendDengueSummary?.source_metadata?.processing_summary?.source_reported_cases
+  )
+  const displayedOfficialHistoricalCases = historicalSourceMetadataReady
+    ? officialHistoricalCases
+    : 0
+  const historicalCasesDisplayValue =
+    initialDataLoading || (!initialDataReady && !historicalSourceMetadataReady)
+      ? 'Loading…'
+      : historicalSourceMetadataReady
+        ? formatNumber(displayedOfficialHistoricalCases)
+        : 'Not available'
 
 
   function openBarangayList({ title, description, tone = 'blue', rows = [] }) {
@@ -3548,8 +3571,8 @@ export default function DashboardPage() {
       >
         <PremiumStatCard
           title="Historical dengue cases"
-          value={formatNumber(displayedOfficialHistoricalCases)}
-          helper="Official DOH-reported dengue cases in Butuan City, 2018–2025"
+          value={historicalCasesDisplayValue}
+          helper="Source-reported historical dengue cases in the current uploaded dataset"
           icon={Database}
           tone="blue"
         />

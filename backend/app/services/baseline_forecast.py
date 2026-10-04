@@ -32,31 +32,24 @@ def get_trend_direction(recent_average: float, previous_average: float):
 
 
 def get_recommendation(risk_level: str, trend_direction: str):
-    if risk_level == "High":
-        return (
-            "Prioritize immediate vector-control activities, intensified cleanup drives, "
-            "and close monitoring of reported dengue cases."
-        )
+    risk = str(risk_level or "Low")
+    trend = str(trend_direction or "Stable")
+    if risk == "High":
+        return "Prioritize immediate vector-control activities, intensified cleanup drives, and close monitoring of reported dengue cases."
+    if risk == "Moderate" and trend == "Increasing":
+        return "Increase monitoring frequency, prepare barangay-level prevention activities, and check possible breeding sites before cases rise further."
+    if risk == "Moderate":
+        return "Maintain regular monitoring, continue prevention campaigns, and observe case trends."
+    if trend == "Increasing":
+        return "Monitor closely because cases are increasing even though the current risk level is low."
+    return "Maintain routine monitoring and continue standard dengue prevention reminders."
 
-    if risk_level == "Moderate" and trend_direction == "Increasing":
-        return (
-            "Increase monitoring frequency, prepare barangay-level prevention activities, "
-            "and check possible breeding sites before cases rise further."
-        )
 
-    if risk_level == "Moderate":
-        return (
-            "Maintain regular monitoring, continue prevention campaigns, and observe case trends."
-        )
-
-    if trend_direction == "Increasing":
-        return (
-            "Monitor closely because cases are increasing even though the current risk level is low."
-        )
-
-    return (
-        "Maintain routine monitoring and continue standard dengue prevention reminders."
-    )
+def get_response_plan(risk_level: str, trend_direction: str):
+    # Backend forecast compatibility only. The live decision-support UI applies
+    # CHO/Admin guidance after the multi-factor Response Priority is computed.
+    recommendation = get_recommendation(risk_level, trend_direction)
+    return [recommendation]
 
 
 async def generate_baseline_dengue_forecast(file: UploadFile):

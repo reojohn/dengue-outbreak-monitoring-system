@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { computeDecisionSupport, computeMultiSourceRisk, configureRiskThresholds } from '../utils/analytics'
+import { computeDecisionSupport, computeMultiSourceRisk, configureRiskThresholds, configureRecommendedResponses } from '../utils/analytics'
 import { getAuthSession } from '../utils/auth'
 import {
   buildBackendIntegrationDataset,
@@ -17,6 +17,7 @@ import {
   saveWorkspaceState,
   clearSavedWorkspaceState,
   getRiskThresholdConfiguration,
+  getRecommendedResponseConfiguration,
 } from '../services/api'
 
 const DataContext = createContext(null)
@@ -1674,6 +1675,7 @@ export function DataProvider({ children }) {
   const [initialDataReady, setInitialDataReady] = useState(!authenticatedAtMount)
   const [initialDataError, setInitialDataError] = useState('')
   const [riskConfiguration, setRiskConfiguration] = useState({ moderate_threshold: 25, high_threshold: 60, is_default: true })
+  const [recommendedResponseConfiguration, setRecommendedResponseConfiguration] = useState({ templates: {} })
 
   // Small session-only caches used by Forecast/Map/Reports/Upload. These stay
   // alive while the user navigates between routes, so reopening a page does
@@ -2699,6 +2701,13 @@ export function DataProvider({ children }) {
         configureRiskThresholds({ moderate_threshold: 25, high_threshold: 60 })
       })
 
+    getRecommendedResponseConfiguration()
+      .then((config) => {
+        configureRecommendedResponses(config)
+        setRecommendedResponseConfiguration(config)
+      })
+      .catch(() => configureRecommendedResponses({ templates: {} }))
+
     // When the app is opened while already signed in, restore only the small
     // pieces of persisted state needed by the dashboard and workflow status.
     // Data Upload fetches its preview rows lazily when that page is opened.
@@ -2781,6 +2790,11 @@ export function DataProvider({ children }) {
     integrationReadiness,
     riskConfiguration,
     setRiskConfiguration,
+    recommendedResponseConfiguration,
+    setRecommendedResponseConfiguration: (config) => {
+      configureRecommendedResponses(config)
+      setRecommendedResponseConfiguration(config)
+    },
 
     // First authenticated hydration state. The route shell uses this to show
     // a page-shaped skeleton instead of temporary zero/N/A values while the
