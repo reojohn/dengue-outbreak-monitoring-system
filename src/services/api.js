@@ -1233,3 +1233,8 @@ export async function resetRecommendedResponseConfiguration() {
   clearReadResponseCache('forecast:')
   return result
 }
+
+export async function getDengueMatchingTransparency() {
+  const response = await apiFetch(`${API_BASE_URL}/uploads/dengue-matching-transparency`, { cache: 'no-store' })
+  return handleApiResponse(response)
+}

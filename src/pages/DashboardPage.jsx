@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -33,7 +33,7 @@ import InformationTypeBadge from '../components/InformationTypeBadge'
 import dashboardBackground from '../assets/dashboard1.png'
 import dashboardLightBackground from '../assets/dashboard1light.png'
 import { useData } from '../context/DataContext'
-import { getBarangayIntegrationReadiness } from '../services/api'
+import { getBarangayIntegrationReadiness, getDengueMatchingTransparency } from '../services/api'
 import {
   compareCanonicalBarangayPriority,
   computeDecisionSupport,
@@ -1725,6 +1725,32 @@ function IntegrationReviewModal({ barangayName, status, score, checks = [], onCl
 }
 
 function BarangayMatchingDetailsModal({ details, onClose, onViewBarangays }) {
+  const [selectedStage, setSelectedStage] = useState(0)
+  const [trace, setTrace] = useState(null)
+  const [traceError, setTraceError] = useState('')
+  const [traceLoading, setTraceLoading] = useState(false)
+  const traceRequestRef = useRef(null)
+  const traceMountedRef = useRef(true)
+  useEffect(() => {
+    traceMountedRef.current = true
+    return () => { traceMountedRef.current = false }
+  }, [])
+  const loadAffectedRecords = () => {
+    if (traceLoading || trace || traceRequestRef.current) return
+    setTraceLoading(true)
+    setTraceError('')
+    const request = getDengueMatchingTransparency()
+    traceRequestRef.current = request
+    request.then(result => {
+      if (traceMountedRef.current) setTrace(result)
+    }).catch(error => {
+      if (traceMountedRef.current) setTraceError(error?.message || 'Details unavailable')
+    }).finally(() => {
+      traceRequestRef.current = null
+      if (traceMountedRef.current) setTraceLoading(false)
+    })
+  }
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -1770,7 +1796,19 @@ function BarangayMatchingDetailsModal({ details, onClose, onViewBarangays }) {
     text: 'The current processing metadata reports no excluded-location cases or source-total discrepancies.', tone: 'emerald',
   })
 
-  const toneClass = (tone) => tone === 'emerald'
+  const sourceRows = selectedStage === 2 ? trace?.unknown_records : selectedStage === 3 ? trace?.unmatched_records : []
+  const rowsTotal = (sourceRows || []).reduce((total, row) => total + Number(row.cases || 0), 0)
+  const stageTitles = ['Reported cases', 'Extracted detail cases', 'Validated & cleaned', 'Barangay matched']
+  const table = (rows, label) => (
+    <div className="mt-3 overflow-x-auto rounded-xl border border-white/10">
+      <table className={`w-full ${selectedStage === 3 ? 'min-w-[820px]' : 'min-w-[510px]'} text-left text-xs`}>
+        <thead className="bg-white/[0.07] text-slate-300"><tr><th className="px-3 py-2">Period</th><th className="px-3 py-2">Original location</th><th className="px-3 py-2 text-right">Cases</th><th className="px-3 py-2">Reason</th>{selectedStage === 3 && <><th className="px-3 py-2">Closest suggestion</th><th className="px-3 py-2 text-right">Similarity</th></>}</tr></thead>
+        <tbody>{rows.map((row, i) => <tr key={`${label}-${i}`} className="border-t border-white/10"><td className="px-3 py-2">{row.year}-{String(row.month).padStart(2, '0')}</td><td className="px-3 py-2">{row.location}</td><td className="px-3 py-2 text-right">{formatNumber(row.cases)}</td><td className="px-3 py-2 text-amber-200">{row.reason || 'Source detail row'}</td>{selectedStage === 3 && <><td className="px-3 py-2 text-sky-100">{row.closest_suggestion || 'No suggestion'}</td><td className="px-3 py-2 text-right">{row.similarity_percent == null ? '—' : `${Number(row.similarity_percent).toFixed(1)}%`}</td></>}</tr>)}</tbody>
+      </table>
+    </div>
+  )
+
+  const toneClass = (tone) => tone === 'emerald' 
     ? 'border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100'
     : tone === 'amber'
       ? 'border-amber-300/20 bg-amber-300/[0.07] text-amber-100'
@@ -1779,7 +1817,7 @@ function BarangayMatchingDetailsModal({ details, onClose, onViewBarangays }) {
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="data-processing-details-title">
       <button type="button" className="absolute inset-0 cursor-default bg-slate-950/75 backdrop-blur-md" onClick={onClose} aria-label="Close data processing details" />
-      <section className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[900px] overflow-y-auto rounded-[28px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_36px_120px_rgba(2,6,23,0.72)] ring-1 ring-cyan-300/10 sm:p-6">
+      <section className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[900px] overflow-y-auto dengue-dataset-modal-scroll rounded-[28px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_36px_120px_rgba(2,6,23,0.72)] ring-1 ring-cyan-300/10 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <span className="rounded-full border border-sky-300/25 bg-sky-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-100">Data transparency</span>
@@ -1796,12 +1834,29 @@ function BarangayMatchingDetailsModal({ details, onClose, onViewBarangays }) {
             ['Validated & cleaned', cleanedCases, 'Cases safe for location processing'],
             ['Barangay matched', matchedCases, 'Final modeling case total'],
           ].map(([label, value, note], index) => (
-            <div key={label} className={`rounded-2xl border p-4 text-center ${index === 2 ? 'border-emerald-300/20 bg-emerald-300/10' : index === 3 ? 'border-cyan-300/20 bg-cyan-300/10' : 'border-sky-300/20 bg-sky-300/[0.08]'}`}>
+            <button type="button" key={label} onClick={() => setSelectedStage(index)} aria-pressed={selectedStage === index} className={`rounded-2xl border p-4 text-center transition hover:border-cyan-300/75 ${selectedStage === index ? 'border-cyan-300 bg-cyan-300/15 ring-1 ring-cyan-300/30' : 'border-sky-300/20 bg-sky-300/[0.08]'}`}>
               <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-300">{label}</p>
               <p className="mt-1 text-2xl font-black sm:text-3xl">{formatNumber(value)}</p>
               <p className="mt-1 text-[10px] leading-4 text-slate-400">{note}</p>
-            </div>
+              <p className="mt-2 text-[10px] font-bold text-cyan-200">{selectedStage === index ? 'Viewing details' : 'View why →'}</p>
+            </button>
           ))}
+        </div>
+        <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.05] p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-cyan-300">Selected processing stage</p>
+          <p className="mt-2 font-black">{stageTitles[selectedStage]}: {formatNumber([reportedCases, extractedCases, cleanedCases, matchedCases][selectedStage])}</p>
+          <p className="mt-2 text-xs leading-5 text-slate-300">
+            {selectedStage === 0 && 'The reported total comes from the original source summaries. Discrepancies with summed detail rows are flagged below.'}
+            {selectedStage === 1 && 'The detailed rows sum is compared against each reported monthly total. The affected month and all contributing location rows are shown below when available.'}
+            {selectedStage === 2 && `The system excludes ${formatNumber(unknownCases)} cases across ${formatNumber(unknownRecords)} records whose locations are unknown or blank.`}
+            {selectedStage === 3 && `${formatNumber(postCleaningGap)} additional cases are not carried into the final barangay matching total. The original names requiring review are shown below when verifiable.`}
+          </p>
+          {!trace && !traceLoading && <button type="button" onClick={loadAffectedRecords} className="mt-3 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-400/20">{traceError ? 'Retry View Affected Records' : 'View Affected Records'}</button>}
+          {traceLoading && <p className="mt-3 text-xs text-sky-200" role="status">Loading source record details…</p>}
+          {traceError && <p className="mt-3 text-xs text-amber-200">{traceError}</p>}
+          {trace && !trace.available && <p className="mt-3 text-xs text-amber-200">{trace.reason}</p>}
+          {trace?.available && selectedStage === 1 && trace.discrepancy_details?.map((issue, i) => <div key={i} className="mt-3"><p className="text-xs font-bold text-amber-200">{issue.year}-{String(issue.month).padStart(2, '0')}: reported {issue.reported_total}, detail sum {issue.calculated_barangay_total}, difference {issue.difference > 0 ? '+' : ''}{issue.difference}</p>{table(issue.records || [], `discrepancy-${i}`)}<p className="mt-2 text-xs text-slate-400">These records contribute to the detailed total; the difference cannot be attributed to an individual barangay without source verification.</p></div>)}
+          {trace?.available && (selectedStage === 2 || selectedStage === 3) && <div className="mt-3"><p className="text-xs text-slate-300">{sourceRows?.length || 0} records · {formatNumber(rowsTotal)} cases</p>{selectedStage === 3 && <><p className="mt-1 text-xs text-slate-400">{trace.unmatched_note}</p><p className="mt-2 text-xs text-amber-100">Closest suggestions are based on name similarity only, not verified locations. No automatic reassignment is performed. Matching requires at least 88% similarity and sufficient separation from the second-best candidate.</p></>}{sourceRows?.length ? table(sourceRows, stageTitles[selectedStage]) : <p className="mt-2 text-xs text-slate-400">No verifiable source records available for this stage.</p>}</div>}
         </div>
 
         <div className="mt-5">

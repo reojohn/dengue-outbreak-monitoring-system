@@ -18,6 +18,7 @@ from app.auth_security import get_current_user
 from app.services.database_uploads import (
     get_current_dataset_source_file,
     get_latest_dataset_previews,
+    get_latest_dataset_source_payloads,
     get_latest_dataset_uploads,
     register_upload_in_current_cycle,
     save_dataset_source_file,
@@ -184,6 +185,71 @@ async def get_upload_database_status():
 @router.get("/database-preview")
 async def get_upload_database_preview(limit: int = 300):
     return get_latest_dataset_previews(limit=limit)
+
+
+@router.get("/dengue-matching-transparency")
+def get_dengue_matching_transparency(current_user=Depends(get_current_user)):
+    """Read-only source-row evidence for dashboard transparency (no patient fields)."""
+    from collections import defaultdict
+    from io import BytesIO
+    import json
+    import pandas as pd
+    from app.services.doh_dengue_parser import detect_and_parse_doh_dengue_workbook
+    from app.services.barangay_name_resolver import build_barangay_reference, resolve_barangay_name
+
+    source = get_current_dataset_source_file("dengue")
+    if not source:
+        return {"available": False, "reason": "The current upload's original source file is not stored. Re-upload it to enable source-row inspection.", "unknown_records": [], "unmatched_records": [], "discrepancy_details": []}
+    filename = str(source.get("original_filename") or "").lower()
+    if not filename.endswith((".xlsx", ".xls")):
+        return {"available": False, "reason": "Detailed source-row inspection currently supports DOH Excel summary workbooks; the existing dashboard summary remains available.", "unknown_records": [], "unmatched_records": [], "discrepancy_details": []}
+    try:
+        workbook = pd.read_excel(BytesIO(source["content"]), sheet_name=None, header=None)
+        parsed = detect_and_parse_doh_dengue_workbook(workbook)
+        if not parsed:
+            return {"available": False, "reason": "The current workbook is not in the recognized DOH monthly summary layout.", "unknown_records": [], "unmatched_records": [], "discrepancy_details": []}
+        frame, metadata = parsed
+        boundary_source = get_current_dataset_source_file("boundary")
+        boundary_geojson = json.loads(boundary_source["content"].decode("utf-8-sig")) if boundary_source else None
+        population_payload = get_latest_dataset_source_payloads().get("population", {})
+        reference = build_barangay_reference(boundary_geojson=boundary_geojson, population_records=population_payload.get("records", []))
+        has_reference = bool(reference.get("items"))
+        unknown_records, unmatched_records = [], []
+        grouped = defaultdict(list)
+        for row in frame.to_dict("records"):
+            year, month, cases = int(row["year"]), int(row["month"]), int(row["cases"])
+            name = str(row.get("barangay") or "").strip()
+            entry = {"year": year, "month": month, "location": name or "(blank)", "cases": cases, "status": "Needs review"}
+            grouped[(year, month)].append(entry)
+            if row.get("location_status") == "unknown_or_blank":
+                entry["reason"] = "Unknown or blank location"
+                unknown_records.append(entry)
+            elif has_reference:
+                matched = resolve_barangay_name({"barangay": name}, reference)
+                if matched.get("match_status") not in {"exact_matched", "psgc_matched", "auto_matched"}:
+                    entry["reason"] = "No confident barangay match"
+                    # Suggestions come from the same production resolver and current reference.
+                    # These are read-only diagnostics, never approved assignments.
+                    entry["closest_suggestion"] = matched.get("matched_barangay") or ""
+                    confidence = matched.get("match_confidence")
+                    entry["similarity_percent"] = round(float(confidence) * 100, 1) if confidence is not None else None
+                    entry["match_status"] = matched.get("match_status") or "needs_review"
+                    unmatched_records.append(entry)
+        discrepancy_details = []
+        for item in metadata.get("monthly_total_discrepancies", []):
+            y, m = int(item["year"]), int(item["month"])
+            discrepancy_details.append({**item, "records": grouped.get((y, m), [])})
+        return {
+            "available": True,
+            "reference_available": has_reference,
+            "unknown_records": unknown_records,
+            "unmatched_records": unmatched_records if has_reference else [],
+            "discrepancy_details": discrepancy_details,
+            "unmatched_note": "Unmatched locations are shown against the currently uploaded boundary and population reference." if has_reference else "Current boundary reference unavailable; unmatched rows cannot be verified.",
+        }
+    except Exception:
+        # Never return uploaded file contents or a stack trace in the API response.
+        raise HTTPException(status_code=422, detail="The original source could not be inspected for the transparency view.")
 
 
 @router.get("/source-file/{dataset_type}")
