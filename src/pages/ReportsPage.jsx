@@ -11209,7 +11209,7 @@ export default function ReportsPage() {
     <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted dark:text-slate-400">
       {isBhwReport
         ? `Current risk, forecast, hotspot status, and recommended response for ${assignedBarangay || 'your assigned barangay'}.`
-        : 'Showing the highest-ranked barangays based on Response score, risk level, forecasted cases, and recommended response priority.'}
+        : 'Showing the highest-ranked barangays based on dengue risk, forecasted cases, and recommended response priority.'}
     </p>
   </div>
 
@@ -11306,7 +11306,6 @@ export default function ReportsPage() {
                               {[
                                 ['Combined priority score', `${formatNumber(profile.score)}/100`],
                                 ['Environment', profile.environmentalSuitability],
-                                ['Response score', `${formatNumber(decision.score)} pts`],
                                 ['Next-period forecast', `${formatNumber(row.currentCases || 0)} cases`],
                               ].map(([label, value]) => (
                                 <div

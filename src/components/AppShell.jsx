@@ -23,6 +23,7 @@ import {
   UsersRound,
   Settings,
   Settings2,
+  ChevronRight,
   Type,
   Eye,
   MousePointer2,
@@ -56,7 +57,6 @@ const navItems = [
   { to: '/reports', label: 'Reports', icon: FileText, group: 'Manage', roles: ['cho', 'supervisor', 'bhw', 'admin', 'viewer'] },
   { to: '/upload', label: 'Data Upload', icon: Upload, group: 'Manage', roles: ['cho', 'admin'] },
   { to: '/users', label: 'User Accounts', icon: UsersRound, group: 'Manage', roles: ['cho', 'admin'] },
-  { to: '/configuration', label: 'Configurations', icon: Settings2, group: 'Manage', roles: ['cho', 'admin'] },
 ]
 
 const navGroups = ['Monitor', 'Respond', 'Manage']
@@ -576,6 +576,8 @@ function DisplaySettingsPanel({
   setNotificationsEnabled,
   onReset,
   onClose,
+  canManageConfiguration = false,
+  onOpenConfiguration,
 }) {
   const textLabel = getTextScaleLabel(textScale)
   const textScaleProgress = Math.min(
@@ -651,11 +653,11 @@ function DisplaySettingsPanel({
 
             <div className="min-w-0">
               <p className="dengue-settings-header-title text-base font-black tracking-tight text-brand-text dark:text-slate-100">
-                Display settings
+                Settings
               </p>
 
               <p className="dengue-settings-header-copy mt-1 text-sm leading-6 text-brand-muted dark:text-slate-400">
-                Accessibility controls for readability, comfort, and reduced visual strain.
+                Manage system configurations and personalize your display.
               </p>
             </div>
           </div>
@@ -675,6 +677,25 @@ function DisplaySettingsPanel({
         ref={settingsBodyRef}
         className={mobile ? "dengue-settings-panel-body dengue-premium-scrollbar relative overflow-y-auto p-3" : "dengue-settings-panel-body dengue-premium-scrollbar relative max-h-[72vh] overflow-y-auto p-4"}
       >
+        {canManageConfiguration && (
+          <button
+            type="button"
+            onClick={onOpenConfiguration}
+            className="mb-4 flex w-full items-center gap-3 rounded-[22px] border-2 border-sky-300 bg-gradient-to-r from-sky-100 via-white to-cyan-100 p-4 text-left shadow-[0_12px_28px_rgba(14,165,233,0.14)] transition hover:-translate-y-0.5 hover:border-sky-500 hover:shadow-[0_16px_32px_rgba(14,165,233,0.20)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-sky-500/60 dark:from-sky-950 dark:via-slate-900 dark:to-cyan-950"
+            aria-label="Open system configurations"
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-700 text-white shadow-md dark:bg-sky-500 dark:text-slate-950">
+              <Settings2 className="h-6 w-6" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-black text-sky-900 dark:text-sky-100">System Configurations</span>
+              <span className="mt-1 block text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                Manage dengue risk thresholds and system rules
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-sky-700 dark:text-sky-300" />
+          </button>
+        )}
         <div className="gov-appearance-settings-card mb-3">
           <div className="gov-appearance-settings-copy">
             <p className="gov-appearance-settings-title">Interface appearance</p>
@@ -1172,7 +1193,7 @@ export default function AppShell({ children }) {
       ? 'CHO supervisor review workspace'
       : 'Butuan City CHO monitoring workspace'
 
-  const currentNavItem = navItems.find((item) => item.to === location.pathname)
+  const currentNavItem = navItems.find((item) => item.to === location.pathname) || (location.pathname === '/configuration' ? { label: 'Configurations', icon: Settings2 } : null)
   const title = currentNavItem?.label || 'Dashboard'
   const CurrentPageIcon = currentNavItem?.icon || LayoutDashboard
 
@@ -2482,17 +2503,6 @@ export default function AppShell({ children }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            {['cho', 'admin'].includes(String(session?.role || '').toLowerCase()) && (
-              <button
-                type="button"
-                onClick={() => navigate('/configuration')}
-                className={`dengue-mobile-icon-button flex h-10 w-10 items-center justify-center rounded-2xl border shadow-sm transition hover:-translate-y-0.5 ${location.pathname === '/configuration' ? 'border-cyan-300/40 bg-cyan-300/[0.15] text-cyan-100' : 'border-white/10 bg-white/[0.07] text-white/70 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100'}`}
-                aria-label="System configurations"
-                title="System configurations"
-              >
-                <Settings2 size={17} />
-              </button>
-            )}
             <div className="relative z-[370]">
               <button
                 ref={mobileSettingsButtonRef}
@@ -2567,6 +2577,8 @@ export default function AppShell({ children }) {
             setNotificationsEnabled={handleNotificationsEnabledChange}
             onReset={handleResetDisplaySettings}
             onClose={() => setSettingsOpen(false)}
+            canManageConfiguration={['cho', 'admin'].includes(String(session?.role || '').toLowerCase())}
+            onOpenConfiguration={() => { setSettingsOpen(false); navigate('/configuration') }}
           />
         </div>
       )}
@@ -2829,23 +2841,6 @@ export default function AppShell({ children }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <GovernmentAppearanceSwitch mode={theme} onChange={setTheme} compact />
 
-                  {['cho', 'admin'].includes(String(session?.role || '').toLowerCase()) && (
-                    <button
-                      type="button"
-                      onClick={() => navigate('/configuration')}
-                      className={`relative flex h-11 items-center justify-center gap-2 rounded-2xl border px-3.5 text-sm font-black shadow-sm transition hover:-translate-y-0.5 ${
-                        location.pathname === '/configuration'
-                          ? 'border-cyan-300/40 bg-cyan-300/[0.15] text-cyan-100'
-                          : 'border-white/10 bg-white/[0.07] text-white/80 hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100'
-                      }`}
-                      aria-label="System configurations"
-                      title="System configurations"
-                    >
-                      <Settings2 size={18} />
-                      <span className="hidden 2xl:inline">Configurations</span>
-                    </button>
-                  )}
-
                   <div className="relative z-[310]">
                     <button
                       ref={settingsButtonRef}
@@ -2882,6 +2877,8 @@ export default function AppShell({ children }) {
                         setNotificationsEnabled={handleNotificationsEnabledChange}
                         onReset={handleResetDisplaySettings}
                         onClose={() => setSettingsOpen(false)}
+                        canManageConfiguration={['cho', 'admin'].includes(String(session?.role || '').toLowerCase())}
+                        onOpenConfiguration={() => { setSettingsOpen(false); navigate('/configuration') }}
                       />,
                       document.body
                     )}

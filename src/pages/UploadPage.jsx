@@ -2401,6 +2401,11 @@ function buildSourceStatusFromDatabaseUploads(uploads = {}) {
       duplicateCount,
       sourceDiscrepancyCount,
       validationCounts,
+      // Retain persisted audit metadata when the upload page refreshes the
+      // shared source status. Situation Overview uses the source-reported
+      // dengue total stored here (not the integrated/modeling row total).
+      validationSummary: upload?.validation_summary || upload?.validationSummary || {},
+      detectionResult: upload?.detection_result || upload?.detectionResult || {},
       mappingSummary: 'Loaded from online database',
       backendPowered: true,
       databaseUploadId: upload?.upload_id,

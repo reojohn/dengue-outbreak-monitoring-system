@@ -3951,6 +3951,14 @@ export default function ForecastPage() {
         return compareBarangayPriority(a, b)
       }
 
+      if (sortOption === 'historical') {
+        const historicalDifference = Number(b.totalCases || 0) - Number(a.totalCases || 0)
+
+        if (historicalDifference !== 0) return historicalDifference
+
+        return String(a.barangay || '').localeCompare(String(b.barangay || ''))
+      }
+
       if (sortOption === 'risk') {
         return compareBarangayRisk(a, b)
       }
@@ -6470,6 +6478,7 @@ const activeModelComparison = (() => {
                 options: [
                   { value: 'priority', label: 'Priority', helper: 'Highest response priority first' },
                   { value: 'forecast', label: 'Forecast cases', helper: 'Highest forecast cases first' },
+                  { value: 'historical', label: 'Historical dengue cases', helper: 'Highest total past dengue cases first' },
                   { value: 'risk', label: 'Combined priority', helper: 'Highest forecast risk class and combined score first' },
                   { value: 'barangay', label: 'Barangay name', helper: 'Alphabetical order' },
                 ],
