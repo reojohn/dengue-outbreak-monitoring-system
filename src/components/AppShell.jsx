@@ -23,6 +23,7 @@ import {
   UsersRound,
   Settings,
   Settings2,
+  BookOpen,
   ChevronRight,
   Type,
   Eye,
@@ -46,6 +47,7 @@ import {
 import { compareCanonicalBarangayPriority, getCanonicalCombinedRiskScore } from '../utils/analytics'
 import dengueLogo from '../assets/logodengue2.png'
 import LogoutTransition from './LogoutTransition'
+import ClassificationGuide from './ClassificationGuide'
 import GovernmentAppearanceSwitch from '../government/GovernmentAppearanceSwitch'
 
 const navItems = [
@@ -1137,6 +1139,7 @@ export default function AppShell({ children }) {
   const [notificationPreferenceLoaded, setNotificationPreferenceLoaded] = useState(false)
   const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [classificationGuideOpen, setClassificationGuideOpen] = useState(false)
   const [dataRangeOpen, setDataRangeOpen] = useState(false)
   const [datasetCoverageLoading, setDatasetCoverageLoading] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -2463,6 +2466,8 @@ export default function AppShell({ children }) {
         <LogoutTransition onReturnNow={finalizeLogout} />
       )}
 
+      {classificationGuideOpen && <ClassificationGuide onClose={() => setClassificationGuideOpen(false)} />}
+
       <NotificationToast
         notification={toastNotification}
         visible={toastVisible}
@@ -2503,6 +2508,7 @@ export default function AppShell({ children }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            <button type="button" onClick={() => setClassificationGuideOpen(true)} title="Classification & Scoring Guide" aria-label="Classification and scoring guide" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/20"><BookOpen size={18}/></button>
             <div className="relative z-[370]">
               <button
                 ref={mobileSettingsButtonRef}
@@ -2840,6 +2846,7 @@ export default function AppShell({ children }) {
 
                 <div className="flex flex-wrap items-center gap-2">
                   <GovernmentAppearanceSwitch mode={theme} onChange={setTheme} compact />
+                  <button type="button" onClick={() => setClassificationGuideOpen(true)} title="Classification & Scoring Guide" aria-label="Classification and scoring guide" className="flex h-11 items-center gap-2 rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-3 text-xs font-black text-cyan-100 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-400/20"><BookOpen size={18}/><span className="hidden 2xl:inline">Classification Guide</span></button>
 
                   <div className="relative z-[310]">
                     <button

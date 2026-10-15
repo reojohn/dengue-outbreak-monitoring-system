@@ -2106,6 +2106,8 @@ export default function MapPage() {
   const [selectedPanelPosition, setSelectedPanelPosition] = useState(() => getDefaultPanelPosition())
   const [dragState, setDragState] = useState(null)
   const [legendOpen, setLegendOpen] = useState(true)
+  const [hotspotCategoryOpen, setHotspotCategoryOpen] = useState('')
+  const [forecastCategoryOpen, setForecastCategoryOpen] = useState('')
   const [mapStyle, setMapStyle] = useState('dark')
   const [mapLayerMode, setMapLayerMode] = useState('forecast')
   const [isMapExpanded, setIsMapExpanded] = useState(false)
@@ -2649,17 +2651,25 @@ export default function MapPage() {
           ? [selectedRecommendation]
           : []
 
-    if (actions.length < 3 && details) {
-      actions = buildBackendActionPlan({
-        risk: details.risk,
-        forecast: Number(details.forecast || details.forecastedCases || details.predictedCases || 0),
-        forecastNextPeriod: Number(details.currentCases || 0),
-        recentAverage: Number(details.recentAverage || 0),
-        previousAverage: Number(details.previousAverage || 0),
-        trendLabel: details.trend || details.trendLabel || details.trendDirection,
-        recommendation: selectedRecommendation,
-      })
-    }
+    // Keep the configured response plan, then supplement it with the fuller
+    // barangay-specific action plan. Configured templates often contain only
+    // four actions; replacing the generated plan with them hid useful steps.
+    // This is presentation-only: neither scoring nor recommendation rules change.
+    const supplementalActions = details
+      ? buildBackendActionPlan({
+          risk: details.risk,
+          forecast: Number(details.forecast || details.forecastedCases || details.predictedCases || 0),
+          forecastNextPeriod: Number(details.currentCases || 0),
+          recentAverage: Number(details.recentAverage || 0),
+          previousAverage: Number(details.previousAverage || 0),
+          trendLabel: details.trend || details.trendLabel || details.trendDirection,
+          recommendation: '',
+        })
+      : []
+    actions = Array.from(new Set([
+      ...actions,
+      ...supplementalActions,
+    ].map((item) => String(item || '').trim()).filter(Boolean)))
 
     const hotspotAction =
       realHotspotReady && selectedHotspot?.recommended_map_action
@@ -2737,21 +2747,71 @@ export default function MapPage() {
       { label: 'Density', value: selectedDensity > 0 ? `${formatNumber(selectedDensity, 2)} people/sq km` : 'Unavailable', role: 'Adds context about close residential exposure.' },
     ]
 
+    const isIncreasing = trendKey.includes('increas')
+    const isDecreasing = trendKey.includes('decreas')
+    const isHighEnvironment = environmentKey.includes('high')
+    const densityLevel = String(selectedDecisionSupport?.densityLevel || 'Unavailable')
+    const isHighDensity = densityLevel.toLowerCase().includes('high')
+    const hotspotLevel = realHotspotReady && selectedHotspot
+      ? getHotspotLevelLabel(selectedHotspot.hotspot_level)
+      : ''
+    const hotspotScore = Number(selectedHotspot?.hotspot_score)
+    const validHotspotScore = Number.isFinite(hotspotScore) && hotspotScore >= 0
+    const forecastDescription = `${formatNumber(forecast)} predicted cases over four forecast periods (${risk} Risk)`
+    const trendDescription = `historical trend: ${trend.toLowerCase()}`
+    const context = `${selectedLabel} has ${forecastDescription}; ${trendDescription}; environmental suitability: ${environment.toLowerCase()}`
+    const localRiskReason = `${context}. Under the ${risk} Risk response-plan template, ongoing dengue surveillance and source reduction remain recommended. A Low Risk forecast does not mean dengue prevention can stop.`
+    const watchReason = isIncreasing
+      ? `${selectedLabel} has ${forecastDescription}, but the historical trend is increasing. That increasing trend is the early-warning trigger for closer monitoring.`
+      : isHighEnvironment
+        ? `${selectedLabel} has ${forecastDescription} and high environmental suitability. High suitability is the early-warning trigger even when the forecast risk is Low.`
+        : `${context}. The current response priority is ${selectedPriority}; monitoring is retained to detect changes before escalation.`
+    const stableReason = `${context}. The response priority is ${selectedPriority}, so routine monitoring continues while new reports are reviewed for changes.`
+    const spatialReason = realHotspotReady && selectedHotspot
+      ? `${selectedLabel}'s GIS hotspot result is ${hotspotLevel}${validHotspotScore ? ` (score ${formatNumber(hotspotScore, 2)}/100)` : ''}. Spatial follow-up is recommended based on this result; any suspected nearby clustering should be verified with case reports.`
+      : `${selectedLabel} has ${forecastDescription}. This is a precautionary check for possible clustering or nearby influence; there is no completed GIS hotspot result here to claim a confirmed cluster.`
+
     const actionReasons = selectedActionPlan.map((action) => {
       const text = String(action).toLowerCase()
-      let reason = 'Included by the current response-plan rules for this barangay.'
-      if (text.includes('monitor closely') || text.includes('upward') || text.includes('reporting-period')) reason = 'The recent trend is increasing, so closer surveillance is recommended before escalation.'
-      else if (text.includes('early warning')) reason = 'An early-warning condition is present even though the current risk level is not yet high.'
-      else if (text.includes('nearby')) reason = 'Nearby activity is checked as supporting spatial context for possible spread or clustering.'
-      else if (text.includes('cluster') || text.includes('purok') || text.includes('household group')) reason = 'Checking where cases are concentrated helps determine whether field action should be targeted.'
-      else if (text.includes('densely populated') || text.includes('residential spacing')) reason = 'Population density is elevated, so densely populated areas receive additional attention.'
-      else if (text.includes('preventive') || text.includes('reminder') || text.includes('communication')) reason = 'Preventive communication is appropriate while the barangay is being watched for change.'
-      else if (text.includes('next reporting period')) reason = 'The next reporting period provides new evidence for deciding whether the response should be escalated.'
+      let reason = `${context}. This step belongs to the current ${selectedPriority} response plan and supports continued dengue monitoring.`
+
+      if (text.includes('upload') || text.includes('validate dengue records') || text.includes('case records are available')) {
+        reason = `The response-plan data is incomplete or unavailable for ${selectedLabel}. Records must be checked before a reliable risk-based field plan can be generated.`
+      } else if (text.includes('24 to 48 hours') || text.includes('activate barangay-level dengue alert')) {
+        reason = `${selectedLabel} has ${forecastDescription} and response priority ${selectedPriority}. This High Risk response template calls for prompt coordination rather than routine monitoring alone.`
+      } else if (text.includes('coordination meeting') || text.includes('forecast case pressure is high')) {
+        const nextPeriod = Number(details?.currentCases || 0)
+        reason = `${selectedLabel}'s four-period forecast is ${formatNumber(forecast)} cases and the next-period value is ${formatNumber(nextPeriod)} cases. The generated response-plan rule adds CHO coordination when the four-period forecast is at least 100 or the next-period forecast is at least 25.`
+      } else if (text.includes('recent average') || text.includes('previous baseline')) {
+        const recent = Number(details?.recentAverage || 0)
+        const previous = Number(details?.previousAverage || 0)
+        reason = `The recorded recent-period average is ${formatNumber(recent, 2)} cases versus ${formatNumber(previous, 2)} in the previous period. The plan calls for checking source reports when the recent average is higher than the previous positive baseline.`
+      } else if (text.includes('nearby') || text.includes('spatial') || text.includes('hotspot')) {
+        reason = spatialReason
+      } else if (text.includes('cluster') || text.includes('purok') || text.includes('household group')) {
+        reason = `${selectedLabel} has ${forecastDescription}. Before choosing a targeted intervention, workers should check the location of newly reported cases; the forecast alone does not prove cases are clustered in any purok or household.`
+      } else if (text.includes('early warning') || text.includes('monitor closely') || text.includes('escalate surveillance') || text.includes('upward') || text.includes('increasing case')) {
+        reason = watchReason
+      } else if (text.includes('densely populated') || text.includes('residential spacing') || text.includes('dense residential')) {
+        reason = isHighDensity
+          ? `${selectedLabel}'s population density level is ${densityLevel}${selectedDensity > 0 ? ` (${formatNumber(selectedDensity, 2)} people/sq km)` : ''}. Extra attention to dense residential areas is recommended because more people may share potential exposure sites.`
+          : `${selectedLabel}'s reported density level is ${densityLevel}. Checking residential areas is a precautionary source-reduction activity, not evidence that density is currently high.`
+      } else if (text.includes('rainy') || text.includes('rainfall') || text.includes('stagnant water') || text.includes('breeding') || text.includes('drainage') || text.includes('sanitation') || text.includes('source reduction') || text.includes('cleanup') || text.includes('water storage')) {
+        reason = `${context}. The ${risk} Risk action template includes mosquito-breeding-site prevention. This action is preventive; it does not mean that a breeding-site inspection has already confirmed a problem.`
+      } else if (text.includes('preventive') || text.includes('reminder') || text.includes('communication') || text.includes('advisories') || text.includes('messaging') || text.includes('iec') || text.includes('consultation')) {
+        reason = `${context}. Household reminders are part of the ${selectedPriority} prevention plan even when the forecast remains low; no additional outbreak trigger is assumed.`
+      } else if (text.includes('next reporting period') || text.includes('reporting-period') || text.includes('reassess') || text.includes('review') || text.includes('track') || text.includes('observation') || text.includes('keep under')) {
+        reason = `${selectedLabel} has ${forecastDescription} and ${trendDescription}. New surveillance reports must be compared with this baseline before the response is maintained or escalated.`
+      } else if (text.includes('deploy bhw') || text.includes('case checking') || text.includes('fever case')) {
+        reason = `${selectedLabel} has ${forecastDescription} with response priority ${selectedPriority}. BHW case verification helps determine whether current field reports support the model-based concern.`
+      } else if (text.includes('routine') || text.includes('surveillance') || text.includes('monitoring')) {
+        reason = isIncreasing ? watchReason : (isDecreasing ? localRiskReason : stableReason)
+      }
       return { action, reason }
     })
 
     return { trigger, signals, actionReasons }
-  }, [details, selectedActionPlan, selectedDecisionSupport, selectedDensity, selectedLabel, selectedPopulation, selectedTrend])
+  }, [details, selectedActionPlan, selectedDecisionSupport, selectedDensity, selectedLabel, selectedPopulation, selectedTrend, selectedHotspot, selectedPriority, realHotspotReady])
 
   const summary = showingHotspotLayer
     ? rankedHotspotRows.slice(0, 5)
@@ -2927,6 +2987,23 @@ export default function MapPage() {
     },
   ]
 
+  // Use the same reconciled results that produce the legend counts.
+  // Filtering here is presentation-only; hotspot scoring is unchanged.
+  const categoryBarangays = hotspotCategoryOpen
+    ? hotspotRows
+        .filter((row) => (row.hotspot_level || 'Not checked') === hotspotCategoryOpen)
+        .sort((a, b) => Number(b.hotspot_score || 0) - Number(a.hotspot_score || 0) || String(a.barangay || '').localeCompare(String(b.barangay || '')))
+    : []
+  const activeCategoryLegend = hotspotLegendItems.find((item) => item.key === hotspotCategoryOpen)
+
+  // These are the exact forecast rows used for the visible Low/Moderate/High counts.
+  // No forecast or risk calculation is performed by the modal.
+  const forecastCategoryBarangays = forecastCategoryOpen
+    ? displayRiskRows.filter((row) => row.risk === forecastCategoryOpen)
+        .slice().sort((a, b) => String(a.barangay || '').localeCompare(String(b.barangay || '')))
+    : []
+  const activeForecastCategoryLegend = forecastLegendItems.find((item) => item.key === forecastCategoryOpen)
+
   const activeLegendItems = showingHotspotLayer
     ? hotspotLegendItems
     : forecastLegendItems
@@ -3016,14 +3093,6 @@ export default function MapPage() {
       value: selectedPriority,
       icon: Navigation,
       tone: 'text-orange-500 bg-orange-50 border-orange-100 dark:text-orange-300 dark:bg-orange-500/10 dark:border-orange-500/20',
-    },
-    {
-      label: 'Response logic score',
-      value: details ? `${formatNumber(selectedDecisionScore)} points` : 'Waiting for data',
-      icon: Gauge,
-      tone: 'text-indigo-500 bg-indigo-50 border-indigo-100 dark:text-indigo-300 dark:bg-indigo-500/10 dark:border-indigo-500/20',
-      onClick: details ? () => setResponseScoreBreakdownOpen(true) : null,
-      helper: details ? 'View calculation' : '',
     },
     {
       label: 'Combined priority score',
@@ -3264,6 +3333,79 @@ export default function MapPage() {
   return (
     <div className="map-mobile-compact relative isolate space-y-7 overflow-hidden rounded-[38px] bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.09),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.08),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.78),rgba(248,250,252,0))] pb-10 sm:space-y-8 dark:bg-[radial-gradient(circle_at_8%_2%,rgba(14,165,233,0.10),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.07),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.42),rgba(15,23,42,0))]">
       <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 rounded-full bg-blue-100/70 blur-3xl dark:bg-blue-500/10" />
+
+      {forecastCategoryOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) setForecastCategoryOpen('') }}>
+          <div role="dialog" aria-modal="true" aria-label={`${activeForecastCategoryLegend?.label || forecastCategoryOpen} barangays`} className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-cyan-300/20 bg-slate-950 text-white shadow-[0_35px_120px_rgba(2,6,23,0.75)]">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
+              <div>
+                <span className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Forecast risk classification details</span>
+                <h3 className="mt-3 text-xl font-black sm:text-2xl">{activeForecastCategoryLegend?.label || forecastCategoryOpen}</h3>
+                <p className="mt-1 text-sm text-slate-300">{forecastCategoryBarangays.length} barangay{forecastCategoryBarangays.length === 1 ? '' : 's'} · {activeForecastCategoryLegend?.description || 'Forecast classification'}</p>
+              </div>
+              <button type="button" onClick={() => setForecastCategoryOpen('')} aria-label="Close forecast classification details" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-400/40 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="response-transparency-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-7" style={{ scrollbarGutter: 'stable', scrollbarColor: '#22d3ee #0f172a', scrollbarWidth: 'thin' }}>
+              {forecastCategoryBarangays.length === 0 ? (
+                <div className="rounded-[18px] border border-slate-700 bg-slate-900/70 px-4 py-8 text-center text-sm text-slate-300">No barangays currently belong to this forecast risk classification.</div>
+              ) : (
+                <div className="space-y-2">
+                  {forecastCategoryBarangays.map((row, index) => {
+                    const name = row.barangay || 'Unknown barangay'
+                    return (
+                      <div key={`${name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-700/80 bg-slate-900/60 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="font-bold text-white">{index + 1}. {name}</p>
+                          <p className="mt-1 text-xs text-slate-400">Forecast classification: {row.risk}</p>
+                        </div>
+                        <button type="button" onClick={() => { setForecastCategoryOpen(''); handleSelectBarangay(name) }} className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-200 transition hover:bg-cyan-400/20">View details →</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="shrink-0 border-t border-slate-800 px-5 py-4 text-right sm:px-7"><button type="button" onClick={() => setForecastCategoryOpen('')} className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-black text-white hover:bg-slate-800">Close</button></div>
+          </div>
+        </div>, document.body
+      )}
+
+      {hotspotCategoryOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) setHotspotCategoryOpen('') }}>
+          <div role="dialog" aria-modal="true" aria-label={`${activeCategoryLegend?.label || hotspotCategoryOpen} barangays`} className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-cyan-300/20 bg-slate-950 text-white shadow-[0_35px_120px_rgba(2,6,23,0.75)]">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-5 py-5 sm:px-7">
+              <div>
+                <span className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">Hotspot classification details</span>
+                <h3 className="mt-3 text-xl font-black sm:text-2xl">{activeCategoryLegend?.label || hotspotCategoryOpen}</h3>
+                <p className="mt-1 text-sm text-slate-300">{categoryBarangays.length} barangay{categoryBarangays.length === 1 ? '' : 's'} · {activeCategoryLegend?.description || 'Hotspot result not returned'}</p>
+              </div>
+              <button type="button" onClick={() => setHotspotCategoryOpen('')} aria-label="Close classification details" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-400/40 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="response-transparency-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-7" style={{ scrollbarGutter: 'stable', scrollbarColor: '#22d3ee #0f172a', scrollbarWidth: 'thin' }}>
+              {categoryBarangays.length === 0 ? (
+                <div className="rounded-[18px] border border-slate-700 bg-slate-900/70 px-4 py-8 text-center text-sm text-slate-300">No barangays currently belong to this classification.</div>
+              ) : (
+                <div className="space-y-2">
+                  {categoryBarangays.map((row, index) => {
+                    const name = row.barangay || 'Unknown barangay'
+                    const hasScore = !['Not checked', 'Needs Map Review'].includes(hotspotCategoryOpen)
+                    return (
+                      <div key={`${row.barangay_key || name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-700/80 bg-slate-900/60 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="font-bold text-white">{index + 1}. {name}</p>
+                          <p className="mt-1 text-xs text-slate-400">{hasScore ? `Hotspot score: ${Math.round(Number(row.hotspot_score || 0))}/100` : (row.recommended_map_action || 'Review hotspot or boundary status')}</p>
+                        </div>
+                        <button type="button" onClick={() => { setHotspotCategoryOpen(''); handleSelectBarangay(name) }} className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-200 transition hover:bg-cyan-400/20">View details →</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="shrink-0 border-t border-slate-800 px-5 py-4 text-right sm:px-7"><button type="button" onClick={() => setHotspotCategoryOpen('')} className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-black text-white hover:bg-slate-800">Close</button></div>
+          </div>
+        </div>, document.body
+      )}
 
       {hotspotCalculationOpen && selectedHotspot && typeof document !== 'undefined' &&
         createPortal(
@@ -4360,9 +4502,12 @@ export default function MapPage() {
                   const Icon = item.icon
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={item.key}
-                      className="map-legend-card group relative overflow-hidden rounded-[22px] border border-white/[0.80] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_45%),linear-gradient(145deg,#ffffff,#f8fafc)] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/55 transition hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(15,23,42,0.11)] dark:border-slate-800 dark:bg-[linear-gradient(145deg,#0f172a,#020617)] dark:ring-white/5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-gradient-to-r before:from-cyan-500 before:via-blue-500 before:to-transparent"
+                      onClick={() => showingHotspotLayer ? setHotspotCategoryOpen(item.key) : setForecastCategoryOpen(item.key)}
+                      aria-label={`View ${item.label} barangays (${item.count})`}
+                      className="map-legend-card group relative w-full overflow-hidden rounded-[22px] border border-white/[0.80] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_45%),linear-gradient(145deg,#ffffff,#f8fafc)] p-3 text-left shadow-[0_10px_28px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/55 transition hover:-translate-y-0.5 hover:shadow-[0_16px_38px_rgba(15,23,42,0.11)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500 dark:border-slate-800 dark:bg-[linear-gradient(145deg,#0f172a,#020617)] dark:ring-white/5 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-gradient-to-r before:from-cyan-500 before:via-blue-500 before:to-transparent"
                     >
                       <div className="flex items-center gap-2">
                         <span className={`h-3 w-3 rounded-full ${item.dot}`} />
@@ -4382,7 +4527,8 @@ export default function MapPage() {
                       <p className="mt-1 text-xs text-brand-muted dark:text-slate-400">
                         {formatNumber(item.count)} barangay{item.count === 1 ? '' : 's'}
                       </p>
-                    </div>
+                      <p className="mt-2 text-[11px] font-bold text-cyan-700 dark:text-cyan-300">View barangays →</p>
+                    </button>
                   )
                 })}
               </div>
